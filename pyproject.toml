@@ -1,0 +1,149 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "affinity-sdk"
+version = "0.1.0"
+description = "A modern, strongly-typed Python SDK for the Affinity CRM API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Yaniv Golan" }
+]
+keywords = [
+    "affinity",
+    "crm",
+    "api",
+    "sdk",
+    "client",
+    "relationship-management",
+    "sales",
+    "dealflow",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "respx>=0.21.0",  # httpx mocking
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yaniv-golan/affinity-sdk"
+Documentation = "https://github.com/yaniv-golan/affinity-sdk#readme"
+Repository = "https://github.com/yaniv-golan/affinity-sdk"
+Issues = "https://github.com/yaniv-golan/affinity-sdk/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["affinity"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"affinity/py.typed" = "affinity/py.typed"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "PTH",    # flake8-use-pathlib
+    "PL",     # pylint
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "PLR0912",  # too many branches
+    "PLR0913",  # too many arguments
+    "PLR2004",  # magic values
+    "PLW2901",  # loop variable overwritten
+    "RUF022",   # __all__ sorting is a readability choice
+]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*.py" = [
+    "E501",     # examples prioritize readability over strict wrapping
+    "PLR0912",  # examples may be branchy for demonstration purposes
+    "SIM102",   # examples may use nested ifs for clarity
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["affinity"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "httpx.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Keep local runs fast + debuggable:
+# - coverage can add significant overhead; CI runs coverage explicitly
+# - durations helps identify slow tests
+addopts = "-ra -q --import-mode=importlib --strict-config --strict-markers --durations=20"
+xfail_strict = true
+markers = [
+    "contract: contract-style tests for SDK invariants",
+    "integration: integration-style tests (may hit live API; usually skipped in CI)",
+    "pitfall: regression tests for known SDK pitfalls/guardrails",
+    "req: requirement coverage marker (e.g., @pytest.mark.req('TR-016'))",
+    "slow: slow tests",
+    "respx: configure the respx_mock router (provided by respx)",
+]
+
+[tool.coverage.run]
+source = ["affinity"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]

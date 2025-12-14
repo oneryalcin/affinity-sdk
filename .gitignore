@@ -1,0 +1,55 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.whl
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.dist
+
+# Tooling caches
+.cache/
+.hatch/
+.hatch_cache/
+.mkdocs_cache/
+site/
+.direnv/
+.envrc
+*.log
+.ipynb_checkpoints/
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# Internal (not for publishing)
+docs/internal/
+.cursorrules

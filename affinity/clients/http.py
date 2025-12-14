@@ -1,0 +1,1105 @@
+"""
+HTTP client implementation for the Affinity API.
+
+Handles:
+- Authentication
+- Rate limiting with automatic retries
+- Request/response logging
+- V1/V2 API routing
+- Optional response caching
+"""
+
+from __future__ import annotations
+
+import asyncio
+import email.utils
+import hashlib
+import logging
+import math
+import time
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Literal, TypeAlias, TypeVar, cast
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+import httpx
+
+from ..exceptions import (
+    AffinityError,
+    ErrorDiagnostics,
+    NetworkError,
+    RateLimitError,
+    TimeoutError,
+    UnsafeUrlError,
+    error_from_response,
+)
+from ..models.types import V1_BASE_URL, V2_BASE_URL
+
+logger = logging.getLogger("affinity_sdk")
+
+RepeatableQueryParam: TypeAlias = Literal["fieldIds", "fieldTypes"]
+REPEATABLE_QUERY_PARAMS: frozenset[str] = frozenset({"fieldIds", "fieldTypes"})
+
+_RETRYABLE_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
+_MAX_RETRY_DELAY_SECONDS: float = 60.0
+
+
+T = TypeVar("T")
+
+
+def _to_wire_value(value: Any) -> str:
+    if isinstance(value, Enum):
+        return str(value.value)
+    return str(value)
+
+
+def _encode_query_params(
+    params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None,
+) -> list[tuple[str, str]] | None:
+    """
+    Convert params into deterministic ordered key/value pairs for `httpx`.
+
+    - Repeatable params are encoded as repeated keys (e.g., fieldIds=a&fieldIds=b).
+    - Repeatable values are de-duplicated while preserving caller order.
+    - Non-repeatable params are emitted in sorted-key order for determinism.
+    """
+    if params is None:
+        return None
+
+    if isinstance(params, Mapping):
+        ordered: list[tuple[str, str]] = []
+        for key in sorted(params.keys()):
+            value = params[key]
+            if value is None:
+                continue
+
+            if key in REPEATABLE_QUERY_PARAMS:
+                raw_values: Sequence[Any]
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    raw_values = value
+                else:
+                    raw_values = [value]
+
+                seen: set[str] = set()
+                for item in raw_values:
+                    wire = _to_wire_value(item)
+                    if wire in seen:
+                        continue
+                    ordered.append((key, wire))
+                    seen.add(wire)
+            else:
+                ordered.append((key, _to_wire_value(value)))
+        return ordered
+
+    return [(key, _to_wire_value(value)) for key, value in params]
+
+
+def _freeze_v1_query_signature(
+    params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None,
+) -> list[tuple[str, str]]:
+    """
+    Freeze the canonical v1 query signature for token pagination.
+
+    The returned sequence MUST NOT include the v1 `page_token` param so that the
+    signature can be reused verbatim across pages (TR-017/TR-017a).
+    """
+    encoded = _encode_query_params(params) or []
+    return [(key, value) for (key, value) in encoded if key != "page_token"]
+
+
+def _compute_backoff_seconds(attempt: int, *, base: float) -> float:
+    # "Full jitter": random(0, min(cap, base * 2^attempt))
+    max_delay = min(_MAX_RETRY_DELAY_SECONDS, base * (2**attempt))
+    jitter = (time.time_ns() % 1_000_000) / 1_000_000.0
+    return cast(float, jitter * max_delay)
+
+
+def _parse_retry_after(value: str) -> int | None:
+    """
+    Parse `Retry-After` header per RFC7231.
+
+    Supports:
+    - delta-seconds (e.g. "60")
+    - HTTP-date (e.g. "Wed, 21 Oct 2015 07:28:00 GMT")
+    """
+    candidate = value.strip()
+    if not candidate:
+        return None
+
+    if candidate.isdigit():
+        return int(candidate)
+
+    try:
+        parsed = email.utils.parsedate_to_datetime(candidate)
+    except (TypeError, ValueError):
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    delta = (parsed.astimezone(timezone.utc) - now).total_seconds()
+    return max(0, math.ceil(delta))
+
+
+def _default_port(scheme: str) -> int | None:
+    if scheme == "http":
+        return 80
+    if scheme == "https":
+        return 443
+    return None
+
+
+def _host_port(url: str) -> tuple[str, int | None]:
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port
+    if port is None:
+        port = _default_port(parts.scheme)
+    return (host, port)
+
+
+def _safe_follow_url(
+    url: str,
+    *,
+    v1_base_url: str,
+    v2_base_url: str,
+) -> tuple[str, bool]:
+    """
+    Validate and normalize a server-provided URL under SafeFollowUrl policy.
+
+    Returns: (absolute_url_without_fragment, is_v1)
+    """
+    v1_base = v1_base_url.rstrip("/") + "/"
+    v2_base = v2_base_url.rstrip("/") + "/"
+
+    parsed = urlsplit(url)
+    # Relative URL: resolve against v2 base by default (v2 pagination/task URLs)
+    absolute = urljoin(v2_base, url) if not parsed.scheme and not parsed.netloc else url
+
+    parts = urlsplit(absolute)
+    if parts.username is not None or parts.password is not None:
+        raise UnsafeUrlError("Refusing URL with userinfo", url=absolute)
+
+    # Strip fragments (never sent, never used for routing decisions)
+    absolute = urlunsplit(parts._replace(fragment=""))
+    parts = urlsplit(absolute)
+
+    v2_parts = urlsplit(v2_base)
+    v1_parts = urlsplit(v1_base)
+
+    v2_host, v2_port = _host_port(v2_base)
+    v1_host, v1_port = _host_port(v1_base)
+    host, port = _host_port(absolute)
+
+    if host not in {v1_host, v2_host} or port not in {v1_port, v2_port}:
+        raise UnsafeUrlError("Refusing URL with unexpected host", url=absolute)
+
+    v2_prefix = (v2_parts.path or "").rstrip("/") + "/"
+    is_v1 = not (parts.path or "").startswith(v2_prefix)
+    expected_scheme = v1_parts.scheme if is_v1 else v2_parts.scheme
+    if parts.scheme != expected_scheme:
+        raise UnsafeUrlError("Refusing URL with unexpected scheme", url=absolute)
+
+    return absolute, is_v1
+
+
+def _redact_url(url: str, api_key: str) -> str:
+    parts = urlsplit(url)
+    query_params = []
+    if parts.query:
+        for pair in parts.query.split("&"):
+            if "=" in pair:
+                key, _value = pair.split("=", 1)
+                lowered = key.lower()
+                if any(token in lowered for token in ("key", "token", "authorization")):
+                    query_params.append(f"{key}=[REDACTED]")
+                else:
+                    query_params.append(pair)
+            else:
+                query_params.append(pair)
+    redacted = urlunsplit(
+        parts._replace(
+            netloc=parts.hostname or parts.netloc,
+            query="&".join(query_params),
+        )
+    )
+    return redacted.replace(api_key, "[REDACTED]")
+
+
+def _select_response_headers(headers: httpx.Headers) -> dict[str, str]:
+    allow = [
+        "Retry-After",
+        "Date",
+        "X-Ratelimit-Limit-User",
+        "X-Ratelimit-Limit-User-Remaining",
+        "X-Ratelimit-Limit-User-Reset",
+        "X-Ratelimit-Limit-Org",
+        "X-Ratelimit-Limit-Org-Remaining",
+        "X-Ratelimit-Limit-Org-Reset",
+        "X-Request-Id",
+        "Request-Id",
+    ]
+    selected: dict[str, str] = {}
+    for name in allow:
+        value = headers.get(name) or headers.get(name.lower())
+        if value is not None:
+            selected[name] = value
+    return selected
+
+
+def _extract_request_id(headers: dict[str, str]) -> str | None:
+    for key in ("X-Request-Id", "Request-Id"):
+        if key in headers:
+            return headers[key]
+    return None
+
+
+# =============================================================================
+# Rate Limit Tracking
+# =============================================================================
+
+
+@dataclass
+class RateLimitState:
+    """Tracks rate limit status from response headers."""
+
+    user_limit: int = 900
+    user_remaining: int = 900
+    user_reset_seconds: int = 60
+    org_limit: int = 100_000
+    org_remaining: int = 100_000
+    org_reset_seconds: int = 2_592_000  # ~30 days
+    last_updated: float = field(default_factory=time.time)
+
+    def update_from_headers(self, headers: httpx.Headers) -> None:
+        """Update state from response headers."""
+        self.last_updated = time.time()
+
+        # Handle both uppercase (current) and lowercase (future) headers
+        def get_header(name: str) -> int | None:
+            value = headers.get(name) or headers.get(name.lower())
+            return int(value) if value else None
+
+        if (v := get_header("X-Ratelimit-Limit-User")) is not None:
+            self.user_limit = v
+        if (v := get_header("X-Ratelimit-Limit-User-Remaining")) is not None:
+            self.user_remaining = v
+        if (v := get_header("X-Ratelimit-Limit-User-Reset")) is not None:
+            self.user_reset_seconds = v
+        if (v := get_header("X-Ratelimit-Limit-Org")) is not None:
+            self.org_limit = v
+        if (v := get_header("X-Ratelimit-Limit-Org-Remaining")) is not None:
+            self.org_remaining = v
+        if (v := get_header("X-Ratelimit-Limit-Org-Reset")) is not None:
+            self.org_reset_seconds = v
+
+    @property
+    def should_throttle(self) -> bool:
+        """Whether we should slow down requests."""
+        return self.user_remaining < 50 or self.org_remaining < 1000
+
+    @property
+    def seconds_until_user_reset(self) -> float:
+        """Seconds until per-minute limit resets."""
+        elapsed = time.time() - self.last_updated
+        return max(0, self.user_reset_seconds - elapsed)
+
+
+# =============================================================================
+# Simple TTL Cache
+# =============================================================================
+
+
+@dataclass
+class CacheEntry:
+    """Single cache entry with TTL."""
+
+    value: dict[str, Any]
+    expires_at: float
+
+
+class SimpleCache:
+    """
+    Simple in-memory cache with TTL.
+
+    Used for caching field metadata and other rarely-changing data.
+    """
+
+    def __init__(self, default_ttl: float = 300.0):
+        self._cache: dict[str, CacheEntry] = {}
+        self._default_ttl = default_ttl
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        """Get value if not expired."""
+        entry = self._cache.get(key)
+        if entry is None:
+            return None
+        if time.time() > entry.expires_at:
+            del self._cache[key]
+            return None
+        return entry.value
+
+    def set(self, key: str, value: dict[str, Any], ttl: float | None = None) -> None:
+        """Set value with TTL."""
+        expires_at = time.time() + (ttl or self._default_ttl)
+        self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
+
+    def delete(self, key: str) -> None:
+        """Delete a cache entry."""
+        self._cache.pop(key, None)
+
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        self._cache.clear()
+
+    def invalidate_prefix(self, prefix: str) -> None:
+        """Invalidate all entries with the given prefix."""
+        keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
+        for key in keys_to_delete:
+            del self._cache[key]
+
+
+# =============================================================================
+# HTTP Client Configuration
+# =============================================================================
+
+
+@dataclass
+class ClientConfig:
+    """Configuration for the HTTP client."""
+
+    api_key: str
+    v1_base_url: str = V1_BASE_URL
+    v2_base_url: str = V2_BASE_URL
+    http2: bool = False
+    v1_auth_mode: Literal["bearer", "basic"] = "bearer"
+    timeout: httpx.Timeout | float = field(
+        default_factory=lambda: httpx.Timeout(
+            30.0,
+            connect=10.0,
+            read=30.0,
+            write=30.0,
+            pool=10.0,
+        )
+    )
+    limits: httpx.Limits = field(
+        default_factory=lambda: httpx.Limits(
+            max_connections=20,
+            max_keepalive_connections=10,
+            keepalive_expiry=30.0,
+        )
+    )
+    transport: httpx.BaseTransport | None = None
+    async_transport: httpx.AsyncBaseTransport | None = None
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    enable_cache: bool = False
+    cache_ttl: float = 300.0
+    log_requests: bool = False
+    enable_beta_endpoints: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.timeout, (int, float)):
+            self.timeout = httpx.Timeout(float(self.timeout))
+
+
+def _cache_key_suffix(v1_base_url: str, v2_base_url: str, api_key: str) -> str:
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    return f"|v1={v1_base_url}|v2={v2_base_url}|tenant={digest}"
+
+
+# =============================================================================
+# Synchronous HTTP Client
+# =============================================================================
+
+
+class HTTPClient:
+    """
+    Synchronous HTTP client for Affinity API.
+
+    Handles authentication, rate limiting, retries, and caching.
+    """
+
+    def __init__(self, config: ClientConfig):
+        self._config = config
+        self._rate_limit = RateLimitState()
+        self._cache = SimpleCache(config.cache_ttl) if config.enable_cache else None
+        self._cache_suffix = _cache_key_suffix(
+            self._config.v1_base_url,
+            self._config.v2_base_url,
+            self._config.api_key,
+        )
+
+        # Configure httpx client (auth is applied per-request)
+        self._client = httpx.Client(
+            http2=config.http2,
+            timeout=config.timeout,
+            limits=config.limits,
+            transport=config.transport,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+
+    def _apply_auth(
+        self,
+        *,
+        v1: bool,
+        kwargs: dict[str, Any],
+    ) -> dict[str, Any]:
+        request_kwargs = dict(kwargs)
+        if v1 and self._config.v1_auth_mode == "basic":
+            request_kwargs["auth"] = httpx.BasicAuth("", self._config.api_key)
+            return request_kwargs
+
+        headers = dict(request_kwargs.pop("headers", {}) or {})
+        headers["Authorization"] = f"Bearer {self._config.api_key}"
+        request_kwargs["headers"] = headers
+        return request_kwargs
+
+    def close(self) -> None:
+        """Close the HTTP client."""
+        self._client.close()
+
+    def __enter__(self) -> HTTPClient:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+    @property
+    def cache(self) -> SimpleCache | None:
+        """Access to the cache for invalidation."""
+        return self._cache
+
+    @property
+    def rate_limit_state(self) -> RateLimitState:
+        """Current rate limit state."""
+        return self._rate_limit
+
+    @property
+    def enable_beta_endpoints(self) -> bool:
+        """Whether beta endpoints are enabled for this client."""
+        return self._config.enable_beta_endpoints
+
+    def _build_url(self, path: str, *, v1: bool = False) -> str:
+        """Build full URL from path."""
+        base = self._config.v1_base_url if v1 else self._config.v2_base_url
+        # V1 paths don't have /v1 prefix in the base URL
+        if v1:
+            return f"{base}/{path.lstrip('/')}"
+        return f"{base}/{path.lstrip('/')}"
+
+    def _handle_response(
+        self,
+        response: httpx.Response,
+        *,
+        method: str,
+        url: str,
+        v1: bool,
+    ) -> dict[str, Any]:
+        """Process response and handle errors."""
+        # Update rate limit state
+        self._rate_limit.update_from_headers(response.headers)
+
+        # Check for errors
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+            except Exception:
+                body = {"message": response.text}
+
+            retry_after = None
+            if response.status_code == 429:
+                header_value = response.headers.get("Retry-After")
+                if header_value is not None:
+                    retry_after = _parse_retry_after(header_value)
+
+            selected_headers = _select_response_headers(response.headers)
+            request_id = _extract_request_id(selected_headers)
+            diagnostics = ErrorDiagnostics(
+                method=method,
+                url=_redact_url(url, self._config.api_key),
+                api_version="v1" if v1 else "v2",
+                base_url=self._config.v1_base_url if v1 else self._config.v2_base_url,
+                request_id=request_id,
+                http_version=response.http_version,
+                response_headers=selected_headers,
+                response_body_snippet=str(body)[:512].replace(self._config.api_key, "[REDACTED]"),
+            )
+
+            raise error_from_response(
+                response.status_code,
+                body,
+                retry_after=retry_after,
+                diagnostics=diagnostics,
+            )
+
+        # Empty response (204 No Content, etc.)
+        if response.status_code == 204 or not response.content:
+            return {}
+
+        payload = response.json()
+        if isinstance(payload, dict):
+            return cast(dict[str, Any], payload)
+        if isinstance(payload, list):
+            # Some V1 endpoints return top-level arrays. Normalize into an object
+            # wrapper so call sites can consistently access `data`.
+            return {"data": payload}
+        raise AffinityError("Expected JSON object/array response")
+
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        v1: bool,
+        safe_follow: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Make request with retry policy for safe methods."""
+        last_error: Exception | None = None
+
+        for attempt in range(self._config.max_retries + 1):
+            try:
+                if self._config.log_requests:
+                    logger.debug(f"{method} {url}")
+
+                request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
+                if safe_follow:
+                    request_kwargs["follow_redirects"] = False
+                response = self._client.request(method, url, **request_kwargs)
+                if safe_follow and response.is_redirect:
+                    raise UnsafeUrlError(
+                        "Refusing to follow redirect for server-provided URL",
+                        url=url,
+                    )
+                return self._handle_response(
+                    response,
+                    method=method,
+                    url=url,
+                    v1=v1,
+                )
+
+            except RateLimitError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise
+                wait_time = (
+                    float(e.retry_after)
+                    if e.retry_after is not None
+                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                )
+                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
+                time.sleep(wait_time)
+
+            except AffinityError as e:
+                last_error = e
+                status = e.status_code
+                if (
+                    method not in _RETRYABLE_METHODS
+                    or status is None
+                    or status < 500
+                    or status >= 600
+                    or attempt >= self._config.max_retries
+                ):
+                    raise
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                logger.warning(
+                    f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
+                )
+                time.sleep(wait_time)
+
+            except httpx.TimeoutException as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise TimeoutError(f"Request timed out: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                time.sleep(wait_time)
+
+            except httpx.NetworkError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise NetworkError(f"Network error: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                time.sleep(wait_time)
+
+        # Exhausted retries
+        if last_error:
+            raise last_error
+        raise AffinityError("Request failed after retries")
+
+    # =========================================================================
+    # Public Request Methods
+    # =========================================================================
+
+    def get(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None,
+        v1: bool = False,
+        cache_key: str | None = None,
+        cache_ttl: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        Make a GET request.
+
+        Args:
+            path: API path (e.g., "/companies")
+            params: Query parameters
+            v1: Use V1 API endpoint
+            cache_key: If provided, cache the response with this key
+            cache_ttl: Cache TTL override
+
+        Returns:
+            Parsed JSON response
+        """
+        # Check cache
+        if cache_key and self._cache:
+            cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
+            if cached is not None:
+                return cached
+
+        url = self._build_url(path, v1=v1)
+        encoded_params = _encode_query_params(params)
+        result = self._request_with_retry("GET", url, v1=v1, params=encoded_params)
+
+        # Store in cache
+        if cache_key and self._cache and result is not None:
+            self._cache.set(f"{cache_key}{self._cache_suffix}", result, cache_ttl)
+
+        return result
+
+    def get_v1_page(
+        self,
+        path: str,
+        *,
+        signature: Sequence[tuple[str, str]],
+        page_token: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Fetch a v1 paginated page using a frozen canonical query signature.
+
+        This enforces TR-017a by reusing the exact same query signature across
+        pages, varying only the `page_token`.
+        """
+        params = list(signature)
+        if page_token is not None:
+            params.append(("page_token", page_token))
+        url = self._build_url(path, v1=True)
+        return self._request_with_retry("GET", url, v1=True, params=params)
+
+    def get_url(self, url: str) -> dict[str, Any]:
+        """
+        Make a GET request to a full URL.
+
+        Used for following pagination URLs.
+        """
+        absolute, is_v1 = _safe_follow_url(
+            url,
+            v1_base_url=self._config.v1_base_url,
+            v2_base_url=self._config.v2_base_url,
+        )
+        return self._request_with_retry("GET", absolute, v1=is_v1, safe_follow=True)
+
+    def post(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Make a POST request."""
+        url = self._build_url(path, v1=v1)
+        return self._request_with_retry("POST", url, v1=v1, json=json)
+
+    def put(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Make a PUT request."""
+        url = self._build_url(path, v1=v1)
+        return self._request_with_retry("PUT", url, v1=v1, json=json)
+
+    def patch(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Make a PATCH request."""
+        url = self._build_url(path, v1=v1)
+        return self._request_with_retry("PATCH", url, v1=v1, json=json)
+
+    def delete(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Make a DELETE request."""
+        url = self._build_url(path, v1=v1)
+        return self._request_with_retry("DELETE", url, v1=v1)
+
+    def upload_file(
+        self,
+        path: str,
+        *,
+        files: dict[str, Any],
+        data: dict[str, Any] | None = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Upload files with multipart form data."""
+        url = self._build_url(path, v1=v1)
+
+        # Remove Content-Type header for multipart
+        headers = dict(self._client.headers)
+        headers.pop("Content-Type", None)
+        return self._request_with_retry(
+            "POST",
+            url,
+            v1=v1,
+            files=files,
+            data=data,
+            headers=headers,
+        )
+
+    def download_file(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+    ) -> bytes:
+        """Download file content."""
+        url = self._build_url(path, v1=v1)
+        request_kwargs = self._apply_auth(v1=v1, kwargs={})
+        response = self._client.get(url, **request_kwargs)
+
+        if response.status_code >= 400:
+            raise error_from_response(response.status_code, {})
+
+        return response.content
+
+
+# =============================================================================
+# Asynchronous HTTP Client
+# =============================================================================
+
+
+class AsyncHTTPClient:
+    """
+    Asynchronous HTTP client for Affinity API.
+
+    Same functionality as HTTPClient but with async/await support.
+    """
+
+    def __init__(self, config: ClientConfig):
+        self._config = config
+        self._rate_limit = RateLimitState()
+        self._cache = SimpleCache(config.cache_ttl) if config.enable_cache else None
+        self._cache_suffix = _cache_key_suffix(
+            self._config.v1_base_url,
+            self._config.v2_base_url,
+            self._config.api_key,
+        )
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Lazy initialization of async client."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                http2=self._config.http2,
+                timeout=self._config.timeout,
+                limits=self._config.limits,
+                transport=self._config.async_transport,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+        return self._client
+
+    def _apply_auth(
+        self,
+        *,
+        v1: bool,
+        kwargs: dict[str, Any],
+    ) -> dict[str, Any]:
+        request_kwargs = dict(kwargs)
+        if v1 and self._config.v1_auth_mode == "basic":
+            request_kwargs["auth"] = httpx.BasicAuth("", self._config.api_key)
+            return request_kwargs
+
+        headers = dict(request_kwargs.pop("headers", {}) or {})
+        headers["Authorization"] = f"Bearer {self._config.api_key}"
+        request_kwargs["headers"] = headers
+        return request_kwargs
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    async def __aenter__(self) -> AsyncHTTPClient:
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self.close()
+
+    @property
+    def cache(self) -> SimpleCache | None:
+        return self._cache
+
+    @property
+    def rate_limit_state(self) -> RateLimitState:
+        return self._rate_limit
+
+    @property
+    def enable_beta_endpoints(self) -> bool:
+        return self._config.enable_beta_endpoints
+
+    def _build_url(self, path: str, *, v1: bool = False) -> str:
+        base = self._config.v1_base_url if v1 else self._config.v2_base_url
+        if v1:
+            return f"{base}/{path.lstrip('/')}"
+        return f"{base}/{path.lstrip('/')}"
+
+    def _handle_response(
+        self,
+        response: httpx.Response,
+        *,
+        method: str,
+        url: str,
+        v1: bool,
+    ) -> dict[str, Any]:
+        self._rate_limit.update_from_headers(response.headers)
+
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+            except Exception:
+                body = {"message": response.text}
+
+            retry_after = None
+            if response.status_code == 429:
+                header_value = response.headers.get("Retry-After")
+                if header_value is not None:
+                    retry_after = _parse_retry_after(header_value)
+
+            selected_headers = _select_response_headers(response.headers)
+            request_id = _extract_request_id(selected_headers)
+            diagnostics = ErrorDiagnostics(
+                method=method,
+                url=_redact_url(url, self._config.api_key),
+                api_version="v1" if v1 else "v2",
+                base_url=self._config.v1_base_url if v1 else self._config.v2_base_url,
+                request_id=request_id,
+                http_version=response.http_version,
+                response_headers=selected_headers,
+                response_body_snippet=str(body)[:512].replace(self._config.api_key, "[REDACTED]"),
+            )
+
+            raise error_from_response(
+                response.status_code,
+                body,
+                retry_after=retry_after,
+                diagnostics=diagnostics,
+            )
+
+        if response.status_code == 204 or not response.content:
+            return {}
+
+        payload = response.json()
+        if isinstance(payload, dict):
+            return cast(dict[str, Any], payload)
+        if isinstance(payload, list):
+            return {"data": payload}
+        raise AffinityError("Expected JSON object/array response")
+
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        v1: bool,
+        safe_follow: bool = False,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        client = await self._get_client()
+        last_error: Exception | None = None
+
+        for attempt in range(self._config.max_retries + 1):
+            try:
+                if self._config.log_requests:
+                    logger.debug(f"{method} {url}")
+
+                request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
+                if safe_follow:
+                    request_kwargs["follow_redirects"] = False
+                response = await client.request(method, url, **request_kwargs)
+                if safe_follow and response.is_redirect:
+                    raise UnsafeUrlError(
+                        "Refusing to follow redirect for server-provided URL",
+                        url=url,
+                    )
+                return self._handle_response(
+                    response,
+                    method=method,
+                    url=url,
+                    v1=v1,
+                )
+
+            except RateLimitError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise
+                wait_time = (
+                    float(e.retry_after)
+                    if e.retry_after is not None
+                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                )
+                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
+                await asyncio.sleep(wait_time)
+
+            except AffinityError as e:
+                last_error = e
+                status = e.status_code
+                if (
+                    method not in _RETRYABLE_METHODS
+                    or status is None
+                    or status < 500
+                    or status >= 600
+                    or attempt >= self._config.max_retries
+                ):
+                    raise
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                logger.warning(
+                    f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
+                )
+                await asyncio.sleep(wait_time)
+
+            except httpx.TimeoutException as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise TimeoutError(f"Request timed out: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+
+            except httpx.NetworkError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise NetworkError(f"Network error: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+
+        if last_error:
+            raise last_error
+        raise AffinityError("Request failed after retries")
+
+    # =========================================================================
+    # Public Request Methods
+    # =========================================================================
+
+    async def get(
+        self,
+        path: str,
+        *,
+        params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None,
+        v1: bool = False,
+        cache_key: str | None = None,
+        cache_ttl: float | None = None,
+    ) -> dict[str, Any]:
+        if cache_key and self._cache:
+            cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
+            if cached is not None:
+                return cached
+
+        url = self._build_url(path, v1=v1)
+        encoded_params = _encode_query_params(params)
+        result = await self._request_with_retry(
+            "GET",
+            url,
+            v1=v1,
+            params=encoded_params,
+        )
+
+        if cache_key and self._cache and result is not None:
+            self._cache.set(f"{cache_key}{self._cache_suffix}", result, cache_ttl)
+
+        return result
+
+    async def get_v1_page(
+        self,
+        path: str,
+        *,
+        signature: Sequence[tuple[str, str]],
+        page_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Async version of `get_v1_page()`."""
+        params = list(signature)
+        if page_token is not None:
+            params.append(("page_token", page_token))
+        url = self._build_url(path, v1=True)
+        return await self._request_with_retry("GET", url, v1=True, params=params)
+
+    async def get_url(self, url: str) -> dict[str, Any]:
+        absolute, is_v1 = _safe_follow_url(
+            url,
+            v1_base_url=self._config.v1_base_url,
+            v2_base_url=self._config.v2_base_url,
+        )
+        return await self._request_with_retry(
+            "GET",
+            absolute,
+            v1=is_v1,
+            safe_follow=True,
+        )
+
+    async def post(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        url = self._build_url(path, v1=v1)
+        return await self._request_with_retry("POST", url, v1=v1, json=json)
+
+    async def put(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        url = self._build_url(path, v1=v1)
+        return await self._request_with_retry("PUT", url, v1=v1, json=json)
+
+    async def patch(
+        self,
+        path: str,
+        *,
+        json: Any = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        url = self._build_url(path, v1=v1)
+        return await self._request_with_retry("PATCH", url, v1=v1, json=json)
+
+    async def delete(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        url = self._build_url(path, v1=v1)
+        return await self._request_with_retry("DELETE", url, v1=v1)
