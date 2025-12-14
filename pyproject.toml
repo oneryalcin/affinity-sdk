@@ -103,6 +103,9 @@ ignore = [
     "PLR0912",  # examples may be branchy for demonstration purposes
     "SIM102",   # examples may use nested ifs for clarity
 ]
+"tools/*.py" = [
+    "PLC0415",  # dev tools may use local imports for lazy SDK loading
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["affinity"]

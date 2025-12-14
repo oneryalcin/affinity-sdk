@@ -314,6 +314,51 @@ class BetaEndpointDisabledError(UnsupportedOperationError):
     pass
 
 
+class VersionCompatibilityError(AffinityError):
+    """
+    Response shape mismatch suggests API version incompatibility.
+
+    TR-015: Raised when the SDK detects response-shape mismatches that
+    appear version-related. This typically means the API key's configured
+    v2 Default API Version differs from what the SDK expects.
+
+    Guidance:
+    1. Check your API key's v2 Default API Version in the Affinity dashboard
+    2. Ensure it matches the expected_v2_version configured in the SDK
+    3. See: https://developer.affinity.co/docs/versioning
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_version: str | None = None,
+        parsing_error: str | None = None,
+        status_code: int | None = None,
+        response_body: Any | None = None,
+        diagnostics: ErrorDiagnostics | None = None,
+    ):
+        super().__init__(
+            message,
+            status_code=status_code,
+            response_body=response_body,
+            diagnostics=diagnostics,
+        )
+        self.expected_version = expected_version
+        self.parsing_error = parsing_error
+
+    def __str__(self) -> str:
+        base = super().__str__()
+        hints = []
+        if self.expected_version:
+            hints.append(f"expected_v2_version={self.expected_version}")
+        if self.parsing_error:
+            hints.append(f"parsing_error={self.parsing_error}")
+        if hints:
+            base = f"{base} ({', '.join(hints)})"
+        return base
+
+
 class DeprecationWarning(AffinityError):
     """
     Feature is deprecated and may be removed.

@@ -34,6 +34,7 @@ from ..exceptions import (
     RateLimitError,
     TimeoutError,
     UnsafeUrlError,
+    VersionCompatibilityError,
     error_from_response,
 )
 from ..models.types import V1_BASE_URL, V2_BASE_URL
@@ -439,6 +440,8 @@ class ClientConfig:
     # Request/response hooks (DX-008)
     on_request: RequestHook | None = None
     on_response: ResponseHook | None = None
+    # TR-015: Expected v2 API version for diagnostics and safety checks
+    expected_v2_version: str | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.timeout, (int, float)):
@@ -861,6 +864,37 @@ class HTTPClient:
 
         return response.content
 
+    def wrap_validation_error(
+        self,
+        error: Exception,
+        *,
+        context: str | None = None,
+    ) -> VersionCompatibilityError:
+        """
+        Wrap a validation error with version compatibility context.
+
+        TR-015: If expected_v2_version is configured, validation failures
+        are wrapped with actionable guidance about checking API version.
+        """
+        expected = self._config.expected_v2_version
+        message = (
+            f"Response parsing failed: {error}. "
+            "This may indicate a v2 API version mismatch. "
+            "Check your API key's Default API Version in the Affinity dashboard."
+        )
+        if context:
+            message = f"[{context}] {message}"
+        return VersionCompatibilityError(
+            message,
+            expected_version=expected,
+            parsing_error=str(error),
+        )
+
+    @property
+    def expected_v2_version(self) -> str | None:
+        """Expected V2 API version for diagnostics."""
+        return self._config.expected_v2_version
+
 
 # =============================================================================
 # Asynchronous HTTP Client
@@ -1207,3 +1241,34 @@ class AsyncHTTPClient:
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
         return await self._request_with_retry("DELETE", url, v1=v1)
+
+    def wrap_validation_error(
+        self,
+        error: Exception,
+        *,
+        context: str | None = None,
+    ) -> VersionCompatibilityError:
+        """
+        Wrap a validation error with version compatibility context.
+
+        TR-015: If expected_v2_version is configured, validation failures
+        are wrapped with actionable guidance about checking API version.
+        """
+        expected = self._config.expected_v2_version
+        message = (
+            f"Response parsing failed: {error}. "
+            "This may indicate a v2 API version mismatch. "
+            "Check your API key's Default API Version in the Affinity dashboard."
+        )
+        if context:
+            message = f"[{context}] {message}"
+        return VersionCompatibilityError(
+            message,
+            expected_version=expected,
+            parsing_error=str(error),
+        )
+
+    @property
+    def expected_v2_version(self) -> str | None:
+        """Expected V2 API version for diagnostics."""
+        return self._config.expected_v2_version

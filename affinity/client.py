@@ -96,6 +96,7 @@ class Affinity:
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
         enable_beta_endpoints: bool = False,
+        expected_v2_version: str | None = None,
         timeout: float = 30.0,
         max_retries: int = 3,
         enable_cache: bool = False,
@@ -111,11 +112,18 @@ class Affinity:
             api_key: Your Affinity API key
             v1_base_url: V1 API base URL (default: https://api.affinity.co)
             v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
+            v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
+            enable_beta_endpoints: Enable beta V2 endpoints
+            expected_v2_version: Expected V2 API version for diagnostics (e.g.,
+                "2024-01-01"). Used to detect version compatibility issues.
+                See TR-015.
             timeout: Request timeout in seconds
             max_retries: Maximum retries for rate-limited requests
             enable_cache: Enable response caching for field metadata
             cache_ttl: Cache TTL in seconds
             log_requests: Log all HTTP requests (for debugging)
+            on_request: Hook called before each request (DX-008)
+            on_response: Hook called after each response (DX-008)
         """
         config = ClientConfig(
             api_key=api_key,
@@ -123,6 +131,7 @@ class Affinity:
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
             enable_beta_endpoints=enable_beta_endpoints,
+            expected_v2_version=expected_v2_version,
             timeout=timeout,
             max_retries=max_retries,
             enable_cache=enable_cache,
@@ -314,6 +323,7 @@ class AsyncAffinity:
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
         enable_beta_endpoints: bool = False,
+        expected_v2_version: str | None = None,
         timeout: float = 30.0,
         max_retries: int = 3,
         enable_cache: bool = False,
@@ -328,6 +338,7 @@ class AsyncAffinity:
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
             enable_beta_endpoints=enable_beta_endpoints,
+            expected_v2_version=expected_v2_version,
             timeout=timeout,
             max_retries=max_retries,
             enable_cache=enable_cache,

@@ -4,16 +4,20 @@ Tests for newly implemented features:
 - FR-010: Search/Resolve Helpers
 - FR-011: Task Service
 - DX-008: Request/Response Hooks
+- TR-013: OpenAPI Schema Alignment
+- TR-015: V2 Version Compatibility
 """
 
 from __future__ import annotations
 
+import ast
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 import httpx
 import pytest
 
-from affinity import F, Filter
+from affinity import Affinity, F, Filter, VersionCompatibilityError
 from affinity.clients.http import (
     ClientConfig,
     HTTPClient,
@@ -584,3 +588,119 @@ class TestRequestHooks:
             assert "RES:200" in hook_calls
         finally:
             http_client.close()
+
+
+# =============================================================================
+# TR-015: Version Compatibility Tests
+# =============================================================================
+
+
+class TestVersionCompatibility:
+    """Tests for v2 version compatibility features (TR-015)."""
+
+    @pytest.mark.req("TR-015")
+    def test_expected_v2_version_config(self) -> None:
+        """Test that expected_v2_version can be configured."""
+        config = ClientConfig(
+            api_key="test",
+            expected_v2_version="2024-01-01",
+        )
+        assert config.expected_v2_version == "2024-01-01"
+
+    @pytest.mark.req("TR-015")
+    def test_client_accepts_expected_v2_version(self) -> None:
+        """Test that Affinity client accepts expected_v2_version."""
+        # Should not raise
+        client = Affinity(
+            api_key="test",
+            expected_v2_version="2024-01-01",
+        )
+        client.close()
+
+    @pytest.mark.req("TR-015")
+    def test_version_compatibility_error_creation(self) -> None:
+        """Test VersionCompatibilityError can be created with context."""
+        err = VersionCompatibilityError(
+            "Response parsing failed",
+            expected_version="2024-01-01",
+            parsing_error="Missing field 'foo'",
+        )
+        assert err.expected_version == "2024-01-01"
+        assert err.parsing_error == "Missing field 'foo'"
+        assert "2024-01-01" in str(err)
+
+    @pytest.mark.req("TR-015")
+    def test_wrap_validation_error(self) -> None:
+        """Test HTTPClient.wrap_validation_error provides guidance."""
+        config = ClientConfig(
+            api_key="test",
+            expected_v2_version="2024-01-01",
+        )
+        http_client = HTTPClient(config)
+        try:
+            err = http_client.wrap_validation_error(
+                ValueError("field 'foo' is required"),
+                context="Person.get",
+            )
+            assert err.expected_version == "2024-01-01"
+            assert "Person.get" in str(err)
+            assert "v2 API version mismatch" in str(err)
+        finally:
+            http_client.close()
+
+    @pytest.mark.req("TR-015")
+    def test_version_error_without_expected_version(self) -> None:
+        """Test wrap_validation_error works without expected_v2_version."""
+        config = ClientConfig(api_key="test")
+        http_client = HTTPClient(config)
+        try:
+            err = http_client.wrap_validation_error(ValueError("parse error"))
+            assert err.expected_version is None
+            assert "parse error" in str(err)
+        finally:
+            http_client.close()
+
+
+# =============================================================================
+# TR-013: OpenAPI Schema Alignment Tests
+# =============================================================================
+
+
+class TestOpenAPIAlignment:
+    """Tests for OpenAPI schema alignment features (TR-013)."""
+
+    @pytest.mark.req("TR-013")
+    def test_openapi_validation_script_exists(self) -> None:
+        """Test that the OpenAPI validation script exists."""
+        script_path = Path(__file__).parent.parent / "tools" / "validate_openapi_models.py"
+        assert script_path.exists(), "OpenAPI validation script should exist"
+
+    @pytest.mark.req("TR-013")
+    def test_openapi_script_syntax_valid(self) -> None:
+        """Test that the OpenAPI validation script has valid Python syntax."""
+        script_path = Path(__file__).parent.parent / "tools" / "validate_openapi_models.py"
+        source = script_path.read_text()
+        # Should not raise SyntaxError
+        ast.parse(source)
+
+    @pytest.mark.req("TR-013")
+    def test_openapi_script_has_required_functions(self) -> None:
+        """Test that the OpenAPI script defines expected functions."""
+        script_path = Path(__file__).parent.parent / "tools" / "validate_openapi_models.py"
+        source = script_path.read_text()
+        tree = ast.parse(source)
+
+        function_names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        assert "validate_model" in function_names
+        assert "get_sdk_models" in function_names
+        assert "main" in function_names
+
+    @pytest.mark.req("TR-013")
+    def test_openapi_schema_url_in_script(self) -> None:
+        """Test that the OpenAPI schema URL is correctly configured."""
+        script_path = Path(__file__).parent.parent / "tools" / "validate_openapi_models.py"
+        source = script_path.read_text()
+
+        # Check for the expected URL
+        assert "openapi.json" in source
+        assert "yaniv-golan/affinity-api-docs" in source

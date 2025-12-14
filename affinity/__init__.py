@@ -57,6 +57,7 @@ from .exceptions import (
     ServerError,
     TimeoutError,
     ValidationError,
+    VersionCompatibilityError,
 )
 
 # Filter builder (FR-007)
@@ -91,6 +92,7 @@ __all__ = [
     "ConfigurationError",
     "TimeoutError",
     "NetworkError",
+    "VersionCompatibilityError",
     # Filter builder
     "Filter",
     "FilterExpression",
