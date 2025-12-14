@@ -8,12 +8,19 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from .clients.http import AsyncHTTPClient, ClientConfig, HTTPClient
+from .clients.http import (
+    AsyncHTTPClient,
+    ClientConfig,
+    HTTPClient,
+    RequestHook,
+    ResponseHook,
+)
 from .models.types import V1_BASE_URL, V2_BASE_URL
 from .services.companies import AsyncCompanyService, CompanyService
 from .services.lists import AsyncListService, ListService
 from .services.opportunities import AsyncOpportunityService, OpportunityService
 from .services.persons import AsyncPersonService, PersonService
+from .services.tasks import AsyncTaskService, TaskService
 from .services.v1_only import (
     AuthService,
     EntityFileService,
@@ -94,6 +101,8 @@ class Affinity:
         enable_cache: bool = False,
         cache_ttl: float = 300.0,
         log_requests: bool = False,
+        on_request: RequestHook | None = None,
+        on_response: ResponseHook | None = None,
     ):
         """
         Initialize the Affinity client.
@@ -119,6 +128,8 @@ class Affinity:
             enable_cache=enable_cache,
             cache_ttl=cache_ttl,
             log_requests=log_requests,
+            on_request=on_request,
+            on_response=on_response,
         )
         self._http = HTTPClient(config)
 
@@ -127,6 +138,7 @@ class Affinity:
         self._persons: PersonService | None = None
         self._lists: ListService | None = None
         self._opportunities: OpportunityService | None = None
+        self._tasks: TaskService | None = None
         self._notes: NoteService | None = None
         self._reminders: ReminderService | None = None
         self._webhooks: WebhookService | None = None
@@ -178,6 +190,13 @@ class Affinity:
         if self._opportunities is None:
             self._opportunities = OpportunityService(self._http)
         return self._opportunities
+
+    @property
+    def tasks(self) -> TaskService:
+        """Long-running task operations (polling, waiting)."""
+        if self._tasks is None:
+            self._tasks = TaskService(self._http)
+        return self._tasks
 
     @property
     def notes(self) -> NoteService:
@@ -300,6 +319,8 @@ class AsyncAffinity:
         enable_cache: bool = False,
         cache_ttl: float = 300.0,
         log_requests: bool = False,
+        on_request: RequestHook | None = None,
+        on_response: ResponseHook | None = None,
     ):
         config = ClientConfig(
             api_key=api_key,
@@ -312,12 +333,15 @@ class AsyncAffinity:
             enable_cache=enable_cache,
             cache_ttl=cache_ttl,
             log_requests=log_requests,
+            on_request=on_request,
+            on_response=on_response,
         )
         self._http = AsyncHTTPClient(config)
         self._companies: AsyncCompanyService | None = None
         self._persons: AsyncPersonService | None = None
         self._opportunities: AsyncOpportunityService | None = None
         self._lists: AsyncListService | None = None
+        self._tasks: AsyncTaskService | None = None
 
     @property
     def companies(self) -> AsyncCompanyService:
@@ -342,6 +366,13 @@ class AsyncAffinity:
         if self._lists is None:
             self._lists = AsyncListService(self._http)
         return self._lists
+
+    @property
+    def tasks(self) -> AsyncTaskService:
+        """Long-running task operations (polling, waiting)."""
+        if self._tasks is None:
+            self._tasks = AsyncTaskService(self._http)
+        return self._tasks
 
     async def __aenter__(self) -> AsyncAffinity:
         return self

@@ -93,6 +93,8 @@ ignore = [
     "PLR2004",  # magic values
     "PLW2901",  # loop variable overwritten
     "RUF022",   # __all__ sorting is a readability choice
+    "PLR0915",  # Too many statements - complex retry logic acceptable
+    "PLR0911",  # Too many return statements - complex value formatting acceptable
 ]
 
 [tool.ruff.lint.per-file-ignores]

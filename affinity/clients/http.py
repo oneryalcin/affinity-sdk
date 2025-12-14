@@ -7,6 +7,7 @@ Handles:
 - Request/response logging
 - V1/V2 API routing
 - Optional response caching
+- Request/response hooks (DX-008)
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import hashlib
 import logging
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -47,6 +48,41 @@ _MAX_RETRY_DELAY_SECONDS: float = 60.0
 
 
 T = TypeVar("T")
+
+
+# =============================================================================
+# Request/Response Hooks (DX-008)
+# =============================================================================
+
+
+@dataclass
+class RequestInfo:
+    """
+    Sanitized request metadata for hooks.
+
+    Note: API key is NOT included for security.
+    """
+
+    method: str
+    url: str
+    headers: dict[str, str]  # Redacted (no auth)
+
+
+@dataclass
+class ResponseInfo:
+    """
+    Sanitized response metadata for hooks.
+    """
+
+    status_code: int
+    headers: dict[str, str]
+    elapsed_ms: float
+    request: RequestInfo
+
+
+# Hook callback types
+RequestHook: TypeAlias = Callable[[RequestInfo], None]
+ResponseHook: TypeAlias = Callable[[ResponseInfo], None]
 
 
 def _to_wire_value(value: Any) -> str:
@@ -400,6 +436,9 @@ class ClientConfig:
     cache_ttl: float = 300.0
     log_requests: bool = False
     enable_beta_endpoints: bool = False
+    # Request/response hooks (DX-008)
+    on_request: RequestHook | None = None
+    on_response: ResponseHook | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.timeout, (int, float)):
@@ -572,7 +611,40 @@ class HTTPClient:
                 request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
                 if safe_follow:
                     request_kwargs["follow_redirects"] = False
+
+                # Call request hook (DX-008)
+                if self._config.on_request:
+                    # Build sanitized headers (no auth)
+                    sanitized_headers = {
+                        k: v
+                        for k, v in request_kwargs.get("headers", {}).items()
+                        if k.lower() != "authorization"
+                    }
+                    req_info = RequestInfo(
+                        method=method,
+                        url=_redact_url(url, self._config.api_key),
+                        headers=sanitized_headers,
+                    )
+                    self._config.on_request(req_info)
+
+                start_time = time.monotonic()
                 response = self._client.request(method, url, **request_kwargs)
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+
+                # Call response hook (DX-008)
+                if self._config.on_response:
+                    resp_info = ResponseInfo(
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        elapsed_ms=elapsed_ms,
+                        request=RequestInfo(
+                            method=method,
+                            url=_redact_url(url, self._config.api_key),
+                            headers={},
+                        ),
+                    )
+                    self._config.on_response(resp_info)
+
                 if safe_follow and response.is_redirect:
                     raise UnsafeUrlError(
                         "Refusing to follow redirect for server-provided URL",
@@ -946,7 +1018,39 @@ class AsyncHTTPClient:
                 request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
                 if safe_follow:
                     request_kwargs["follow_redirects"] = False
+
+                # Call request hook (DX-008)
+                if self._config.on_request:
+                    sanitized_headers = {
+                        k: v
+                        for k, v in request_kwargs.get("headers", {}).items()
+                        if k.lower() != "authorization"
+                    }
+                    req_info = RequestInfo(
+                        method=method,
+                        url=_redact_url(url, self._config.api_key),
+                        headers=sanitized_headers,
+                    )
+                    self._config.on_request(req_info)
+
+                start_time = time.monotonic()
                 response = await client.request(method, url, **request_kwargs)
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+
+                # Call response hook (DX-008)
+                if self._config.on_response:
+                    resp_info = ResponseInfo(
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        elapsed_ms=elapsed_ms,
+                        request=RequestInfo(
+                            method=method,
+                            url=_redact_url(url, self._config.api_key),
+                            headers={},
+                        ),
+                    )
+                    self._config.on_response(resp_info)
+
                 if safe_follow and response.is_redirect:
                     raise UnsafeUrlError(
                         "Refusing to follow redirect for server-provided URL",

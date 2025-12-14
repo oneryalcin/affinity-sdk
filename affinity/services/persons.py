@@ -255,6 +255,55 @@ class PersonService:
             next_page_token=data.get("next_page_token"),
         )
 
+    def resolve(
+        self,
+        *,
+        email: str | None = None,
+        name: str | None = None,
+    ) -> Person | None:
+        """
+        Find a single person by email or name.
+
+        This is a convenience helper that searches and returns the first exact match,
+        or None if not found. Uses V1 search internally.
+
+        Args:
+            email: Email address to search for
+            name: Person name to search for (first + last)
+
+        Returns:
+            The matching Person, or None if not found
+
+        Raises:
+            ValueError: If neither email nor name is provided
+
+        Note:
+            If multiple matches are found, returns the first one.
+            For disambiguation, use search() directly.
+        """
+        if not email and not name:
+            raise ValueError("Must provide either email or name")
+
+        term = email or name or ""
+        result = self.search(term, page_size=10)
+
+        for person in result.data:
+            if email:
+                # Check primary email and all emails
+                if person.primary_email and person.primary_email.lower() == email.lower():
+                    return person
+                if person.emails:
+                    for e in person.emails:
+                        if e.lower() == email.lower():
+                            return person
+            if name:
+                # Check full name
+                full_name = f"{person.first_name or ''} {person.last_name or ''}".strip()
+                if full_name.lower() == name.lower():
+                    return person
+
+        return None
+
     # =========================================================================
     # Write Operations (V1 API)
     # =========================================================================

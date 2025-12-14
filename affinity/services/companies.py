@@ -265,6 +265,46 @@ class CompanyService:
             next_page_token=data.get("next_page_token"),
         )
 
+    def resolve(
+        self,
+        *,
+        domain: str | None = None,
+        name: str | None = None,
+    ) -> Company | None:
+        """
+        Find a single company by domain or name.
+
+        This is a convenience helper that searches and returns the first exact match,
+        or None if not found. Uses V1 search internally.
+
+        Args:
+            domain: Domain to search for (e.g., "acme.com")
+            name: Company name to search for
+
+        Returns:
+            The matching Company, or None if not found
+
+        Raises:
+            ValueError: If neither domain nor name is provided
+
+        Note:
+            If multiple matches are found, returns the first one.
+            For disambiguation, use search() directly.
+        """
+        if not domain and not name:
+            raise ValueError("Must provide either domain or name")
+
+        term = domain or name or ""
+        result = self.search(term, page_size=10)
+
+        for company in result.data:
+            if domain and company.domain and company.domain.lower() == domain.lower():
+                return company
+            if name and company.name and company.name.lower() == name.lower():
+                return company
+
+        return None
+
     # =========================================================================
     # Write Operations (V1 API)
     # =========================================================================

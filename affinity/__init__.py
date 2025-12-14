@@ -59,6 +59,9 @@ from .exceptions import (
     ValidationError,
 )
 
+# Filter builder (FR-007)
+from .filters import F, Filter, FilterExpression
+
 # Sub-modules (for from affinity.types import ...)
 from .models import types
 
@@ -88,6 +91,10 @@ __all__ = [
     "ConfigurationError",
     "TimeoutError",
     "NetworkError",
+    # Filter builder
+    "Filter",
+    "FilterExpression",
+    "F",
     # Type aliases (re-exported for convenience)
     "types",
     "models",
