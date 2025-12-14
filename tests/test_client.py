@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
+
 try:
     import respx
 except ModuleNotFoundError:  # pragma: no cover - optional dev dependency
