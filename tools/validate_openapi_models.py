@@ -69,6 +69,30 @@ MODEL_MAPPINGS: dict[str, str] = {
     "CompanySummary": "CompanySummary",
 }
 
+# Known V1-only models that don't have V2 OpenAPI schemas
+# These are expected to be missing from the schema and should not trigger warnings
+V1_ONLY_MODELS: set[str] = {
+    # V1-only entities
+    "Note",
+    "NoteV2",
+    "Interaction",
+    "Reminder",
+    "WebhookSubscription",
+    "EntityFile",
+    "FieldValueChange",
+    # Beta/internal models
+    "MergeTask",
+    # SDK convenience types (summaries, nested types)
+    "PersonSummary",
+    "CompanySummary",
+    "ListSummary",
+    "ListPermission",
+    "DropdownOption",
+    # V1-heavy models with different structures
+    "ListEntryWithEntity",
+    "FieldValue",
+}
+
 
 @dataclass
 class ValidationResult:
@@ -80,6 +104,7 @@ class ValidationResult:
     extra_in_sdk: list[str] = field(default_factory=list)
     type_mismatches: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    is_v1_only: bool = False  # Model is known to be V1-only (expected not in schema)
 
     @property
     def is_compatible(self) -> bool:
@@ -88,7 +113,9 @@ class ValidationResult:
 
     def __str__(self) -> str:
         lines = [f"\n=== {self.model_name} (schema: {self.schema_name}) ==="]
-        if self.is_compatible and not self.extra_in_sdk and not self.warnings:
+        if self.is_v1_only:
+            lines.append("  [SKIP] V1-only model (no V2 schema expected)")
+        elif self.is_compatible and not self.extra_in_sdk and not self.warnings:
             lines.append("  [OK] Compatible")
         else:
             if self.missing_in_sdk:
@@ -253,6 +280,11 @@ def validate_model(
 
     result = ValidationResult(model_name=sdk_model_name, schema_name=schema_name)
 
+    # Check if this is a known V1-only model
+    if sdk_model_name in V1_ONLY_MODELS:
+        result.is_v1_only = True
+        return result
+
     # Get schema properties
     schema_props = get_schema_properties(schema, schema_name)
     if schema_props is None:
@@ -361,15 +393,24 @@ def main() -> int:
     print("VALIDATION SUMMARY")
     print("=" * 60)
 
-    compatible = [r for r in results if r.is_compatible]
-    incompatible = [r for r in results if not r.is_compatible]
-    with_extensions = [r for r in results if r.extra_in_sdk]
-    not_found = [r for r in results if any("not found" in w for w in r.warnings)]
+    # Categorize results
+    v1_only = [r for r in results if r.is_v1_only]
+    v2_results = [r for r in results if not r.is_v1_only]
+    compatible = [r for r in v2_results if r.is_compatible and not r.warnings]
+    with_extensions = [
+        r for r in v2_results if r.is_compatible and r.extra_in_sdk and not r.warnings
+    ]
+    incompatible = [r for r in v2_results if not r.is_compatible and not r.warnings]
+    not_found = [r for r in v2_results if any("not found" in w for w in r.warnings)]
 
-    print(f"[OK] Compatible models: {len(compatible)}")
-    print(f"[ERROR] Incompatible models: {len(incompatible)}")
-    print(f"[INFO] Models with extensions: {len(with_extensions)}")
-    print(f"[WARN] Models not in schema: {len(not_found)}")
+    print(f"[OK] V2 compatible models: {len(compatible) + len(with_extensions)}")
+    if with_extensions:
+        print(f"     (includes {len(with_extensions)} with documented extensions)")
+    print(f"[SKIP] V1-only models: {len(v1_only)} (no V2 schema expected)")
+    if incompatible:
+        print(f"[ERROR] Incompatible models: {len(incompatible)}")
+    if not_found:
+        print(f"[WARN] Unexpected models not in schema: {len(not_found)}")
 
     if incompatible:
         print("\nIncompatible models:")
@@ -378,6 +419,11 @@ def main() -> int:
                 f"  - {r.model_name}: {len(r.missing_in_sdk)} missing, "
                 f"{len(r.type_mismatches)} type mismatches"
             )
+
+    if not_found:
+        print("\nUnexpected models not in schema:")
+        for r in not_found:
+            print(f"  - {r.model_name}")
 
     # Return error if any models are incompatible
     if incompatible:
