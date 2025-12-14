@@ -45,9 +45,20 @@ KNOWN_EXTENSIONS: dict[str, set[str]] = {
         "list_entries",
         "interaction_dates",
         "fields",
+        "is_global",  # V1 field, aliased from "global"
     },
-    "Opportunity": {"fields"},
-    "ListEntry": {"fields"},
+    "Opportunity": {"fields", "person_ids", "organization_ids", "list_entries"},
+    "ListEntry": {"fields", "entity_id", "entity_type", "entity"},
+    # V1-only models that don't exist in V2 OpenAPI
+    "AffinityList": {"type", "is_public", "list_size", "fields", "additional_permissions"},
+    "SavedView": {"list_id", "is_default", "field_ids"},  # V1 fields
+    "FieldMetadata": {
+        "allows_multiple",
+        "list_id",
+        "track_changes",
+        "is_required",
+        "dropdown_options",
+    },
 }
 
 # Model name mappings (SDK name -> OpenAPI schema name)

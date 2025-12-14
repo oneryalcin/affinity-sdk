@@ -138,7 +138,8 @@ class Person(AffinityModel):
     first_name: str | None = Field(None, alias="firstName")
     last_name: str | None = Field(None, alias="lastName")
     primary_email: str | None = Field(None, alias="primaryEmailAddress")
-    emails: list[str] = Field(default_factory=list)
+    # V2 uses emailAddresses, V1 uses emails - accept both via alias
+    emails: list[str] = Field(default_factory=list, alias="emailAddresses")
     type: PersonType = PersonType.EXTERNAL
 
     # Associations (V1 uses organization_ids)
@@ -155,6 +156,7 @@ class Person(AffinityModel):
             value,
             (
                 "emails",
+                "emailAddresses",
                 "organizationIds",
                 "organization_ids",
                 "opportunityIds",
@@ -446,8 +448,10 @@ class SavedView(AffinityModel):
 
     id: SavedViewId
     name: str
+    type: str | None = None  # V2 field: view type
     list_id: ListId = Field(alias="listId")
     is_default: bool = Field(False, alias="isDefault")
+    created_at: ISODatetime | None = Field(None, alias="createdAt")
 
     # Field IDs included in this view
     field_ids: list[str] = Field(default_factory=list, alias="fieldIds")
