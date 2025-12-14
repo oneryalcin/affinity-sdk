@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import Enum, IntEnum
-from typing import Annotated, Any, TypeAlias
+from typing import Annotated, Any, SupportsInt, TypeAlias, cast
 
 from pydantic import Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
@@ -163,9 +163,9 @@ def field_id_to_v1_numeric(field_id: AnyFieldId) -> int:
 
 class OpenIntEnum(IntEnum):
     @classmethod
-    def _missing_(cls, value: object) -> OpenIntEnum:  # type: ignore[override]
+    def _missing_(cls, value: object) -> OpenIntEnum:
         try:
-            int_value = int(value)  # type: ignore[arg-type]
+            int_value = int(cast(SupportsInt | str | bytes | bytearray, value))
         except (TypeError, ValueError) as e:
             raise ValueError(value) from e
 
@@ -178,7 +178,7 @@ class OpenIntEnum(IntEnum):
 
 class OpenStrEnum(str, Enum):
     @classmethod
-    def _missing_(cls, value: object) -> OpenStrEnum:  # type: ignore[override]
+    def _missing_(cls, value: object) -> OpenStrEnum:
         text = str(value)
         obj = str.__new__(cls, text)
         obj._value_ = text

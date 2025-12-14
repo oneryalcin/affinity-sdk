@@ -98,42 +98,6 @@ class OpportunityService:
         """
         return self.all()
 
-
-class AsyncOpportunityService:
-    """Async version of OpportunityService (TR-009)."""
-
-    def __init__(self, client: AsyncHTTPClient):
-        self._client = client
-
-    async def get(self, opportunity_id: OpportunityId) -> Opportunity:
-        data = await self._client.get(f"/opportunities/{opportunity_id}")
-        return Opportunity.model_validate(data)
-
-    async def list(self, *, limit: int | None = None) -> PaginatedResponse[Opportunity]:
-        params: dict[str, Any] = {}
-        if limit is not None:
-            params["limit"] = limit
-        data = await self._client.get("/opportunities", params=params or None)
-        return PaginatedResponse[Opportunity](
-            data=[Opportunity.model_validate(item) for item in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
-        )
-
-    def all(self) -> AsyncIterator[Opportunity]:
-        async def fetch_page(next_url: str | None) -> PaginatedResponse[Opportunity]:
-            if next_url:
-                data = await self._client.get_url(next_url)
-                return PaginatedResponse[Opportunity](
-                    data=[Opportunity.model_validate(item) for item in data.get("data", [])],
-                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
-                )
-            return await self.list()
-
-        return AsyncPageIterator(fetch_page)
-
-    def iter(self) -> AsyncIterator[Opportunity]:
-        return self.all()
-
     # =========================================================================
     # Write Operations (V1 API)
     # =========================================================================
@@ -175,4 +139,83 @@ class AsyncOpportunityService:
             True if successful
         """
         result = self._client.delete(f"/opportunities/{opportunity_id}", v1=True)
+        return bool(result.get("success", False))
+
+
+class AsyncOpportunityService:
+    """Async version of OpportunityService (TR-009)."""
+
+    def __init__(self, client: AsyncHTTPClient):
+        self._client = client
+
+    async def get(self, opportunity_id: OpportunityId) -> Opportunity:
+        data = await self._client.get(f"/opportunities/{opportunity_id}")
+        return Opportunity.model_validate(data)
+
+    async def list(self, *, limit: int | None = None) -> PaginatedResponse[Opportunity]:
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        data = await self._client.get("/opportunities", params=params or None)
+        return PaginatedResponse[Opportunity](
+            data=[Opportunity.model_validate(item) for item in data.get("data", [])],
+            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+        )
+
+    def all(self) -> AsyncIterator[Opportunity]:
+        async def fetch_page(next_url: str | None) -> PaginatedResponse[Opportunity]:
+            if next_url:
+                data = await self._client.get_url(next_url)
+                return PaginatedResponse[Opportunity](
+                    data=[Opportunity.model_validate(item) for item in data.get("data", [])],
+                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+                )
+            return await self.list()
+
+        return AsyncPageIterator(fetch_page)
+
+    def iter(self) -> AsyncIterator[Opportunity]:
+        return self.all()
+
+    # =========================================================================
+    # Write Operations (V1 API)
+    # =========================================================================
+
+    async def create(self, data: OpportunityCreate) -> Opportunity:
+        """
+        Create a new opportunity.
+
+        The opportunity will be added to the specified list.
+
+        Args:
+            data: Opportunity creation data including list_id and name
+
+        Returns:
+            The created opportunity
+        """
+        payload: dict[str, Any] = {
+            "name": data.name,
+            "list_id": int(data.list_id),
+        }
+        if data.person_ids:
+            payload["person_ids"] = [int(p) for p in data.person_ids]
+        if data.organization_ids:
+            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+
+        result = await self._client.post("/opportunities", json=payload, v1=True)
+        return Opportunity.model_validate(result)
+
+    async def delete(self, opportunity_id: OpportunityId) -> bool:
+        """
+        Delete an opportunity.
+
+        This removes the opportunity and all associated list entries.
+
+        Args:
+            opportunity_id: The opportunity to delete
+
+        Returns:
+            True if successful
+        """
+        result = await self._client.delete(f"/opportunities/{opportunity_id}", v1=True)
         return bool(result.get("success", False))

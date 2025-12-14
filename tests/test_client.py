@@ -19,7 +19,7 @@ from httpx import Headers, Response
 if respx is None:  # pragma: no cover
     pytest.skip("respx is not installed", allow_module_level=True)
 
-from affinity import Affinity, AffinityError, AsyncAffinity, NotFoundError, RateLimitError
+from affinity import Affinity, AffinityError, NotFoundError, RateLimitError
 from affinity.clients.http import (
     REPEATABLE_QUERY_PARAMS,
     AsyncHTTPClient,
@@ -41,7 +41,8 @@ from affinity.models import (
     PersonId,
     PersonType,
 )
-from affinity.services.lists import ListService
+from affinity.services.companies import AsyncCompanyService
+from affinity.services.lists import AsyncListService, ListService
 
 # =============================================================================
 # Rate Limit State Tests
@@ -1092,8 +1093,6 @@ async def test_async_affinity_companies_get() -> None:
     config = ClientConfig(api_key="test-key", max_retries=0, async_transport=transport)
     http_client = AsyncHTTPClient(config)
     try:
-        from affinity.services.companies import AsyncCompanyService
-
         companies = AsyncCompanyService(http_client)
         company = await companies.get(CompanyId(123))
         assert company.id == 123
@@ -1130,8 +1129,6 @@ async def test_async_affinity_companies_iter_auto_paginates() -> None:
     config = ClientConfig(api_key="test-key", max_retries=0, async_transport=transport)
     http_client = AsyncHTTPClient(config)
     try:
-        from affinity.services.companies import AsyncCompanyService
-
         companies = AsyncCompanyService(http_client)
         items: list[int] = []
         async for company in companies.iter():
@@ -1162,8 +1159,6 @@ async def test_async_affinity_lists_iter_auto_paginates() -> None:
     config = ClientConfig(api_key="test-key", max_retries=0, async_transport=transport)
     http_client = AsyncHTTPClient(config)
     try:
-        from affinity.services.lists import AsyncListService
-
         lists_service = AsyncListService(http_client)
         lists = []
         async for lst in lists_service.iter():

@@ -2,25 +2,18 @@
 Unit tests for Affinity SDK types and models.
 """
 
+import inspect
+import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, get_args, get_origin, get_type_hints
-import inspect
 
+import httpx
 import pytest
 
+import affinity.clients.http as http_mod
 from affinity import Affinity, AsyncAffinity
-from affinity.services.companies import CompanyService
-from affinity.services.lists import ListEntryService, ListService
-from affinity.services.persons import PersonService
-from affinity.services.v1_only import (
-    EntityFileService,
-    InteractionService,
-    NoteService,
-    ReminderService,
-)
-
 from affinity.models import (
     AffinityList,
     Company,
@@ -40,6 +33,15 @@ from affinity.models import (
     PersonType,
 )
 from affinity.models.types import EnrichedFieldId, field_id_to_v1_numeric
+from affinity.services.companies import CompanyService
+from affinity.services.lists import AsyncListEntryService, ListEntryService, ListService
+from affinity.services.persons import PersonService
+from affinity.services.v1_only import (
+    EntityFileService,
+    InteractionService,
+    NoteService,
+    ReminderService,
+)
 
 
 @pytest.mark.req("TR-003")
@@ -398,10 +400,7 @@ def _contains_dict_type(annotation: Any) -> bool:
         return True
     if annotation is dict:
         return True
-    for arg in get_args(annotation):
-        if _contains_dict_type(arg):
-            return True
-    return False
+    return any(_contains_dict_type(arg) for arg in get_args(annotation))
 
 
 @pytest.mark.req("TR-005")
@@ -488,8 +487,6 @@ def test_package_includes_py_typed_marker() -> None:
 def test_library_logger_has_null_handler_and_no_output_by_default(
     capsys: Any,
 ) -> None:
-    import logging
-
     logger = logging.getLogger("affinity_sdk")
     assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
 
@@ -503,10 +500,6 @@ def test_library_logger_has_null_handler_and_no_output_by_default(
 def test_httpclient_reuses_single_httpx_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import httpx
-
-    from affinity.clients import http as http_mod
-
     created: list[int] = []
     original = http_mod.httpx.Client
 
@@ -537,10 +530,6 @@ def test_httpclient_reuses_single_httpx_client(
 async def test_asynchttpclient_reuses_single_httpx_async_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import httpx
-
-    from affinity.clients import http as http_mod
-
     created: list[int] = []
     original = http_mod.httpx.AsyncClient
 
@@ -576,21 +565,21 @@ def test_sync_client_exposes_core_entity_services() -> None:
         assert hasattr(client, "lists")
         assert hasattr(client, "opportunities")
 
-        assert callable(getattr(client.companies, "get"))
-        assert callable(getattr(client.companies, "list"))
-        assert callable(getattr(client.companies, "iter"))
+        assert callable(client.companies.get)
+        assert callable(client.companies.list)
+        assert callable(client.companies.iter)
 
-        assert callable(getattr(client.persons, "get"))
-        assert callable(getattr(client.persons, "list"))
-        assert callable(getattr(client.persons, "iter"))
+        assert callable(client.persons.get)
+        assert callable(client.persons.list)
+        assert callable(client.persons.iter)
 
-        assert callable(getattr(client.lists, "get"))
-        assert callable(getattr(client.lists, "list"))
-        assert callable(getattr(client.lists, "iter"))
+        assert callable(client.lists.get)
+        assert callable(client.lists.list)
+        assert callable(client.lists.iter)
 
-        assert callable(getattr(client.opportunities, "get"))
-        assert callable(getattr(client.opportunities, "list"))
-        assert callable(getattr(client.opportunities, "iter"))
+        assert callable(client.opportunities.get)
+        assert callable(client.opportunities.list)
+        assert callable(client.opportunities.iter)
     finally:
         client.close()
 
@@ -607,27 +596,25 @@ def test_async_client_exposes_core_entity_services() -> None:
     assert hasattr(client, "lists")
     assert hasattr(client, "opportunities")
 
-    assert callable(getattr(client.companies, "get"))
-    assert callable(getattr(client.companies, "list"))
-    assert callable(getattr(client.companies, "iter"))
+    assert callable(client.companies.get)
+    assert callable(client.companies.list)
+    assert callable(client.companies.iter)
 
-    assert callable(getattr(client.persons, "get"))
-    assert callable(getattr(client.persons, "list"))
-    assert callable(getattr(client.persons, "iter"))
+    assert callable(client.persons.get)
+    assert callable(client.persons.list)
+    assert callable(client.persons.iter)
 
-    assert callable(getattr(client.lists, "get"))
-    assert callable(getattr(client.lists, "list"))
-    assert callable(getattr(client.lists, "iter"))
+    assert callable(client.lists.get)
+    assert callable(client.lists.list)
+    assert callable(client.lists.iter)
 
-    assert callable(getattr(client.opportunities, "get"))
-    assert callable(getattr(client.opportunities, "list"))
-    assert callable(getattr(client.opportunities, "iter"))
+    assert callable(client.opportunities.get)
+    assert callable(client.opportunities.list)
+    assert callable(client.opportunities.iter)
 
 
 @pytest.mark.req("DX-001a")
 def test_service_tree_avoids_top_level_callable_entries() -> None:
-    from affinity.services.lists import AsyncListEntryService
-
     sync_client = Affinity(api_key="test")
     try:
         assert not hasattr(sync_client, "entries")

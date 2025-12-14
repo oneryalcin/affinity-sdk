@@ -36,6 +36,32 @@ from __future__ import annotations
 
 import logging
 
+# Main client
+from . import models
+from .client import Affinity, AsyncAffinity
+
+# Exceptions
+from .exceptions import (
+    AffinityError,
+    AuthenticationError,
+    AuthorizationError,
+    CompanyNotFoundError,
+    ConfigurationError,
+    ConflictError,
+    EntityNotFoundError,
+    NetworkError,
+    NotFoundError,
+    OpportunityNotFoundError,
+    PersonNotFoundError,
+    RateLimitError,
+    ServerError,
+    TimeoutError,
+    ValidationError,
+)
+
+# Sub-modules (for from affinity.types import ...)
+from .models import types
+
 __version__ = "0.1.0"
 
 _logger = logging.getLogger("affinity_sdk")
@@ -66,29 +92,3 @@ __all__ = [
     "types",
     "models",
 ]
-
-# Main client
-from . import models
-from .client import Affinity, AsyncAffinity
-
-# Exceptions
-from .exceptions import (
-    AffinityError,
-    AuthenticationError,
-    AuthorizationError,
-    CompanyNotFoundError,
-    ConfigurationError,
-    ConflictError,
-    EntityNotFoundError,
-    NetworkError,
-    NotFoundError,
-    OpportunityNotFoundError,
-    PersonNotFoundError,
-    RateLimitError,
-    ServerError,
-    TimeoutError,
-    ValidationError,
-)
-
-# Sub-modules (for from affinity.types import ...)
-from .models import types

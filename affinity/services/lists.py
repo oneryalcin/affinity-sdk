@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from ..models.entities import (
     AffinityList,
-    FieldValues,
     FieldMetadata,
+    FieldValues,
     ListCreate,
     ListEntry,
     ListEntryWithEntity,

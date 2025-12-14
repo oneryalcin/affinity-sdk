@@ -10,7 +10,6 @@ from __future__ import annotations
 from .entities import (
     # List
     AffinityList,
-    ListSummary,
     # Base
     AffinityModel,
     # Company
@@ -29,6 +28,7 @@ from .entities import (
     ListEntryCreate,
     ListEntryWithEntity,
     ListPermission,
+    ListSummary,
     # Opportunity
     Opportunity,
     OpportunityCreate,

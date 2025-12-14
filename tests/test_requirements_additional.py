@@ -10,8 +10,9 @@ from typing import Any
 import httpx
 import pytest
 
+import affinity.clients.http as http_mod
 from affinity import Affinity
-from affinity.clients.http import AsyncHTTPClient, ClientConfig, HTTPClient
+from affinity.clients.http import ClientConfig, HTTPClient
 from affinity.exceptions import AffinityError, ValidationError
 from affinity.models.pagination import V1PaginatedResponse
 from affinity.models.secondary import NoteCreate
@@ -36,10 +37,10 @@ def test_sync_client_exposes_extended_entity_services() -> None:
         assert hasattr(client, "auth")
 
         # Spot-check a few representative operations exist (no network calls).
-        assert callable(getattr(client.notes, "create"))
-        assert callable(getattr(client.webhooks, "list"))
-        assert callable(getattr(client.fields, "list"))
-        assert callable(getattr(client.files, "download"))
+        assert callable(client.notes.create)
+        assert callable(client.webhooks.list)
+        assert callable(client.fields.list)
+        assert callable(client.files.download)
     finally:
         client.close()
 
@@ -116,8 +117,6 @@ def test_v2_first_plus_v1_fallback_routing_and_stable_shapes() -> None:
 def test_http2_flag_is_wired_to_httpx_client_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import affinity.clients.http as http_mod
-
     seen: dict[str, bool] = {}
 
     class StubClient:
@@ -139,8 +138,6 @@ def test_http2_flag_is_wired_to_httpx_client_construction(
 async def test_http2_flag_is_wired_to_httpx_async_client_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import affinity.clients.http as http_mod
-
     seen: dict[str, bool] = {}
 
     class StubAsyncClient:
