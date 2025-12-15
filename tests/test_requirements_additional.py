@@ -16,9 +16,9 @@ from affinity.clients.http import ClientConfig, HTTPClient
 from affinity.exceptions import AffinityError, ValidationError
 from affinity.models.pagination import V1PaginatedResponse
 from affinity.models.secondary import NoteCreate
-from affinity.models.types import CompanyId, PersonId
 from affinity.services.companies import CompanyService
 from affinity.services.v1_only import NoteService
+from affinity.types import CompanyId, PersonId
 
 
 @pytest.mark.req("FR-003")

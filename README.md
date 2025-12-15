@@ -237,7 +237,7 @@ with Affinity(api_key="your-key") as client:
 ```python
 from affinity import Affinity
 from affinity.models import WebhookCreate, WebhookUpdate
-from affinity.types import WebhookEventType
+from affinity.types import WebhookEvent
 
 with Affinity(api_key="your-key") as client:
     # Create a webhook subscription
@@ -245,9 +245,9 @@ with Affinity(api_key="your-key") as client:
         WebhookCreate(
             webhook_url="https://your-server.com/webhook",
             subscriptions=[
-                WebhookEventType.LIST_ENTRY_CREATED,
-                WebhookEventType.LIST_ENTRY_DELETED,
-                WebhookEventType.FIELD_VALUE_UPDATED,
+                WebhookEvent.LIST_ENTRY_CREATED,
+                WebhookEvent.LIST_ENTRY_DELETED,
+                WebhookEvent.FIELD_VALUE_UPDATED,
             ],
         )
     )

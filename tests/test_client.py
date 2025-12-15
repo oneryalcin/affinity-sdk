@@ -33,16 +33,11 @@ from affinity.clients.http import (
 from affinity.exceptions import BetaEndpointDisabledError, UnsafeUrlError
 from affinity.models import (
     CompanyCreate,
-    CompanyId,
     ListCreate,
-    ListId,
-    ListType,
-    OpportunityId,
-    PersonId,
-    PersonType,
 )
 from affinity.services.companies import AsyncCompanyService
 from affinity.services.lists import AsyncListService, ListService
+from affinity.types import CompanyId, ListId, ListType, OpportunityId, PersonId, PersonType
 
 # =============================================================================
 # Rate Limit State Tests

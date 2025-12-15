@@ -19,22 +19,10 @@ from affinity.hooks import RequestInfo
 from affinity.models import (
     AffinityList,
     Company,
-    CompanyId,
-    FieldId,
     FieldMetadata,
-    FieldType,
     FieldValue,
-    FieldValueType,
-    InteractionType,
-    ListId,
-    ListType,
-    # Models
     Person,
-    # Types
-    PersonId,
-    PersonType,
 )
-from affinity.models.types import EnrichedFieldId, field_id_to_v1_numeric
 from affinity.services.companies import CompanyService
 from affinity.services.lists import AsyncListEntryService, ListEntryService, ListService
 from affinity.services.persons import PersonService
@@ -44,6 +32,19 @@ from affinity.services.v1_only import (
     InteractionService,
     NoteService,
     ReminderService,
+)
+from affinity.types import (
+    CompanyId,
+    EnrichedFieldId,
+    FieldId,
+    FieldType,
+    FieldValueType,
+    InteractionType,
+    ListId,
+    ListType,
+    PersonId,
+    PersonType,
+    field_id_to_v1_numeric,
 )
 
 

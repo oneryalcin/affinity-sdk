@@ -348,10 +348,6 @@ class WebhookEvent(OpenStrEnum):
     REMINDER_DELETED = "reminder.deleted"
 
 
-# Alias for backward compatibility
-WebhookEventType = WebhookEvent
-
-
 class DropdownOptionColor(IntEnum):
     """
     Colors for dropdown options.

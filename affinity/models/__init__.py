@@ -1,10 +1,10 @@
 """
 Affinity data models.
 
-All Pydantic models and type definitions are available from this module.
+All Pydantic models are available from this module.
 
 Tip:
-    For a shorter import path to IDs/enums, use `affinity.types`.
+    ID types and enums live in `affinity.types`.
 """
 
 from __future__ import annotations
@@ -83,75 +83,7 @@ from .secondary import (
     WhoAmI,
 )
 
-# Type system
-from .types import (
-    # Base URLs
-    V1_BASE_URL,
-    V2_BASE_URL,
-    AnyFieldId,
-    CompanyId,
-    DropdownOptionColor,
-    EnrichedFieldId,
-    EntityType,
-    FieldId,
-    FieldType,
-    FieldValueId,
-    FieldValueType,
-    FileId,
-    InteractionType,
-    ListEntryId,
-    ListId,
-    # Enums
-    ListType,
-    NoteId,
-    NoteType,
-    OpportunityId,
-    # ID types
-    PersonId,
-    PersonType,
-    ReminderIdType,
-    ReminderResetType,
-    ReminderStatus,
-    ReminderType,
-    SavedViewId,
-    UserId,
-    WebhookEventType,
-    WebhookId,
-)
-
 __all__ = [
-    # URLs
-    "V1_BASE_URL",
-    "V2_BASE_URL",
-    # ID types
-    "PersonId",
-    "CompanyId",
-    "OpportunityId",
-    "ListId",
-    "ListEntryId",
-    "FieldId",
-    "FieldValueId",
-    "EnrichedFieldId",
-    "AnyFieldId",
-    "NoteId",
-    "UserId",
-    "WebhookId",
-    "FileId",
-    "SavedViewId",
-    "ReminderIdType",
-    # Enums
-    "ListType",
-    "PersonType",
-    "EntityType",
-    "FieldValueType",
-    "FieldType",
-    "DropdownOptionColor",
-    "InteractionType",
-    "NoteType",
-    "ReminderType",
-    "ReminderResetType",
-    "ReminderStatus",
-    "WebhookEventType",
     # Base
     "AffinityModel",
     # Person

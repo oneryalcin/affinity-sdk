@@ -34,7 +34,7 @@ from .models.types import (
     ReminderType,
     SavedViewId,
     UserId,
-    WebhookEventType,
+    WebhookEvent,
     WebhookId,
     field_id_to_v1_numeric,
 )
@@ -68,6 +68,6 @@ __all__ = [
     "ReminderType",
     "ReminderResetType",
     "ReminderStatus",
-    "WebhookEventType",
+    "WebhookEvent",
     "field_id_to_v1_numeric",
 ]
