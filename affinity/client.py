@@ -297,8 +297,7 @@ class Affinity:
 # Async Client (same interface, async methods)
 # =============================================================================
 
-# Note: Full async implementation would mirror the sync version
-# For brevity, we'll provide a stub that can be expanded
+# The async client mirrors the sync client interface for core services (TR-009).
 
 
 class AsyncAffinity:
@@ -332,6 +331,26 @@ class AsyncAffinity:
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
     ):
+        """
+        Initialize the async Affinity client.
+
+        Args:
+            api_key: Your Affinity API key
+            v1_base_url: V1 API base URL (default: https://api.affinity.co)
+            v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
+            v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
+            enable_beta_endpoints: Enable beta V2 endpoints
+            expected_v2_version: Expected V2 API version for diagnostics (e.g.,
+                "2024-01-01"). Used to detect version compatibility issues.
+                See TR-015.
+            timeout: Request timeout in seconds
+            max_retries: Maximum retries for rate-limited requests
+            enable_cache: Enable response caching for field metadata
+            cache_ttl: Cache TTL in seconds
+            log_requests: Log all HTTP requests (for debugging)
+            on_request: Hook called before each request (DX-008)
+            on_response: Hook called after each response (DX-008)
+        """
         config = ClientConfig(
             api_key=api_key,
             v1_base_url=v1_base_url,
@@ -356,24 +375,28 @@ class AsyncAffinity:
 
     @property
     def companies(self) -> AsyncCompanyService:
+        """Company (organization) operations."""
         if self._companies is None:
             self._companies = AsyncCompanyService(self._http)
         return self._companies
 
     @property
     def persons(self) -> AsyncPersonService:
+        """Person (contact) operations."""
         if self._persons is None:
             self._persons = AsyncPersonService(self._http)
         return self._persons
 
     @property
     def opportunities(self) -> AsyncOpportunityService:
+        """Opportunity operations."""
         if self._opportunities is None:
             self._opportunities = AsyncOpportunityService(self._http)
         return self._opportunities
 
     @property
     def lists(self) -> AsyncListService:
+        """List and list entry operations."""
         if self._lists is None:
             self._lists = AsyncListService(self._http)
         return self._lists
@@ -386,9 +409,11 @@ class AsyncAffinity:
         return self._tasks
 
     async def __aenter__(self) -> AsyncAffinity:
+        """Enter an async context and return this client."""
         return self
 
     async def __aexit__(self, *args: Any) -> None:
+        """Exit the async context and close the underlying HTTP client."""
         await self.close()
 
     async def close(self) -> None:

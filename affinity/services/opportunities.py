@@ -149,10 +149,25 @@ class AsyncOpportunityService:
         self._client = client
 
     async def get(self, opportunity_id: OpportunityId) -> Opportunity:
+        """
+        Get a single opportunity by ID.
+
+        Args:
+            opportunity_id: The opportunity ID
+
+        Returns:
+            The opportunity representation returned by v2 (may be partial).
+        """
         data = await self._client.get(f"/opportunities/{opportunity_id}")
         return Opportunity.model_validate(data)
 
     async def list(self, *, limit: int | None = None) -> PaginatedResponse[Opportunity]:
+        """
+        List all opportunities.
+
+        Returns the v2 opportunity representation (which may be partial).
+        For full opportunity row data, use list entries explicitly.
+        """
         params: dict[str, Any] = {}
         if limit is not None:
             params["limit"] = limit
@@ -163,6 +178,8 @@ class AsyncOpportunityService:
         )
 
     def all(self) -> AsyncIterator[Opportunity]:
+        """Iterate through all opportunities with automatic pagination."""
+
         async def fetch_page(next_url: str | None) -> PaginatedResponse[Opportunity]:
             if next_url:
                 data = await self._client.get_url(next_url)
@@ -175,6 +192,11 @@ class AsyncOpportunityService:
         return AsyncPageIterator(fetch_page)
 
     def iter(self) -> AsyncIterator[Opportunity]:
+        """
+        Auto-paginate all opportunities.
+
+        Alias for `all()` (FR-006 public contract).
+        """
         return self.all()
 
     # =========================================================================

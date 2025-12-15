@@ -37,7 +37,7 @@ with Affinity(api_key="your-api-key") as client:
     # List all companies
     for company in client.companies.all():
         print(f"{company.name} ({company.domain})")
-    
+
     # Get a person with enriched data
     person = client.persons.get(
         PersonId(12345),
@@ -51,23 +51,23 @@ with Affinity(api_key="your-api-key") as client:
 ### Working with Companies
 
 ```python
-from affinity import Affinity
+from affinity import Affinity, F
 from affinity.models import CompanyId, CompanyCreate, FieldType
 
 with Affinity(api_key="your-key") as client:
     # List companies with filtering (V2 API)
     companies = client.companies.list(
-        filter='domain =~ "acme"',
+        filter=F.field("domain").contains("acme"),
         field_types=[FieldType.ENRICHED],
     )
-    
+
     # Iterate through all companies with automatic pagination
     for company in client.companies.all():
         print(f"{company.name}: {company.fields}")
-    
+
     # Get a specific company
     company = client.companies.get(CompanyId(123))
-    
+
     # Create a company (uses V1 API)
     new_company = client.companies.create(
         CompanyCreate(
@@ -75,10 +75,10 @@ with Affinity(api_key="your-key") as client:
             domain="acme.com",
         )
     )
-    
+
     # Search by name, domain, or email
     results = client.companies.search("acme.com")
-    
+
     # Get list entries for a company
     entries = client.companies.get_list_entries(CompanyId(123))
 ```
@@ -94,7 +94,7 @@ with Affinity(api_key="your-key") as client:
     for person in client.persons.all():
         if person.type == PersonType.INTERNAL:
             print(f"{person.first_name} {person.last_name}")
-    
+
     # Create a contact
     person = client.persons.create(
         PersonCreate(
@@ -103,7 +103,7 @@ with Affinity(api_key="your-key") as client:
             emails=["jane@example.com"],
         )
     )
-    
+
     # Search by email
     results = client.persons.search("jane@example.com")
 ```
@@ -121,11 +121,11 @@ with Affinity(api_key="your-key") as client:
     # Get all lists
     for lst in client.lists.all():
         print(f"{lst.name} ({lst.type.name})")
-    
+
     # Get a specific list with field metadata
     pipeline = client.lists.get(ListId(123))
     print(f"Fields: {[f.name for f in pipeline.fields]}")
-    
+
     # Create a new list
     new_list = client.lists.create(
         ListCreate(
@@ -134,24 +134,24 @@ with Affinity(api_key="your-key") as client:
             is_public=True,
         )
     )
-    
+
     # Work with list entries
-    entries = client.entries(ListId(123))
-    
+    entries = client.lists.entries(ListId(123))
+
     # List entries with field data
     for entry in entries.all(field_types=[FieldType.LIST_SPECIFIC]):
         print(f"{entry.entity.name}: {entry.fields}")
-    
+
     # Add a company to the list
     entry = entries.add_company(CompanyId(456))
-    
+
     # Update field values
     entries.update_field_value(
         entry.id,
         FieldId(101),
         "In Progress"
     )
-    
+
     # Batch update multiple fields
     entries.batch_update_fields(
         entry.id,
@@ -161,7 +161,7 @@ with Affinity(api_key="your-key") as client:
             FieldId(103): "2024-03-15",
         }
     )
-    
+
     # Use saved views
     views = client.lists.get_saved_views(ListId(123))
     for view in views.data:
@@ -183,15 +183,15 @@ with Affinity(api_key="your-key") as client:
             person_ids=[PersonId(123)],
         )
     )
-    
+
     # Get notes for a person
     result = client.notes.list(person_id=PersonId(123))
     for note in result["notes"]:
         print(note["content"])
-    
+
     # Update a note
     client.notes.update(note.id, NoteUpdate(content="Updated content"))
-    
+
     # Delete a note
     client.notes.delete(note.id)
 ```
@@ -209,7 +209,7 @@ from affinity.models import (
 with Affinity(api_key="your-key") as client:
     # Get current user
     me = client.auth.whoami()
-    
+
     # Create a follow-up reminder
     reminder = client.reminders.create(
         ReminderCreate(
@@ -220,7 +220,7 @@ with Affinity(api_key="your-key") as client:
             person_id=PersonId(123),
         )
     )
-    
+
     # Create a recurring reminder
     recurring = client.reminders.create(
         ReminderCreate(
@@ -251,10 +251,10 @@ with Affinity(api_key="your-key") as client:
             ],
         )
     )
-    
+
     # List all webhooks (max 3 per instance)
     webhooks = client.webhooks.list()
-    
+
     # Disable a webhook
     client.webhooks.update(
         webhook.id,
@@ -272,7 +272,7 @@ with Affinity(api_key="your-key") as client:
     limits = client.auth.get_rate_limits()
     print(f"API key per minute: {limits.api_key_per_minute.remaining}/{limits.api_key_per_minute.per}")
     print(f"API key per month: {limits.api_key_per_month.remaining}/{limits.api_key_per_month.per}")
-    
+
     # Get locally tracked rate limit state
     state = client.rate_limit_state
     print(f"User remaining: {state['user_remaining']}")
@@ -334,17 +334,21 @@ from affinity import Affinity
 
 client = Affinity(
     api_key="your-api-key",
-    
+
     # Timeouts and retries
     timeout=30.0,           # Request timeout (seconds)
     max_retries=3,          # Retries for rate-limited requests
-    
+
     # Caching
     enable_cache=True,      # Cache field metadata
     cache_ttl=300.0,        # Cache TTL (seconds)
-    
+
     # Debugging
     log_requests=False,     # Log all HTTP requests
+
+    # Hooks (DX-008)
+    # on_request=lambda req: print(req.method, req.url),
+    # on_response=lambda resp: print(resp.status_code, resp.request.url),
 )
 ```
 
@@ -392,6 +396,8 @@ async def main():
 
 asyncio.run(main())
 ```
+
+If you don't use `async with`, make sure to `await client.close()` (e.g., in a `finally`) to avoid leaking connections.
 
 ## Development
 

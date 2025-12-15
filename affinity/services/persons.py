@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 from ..exceptions import BetaEndpointDisabledError
+from ..filters import FilterExpression
 from ..models.entities import (
     FieldMetadata,
     ListEntry,
@@ -54,7 +55,7 @@ class PersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[Person]:
         """
@@ -63,7 +64,7 @@ class PersonService:
         Args:
             field_ids: Specific field IDs to include in response
             field_types: Field types to include
-            filter: V2 filter expression
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum number of results
 
         Returns:
@@ -74,8 +75,10 @@ class PersonService:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -91,7 +94,7 @@ class PersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[Person]:
         """
         Iterate through all persons with automatic pagination.
@@ -120,7 +123,7 @@ class PersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[Person]:
         """
         Auto-paginate all persons.
@@ -414,16 +417,30 @@ class AsyncPersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[Person]:
+        """
+        Get a page of persons.
+
+        Args:
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+            limit: Maximum number of results
+
+        Returns:
+            Paginated response with persons
+        """
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -438,8 +455,15 @@ class AsyncPersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[Person]:
+        """
+        Iterate through all persons with automatic pagination.
+
+        Yields:
+            Person objects
+        """
+
         async def fetch_page(next_url: str | None) -> PaginatedResponse[Person]:
             if next_url:
                 data = await self._client.get_url(next_url)
@@ -456,8 +480,13 @@ class AsyncPersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[Person]:
+        """
+        Auto-paginate all persons.
+
+        Alias for `all()` (FR-006 public contract).
+        """
         return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
 
     async def get(
@@ -467,6 +496,17 @@ class AsyncPersonService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
     ) -> Person:
+        """
+        Get a single person by ID.
+
+        Args:
+            person_id: The person ID
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+
+        Returns:
+            Person object with requested field data
+        """
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]

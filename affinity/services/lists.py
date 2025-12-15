@@ -10,6 +10,7 @@ import builtins
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
+from ..filters import FilterExpression
 from ..models.entities import (
     AffinityList,
     FieldMetadata,
@@ -206,7 +207,7 @@ class ListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[ListEntryWithEntity]:
         """
@@ -215,7 +216,7 @@ class ListEntryService:
         Args:
             field_ids: Specific field IDs to include
             field_types: Field types to include
-            filter: V2 filter expression
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum results per page
 
         Returns:
@@ -226,8 +227,10 @@ class ListEntryService:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -246,7 +249,7 @@ class ListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[ListEntryWithEntity]:
         """Iterate through all list entries with automatic pagination."""
 
@@ -270,7 +273,7 @@ class ListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[ListEntryWithEntity]:
         """
         Auto-paginate all list entries.
@@ -453,9 +456,20 @@ class AsyncListService:
         self._client = client
 
     def entries(self, list_id: ListId) -> AsyncListEntryService:
+        """
+        Get an AsyncListEntryService for a specific list.
+
+        This is the explicit path for retrieving "full row" data via list entries.
+        """
         return AsyncListEntryService(self._client, list_id)
 
     async def list(self) -> PaginatedResponse[AffinityList]:
+        """
+        Get all lists accessible to you.
+
+        Returns:
+            Paginated list of lists (without field metadata)
+        """
         data = await self._client.get("/lists")
         return PaginatedResponse[AffinityList](
             data=[AffinityList.model_validate(list_item) for list_item in data.get("data", [])],
@@ -463,6 +477,8 @@ class AsyncListService:
         )
 
     def all(self) -> AsyncIterator[AffinityList]:
+        """Iterate through all accessible lists."""
+
         async def fetch_page(next_url: str | None) -> PaginatedResponse[AffinityList]:
             if next_url:
                 data = await self._client.get_url(next_url)
@@ -477,9 +493,19 @@ class AsyncListService:
         return AsyncPageIterator(fetch_page)
 
     def iter(self) -> AsyncIterator[AffinityList]:
+        """
+        Auto-paginate all lists.
+
+        Alias for `all()` (FR-006 public contract).
+        """
         return self.all()
 
     async def get(self, list_id: ListId) -> AffinityList:
+        """
+        Get a single list by ID.
+
+        Includes field metadata for the list.
+        """
         data = await self._client.get(f"/lists/{list_id}")
         return AffinityList.model_validate(data)
 
@@ -496,16 +522,30 @@ class AsyncListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[ListEntryWithEntity]:
+        """
+        Get list entries with entity data and field values.
+
+        Args:
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+            limit: Maximum results per page
+
+        Returns:
+            Paginated list entries with entity data
+        """
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -523,8 +563,10 @@ class AsyncListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[ListEntryWithEntity]:
+        """Iterate through all list entries with automatic pagination."""
+
         async def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
                 data = await self._client.get_url(next_url)
@@ -541,6 +583,11 @@ class AsyncListEntryService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[ListEntryWithEntity]:
+        """
+        Auto-paginate all list entries.
+
+        Alias for `all()` (FR-006 public contract).
+        """
         return self.all(field_ids=field_ids, field_types=field_types, filter=filter)

@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 from ..exceptions import BetaEndpointDisabledError
+from ..filters import FilterExpression
 from ..models.entities import (
     Company,
     CompanyCreate,
@@ -54,7 +55,7 @@ class CompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[Company]:
         """
@@ -63,7 +64,8 @@ class CompanyService:
         Args:
             field_ids: Specific field IDs to include in response
             field_types: Field types to include (e.g., ["enriched", "global"])
-            filter: V2 filter expression (e.g., "name =~ Acme")
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+                (e.g., `F.field("domain").contains("acme")`)
             limit: Maximum number of results (API default: 100)
 
         Returns:
@@ -74,8 +76,10 @@ class CompanyService:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -91,7 +95,7 @@ class CompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[Company]:
         """
         Iterate through all companies with automatic pagination.
@@ -126,7 +130,7 @@ class CompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> Iterator[Company]:
         """
         Auto-paginate all companies.
@@ -422,16 +426,31 @@ class AsyncCompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[Company]:
+        """
+        Get a page of companies.
+
+        Args:
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include (e.g., ["enriched", "global"])
+            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+                (e.g., `F.field("domain").contains("acme")`)
+            limit: Maximum number of results (API default: 100)
+
+        Returns:
+            Paginated response with companies
+        """
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
         if field_types:
             params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter:
-            params["filter"] = filter
+        if filter is not None:
+            filter_text = str(filter).strip()
+            if filter_text:
+                params["filter"] = filter_text
         if limit:
             params["limit"] = limit
 
@@ -446,8 +465,20 @@ class AsyncCompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[Company]:
+        """
+        Iterate through all companies with automatic pagination.
+
+        Args:
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+            filter: V2 filter expression
+
+        Yields:
+            Company objects
+        """
+
         async def fetch_page(next_url: str | None) -> PaginatedResponse[Company]:
             if next_url:
                 data = await self._client.get_url(next_url)
@@ -464,8 +495,13 @@ class AsyncCompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
-        filter: str | None = None,
+        filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[Company]:
+        """
+        Auto-paginate all companies.
+
+        Alias for `all()` (FR-006 public contract).
+        """
         return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
 
     async def get(
@@ -475,6 +511,17 @@ class AsyncCompanyService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
     ) -> Company:
+        """
+        Get a single company by ID.
+
+        Args:
+            company_id: The company ID
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+
+        Returns:
+            Company object with requested field data
+        """
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
