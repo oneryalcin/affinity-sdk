@@ -156,19 +156,19 @@ class InteractionCreate(AffinityModel):
     """Data for creating an interaction (V1 API)."""
 
     type: InteractionType
-    attendees: list[str]  # Email addresses
-    title: str | None = None
-    start_time: ISODatetime | None = None
-    end_time: ISODatetime | None = None
+    person_ids: list[PersonId]
+    content: str
+    date: ISODatetime
+    direction: InteractionDirection | None = None
 
 
 class InteractionUpdate(AffinityModel):
     """Data for updating an interaction (V1 API)."""
 
-    attendees: list[str] | None = None
-    title: str | None = None
-    start_time: ISODatetime | None = None
-    end_time: ISODatetime | None = None
+    person_ids: list[PersonId] | None = None
+    content: str | None = None
+    date: ISODatetime | None = None
+    direction: InteractionDirection | None = None
 
 
 # =============================================================================

@@ -388,7 +388,23 @@ class InteractionService:
             params["page_token"] = page_token
 
         data = self._client.get("/interactions", params=params or None, v1=True)
-        items = data.get("interactions", data.get("data", []))
+        items: Any = None
+        if type is not None:
+            if int(type) in (int(InteractionType.MEETING), int(InteractionType.CALL)):
+                items = data.get("events")
+            elif int(type) == int(InteractionType.CHAT_MESSAGE):
+                items = data.get("chat_messages")
+            elif int(type) == int(InteractionType.EMAIL):
+                items = data.get("emails")
+
+        if items is None:
+            items = (
+                data.get("interactions")
+                or data.get("events")
+                or data.get("emails")
+                or data.get("chat_messages")
+                or data.get("data", [])
+            )
         if not isinstance(items, list):
             items = []
         return V1PaginatedResponse[Interaction](
@@ -407,16 +423,14 @@ class InteractionService:
 
     def create(self, data: InteractionCreate) -> Interaction:
         """Create a new interaction (manually logged)."""
-        payload = {
+        payload: dict[str, Any] = {
             "type": int(data.type),
-            "attendees": data.attendees,
+            "person_ids": [int(p) for p in data.person_ids],
+            "content": data.content,
+            "date": data.date.isoformat(),
         }
-        if data.title:
-            payload["title"] = data.title
-        if data.start_time:
-            payload["start_time"] = data.start_time.isoformat()
-        if data.end_time:
-            payload["end_time"] = data.end_time.isoformat()
+        if data.direction is not None:
+            payload["direction"] = int(data.direction)
 
         result = self._client.post("/interactions", json=payload, v1=True)
         return Interaction.model_validate(result)
@@ -429,14 +443,14 @@ class InteractionService:
     ) -> Interaction:
         """Update an interaction."""
         payload: dict[str, Any] = {"type": int(type)}
-        if data.attendees is not None:
-            payload["attendees"] = data.attendees
-        if data.title is not None:
-            payload["title"] = data.title
-        if data.start_time is not None:
-            payload["start_time"] = data.start_time.isoformat()
-        if data.end_time is not None:
-            payload["end_time"] = data.end_time.isoformat()
+        if data.person_ids is not None:
+            payload["person_ids"] = [int(p) for p in data.person_ids]
+        if data.content is not None:
+            payload["content"] = data.content
+        if data.date is not None:
+            payload["date"] = data.date.isoformat()
+        if data.direction is not None:
+            payload["direction"] = int(data.direction)
 
         result = self._client.put(f"/interactions/{interaction_id}", json=payload, v1=True)
         return Interaction.model_validate(result)
@@ -708,7 +722,7 @@ class EntityFileService:
 
     def download(self, file_id: FileId) -> bytes:
         """Download file content."""
-        return self._client.download_file(f"/entity-files/{file_id}/download", v1=True)
+        return self._client.download_file(f"/entity-files/download/{file_id}", v1=True)
 
     def upload(
         self,
@@ -717,7 +731,7 @@ class EntityFileService:
         person_id: PersonId | None = None,
         organization_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
-    ) -> builtins.list[EntityFile]:
+    ) -> bool:
         """
         Upload files to an entity.
 
@@ -744,7 +758,11 @@ class EntityFileService:
             data=data,
             v1=True,
         )
-        return [EntityFile.model_validate(f) for f in result.get("data", [])]
+        if "success" in result:
+            return bool(result.get("success"))
+        # If the API returns something else on success (e.g., created object),
+        # treat any 2xx JSON response as success (4xx/5xx raise earlier).
+        return True
 
 
 # =============================================================================

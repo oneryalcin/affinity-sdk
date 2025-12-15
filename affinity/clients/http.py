@@ -858,7 +858,7 @@ class HTTPClient:
         """Download file content."""
         url = self._build_url(path, v1=v1)
         request_kwargs = self._apply_auth(v1=v1, kwargs={})
-        response = self._client.get(url, **request_kwargs)
+        response = self._client.get(url, follow_redirects=True, **request_kwargs)
 
         if response.status_code >= 400:
             raise error_from_response(response.status_code, {})
