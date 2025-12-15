@@ -408,6 +408,9 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
+# Optional: live API smoke tests (requires a real API key)
+AFFINITY_API_KEY="..." pytest -m integration -q
+
 # Type checking
 mypy affinity
 
