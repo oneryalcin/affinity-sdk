@@ -9,7 +9,7 @@ This example demonstrates:
 import os
 
 from affinity import Affinity
-from affinity.clients.http import RequestInfo, ResponseInfo
+from affinity.hooks import RequestInfo, ResponseInfo
 
 
 def on_request(req: RequestInfo) -> None:

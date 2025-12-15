@@ -35,6 +35,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import sys
 
 # Main client
 from . import models
@@ -67,6 +68,11 @@ from .filters import F, Filter, FilterExpression
 from .models import types
 
 __version__ = "0.1.0"
+
+# Backwards-compatible import alias:
+# - Allow `import affinity.types` / `from affinity.types import PersonId` even though
+#   the implementation lives in `affinity.models.types`.
+sys.modules.setdefault(f"{__name__}.types", types)
 
 _logger = logging.getLogger("affinity_sdk")
 if not any(isinstance(h, logging.NullHandler) for h in _logger.handlers):

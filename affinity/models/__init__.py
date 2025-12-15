@@ -2,6 +2,10 @@
 Affinity data models.
 
 All Pydantic models and type definitions are available from this module.
+
+Tip:
+    For a shorter import path to IDs/enums, use `affinity.types` (a stable alias
+    to `affinity.models.types`).
 """
 
 from __future__ import annotations

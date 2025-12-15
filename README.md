@@ -284,7 +284,7 @@ with Affinity(api_key="your-key") as client:
 The SDK uses Python's `NewType` to create distinct ID types that prevent accidental mixing:
 
 ```python
-from affinity.models import PersonId, CompanyId, ListId
+from affinity.types import PersonId, CompanyId, ListId
 
 # These are different types - IDE and type checker will catch mixing
 person_id = PersonId(123)
