@@ -732,8 +732,10 @@ class HTTPClient:
 
             except RateLimitError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = (
                     float(e.retry_after)
                     if e.retry_after is not None
@@ -750,9 +752,10 @@ class HTTPClient:
                     or status is None
                     or status < 500
                     or status >= 600
-                    or attempt >= self._config.max_retries
                 ):
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 logger.warning(
                     f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
@@ -761,15 +764,25 @@ class HTTPClient:
 
             except httpx.TimeoutException as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise TimeoutError(f"Request timed out: {e}") from e
+                if attempt >= self._config.max_retries:
+                    timeout_error = TimeoutError(f"Request timed out: {e}")
+                    timeout_error.__cause__ = e
+                    last_error = timeout_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 time.sleep(wait_time)
 
             except httpx.NetworkError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise NetworkError(f"Network error: {e}") from e
+                if attempt >= self._config.max_retries:
+                    network_error = NetworkError(f"Network error: {e}")
+                    network_error.__cause__ = e
+                    last_error = network_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 time.sleep(wait_time)
 
@@ -857,8 +870,10 @@ class HTTPClient:
 
             except RateLimitError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = (
                     float(e.retry_after)
                     if e.retry_after is not None
@@ -875,9 +890,10 @@ class HTTPClient:
                     or status is None
                     or status < 500
                     or status >= 600
-                    or attempt >= self._config.max_retries
                 ):
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 logger.warning(
                     f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
@@ -886,15 +902,25 @@ class HTTPClient:
 
             except httpx.TimeoutException as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise TimeoutError(f"Request timed out: {e}") from e
+                if attempt >= self._config.max_retries:
+                    timeout_error = TimeoutError(f"Request timed out: {e}")
+                    timeout_error.__cause__ = e
+                    last_error = timeout_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 time.sleep(wait_time)
 
             except httpx.NetworkError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise NetworkError(f"Network error: {e}") from e
+                if attempt >= self._config.max_retries:
+                    network_error = NetworkError(f"Network error: {e}")
+                    network_error.__cause__ = e
+                    last_error = network_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 time.sleep(wait_time)
 
@@ -1159,8 +1185,10 @@ class HTTPClient:
                     return
                 except RateLimitError as e:
                     last_error = e
-                    if yielded_any or attempt >= self._config.max_retries:
+                    if yielded_any:
                         raise
+                    if attempt >= self._config.max_retries:
+                        break
                     wait_time = (
                         float(e.retry_after)
                         if e.retry_after is not None
@@ -1170,26 +1198,32 @@ class HTTPClient:
                 except AffinityError as e:
                     last_error = e
                     status = e.status_code
-                    if (
-                        yielded_any
-                        or status is None
-                        or status < 500
-                        or status >= 600
-                        or attempt >= self._config.max_retries
-                    ):
+                    if yielded_any or status is None or status < 500 or status >= 600:
                         raise
+                    if attempt >= self._config.max_retries:
+                        break
                     wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                     time.sleep(wait_time)
                 except httpx.TimeoutException as e:
                     last_error = e
-                    if yielded_any or attempt >= self._config.max_retries:
+                    if yielded_any:
                         raise TimeoutError(f"Request timed out: {e}") from e
+                    if attempt >= self._config.max_retries:
+                        timeout_error = TimeoutError(f"Request timed out: {e}")
+                        timeout_error.__cause__ = e
+                        last_error = timeout_error
+                        break
                     wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                     time.sleep(wait_time)
                 except httpx.NetworkError as e:
                     last_error = e
-                    if yielded_any or attempt >= self._config.max_retries:
+                    if yielded_any:
                         raise NetworkError(f"Network error: {e}") from e
+                    if attempt >= self._config.max_retries:
+                        network_error = NetworkError(f"Network error: {e}")
+                        network_error.__cause__ = e
+                        last_error = network_error
+                        break
                     wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                     time.sleep(wait_time)
 
@@ -1444,8 +1478,10 @@ class AsyncHTTPClient:
 
             except RateLimitError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = (
                     float(e.retry_after)
                     if e.retry_after is not None
@@ -1462,9 +1498,10 @@ class AsyncHTTPClient:
                     or status is None
                     or status < 500
                     or status >= 600
-                    or attempt >= self._config.max_retries
                 ):
                     raise
+                if attempt >= self._config.max_retries:
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 logger.warning(
                     f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
@@ -1473,15 +1510,25 @@ class AsyncHTTPClient:
 
             except httpx.TimeoutException as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise TimeoutError(f"Request timed out: {e}") from e
+                if attempt >= self._config.max_retries:
+                    timeout_error = TimeoutError(f"Request timed out: {e}")
+                    timeout_error.__cause__ = e
+                    last_error = timeout_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 await asyncio.sleep(wait_time)
 
             except httpx.NetworkError as e:
                 last_error = e
-                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                if method not in _RETRYABLE_METHODS:
                     raise NetworkError(f"Network error: {e}") from e
+                if attempt >= self._config.max_retries:
+                    network_error = NetworkError(f"Network error: {e}")
+                    network_error.__cause__ = e
+                    last_error = network_error
+                    break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 await asyncio.sleep(wait_time)
 

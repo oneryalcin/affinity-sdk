@@ -504,7 +504,10 @@ class FieldService:
             params["entity_type"] = int(entity_type)
 
         data = self._client.get("/fields", params=params or None, v1=True)
-        return [FieldMetadata.model_validate(f) for f in data]
+        items = data.get("data", [])
+        if not isinstance(items, list):
+            items = []
+        return [FieldMetadata.model_validate(f) for f in items]
 
     def create(self, data: FieldCreate) -> FieldMetadata:
         """Create a custom field."""
@@ -608,7 +611,10 @@ class FieldValueService:
             params["list_entry_id"] = list_entry_id
 
         data = self._client.get("/field-values", params=params or None, v1=True)
-        return [FieldValue.model_validate(v) for v in data]
+        items = data.get("data", [])
+        if not isinstance(items, list):
+            items = []
+        return [FieldValue.model_validate(v) for v in items]
 
     def create(self, data: FieldValueCreate) -> FieldValue:
         """Create a field value."""
@@ -669,7 +675,10 @@ class RelationshipStrengthService:
             params["internal_id"] = int(internal_id)
 
         data = self._client.get("/relationships-strengths", params=params, v1=True)
-        return [RelationshipStrength.model_validate(r) for r in data]
+        items = data.get("data", [])
+        if not isinstance(items, list):
+            items = []
+        return [RelationshipStrength.model_validate(r) for r in items]
 
 
 # =============================================================================
