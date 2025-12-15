@@ -13,6 +13,7 @@ from affinity.types import FileId
 
 def test_entity_file_download_stream_follows_redirect_without_leaking_basic_auth() -> None:
     seen: list[httpx.Request] = []
+    progress: list[tuple[int, int | None, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
@@ -32,7 +33,12 @@ def test_entity_file_download_stream_follows_redirect_without_leaking_basic_auth
             "https://files.example/content.bin?token=secret"
         ):
             assert "Authorization" not in request.headers
-            return httpx.Response(200, content=b"hello-world", request=request)
+            return httpx.Response(
+                200,
+                content=b"hello-world",
+                headers={"Content-Length": "11"},
+                request=request,
+            )
 
         return httpx.Response(404, json={"message": "not found"}, request=request)
 
@@ -48,9 +54,17 @@ def test_entity_file_download_stream_follows_redirect_without_leaking_basic_auth
     )
     try:
         files = EntityFileService(http)
-        chunks = list(files.download_stream(FileId(5), chunk_size=4))
+        chunks = list(
+            files.download_stream(
+                FileId(5),
+                chunk_size=4,
+                on_progress=lambda done, total, *, phase: progress.append((done, total, phase)),
+            )
+        )
         assert b"".join(chunks) == b"hello-world"
         assert chunks == [b"hell", b"o-wo", b"rld"]
+        assert progress[0] == (0, 11, "download")
+        assert progress[-1] == (11, 11, "download")
     finally:
         http.close()
 

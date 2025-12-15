@@ -254,6 +254,14 @@ with Affinity(api_key="your-key") as client:
         files={"file": ("report.pdf", b"hello", "application/pdf")},
         person_id=PersonId(123),
     )
+
+    # Upload from disk / bytes (ergonomic helpers)
+    client.files.upload_path("report.pdf", person_id=PersonId(123))
+    client.files.upload_bytes(b"hello", "report.txt", person_id=PersonId(123))
+
+    # Iterate all files attached to an entity
+    for f in client.files.all(person_id=PersonId(123)):
+        print(f.name, f.size)
 ```
 
 ### Webhooks

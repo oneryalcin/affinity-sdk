@@ -38,6 +38,7 @@ from ..exceptions import (
     error_from_response,
 )
 from ..models.types import V1_BASE_URL, V2_BASE_URL
+from ..progress import ProgressCallback
 
 logger = logging.getLogger("affinity_sdk")
 
@@ -492,7 +493,6 @@ class HTTPClient:
             limits=config.limits,
             transport=config.transport,
             headers={
-                "Content-Type": "application/json",
                 "Accept": "application/json",
             },
         )
@@ -783,7 +783,7 @@ class HTTPClient:
         if not location:
             return None
 
-        redirect_url = urljoin(str(response.url), location)
+        redirect_url = str(urljoin(str(response.url), location))
         scheme = urlsplit(redirect_url).scheme.lower()
         if scheme and scheme not in ("https", "http"):
             raise UnsafeUrlError("Refusing to follow non-http(s) redirect", url=redirect_url)
@@ -1094,6 +1094,7 @@ class HTTPClient:
         *,
         v1: bool = False,
         chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
     ) -> Iterator[bytes]:
         """
         Stream-download file content in chunks.
@@ -1142,8 +1143,18 @@ class HTTPClient:
                             v1=v1,
                             external=True,
                         )
+                        stream_total: int | None = None
+                        if on_progress:
+                            raw_total = streamed.headers.get("Content-Length")
+                            if raw_total and raw_total.isdigit():
+                                stream_total = int(raw_total)
+                            on_progress(0, stream_total, phase="download")
+                        transferred = 0
                         for chunk in streamed.iter_bytes(chunk_size=chunk_size):
                             yielded_any = True
+                            transferred += len(chunk)
+                            if on_progress:
+                                on_progress(transferred, stream_total, phase="download")
                             yield chunk
                     return
                 except RateLimitError as e:
@@ -1186,7 +1197,18 @@ class HTTPClient:
                 raise last_error
             raise AffinityError("Download failed after retries")
 
-        yield from response.iter_bytes(chunk_size=chunk_size)
+        total: int | None = None
+        if on_progress:
+            raw_total = response.headers.get("Content-Length")
+            if raw_total and raw_total.isdigit():
+                total = int(raw_total)
+            on_progress(0, total, phase="download")
+        transferred = 0
+        for chunk in response.iter_bytes(chunk_size=chunk_size):
+            transferred += len(chunk)
+            if on_progress:
+                on_progress(transferred, total, phase="download")
+            yield chunk
 
     def wrap_validation_error(
         self,
@@ -1252,7 +1274,6 @@ class AsyncHTTPClient:
                 limits=self._config.limits,
                 transport=self._config.async_transport,
                 headers={
-                    "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
             )

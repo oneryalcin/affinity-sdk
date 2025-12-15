@@ -7,6 +7,7 @@ These services wrap V1 API endpoints that don't have V2 equivalents.
 from __future__ import annotations
 
 import builtins
+import mimetypes
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,7 @@ from ..models.types import (
     WebhookId,
     field_id_to_v1_numeric,
 )
+from ..progress import ProgressCallback
 
 if TYPE_CHECKING:
     from ..clients.http import HTTPClient
@@ -681,6 +683,25 @@ class EntityFileService:
     def __init__(self, client: HTTPClient):
         self._client = client
 
+    def _validate_exactly_one_target(
+        self,
+        *,
+        person_id: PersonId | None,
+        organization_id: CompanyId | None,
+        opportunity_id: OpportunityId | None,
+    ) -> None:
+        targets = [person_id, organization_id, opportunity_id]
+        count = sum(1 for t in targets if t is not None)
+        if count == 1:
+            return
+        if count == 0:
+            raise ValueError(
+                "Exactly one of person_id, organization_id, or opportunity_id is required"
+            )
+        raise ValueError(
+            "Only one of person_id, organization_id, or opportunity_id may be provided"
+        )
+
     def list(
         self,
         *,
@@ -691,6 +712,11 @@ class EntityFileService:
         page_token: str | None = None,
     ) -> V1PaginatedResponse[EntityFile]:
         """Get files attached to an entity."""
+        self._validate_exactly_one_target(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
@@ -731,12 +757,14 @@ class EntityFileService:
         file_id: FileId,
         *,
         chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
     ) -> Iterator[bytes]:
         """Stream-download file content in chunks."""
         return self._client.stream_download(
             f"/entity-files/download/{file_id}",
             v1=True,
             chunk_size=chunk_size,
+            on_progress=on_progress,
         )
 
     def download_to(
@@ -746,6 +774,7 @@ class EntityFileService:
         *,
         overwrite: bool = False,
         chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
     ) -> Path:
         """
         Download a file to disk.
@@ -764,7 +793,11 @@ class EntityFileService:
             raise FileExistsError(str(target))
 
         with target.open("wb") as f:
-            for chunk in self.download_stream(file_id, chunk_size=chunk_size):
+            for chunk in self.download_stream(
+                file_id,
+                chunk_size=chunk_size,
+                on_progress=on_progress,
+            ):
                 f.write(chunk)
 
         return target
@@ -789,6 +822,11 @@ class EntityFileService:
         Returns:
             List of created file records
         """
+        self._validate_exactly_one_target(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
         data: dict[str, Any] = {}
         if person_id:
             data["person_id"] = int(person_id)
@@ -808,6 +846,136 @@ class EntityFileService:
         # If the API returns something else on success (e.g., created object),
         # treat any 2xx JSON response as success (4xx/5xx raise earlier).
         return True
+
+    def upload_path(
+        self,
+        path: str | Path,
+        *,
+        person_id: PersonId | None = None,
+        organization_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        filename: str | None = None,
+        content_type: str | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> bool:
+        """
+        Upload a file from disk.
+
+        Notes:
+        - Returns only a boolean because the API returns `{"success": true}` for uploads.
+        - Progress reporting is best-effort for uploads (start/end only).
+        """
+        self._validate_exactly_one_target(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
+
+        p = Path(path)
+        upload_filename = filename or p.name
+        guessed, _ = mimetypes.guess_type(upload_filename)
+        final_content_type = content_type or guessed or "application/octet-stream"
+        total = p.stat().st_size
+
+        if on_progress:
+            on_progress(0, total, phase="upload")
+
+        with p.open("rb") as f:
+            ok = self.upload(
+                files={"file": (upload_filename, f, final_content_type)},
+                person_id=person_id,
+                organization_id=organization_id,
+                opportunity_id=opportunity_id,
+            )
+
+        if on_progress:
+            on_progress(total, total, phase="upload")
+
+        return ok
+
+    def upload_bytes(
+        self,
+        data: bytes,
+        filename: str,
+        *,
+        person_id: PersonId | None = None,
+        organization_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        content_type: str | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> bool:
+        """
+        Upload in-memory bytes as a file.
+
+        Notes:
+        - Returns only a boolean because the API returns `{"success": true}` for uploads.
+        - Progress reporting is best-effort for uploads (start/end only).
+        """
+        self._validate_exactly_one_target(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
+
+        guessed, _ = mimetypes.guess_type(filename)
+        final_content_type = content_type or guessed or "application/octet-stream"
+        total = len(data)
+
+        if on_progress:
+            on_progress(0, total, phase="upload")
+
+        ok = self.upload(
+            files={"file": (filename, data, final_content_type)},
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
+
+        if on_progress:
+            on_progress(total, total, phase="upload")
+
+        return ok
+
+    def all(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        organization_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+    ) -> Iterator[EntityFile]:
+        """Iterate through all files for an entity with automatic pagination."""
+        self._validate_exactly_one_target(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
+
+        page_token: str | None = None
+        while True:
+            page = self.list(
+                person_id=person_id,
+                organization_id=organization_id,
+                opportunity_id=opportunity_id,
+                page_token=page_token,
+            )
+            yield from page.data
+            if not page.has_next:
+                break
+            page_token = page.next_page_token
+
+    def iter(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        organization_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+    ) -> Iterator[EntityFile]:
+        """Auto-paginate all files (alias for `all()`)."""
+        return self.all(
+            person_id=person_id,
+            organization_id=organization_id,
+            opportunity_id=opportunity_id,
+        )
 
 
 # =============================================================================
