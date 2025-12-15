@@ -232,6 +232,30 @@ with Affinity(api_key="your-key") as client:
     )
 ```
 
+### Files
+
+```python
+from affinity import Affinity
+from affinity.types import FileId, PersonId
+
+with Affinity(api_key="your-key") as client:
+    # Download into memory (bytes)
+    content = client.files.download(FileId(123))
+
+    # Stream download (for progress bars / piping / large files)
+    for chunk in client.files.download_stream(FileId(123), chunk_size=64_000):
+        ...
+
+    # Download to disk
+    saved_path = client.files.download_to(FileId(123), "report.pdf", overwrite=False)
+
+    # Upload (multipart form data)
+    client.files.upload(
+        files={"file": ("report.pdf", b"hello", "application/pdf")},
+        person_id=PersonId(123),
+    )
+```
+
 ### Webhooks
 
 ```python

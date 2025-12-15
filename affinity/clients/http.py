@@ -18,7 +18,7 @@ import hashlib
 import logging
 import math
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -292,6 +292,16 @@ def _extract_request_id(headers: dict[str, str]) -> str | None:
         if key in headers:
             return headers[key]
     return None
+
+
+def _redact_external_url(url: str) -> str:
+    """
+    Redact external URLs for logs/diagnostics.
+
+    External download URLs are often signed; stripping the query avoids leaking tokens.
+    """
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 # =============================================================================
@@ -594,6 +604,191 @@ class HTTPClient:
             return {"data": payload}
         raise AffinityError("Expected JSON object/array response")
 
+    def _raise_for_status_with_diagnostics(
+        self,
+        response: httpx.Response,
+        *,
+        method: str,
+        url: str,
+        v1: bool,
+        external: bool = False,
+    ) -> None:
+        if response.status_code < 400:
+            return
+
+        try:
+            body = response.json()
+        except Exception:
+            body = {"message": response.text}
+
+        retry_after = None
+        if response.status_code == 429:
+            header_value = response.headers.get("Retry-After")
+            if header_value is not None:
+                retry_after = _parse_retry_after(header_value)
+
+        selected_headers = _select_response_headers(response.headers)
+        request_id = _extract_request_id(selected_headers)
+
+        if external:
+            api_version = "external"
+            base_url = f"{response.url.scheme}://{response.url.host}"
+            redacted_url = _redact_external_url(str(response.url))
+        else:
+            api_version = "v1" if v1 else "v2"
+            base_url = self._config.v1_base_url if v1 else self._config.v2_base_url
+            redacted_url = _redact_url(url, self._config.api_key)
+
+        diagnostics = ErrorDiagnostics(
+            method=method,
+            url=redacted_url,
+            api_version=api_version,
+            base_url=base_url,
+            request_id=request_id,
+            http_version=response.http_version,
+            response_headers=selected_headers,
+            response_body_snippet=str(body)[:512].replace(self._config.api_key, "[REDACTED]"),
+        )
+
+        raise error_from_response(
+            response.status_code,
+            body,
+            retry_after=retry_after,
+            diagnostics=diagnostics,
+        )
+
+    def _request_raw_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        v1: bool,
+        apply_auth: bool,
+        follow_redirects: bool,
+        allow_hooks: bool,
+        external: bool = False,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """
+        Make a request with retry policy, returning the raw `httpx.Response`.
+
+        Used for file download/streaming where the response is not JSON.
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(self._config.max_retries + 1):
+            try:
+                if self._config.log_requests and not external:
+                    logger.debug(f"{method} {url}")
+
+                request_kwargs = dict(kwargs)
+                if apply_auth:
+                    request_kwargs = self._apply_auth(v1=v1, kwargs=request_kwargs)
+                request_kwargs["follow_redirects"] = follow_redirects
+
+                if allow_hooks and self._config.on_request and not external:
+                    sanitized_headers = {
+                        k: v
+                        for k, v in (request_kwargs.get("headers", {}) or {}).items()
+                        if k.lower() != "authorization"
+                    }
+                    if "auth" in request_kwargs:
+                        sanitized_headers["Authorization"] = "[REDACTED]"
+                    req_info = RequestInfo(
+                        method=method,
+                        url=_redact_url(url, self._config.api_key),
+                        headers=sanitized_headers,
+                    )
+                    self._config.on_request(req_info)
+
+                start_time = time.monotonic()
+                response = self._client.request(method, url, **request_kwargs)
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+
+                if allow_hooks and self._config.on_response and not external:
+                    resp_info = ResponseInfo(
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        elapsed_ms=elapsed_ms,
+                        request=RequestInfo(
+                            method=method,
+                            url=_redact_url(url, self._config.api_key),
+                            headers={},
+                        ),
+                    )
+                    self._config.on_response(resp_info)
+
+                if not external:
+                    self._rate_limit.update_from_headers(response.headers)
+
+                self._raise_for_status_with_diagnostics(
+                    response,
+                    method=method,
+                    url=url,
+                    v1=v1,
+                    external=external,
+                )
+                return response
+
+            except RateLimitError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise
+                wait_time = (
+                    float(e.retry_after)
+                    if e.retry_after is not None
+                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                )
+                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
+                time.sleep(wait_time)
+
+            except AffinityError as e:
+                last_error = e
+                status = e.status_code
+                if (
+                    method not in _RETRYABLE_METHODS
+                    or status is None
+                    or status < 500
+                    or status >= 600
+                    or attempt >= self._config.max_retries
+                ):
+                    raise
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                logger.warning(
+                    f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
+                )
+                time.sleep(wait_time)
+
+            except httpx.TimeoutException as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise TimeoutError(f"Request timed out: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                time.sleep(wait_time)
+
+            except httpx.NetworkError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS or attempt >= self._config.max_retries:
+                    raise NetworkError(f"Network error: {e}") from e
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                time.sleep(wait_time)
+
+        if last_error:
+            raise last_error
+        raise AffinityError("Request failed after retries")
+
+    def _get_download_redirect_url(self, response: httpx.Response) -> str | None:
+        """Return the absolute redirect URL for a download response (if any)."""
+        location = response.headers.get("Location")
+        if not location:
+            return None
+
+        redirect_url = urljoin(str(response.url), location)
+        scheme = urlsplit(redirect_url).scheme.lower()
+        if scheme and scheme not in ("https", "http"):
+            raise UnsafeUrlError("Refusing to follow non-http(s) redirect", url=redirect_url)
+        return redirect_url
+
     def _request_with_retry(
         self,
         method: str,
@@ -855,15 +1050,143 @@ class HTTPClient:
         *,
         v1: bool = False,
     ) -> bytes:
-        """Download file content."""
-        url = self._build_url(path, v1=v1)
-        request_kwargs = self._apply_auth(v1=v1, kwargs={})
-        response = self._client.get(url, follow_redirects=True, **request_kwargs)
+        """
+        Download file content.
 
-        if response.status_code >= 400:
-            raise error_from_response(response.status_code, {})
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - Uses the standard retry/diagnostics policy for GET requests.
+        """
+        url = self._build_url(path, v1=v1)
+        response = self._request_raw_with_retry(
+            "GET",
+            url,
+            v1=v1,
+            apply_auth=True,
+            follow_redirects=False,
+            allow_hooks=False,
+            external=False,
+        )
+        if response.is_redirect:
+            redirect_url = self._get_download_redirect_url(response)
+            if redirect_url is not None:
+                response = self._request_raw_with_retry(
+                    "GET",
+                    redirect_url,
+                    v1=v1,
+                    apply_auth=False,
+                    follow_redirects=True,
+                    allow_hooks=False,
+                    external=True,
+                )
+                if response.url.scheme.lower() != "https":
+                    raise UnsafeUrlError(
+                        "Refusing to download from non-https URL",
+                        url=_redact_external_url(str(response.url)),
+                    )
 
         return response.content
+
+    def stream_download(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        chunk_size: int = 65_536,
+    ) -> Iterator[bytes]:
+        """
+        Stream-download file content in chunks.
+
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - Download traffic intentionally does not call request/response hooks to
+          avoid leaking signed URLs in logs.
+        """
+        url = self._build_url(path, v1=v1)
+
+        response = self._request_raw_with_retry(
+            "GET",
+            url,
+            v1=v1,
+            apply_auth=True,
+            follow_redirects=False,
+            allow_hooks=False,
+            external=False,
+        )
+
+        if response.is_redirect:
+            redirect_url = self._get_download_redirect_url(response)
+            if redirect_url is None:
+                return
+
+            yielded_any = False
+            last_error: Exception | None = None
+            for attempt in range(self._config.max_retries + 1):
+                try:
+                    with self._client.stream(
+                        "GET",
+                        redirect_url,
+                        follow_redirects=True,
+                    ) as streamed:
+                        if streamed.url.scheme.lower() != "https":
+                            raise UnsafeUrlError(
+                                "Refusing to download from non-https URL",
+                                url=_redact_external_url(str(streamed.url)),
+                            )
+                        self._raise_for_status_with_diagnostics(
+                            streamed,
+                            method="GET",
+                            url=redirect_url,
+                            v1=v1,
+                            external=True,
+                        )
+                        for chunk in streamed.iter_bytes(chunk_size=chunk_size):
+                            yielded_any = True
+                            yield chunk
+                    return
+                except RateLimitError as e:
+                    last_error = e
+                    if yielded_any or attempt >= self._config.max_retries:
+                        raise
+                    wait_time = (
+                        float(e.retry_after)
+                        if e.retry_after is not None
+                        else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                    )
+                    time.sleep(wait_time)
+                except AffinityError as e:
+                    last_error = e
+                    status = e.status_code
+                    if (
+                        yielded_any
+                        or status is None
+                        or status < 500
+                        or status >= 600
+                        or attempt >= self._config.max_retries
+                    ):
+                        raise
+                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                    time.sleep(wait_time)
+                except httpx.TimeoutException as e:
+                    last_error = e
+                    if yielded_any or attempt >= self._config.max_retries:
+                        raise TimeoutError(f"Request timed out: {e}") from e
+                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                    time.sleep(wait_time)
+                except httpx.NetworkError as e:
+                    last_error = e
+                    if yielded_any or attempt >= self._config.max_retries:
+                        raise NetworkError(f"Network error: {e}") from e
+                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                    time.sleep(wait_time)
+
+            if last_error:
+                raise last_error
+            raise AffinityError("Download failed after retries")
+
+        yield from response.iter_bytes(chunk_size=chunk_size)
 
     def wrap_validation_error(
         self,

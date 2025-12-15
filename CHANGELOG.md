@@ -7,3 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 [Unreleased]: https://github.com/yaniv-golan/affinity-sdk/compare/HEAD...HEAD
+
+### Added
+- `client.files.download_stream(...)` and `client.files.download_to(...)` for chunked file downloads.
+
+### Changed
+- File downloads now follow redirects without forwarding credentials and use the standard retry/diagnostics policy.

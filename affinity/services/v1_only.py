@@ -7,7 +7,9 @@ These services wrap V1 API endpoints that don't have V2 equivalents.
 from __future__ import annotations
 
 import builtins
+from collections.abc import Iterator
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..models.entities import FieldCreate, FieldMetadata, FieldValue, FieldValueCreate
@@ -723,6 +725,49 @@ class EntityFileService:
     def download(self, file_id: FileId) -> bytes:
         """Download file content."""
         return self._client.download_file(f"/entity-files/download/{file_id}", v1=True)
+
+    def download_stream(
+        self,
+        file_id: FileId,
+        *,
+        chunk_size: int = 65_536,
+    ) -> Iterator[bytes]:
+        """Stream-download file content in chunks."""
+        return self._client.stream_download(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            chunk_size=chunk_size,
+        )
+
+    def download_to(
+        self,
+        file_id: FileId,
+        path: str | Path,
+        *,
+        overwrite: bool = False,
+        chunk_size: int = 65_536,
+    ) -> Path:
+        """
+        Download a file to disk.
+
+        Args:
+            file_id: The entity file id
+            path: Destination path
+            overwrite: If False, raises FileExistsError when path exists
+            chunk_size: Bytes per chunk
+
+        Returns:
+            The destination path
+        """
+        target = Path(path)
+        if target.exists() and not overwrite:
+            raise FileExistsError(str(target))
+
+        with target.open("wb") as f:
+            for chunk in self.download_stream(file_id, chunk_size=chunk_size):
+                f.write(chunk)
+
+        return target
 
     def upload(
         self,
