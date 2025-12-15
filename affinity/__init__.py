@@ -14,7 +14,7 @@ This SDK provides:
 Example:
     ```python
     from affinity import Affinity
-    from affinity.types import PersonId, CompanyId, ListId, FieldType
+    from affinity.types import CompanyId, FieldId, FieldType, ListId, PersonId
 
     # Initialize
     with Affinity(api_key="your-key") as client:
@@ -35,10 +35,9 @@ Example:
 from __future__ import annotations
 
 import logging
-import sys
 
 # Main client
-from . import models
+from . import models, types
 from .client import Affinity, AsyncAffinity
 
 # Exceptions
@@ -64,15 +63,7 @@ from .exceptions import (
 # Filter builder (FR-007)
 from .filters import F, Filter, FilterExpression
 
-# Sub-modules (for from affinity.types import ...)
-from .models import types
-
 __version__ = "0.1.0"
-
-# Backwards-compatible import alias:
-# - Allow `import affinity.types` / `from affinity.types import PersonId` even though
-#   the implementation lives in `affinity.models.types`.
-sys.modules.setdefault(f"{__name__}.types", types)
 
 _logger = logging.getLogger("affinity_sdk")
 if not any(isinstance(h, logging.NullHandler) for h in _logger.handlers):

@@ -13,7 +13,9 @@ import httpx
 import pytest
 
 import affinity.clients.http as http_mod
+import affinity.types as types_mod
 from affinity import Affinity, AsyncAffinity
+from affinity.hooks import RequestInfo
 from affinity.models import (
     AffinityList,
     Company,
@@ -495,6 +497,19 @@ def test_public_apis_do_not_expose_version_or_url_routing_controls() -> None:
 def test_package_includes_py_typed_marker() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     assert (repo_root / "affinity" / "py.typed").is_file()
+
+
+@pytest.mark.req("NFR-005")
+def test_affinity_types_module_is_public() -> None:
+    assert types_mod.PersonId(1) == 1
+    assert types_mod.CompanyId(2) == 2
+    assert hasattr(types_mod, "FieldType")
+
+
+@pytest.mark.req("DX-008")
+def test_affinity_hooks_module_is_public() -> None:
+    req = RequestInfo(method="GET", url="https://api.affinity.co/v2/companies", headers={})
+    assert req.method == "GET"
 
 
 @pytest.mark.req("DX-006")

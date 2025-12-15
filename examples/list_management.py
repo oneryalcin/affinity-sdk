@@ -11,12 +11,7 @@ This example demonstrates:
 import os
 
 from affinity import Affinity
-from affinity.models import (
-    CompanyId,
-    FieldType,
-    ListId,
-    ListType,
-)
+from affinity.types import CompanyId, FieldType, ListId, ListType
 
 
 def main() -> None:
@@ -52,7 +47,7 @@ def main() -> None:
         print()
 
         # Get entries service for this list
-        entries = client.entries(opportunity_list)
+        entries = client.lists.entries(opportunity_list)
 
         # List entries with field values
         print("List entries (first 5):")
@@ -101,7 +96,7 @@ def example_add_company_to_list(
     company_id: CompanyId,
 ) -> None:
     """Example of adding a company to a list and updating field values."""
-    entries = client.entries(list_id)
+    entries = client.lists.entries(list_id)
 
     # Add the company to the list
     entry = entries.add_company(company_id)

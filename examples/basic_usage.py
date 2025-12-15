@@ -11,7 +11,7 @@ This example demonstrates:
 import os
 
 from affinity import Affinity
-from affinity.models import FieldType, PersonType
+from affinity.types import FieldType, PersonType
 
 
 def main() -> None:

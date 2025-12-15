@@ -27,7 +27,7 @@ Requires Python 3.10+.
 
 ```python
 from affinity import Affinity
-from affinity.models import PersonId, CompanyId, ListId, FieldType
+from affinity.types import FieldType, PersonId
 
 # Initialize the client
 client = Affinity(api_key="your-api-key")
@@ -52,7 +52,8 @@ with Affinity(api_key="your-api-key") as client:
 
 ```python
 from affinity import Affinity, F
-from affinity.models import CompanyId, CompanyCreate, FieldType
+from affinity.models import CompanyCreate
+from affinity.types import CompanyId, FieldType
 
 with Affinity(api_key="your-key") as client:
     # List companies with filtering (V2 API)
@@ -87,7 +88,8 @@ with Affinity(api_key="your-key") as client:
 
 ```python
 from affinity import Affinity
-from affinity.models import PersonId, PersonCreate, PersonType
+from affinity.models import PersonCreate
+from affinity.types import PersonType
 
 with Affinity(api_key="your-key") as client:
     # Get all internal team members
@@ -112,10 +114,8 @@ with Affinity(api_key="your-key") as client:
 
 ```python
 from affinity import Affinity
-from affinity.models import (
-    ListId, ListEntryId, FieldId, CompanyId,
-    ListCreate, ListType, FieldType,
-)
+from affinity.models import ListCreate
+from affinity.types import CompanyId, FieldId, FieldType, ListId, ListType
 
 with Affinity(api_key="your-key") as client:
     # Get all lists
@@ -172,7 +172,8 @@ with Affinity(api_key="your-key") as client:
 
 ```python
 from affinity import Affinity
-from affinity.models import PersonId, NoteCreate, NoteType
+from affinity.models import NoteCreate, NoteUpdate
+from affinity.types import NoteType, PersonId
 
 with Affinity(api_key="your-key") as client:
     # Create a note
@@ -186,8 +187,8 @@ with Affinity(api_key="your-key") as client:
 
     # Get notes for a person
     result = client.notes.list(person_id=PersonId(123))
-    for note in result["notes"]:
-        print(note["content"])
+    for note_item in result.data:
+        print(note_item.content)
 
     # Update a note
     client.notes.update(note.id, NoteUpdate(content="Updated content"))
@@ -201,10 +202,8 @@ with Affinity(api_key="your-key") as client:
 ```python
 from datetime import datetime, timedelta
 from affinity import Affinity
-from affinity.models import (
-    PersonId, UserId,
-    ReminderCreate, ReminderType, ReminderResetType,
-)
+from affinity.models import ReminderCreate
+from affinity.types import PersonId, ReminderResetType, ReminderType, UserId
 
 with Affinity(api_key="your-key") as client:
     # Get current user
@@ -237,7 +236,8 @@ with Affinity(api_key="your-key") as client:
 
 ```python
 from affinity import Affinity
-from affinity.models import WebhookCreate, WebhookEventType
+from affinity.models import WebhookCreate, WebhookUpdate
+from affinity.types import WebhookEventType
 
 with Affinity(api_key="your-key") as client:
     # Create a webhook subscription
@@ -281,7 +281,7 @@ with Affinity(api_key="your-key") as client:
 
 ## Type System
 
-The SDK uses Python's `NewType` to create distinct ID types that prevent accidental mixing:
+The SDK uses strongly-typed ID classes (int/str subclasses) to prevent accidental mixing:
 
 ```python
 from affinity.types import PersonId, CompanyId, ListId
@@ -297,7 +297,7 @@ company_id = CompanyId(456)
 All magic numbers are replaced with enums:
 
 ```python
-from affinity.models import (
+from affinity.types import (
     ListType,        # PERSON, ORGANIZATION, OPPORTUNITY
     PersonType,      # INTERNAL, EXTERNAL, COLLABORATOR
     FieldValueType,  # TEXT, NUMBER, DATE, PERSON, etc.

@@ -9,7 +9,7 @@ This example demonstrates:
 import os
 
 from affinity import Affinity, F
-from affinity.models import FieldType
+from affinity.types import FieldType
 
 
 def main() -> None:

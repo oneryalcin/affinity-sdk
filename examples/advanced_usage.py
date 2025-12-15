@@ -22,20 +22,17 @@ from affinity import (
     RateLimitError,
     ValidationError,
 )
-from affinity.models import (
+from affinity.models import NoteCreate, ReminderCreate
+from affinity.types import (
     CompanyId,
     FieldId,
     FieldType,
     FieldValueType,
     ListId,
-    # Enums
     ListType,
-    NoteCreate,
     NoteType,
-    # Models
     PersonId,
     PersonType,
-    ReminderCreate,
     ReminderType,
     UserId,
 )
@@ -73,7 +70,7 @@ def analyze_portfolio_companies(client: Affinity) -> None:
         print(f"Analyzing list: {lst.name} ({lst.list_size} entries)")
 
         # Get list entries with enriched fields
-        entries = client.entries(lst.id)
+        entries = client.lists.entries(lst.id)
 
         # Request specific field types for efficiency
         for entry in entries.all(field_types=[FieldType.ENRICHED, FieldType.LIST]):
@@ -126,7 +123,7 @@ def generate_pipeline_dashboard(client: Affinity, list_id: ListId) -> dict:
         print(f"\nStages available: {[opt.text for opt in stage_field.dropdown_options]}")
 
     # Aggregate entries by stage
-    entries_service = client.entries(list_id)
+    entries_service = client.lists.entries(list_id)
     stage_counts: dict[str, int] = {}
     total_count = 0
 
@@ -220,7 +217,7 @@ def batch_update_deal_stages(
     """
     print("\n=== Batch Deal Stage Updates ===\n")
 
-    entries_service = client.entries(list_id)
+    entries_service = client.lists.entries(list_id)
 
     # First, find the stage field
     fields = client.lists.get_fields(list_id)
@@ -348,7 +345,7 @@ def export_list_to_dict(client: Affinity, list_id: ListId) -> list[dict]:
     field_names = {str(f.id): f.name for f in fields}
 
     exported_data = []
-    entries_service = client.entries(list_id)
+    entries_service = client.lists.entries(list_id)
 
     for entry in entries_service.all():
         record = {

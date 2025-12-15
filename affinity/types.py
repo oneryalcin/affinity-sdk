@@ -1,0 +1,73 @@
+"""
+Stable types import path.
+
+This module re-exports ID types, enums, and constants from `affinity.models.types`.
+"""
+
+from __future__ import annotations
+
+from .models.types import (
+    V1_BASE_URL,
+    V2_BASE_URL,
+    AnyFieldId,
+    CompanyId,
+    DropdownOptionColor,
+    EnrichedFieldId,
+    EntityType,
+    FieldId,
+    FieldType,
+    FieldValueId,
+    FieldValueType,
+    FileId,
+    InteractionType,
+    ListEntryId,
+    ListId,
+    ListType,
+    NoteId,
+    NoteType,
+    OpportunityId,
+    PersonId,
+    PersonType,
+    ReminderIdType,
+    ReminderResetType,
+    ReminderStatus,
+    ReminderType,
+    SavedViewId,
+    UserId,
+    WebhookEventType,
+    WebhookId,
+    field_id_to_v1_numeric,
+)
+
+__all__ = [
+    "V1_BASE_URL",
+    "V2_BASE_URL",
+    "AnyFieldId",
+    "PersonId",
+    "CompanyId",
+    "OpportunityId",
+    "ListId",
+    "ListEntryId",
+    "FieldId",
+    "FieldValueId",
+    "EnrichedFieldId",
+    "NoteId",
+    "UserId",
+    "WebhookId",
+    "FileId",
+    "SavedViewId",
+    "ReminderIdType",
+    "ListType",
+    "PersonType",
+    "EntityType",
+    "FieldValueType",
+    "FieldType",
+    "DropdownOptionColor",
+    "InteractionType",
+    "NoteType",
+    "ReminderType",
+    "ReminderResetType",
+    "ReminderStatus",
+    "WebhookEventType",
+    "field_id_to_v1_numeric",
+]
