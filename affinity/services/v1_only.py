@@ -160,7 +160,11 @@ class NoteService:
 
 
 class ReminderService:
-    """Service for managing reminders."""
+    """
+    Service for managing reminders.
+
+    Reminders are V1-only in this SDK (create/update/delete via V1).
+    """
 
     def __init__(self, client: HTTPClient):
         self._client = client
@@ -182,7 +186,11 @@ class ReminderService:
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> V1PaginatedResponse[Reminder]:
-        """Get reminders with filtering."""
+        """
+        Get reminders with optional filtering.
+
+        Returns V1 paginated response with `data` and `next_page_token`.
+        """
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
@@ -360,7 +368,11 @@ class InteractionService:
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> V1PaginatedResponse[Interaction]:
-        """Get interactions with filtering."""
+        """
+        Get interactions with optional filtering.
+
+        Returns V1 paginated response with `data` and `next_page_token`.
+        """
         params: dict[str, Any] = {}
         if type is not None:
             params["type"] = int(type)
@@ -429,10 +441,11 @@ class InteractionService:
         result = self._client.put(f"/interactions/{interaction_id}", json=payload, v1=True)
         return Interaction.model_validate(result)
 
-    def delete(self, interaction_id: int, _type: InteractionType) -> bool:
+    def delete(self, interaction_id: int, type: InteractionType) -> bool:
         """Delete an interaction."""
         result = self._client.delete(
             f"/interactions/{interaction_id}",
+            params={"type": int(type)},
             v1=True,
         )
         return bool(result.get("success", False))
@@ -460,7 +473,12 @@ class FieldService:
         list_id: ListId | None = None,
         entity_type: EntityType | None = None,
     ) -> list[FieldMetadata]:
-        """Get fields (V1 API)."""
+        """
+        Get fields (V1 API).
+
+        For list/person/company field metadata, prefer the V2 read endpoints on the
+        corresponding services when available (e.g., `client.lists.get_fields(...)`).
+        """
         params: dict[str, Any] = {}
         if list_id:
             params["list_id"] = int(list_id)
@@ -540,18 +558,38 @@ class FieldValueService:
         Get field values for an entity.
 
         Exactly one of the ID parameters must be provided.
+
+        Raises:
+            ValueError: If zero or multiple IDs are provided.
         """
+        provided = [
+            name
+            for name, value in (
+                ("person_id", person_id),
+                ("organization_id", organization_id),
+                ("opportunity_id", opportunity_id),
+                ("list_entry_id", list_entry_id),
+            )
+            if value is not None
+        ]
+        if len(provided) != 1:
+            joined = ", ".join(provided) if provided else "(none)"
+            raise ValueError(
+                "FieldValueService.list() requires exactly one ID parameter; "
+                f"got {len(provided)}: {joined}"
+            )
+
         params: dict[str, Any] = {}
-        if person_id:
+        if person_id is not None:
             params["person_id"] = int(person_id)
-        if organization_id:
+        if organization_id is not None:
             params["organization_id"] = int(organization_id)
-        if opportunity_id:
+        if opportunity_id is not None:
             params["opportunity_id"] = int(opportunity_id)
-        if list_entry_id:
+        if list_entry_id is not None:
             params["list_entry_id"] = list_entry_id
 
-        data = self._client.get("/field-values", params=params, v1=True)
+        data = self._client.get("/field-values", params=params or None, v1=True)
         return [FieldValue.model_validate(v) for v in data]
 
     def create(self, data: FieldValueCreate) -> FieldValue:

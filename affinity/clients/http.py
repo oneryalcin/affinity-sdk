@@ -819,11 +819,12 @@ class HTTPClient:
         self,
         path: str,
         *,
+        params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None,
         v1: bool = False,
     ) -> dict[str, Any]:
         """Make a DELETE request."""
         url = self._build_url(path, v1=v1)
-        return self._request_with_retry("DELETE", url, v1=v1)
+        return self._request_with_retry("DELETE", url, v1=v1, params=_encode_query_params(params))
 
     def upload_file(
         self,
@@ -1237,10 +1238,13 @@ class AsyncHTTPClient:
         self,
         path: str,
         *,
+        params: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None,
         v1: bool = False,
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
-        return await self._request_with_retry("DELETE", url, v1=v1)
+        return await self._request_with_retry(
+            "DELETE", url, v1=v1, params=_encode_query_params(params)
+        )
 
     def wrap_validation_error(
         self,

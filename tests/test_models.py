@@ -38,6 +38,7 @@ from affinity.services.lists import AsyncListEntryService, ListEntryService, Lis
 from affinity.services.persons import PersonService
 from affinity.services.v1_only import (
     EntityFileService,
+    FieldValueService,
     InteractionService,
     NoteService,
     ReminderService,
@@ -430,6 +431,19 @@ def test_public_service_return_types_do_not_expose_dict() -> None:
                 offenders.append(f"{cls.__name__}.{name} -> {hints['return']!r}")
 
     assert offenders == []
+
+
+@pytest.mark.req("DX-002")
+def test_field_value_service_list_requires_exactly_one_id() -> None:
+    http = http_mod.HTTPClient(http_mod.ClientConfig(api_key="k", max_retries=0))
+    try:
+        service = FieldValueService(http)
+        with pytest.raises(ValueError, match="exactly one"):
+            service.list()
+        with pytest.raises(ValueError, match="exactly one"):
+            service.list(person_id=PersonId(1), organization_id=CompanyId(2))
+    finally:
+        http.close()
 
 
 @pytest.mark.req("NFR-005")
