@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from ..models.entities import (
     Opportunity,
     OpportunityCreate,
+    OpportunityUpdate,
 )
 from ..models.pagination import AsyncPageIterator, PageIterator, PaginatedResponse, PaginationInfo
 from ..models.types import (
@@ -39,7 +40,7 @@ class OpportunityService:
         self._client = client
 
     # =========================================================================
-    # Read Operations (V2 API)
+    # Read Operations (V2 API by default)
     # =========================================================================
 
     def get(self, opportunity_id: OpportunityId) -> Opportunity:
@@ -53,6 +54,18 @@ class OpportunityService:
             The opportunity representation returned by v2 (may be partial).
         """
         data = self._client.get(f"/opportunities/{opportunity_id}")
+        return Opportunity.model_validate(data)
+
+    def get_details(self, opportunity_id: OpportunityId) -> Opportunity:
+        """
+        Get a single opportunity by ID with a more complete representation.
+
+        Includes association IDs and (when present) list entries, which are not
+        always included in the default `get()` response.
+        """
+        # Uses the v1 endpoint because it returns a fuller payload (including
+        # association IDs and, when present, list entries).
+        data = self._client.get(f"/opportunities/{opportunity_id}", v1=True)
         return Opportunity.model_validate(data)
 
     def list(
@@ -126,6 +139,25 @@ class OpportunityService:
         result = self._client.post("/opportunities", json=payload, v1=True)
         return Opportunity.model_validate(result)
 
+    def update(self, opportunity_id: OpportunityId, data: OpportunityUpdate) -> Opportunity:
+        """
+        Update an existing opportunity.
+
+        Note: When provided, `person_ids` and `organization_ids` replace the existing
+        values. To add or remove associations safely, pass the full desired arrays.
+        """
+        payload: dict[str, Any] = {}
+        if data.name is not None:
+            payload["name"] = data.name
+        if data.person_ids is not None:
+            payload["person_ids"] = [int(p) for p in data.person_ids]
+        if data.organization_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+
+        # Uses the v1 endpoint; its PUT semantics replace association arrays.
+        result = self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)
+        return Opportunity.model_validate(result)
+
     def delete(self, opportunity_id: OpportunityId) -> bool:
         """
         Delete an opportunity.
@@ -159,6 +191,18 @@ class AsyncOpportunityService:
             The opportunity representation returned by v2 (may be partial).
         """
         data = await self._client.get(f"/opportunities/{opportunity_id}")
+        return Opportunity.model_validate(data)
+
+    async def get_details(self, opportunity_id: OpportunityId) -> Opportunity:
+        """
+        Get a single opportunity by ID with a more complete representation.
+
+        Includes association IDs and (when present) list entries, which are not
+        always included in the default `get()` response.
+        """
+        # Uses the v1 endpoint because it returns a fuller payload (including
+        # association IDs and, when present, list entries).
+        data = await self._client.get(f"/opportunities/{opportunity_id}", v1=True)
         return Opportunity.model_validate(data)
 
     async def list(self, *, limit: int | None = None) -> PaginatedResponse[Opportunity]:
@@ -225,6 +269,25 @@ class AsyncOpportunityService:
             payload["organization_ids"] = [int(o) for o in data.organization_ids]
 
         result = await self._client.post("/opportunities", json=payload, v1=True)
+        return Opportunity.model_validate(result)
+
+    async def update(self, opportunity_id: OpportunityId, data: OpportunityUpdate) -> Opportunity:
+        """
+        Update an existing opportunity.
+
+        Note: When provided, `person_ids` and `organization_ids` replace the existing
+        values. To add or remove associations safely, pass the full desired arrays.
+        """
+        payload: dict[str, Any] = {}
+        if data.name is not None:
+            payload["name"] = data.name
+        if data.person_ids is not None:
+            payload["person_ids"] = [int(p) for p in data.person_ids]
+        if data.organization_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+
+        # Uses the v1 endpoint; its PUT semantics replace association arrays.
+        result = await self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)
         return Opportunity.model_validate(result)
 
     async def delete(self, opportunity_id: OpportunityId) -> bool:

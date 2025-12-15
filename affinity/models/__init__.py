@@ -35,6 +35,7 @@ from .entities import (
     # Opportunity
     Opportunity,
     OpportunityCreate,
+    OpportunityUpdate,
     # Person
     Person,
     PersonCreate,
@@ -97,6 +98,7 @@ __all__ = [
     # Opportunity
     "Opportunity",
     "OpportunityCreate",
+    "OpportunityUpdate",
     # List
     "AffinityList",
     "ListSummary",

@@ -391,8 +391,8 @@ class ListEntry(AffinityModel):
 
     id: ListEntryId
     list_id: ListId = Field(alias="listId")
-    creator_id: UserId = Field(alias="creatorId")
-    entity_id: int = Field(alias="entityId")
+    creator_id: UserId | None = Field(None, alias="creatorId")
+    entity_id: int | None = Field(None, alias="entityId")
     entity_type: EntityType | None = Field(None, alias="entityType")
     created_at: ISODatetime = Field(alias="createdAt")
 

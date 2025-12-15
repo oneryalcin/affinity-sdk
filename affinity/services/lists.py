@@ -198,6 +198,24 @@ class ListEntryService:
         self._client = client
         self._list_id = list_id
 
+    def _all_entity_list_entries_v2(self, path: str) -> builtins.list[ListEntry]:
+        """
+        Fetch all list entries for a single entity across all lists (V2 API).
+
+        Used for list membership helpers to avoid enumerating an entire list.
+        """
+        entries: builtins.list[ListEntry] = []
+        data = self._client.get(path)
+
+        while True:
+            entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
+            pagination = PaginationInfo.model_validate(data.get("pagination", {}))
+            if not pagination.next_url:
+                break
+            data = self._client.get_url(pagination.next_url)
+
+        return entries
+
     # =========================================================================
     # Read Operations (V2 API)
     # =========================================================================
@@ -315,6 +333,92 @@ class ListEntryService:
     # =========================================================================
     # Write Operations (V1 API for create/delete, V2 for field updates)
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Membership helpers (V2 for read, V1 for insert)
+    # -------------------------------------------------------------------------
+
+    def find_person(self, person_id: PersonId) -> ListEntry | None:
+        """
+        Return the first list entry for this person on this list (or None).
+
+        Notes:
+        - Affinity lists can contain duplicates. This returns the first match in
+          the server-provided order. Use `find_all_person()` to surface all matches.
+        """
+        entries = self.find_all_person(person_id)
+        return entries[0] if entries else None
+
+    def find_all_person(self, person_id: PersonId) -> builtins.list[ListEntry]:
+        """
+        Return all list entries for this person on this list (may be empty).
+
+        Affinity allows the same entity to appear multiple times on a list.
+        """
+        all_entries = self._all_entity_list_entries_v2(f"/persons/{person_id}/list-entries")
+        return [entry for entry in all_entries if entry.list_id == self._list_id]
+
+    def ensure_person(
+        self,
+        person_id: PersonId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """
+        Ensure a person is on this list (idempotent by default).
+
+        Returns:
+            The first existing list entry if present; otherwise creates a new one.
+
+        Notes:
+        - This method performs an existence check to avoid accidental duplicates.
+          To intentionally create duplicates, call `add_person()` directly.
+        """
+        existing = self.find_person(person_id)
+        if existing is not None:
+            return existing
+        return self.add_person(person_id, creator_id=creator_id)
+
+    def find_company(self, company_id: CompanyId) -> ListEntry | None:
+        """
+        Return the first list entry for this company on this list (or None).
+
+        Notes:
+        - Affinity lists can contain duplicates. This returns the first match in
+          the server-provided order. Use `find_all_company()` to surface all matches.
+        """
+        entries = self.find_all_company(company_id)
+        return entries[0] if entries else None
+
+    def find_all_company(self, company_id: CompanyId) -> builtins.list[ListEntry]:
+        """
+        Return all list entries for this company on this list (may be empty).
+
+        Affinity allows the same entity to appear multiple times on a list.
+        """
+        all_entries = self._all_entity_list_entries_v2(f"/companies/{company_id}/list-entries")
+        return [entry for entry in all_entries if entry.list_id == self._list_id]
+
+    def ensure_company(
+        self,
+        company_id: CompanyId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """
+        Ensure a company is on this list (idempotent by default).
+
+        Returns:
+            The first existing list entry if present; otherwise creates a new one.
+
+        Notes:
+        - This method performs an existence check to avoid accidental duplicates.
+          To intentionally create duplicates, call `add_company()` directly.
+        """
+        existing = self.find_company(company_id)
+        if existing is not None:
+            return existing
+        return self.add_company(company_id, creator_id=creator_id)
 
     def add_person(
         self,
@@ -517,6 +621,24 @@ class AsyncListEntryService:
         self._client = client
         self._list_id = list_id
 
+    async def _all_entity_list_entries_v2(self, path: str) -> builtins.list[ListEntry]:
+        """
+        Fetch all list entries for a single entity across all lists (V2 API).
+
+        Used for list membership helpers to avoid enumerating an entire list.
+        """
+        entries: builtins.list[ListEntry] = []
+        data = await self._client.get(path)
+
+        while True:
+            entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
+            pagination = PaginationInfo.model_validate(data.get("pagination", {}))
+            if not pagination.next_url:
+                break
+            data = await self._client.get_url(pagination.next_url)
+
+        return entries
+
     async def list(
         self,
         *,
@@ -591,3 +713,49 @@ class AsyncListEntryService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+
+    # -------------------------------------------------------------------------
+    # Membership helpers (V2 for read only)
+    # -------------------------------------------------------------------------
+
+    async def find_person(self, person_id: PersonId) -> ListEntry | None:
+        """
+        Return the first list entry for this person on this list (or None).
+
+        Notes:
+        - Affinity lists can contain duplicates. This returns the first match in
+          the server-provided order. Use `find_all_person()` to surface all matches.
+        """
+        entries = await self.find_all_person(person_id)
+        return entries[0] if entries else None
+
+    async def find_all_person(self, person_id: PersonId) -> builtins.list[ListEntry]:
+        """
+        Return all list entries for this person on this list (may be empty).
+
+        Affinity allows the same entity to appear multiple times on a list.
+        """
+        all_entries = await self._all_entity_list_entries_v2(f"/persons/{person_id}/list-entries")
+        return [entry for entry in all_entries if entry.list_id == self._list_id]
+
+    async def find_company(self, company_id: CompanyId) -> ListEntry | None:
+        """
+        Return the first list entry for this company on this list (or None).
+
+        Notes:
+        - Affinity lists can contain duplicates. This returns the first match in
+          the server-provided order. Use `find_all_company()` to surface all matches.
+        """
+        entries = await self.find_all_company(company_id)
+        return entries[0] if entries else None
+
+    async def find_all_company(self, company_id: CompanyId) -> builtins.list[ListEntry]:
+        """
+        Return all list entries for this company on this list (may be empty).
+
+        Affinity allows the same entity to appear multiple times on a list.
+        """
+        all_entries = await self._all_entity_list_entries_v2(
+            f"/companies/{company_id}/list-entries"
+        )
+        return [entry for entry in all_entries if entry.list_id == self._list_id]
