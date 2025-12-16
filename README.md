@@ -25,17 +25,29 @@ pip install affinity-sdk
 
 Requires Python 3.10+.
 
+Optional (local dev): load `.env` automatically:
+
+```bash
+pip install "affinity-sdk[dotenv]"
+```
+
 ## Quick Start
 
 ```python
 from affinity import Affinity
 from affinity.types import FieldType, PersonId
 
-# Initialize the client
-client = Affinity(api_key="your-api-key")
+# Recommended: read the API key from the environment (AFFINITY_API_KEY)
+client = Affinity.from_env()
+
+# If you use a local `.env` file (requires `affinity-sdk[dotenv]`)
+# client = Affinity.from_env(load_dotenv=True)
+
+# Or pass it explicitly
+# client = Affinity(api_key="your-api-key")
 
 # Or use as a context manager
-with Affinity(api_key="your-api-key") as client:
+with Affinity.from_env() as client:
     # List all companies
     for company in client.companies.all():
         print(f"{company.name} ({company.domain})")

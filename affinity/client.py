@@ -6,7 +6,10 @@ Provides a unified interface to all Affinity API functionality.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+import importlib
+import importlib.util
+import os
+from typing import Any, Literal, cast
 
 from .clients.http import (
     AsyncHTTPClient,
@@ -32,6 +35,43 @@ from .services.v1_only import (
     ReminderService,
     WebhookService,
 )
+
+_DEFAULT_API_KEY_ENV_VAR = "AFFINITY_API_KEY"
+
+
+def _maybe_load_dotenv(
+    *,
+    load_dotenv: bool,
+    dotenv_path: str | os.PathLike[str] | None,
+    override: bool,
+) -> None:
+    if not load_dotenv:
+        return
+
+    if importlib.util.find_spec("dotenv") is None:
+        raise ImportError(
+            "Optional .env support requires python-dotenv; install `affinity-sdk[dotenv]` "
+            "or `python-dotenv`."
+        )
+
+    dotenv_module = cast(Any, importlib.import_module("dotenv"))
+    dotenv_module.load_dotenv(dotenv_path=dotenv_path, override=override)
+
+
+def _api_key_from_env(
+    *,
+    env_var: str,
+    load_dotenv: bool,
+    dotenv_path: str | os.PathLike[str] | None,
+    dotenv_override: bool,
+) -> str:
+    _maybe_load_dotenv(load_dotenv=load_dotenv, dotenv_path=dotenv_path, override=dotenv_override)
+    api_key = os.getenv(env_var, "").strip()
+    if not api_key:
+        raise ValueError(
+            f"Missing API key: set `{env_var}` or initialize the client with `api_key=...`."
+        )
+    return api_key
 
 
 class Affinity:
@@ -157,6 +197,30 @@ class Affinity:
         self._files: EntityFileService | None = None
         self._relationships: RelationshipStrengthService | None = None
         self._auth: AuthService | None = None
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        env_var: str = _DEFAULT_API_KEY_ENV_VAR,
+        load_dotenv: bool = False,
+        dotenv_path: str | os.PathLike[str] | None = None,
+        dotenv_override: bool = False,
+        **kwargs: Any,
+    ) -> Affinity:
+        """
+        Create a client using an API key from the environment.
+
+        By default, reads `AFFINITY_API_KEY`. For local development, you can optionally
+        load a `.env` file (requires `python-dotenv`).
+        """
+        api_key = _api_key_from_env(
+            env_var=env_var,
+            load_dotenv=load_dotenv,
+            dotenv_path=dotenv_path,
+            dotenv_override=dotenv_override,
+        )
+        return cls(api_key=api_key, **kwargs)
 
     def __enter__(self) -> Affinity:
         return self
@@ -372,6 +436,30 @@ class AsyncAffinity:
         self._opportunities: AsyncOpportunityService | None = None
         self._lists: AsyncListService | None = None
         self._tasks: AsyncTaskService | None = None
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        env_var: str = _DEFAULT_API_KEY_ENV_VAR,
+        load_dotenv: bool = False,
+        dotenv_path: str | os.PathLike[str] | None = None,
+        dotenv_override: bool = False,
+        **kwargs: Any,
+    ) -> AsyncAffinity:
+        """
+        Create an async client using an API key from the environment.
+
+        By default, reads `AFFINITY_API_KEY`. For local development, you can optionally
+        load a `.env` file (requires `python-dotenv`).
+        """
+        api_key = _api_key_from_env(
+            env_var=env_var,
+            load_dotenv=load_dotenv,
+            dotenv_path=dotenv_path,
+            dotenv_override=dotenv_override,
+        )
+        return cls(api_key=api_key, **kwargs)
 
     @property
     def companies(self) -> AsyncCompanyService:
