@@ -6,6 +6,8 @@ A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-d
 
 Maintainer: GitHub: `yaniv-golan`
 
+Documentation: https://yaniv-golan.github.io/affinity-sdk/
+
 ## Features
 
 - **V2 terminology** - Uses `Company` (not `Organization`) throughout for consistency with Affinity's latest API

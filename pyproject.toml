@@ -57,11 +57,13 @@ docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.24.0",
+    "mike>=2.0.0",
+    "mkdocs-include-markdown-plugin>=7.0.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/yaniv-golan/affinity-sdk"
-Documentation = "https://github.com/yaniv-golan/affinity-sdk#readme"
+Documentation = "https://yaniv-golan.github.io/affinity-sdk/"
 Repository = "https://github.com/yaniv-golan/affinity-sdk"
 Issues = "https://github.com/yaniv-golan/affinity-sdk/issues"
 

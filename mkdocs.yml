@@ -1,0 +1,63 @@
+site_name: Affinity Python SDK
+site_description: Strongly-typed Python SDK for the Affinity CRM API
+repo_url: https://github.com/yaniv-golan/affinity-sdk
+edit_uri: edit/main/docs/public/
+docs_dir: docs/public
+
+theme:
+  name: material
+
+extra:
+  version:
+    provider: mike
+
+plugins:
+  - search
+  - include-markdown
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - fenced_code
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Authentication: guides/authentication.md
+      - Pagination: guides/pagination.md
+      - Errors & retries: guides/errors-and-retries.md
+      - Filtering: guides/filtering.md
+      - IDs & types: guides/ids-and-types.md
+      - Sync vs async: guides/sync-vs-async.md
+      - Debugging hooks: guides/debugging-hooks.md
+      - Troubleshooting: troubleshooting.md
+  - Reference:
+      - Client: reference/client.md
+      - Exceptions: reference/exceptions.md
+      - Types: reference/types.md
+      - Models: reference/models.md
+      - Services:
+          - Companies: reference/services/companies.md
+          - Persons: reference/services/persons.md
+          - Lists: reference/services/lists.md
+          - Opportunities: reference/services/opportunities.md
+          - Tasks: reference/services/tasks.md
+          - V1 endpoints:
+              - Notes: reference/services/v1/notes.md
+              - Reminders: reference/services/v1/reminders.md
+              - Webhooks: reference/services/v1/webhooks.md
+              - Interactions: reference/services/v1/interactions.md
+              - Fields: reference/services/v1/fields.md
+              - Field values: reference/services/v1/field-values.md
+              - Files: reference/services/v1/files.md
+              - Relationships: reference/services/v1/relationships.md
+              - Auth: reference/services/v1/auth.md
+  - Changelog: changelog.md
