@@ -1,5 +1,7 @@
 # Affinity Python SDK
 
+[![Coverage](https://codecov.io/gh/yaniv-golan/affinity-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/yaniv-golan/affinity-sdk)
+
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
 Maintainer: GitHub: `yaniv-golan`
