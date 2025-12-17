@@ -11,6 +11,8 @@
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
+Disclaimer: This is an unofficial community project and is not affiliated with, endorsed by, or sponsored by Affinity. “Affinity” and related marks are trademarks of their respective owners. Use of the Affinity API is subject to Affinity’s Terms of Service.
+
 Maintainer: GitHub: `yaniv-golan`
 
 Documentation: https://yaniv-golan.github.io/affinity-sdk/
