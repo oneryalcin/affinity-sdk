@@ -3,6 +3,7 @@ site_description: Strongly-typed Python SDK for the Affinity CRM API
 repo_url: https://github.com/yaniv-golan/affinity-sdk
 edit_uri: edit/main/docs/public/
 docs_dir: docs/public
+copyright: 'Disclaimer: Unofficial community project; not affiliated with, endorsed by, or sponsored by Affinity. "Affinity" and related marks are trademarks of their respective owners. Use of the Affinity API is subject to Affinity Terms of Service.'
 
 theme:
   name: material
