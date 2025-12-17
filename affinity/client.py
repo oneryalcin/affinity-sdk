@@ -136,6 +136,7 @@ class Affinity:
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
         enable_beta_endpoints: bool = False,
+        allow_insecure_download_redirects: bool = False,
         expected_v2_version: str | None = None,
         timeout: float = 30.0,
         max_retries: int = 3,
@@ -154,6 +155,8 @@ class Affinity:
             v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
             v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
             enable_beta_endpoints: Enable beta V2 endpoints
+            allow_insecure_download_redirects: Allow `http://` redirects for file downloads.
+                Not recommended; prefer HTTPS-only downloads.
             expected_v2_version: Expected V2 API version for diagnostics (e.g.,
                 "2024-01-01"). Used to detect version compatibility issues.
                 See TR-015.
@@ -171,6 +174,7 @@ class Affinity:
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
             enable_beta_endpoints=enable_beta_endpoints,
+            allow_insecure_download_redirects=allow_insecure_download_redirects,
             expected_v2_version=expected_v2_version,
             timeout=timeout,
             max_retries=max_retries,
@@ -386,6 +390,7 @@ class AsyncAffinity:
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
         enable_beta_endpoints: bool = False,
+        allow_insecure_download_redirects: bool = False,
         expected_v2_version: str | None = None,
         timeout: float = 30.0,
         max_retries: int = 3,
@@ -404,6 +409,8 @@ class AsyncAffinity:
             v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
             v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
             enable_beta_endpoints: Enable beta V2 endpoints
+            allow_insecure_download_redirects: Allow `http://` redirects for file downloads.
+                Not recommended; prefer HTTPS-only downloads.
             expected_v2_version: Expected V2 API version for diagnostics (e.g.,
                 "2024-01-01"). Used to detect version compatibility issues.
                 See TR-015.
@@ -421,6 +428,7 @@ class AsyncAffinity:
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
             enable_beta_endpoints=enable_beta_endpoints,
+            allow_insecure_download_redirects=allow_insecure_download_redirects,
             expected_v2_version=expected_v2_version,
             timeout=timeout,
             max_retries=max_retries,

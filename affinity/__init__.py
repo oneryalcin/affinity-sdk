@@ -5,7 +5,7 @@ This SDK provides:
 - V2 terminology throughout (Company, not Organization)
 - V2 API for reads, V1 for writes where V2 isn't available
 - Strong typing with Pydantic V2 models
-- NewType IDs to prevent type confusion (PersonId, CompanyId, etc.)
+- Typed ID classes to prevent type confusion (PersonId, CompanyId, etc.)
 - Automatic pagination iterators
 - Optional response caching for field metadata
 - Rate limit handling with automatic retry

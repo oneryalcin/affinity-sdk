@@ -41,6 +41,18 @@ from affinity import Affinity
 client = Affinity(api_key="your-key", max_retries=5)
 ```
 
+## Download redirects (files)
+
+Affinity file downloads may redirect to externally-hosted signed URLs. By default, the SDK refuses `http://` redirects.
+
+If you must allow insecure redirects (not recommended), opt in explicitly:
+
+```python
+from affinity import Affinity
+
+client = Affinity(api_key="your-key", allow_insecure_download_redirects=True)
+```
+
 ## Caching
 
 Caching is optional and currently targets metadata-style responses (e.g., field metadata).

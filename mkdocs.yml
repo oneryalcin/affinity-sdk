@@ -48,6 +48,7 @@ nav:
       - IDs & types: guides/ids-and-types.md
       - Sync vs async: guides/sync-vs-async.md
       - Debugging hooks: guides/debugging-hooks.md
+      - Webhooks: guides/webhooks.md
   - Troubleshooting: troubleshooting.md
   - Reference:
       - Client: reference/client.md

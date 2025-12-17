@@ -1,6 +1,6 @@
 # IDs and types
 
-The SDK uses strongly-typed IDs (Python `NewType`) to reduce accidental ID mixups.
+The SDK uses strongly-typed ID classes to reduce accidental ID mixups.
 
 ```python
 from affinity import Affinity

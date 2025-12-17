@@ -214,6 +214,11 @@ class TestFilterEscaping:
         assert result == 'He said \\"hi\\\\there\\nbuddy\\"'
 
     @pytest.mark.req("FR-007")
+    def test_strip_nul_bytes(self) -> None:
+        """NUL bytes are stripped for safety."""
+        assert _escape_string("a\x00b") == "ab"
+
+    @pytest.mark.req("FR-007")
     def test_filter_with_special_chars(self) -> None:
         """Filter with special characters in value."""
         f = Filter.field("description").contains('Say "hello" to O\'Brien')

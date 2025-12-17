@@ -259,6 +259,65 @@ def test_download_file_redirect_location_missing_and_unsafe_schemes() -> None:
         http.close()
 
 
+def test_download_file_allows_insecure_redirect_when_opted_in() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url == httpx.URL("https://v1.example/entity-files/download/3"):
+            return httpx.Response(
+                302, headers={"Location": "http://files.example/x"}, request=request
+            )
+        if request.url == httpx.URL("http://files.example/x"):
+            assert request.headers.get("Authorization") is None
+            return httpx.Response(200, content=b"x", request=request)
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            allow_insecure_download_redirects=True,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        assert http.download_file("/entity-files/download/3", v1=True) == b"x"
+    finally:
+        http.close()
+
+
+def test_stream_download_allows_insecure_redirect_when_opted_in() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url == httpx.URL("https://v1.example/entity-files/download/5"):
+            return httpx.Response(
+                302, headers={"Location": "http://files.example/x"}, request=request
+            )
+        if request.url == httpx.URL("http://files.example/x"):
+            assert request.headers.get("Authorization") is None
+            return httpx.Response(
+                200, content=b"ab", headers={"Content-Length": "2"}, request=request
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            allow_insecure_download_redirects=True,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        assert (
+            b"".join(http.stream_download("/entity-files/download/5", v1=True, chunk_size=1))
+            == b"ab"
+        )
+    finally:
+        http.close()
+
+
 def test_stream_download_non_redirect_no_progress_non_digit_length_and_progress_digit_length(
     monkeypatch: Any,
 ) -> None:

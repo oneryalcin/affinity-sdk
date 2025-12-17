@@ -18,7 +18,7 @@ Documentation: https://yaniv-golan.github.io/affinity-sdk/
 ## Features
 
 - **V2 terminology** - Uses `Company` (not `Organization`) throughout for consistency with Affinity's latest API
-- **Strong typing** - Full Pydantic V2 models with `NewType` IDs (`PersonId`, `CompanyId`, `ListId`, etc.)
+- **Strong typing** - Full Pydantic V2 models with typed ID classes (`PersonId`, `CompanyId`, `ListId`, etc.)
 - **No magic numbers** - Comprehensive enums for all API constants
 - **Automatic pagination** - Iterator support for seamless pagination
 - **Smart API routing** - Uses V2 API for reads, V1 for writes (V2 doesn't support all operations yet)

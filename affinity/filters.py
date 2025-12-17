@@ -40,10 +40,12 @@ def _escape_string(value: str) -> str:
     - Backslashes (must be doubled)
     - Double quotes (must be escaped)
     - Newlines and tabs (escaped as literals)
+    - NUL bytes (removed)
     """
     # Order matters: escape backslashes first
     result = value.replace("\\", "\\\\")
     result = result.replace('"', '\\"')
+    result = result.replace("\x00", "")
     result = result.replace("\n", "\\n")
     result = result.replace("\t", "\\t")
     result = result.replace("\r", "\\r")

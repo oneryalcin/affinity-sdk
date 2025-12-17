@@ -15,7 +15,7 @@ Some V2 endpoints are opt-in and require `enable_beta_endpoints=True` in this SD
 
 ## Typed IDs
 
-The SDK uses typed IDs (Python `NewType`) like `CompanyId`, `PersonId`, and `ListId` to reduce accidental mixups.
+The SDK uses typed ID classes (e.g. `CompanyId`, `PersonId`, `ListId`) to reduce accidental mixups.
 
 ## Field values
 

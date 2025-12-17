@@ -47,6 +47,7 @@ REPEATABLE_QUERY_PARAMS: frozenset[str] = frozenset({"fieldIds", "fieldTypes"})
 
 _RETRYABLE_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
 _MAX_RETRY_DELAY_SECONDS: float = 60.0
+_MAX_DOWNLOAD_REDIRECTS: int = 10
 
 
 T = TypeVar("T")
@@ -448,6 +449,8 @@ class ClientConfig:
     cache_ttl: float = 300.0
     log_requests: bool = False
     enable_beta_endpoints: bool = False
+    # If True, allows following `http://` redirects when downloading files (not recommended).
+    allow_insecure_download_redirects: bool = False
     # Request/response hooks (DX-008)
     on_request: RequestHook | None = None
     on_response: ResponseHook | None = None
@@ -800,6 +803,11 @@ class HTTPClient:
         scheme = urlsplit(redirect_url).scheme.lower()
         if scheme and scheme not in ("https", "http"):
             raise UnsafeUrlError("Refusing to follow non-http(s) redirect", url=redirect_url)
+        if scheme == "http" and not self._config.allow_insecure_download_redirects:
+            raise UnsafeUrlError(
+                "Refusing to follow non-https redirect for download",
+                url=_redact_external_url(redirect_url),
+            )
         return redirect_url
 
     def _request_with_retry(
@@ -1097,16 +1105,28 @@ class HTTPClient:
         if response.is_redirect:
             redirect_url = self._get_download_redirect_url(response)
             if redirect_url is not None:
-                response = self._request_raw_with_retry(
-                    "GET",
-                    redirect_url,
-                    v1=v1,
-                    apply_auth=False,
-                    follow_redirects=True,
-                    allow_hooks=False,
-                    external=True,
-                )
-                if response.url.scheme.lower() != "https":
+                current_url = redirect_url
+                for _ in range(_MAX_DOWNLOAD_REDIRECTS + 1):
+                    response = self._request_raw_with_retry(
+                        "GET",
+                        current_url,
+                        v1=v1,
+                        apply_auth=False,
+                        follow_redirects=False,
+                        allow_hooks=False,
+                        external=True,
+                    )
+                    if not response.is_redirect:
+                        break
+                    next_url = self._get_download_redirect_url(response)
+                    if next_url is None:
+                        break
+                    current_url = next_url
+
+                if (
+                    response.url.scheme.lower() != "https"
+                    and not self._config.allow_insecure_download_redirects
+                ):
                     raise UnsafeUrlError(
                         "Refusing to download from non-https URL",
                         url=_redact_external_url(str(response.url)),
@@ -1152,37 +1172,65 @@ class HTTPClient:
             last_error: Exception | None = None
             for attempt in range(self._config.max_retries + 1):
                 try:
-                    with self._client.stream(
-                        "GET",
-                        redirect_url,
-                        follow_redirects=True,
-                    ) as streamed:
-                        if streamed.url.scheme.lower() != "https":
+                    current_url = redirect_url
+                    redirects_followed = 0
+                    while True:
+                        if redirects_followed > _MAX_DOWNLOAD_REDIRECTS:
+                            raise UnsafeUrlError(
+                                "Refusing to follow too many redirects for download",
+                                url=_redact_external_url(current_url),
+                            )
+                        if (
+                            urlsplit(current_url).scheme.lower() == "http"
+                            and not self._config.allow_insecure_download_redirects
+                        ):
                             raise UnsafeUrlError(
                                 "Refusing to download from non-https URL",
-                                url=_redact_external_url(str(streamed.url)),
+                                url=_redact_external_url(current_url),
                             )
-                        self._raise_for_status_with_diagnostics(
-                            streamed,
-                            method="GET",
-                            url=redirect_url,
-                            v1=v1,
-                            external=True,
-                        )
-                        stream_total: int | None = None
-                        if on_progress:
-                            raw_total = streamed.headers.get("Content-Length")
-                            if raw_total and raw_total.isdigit():
-                                stream_total = int(raw_total)
-                            on_progress(0, stream_total, phase="download")
-                        transferred = 0
-                        for chunk in streamed.iter_bytes(chunk_size=chunk_size):
-                            yielded_any = True
-                            transferred += len(chunk)
+
+                        with self._client.stream(
+                            "GET",
+                            current_url,
+                            follow_redirects=False,
+                        ) as streamed:
+                            if streamed.is_redirect:
+                                next_url = self._get_download_redirect_url(streamed)
+                                if next_url is None:
+                                    return
+                                current_url = next_url
+                                redirects_followed += 1
+                                continue
+
+                            if (
+                                streamed.url.scheme.lower() != "https"
+                                and not self._config.allow_insecure_download_redirects
+                            ):
+                                raise UnsafeUrlError(
+                                    "Refusing to download from non-https URL",
+                                    url=_redact_external_url(str(streamed.url)),
+                                )
+                            self._raise_for_status_with_diagnostics(
+                                streamed,
+                                method="GET",
+                                url=current_url,
+                                v1=v1,
+                                external=True,
+                            )
+                            stream_total: int | None = None
                             if on_progress:
-                                on_progress(transferred, stream_total, phase="download")
-                            yield chunk
-                    return
+                                raw_total = streamed.headers.get("Content-Length")
+                                if raw_total and raw_total.isdigit():
+                                    stream_total = int(raw_total)
+                                on_progress(0, stream_total, phase="download")
+                            transferred = 0
+                            for chunk in streamed.iter_bytes(chunk_size=chunk_size):
+                                yielded_any = True
+                                transferred += len(chunk)
+                                if on_progress:
+                                    on_progress(transferred, stream_total, phase="download")
+                                yield chunk
+                            return
                 except RateLimitError as e:
                     last_error = e
                     if yielded_any:
