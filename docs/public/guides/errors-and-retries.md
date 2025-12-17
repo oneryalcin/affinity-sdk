@@ -10,6 +10,8 @@ The SDK raises typed exceptions (subclasses of `AffinityError`) and retries some
 - `ValidationError` (400/422): invalid parameters/payload
 - `RateLimitError` (429): you are being rate limited (may include `retry_after`)
 - `ServerError` (500/503): transient server-side errors
+- `BetaEndpointDisabledError`: you called a beta V2 endpoint without `enable_beta_endpoints=True`
+- `VersionCompatibilityError`: response parsing failed, often due to V2 API version mismatch
 
 See [Exceptions](../reference/exceptions.md) for the full hierarchy.
 
@@ -50,9 +52,30 @@ except AffinityError as e:
 
 If you are consistently hitting 429s, see [Rate limits](rate-limits.md) for strategies and the rate limit APIs.
 
+## API versions and beta endpoints
+
+If you see `BetaEndpointDisabledError`, enable beta endpoints:
+
+```python
+from affinity import Affinity
+
+client = Affinity(api_key="your-key", enable_beta_endpoints=True)
+```
+
+If you see `VersionCompatibilityError`, this often indicates a V2 API version mismatch between your API key settings and what the SDK expects. Check your API key’s “Default API Version”, and consider setting `expected_v2_version` for clearer diagnostics:
+
+```python
+from affinity import Affinity
+
+client = Affinity(api_key="your-key", expected_v2_version="2024-01-01")
+```
+
+See [API versions & routing](api-versions-and-routing.md) and the [Glossary](../glossary.md).
+
 ## Next steps
 
 - [Rate limits](rate-limits.md)
 - [Troubleshooting](../troubleshooting.md)
 - [Configuration](configuration.md)
+- [API versions & routing](api-versions-and-routing.md)
 - [Exceptions reference](../reference/exceptions.md)

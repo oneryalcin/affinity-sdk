@@ -52,4 +52,4 @@ If you need a sync-only service today, use `Affinity` (sync) or contribute async
 
 - [Getting started](../getting-started.md)
 - [Examples](../examples.md)
-- [V1 vs V2 routing](v1-v2-routing.md)
+- [API versions & routing](api-versions-and-routing.md)

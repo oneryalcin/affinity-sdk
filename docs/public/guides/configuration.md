@@ -99,7 +99,7 @@ client = Affinity(
 
 See also:
 
-- [V1 vs V2 routing](v1-v2-routing.md)
+- [API versions & routing](api-versions-and-routing.md)
 - [Errors & retries](errors-and-retries.md)
 
 ## Next steps

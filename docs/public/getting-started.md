@@ -86,5 +86,5 @@ See [Sync vs async](guides/sync-vs-async.md).
 - [Configuration](guides/configuration.md)
 - [Filtering](guides/filtering.md)
 - [Field types & values](guides/field-types-and-values.md)
-- [V1 vs V2 routing](guides/v1-v2-routing.md)
+- [API versions & routing](guides/api-versions-and-routing.md)
 - [API reference](reference/client.md)

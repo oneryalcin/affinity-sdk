@@ -33,11 +33,12 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Examples: examples.md
+  - Glossary: glossary.md
   - Changelog: changelog.md
   - Guides:
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
-      - V1 vs V2 routing: guides/v1-v2-routing.md
+      - API versions & routing: guides/api-versions-and-routing.md
       - Pagination: guides/pagination.md
       - Errors & retries: guides/errors-and-retries.md
       - Rate limits: guides/rate-limits.md
