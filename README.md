@@ -456,6 +456,8 @@ asyncio.run(main())
 
 Async support mirrors the sync client surface area (including V1-only services like notes/reminders/webhooks/files).
 
+See `docs/public/guides/sync-vs-async.md` for more details.
+
 If you don't use `async with`, make sure to `await client.close()` (e.g., in a `finally`) to avoid leaking connections.
 
 ## Development
