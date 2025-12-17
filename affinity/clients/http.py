@@ -1083,6 +1083,7 @@ class HTTPClient:
         path: str,
         *,
         v1: bool = False,
+        timeout: httpx.Timeout | float | None = None,
     ) -> bytes:
         """
         Download file content.
@@ -1093,6 +1094,10 @@ class HTTPClient:
         - Uses the standard retry/diagnostics policy for GET requests.
         """
         url = self._build_url(path, v1=v1)
+        request_kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+
         response = self._request_raw_with_retry(
             "GET",
             url,
@@ -1101,6 +1106,7 @@ class HTTPClient:
             follow_redirects=False,
             allow_hooks=False,
             external=False,
+            **request_kwargs,
         )
         if response.is_redirect:
             redirect_url = self._get_download_redirect_url(response)
@@ -1115,6 +1121,7 @@ class HTTPClient:
                         follow_redirects=False,
                         allow_hooks=False,
                         external=True,
+                        **request_kwargs,
                     )
                     if not response.is_redirect:
                         break
@@ -1141,6 +1148,8 @@ class HTTPClient:
         v1: bool = False,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> Iterator[bytes]:
         """
         Stream-download file content in chunks.
@@ -1151,6 +1160,25 @@ class HTTPClient:
         - Download traffic intentionally does not call request/response hooks to
           avoid leaking signed URLs in logs.
         """
+        start_time = time.monotonic()
+        deadline_at: float | None = None
+        if deadline_seconds is not None:
+            if deadline_seconds <= 0:
+                raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+            deadline_at = start_time + deadline_seconds
+
+        def _check_deadline() -> float | None:
+            if deadline_at is None:
+                return None
+            remaining = deadline_at - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+            return remaining
+
+        request_kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+
         url = self._build_url(path, v1=v1)
 
         response = self._request_raw_with_retry(
@@ -1161,123 +1189,161 @@ class HTTPClient:
             follow_redirects=False,
             allow_hooks=False,
             external=False,
+            **request_kwargs,
         )
 
         if response.is_redirect:
             redirect_url = self._get_download_redirect_url(response)
-            if redirect_url is None:
-                return
+            if redirect_url is not None:
+                yielded_any = False
+                last_error: Exception | None = None
+                for attempt in range(self._config.max_retries + 1):
+                    try:
+                        _check_deadline()
 
-            yielded_any = False
-            last_error: Exception | None = None
-            for attempt in range(self._config.max_retries + 1):
-                try:
-                    current_url = redirect_url
-                    redirects_followed = 0
-                    while True:
-                        if redirects_followed > _MAX_DOWNLOAD_REDIRECTS:
-                            raise UnsafeUrlError(
-                                "Refusing to follow too many redirects for download",
-                                url=_redact_external_url(current_url),
-                            )
-                        if (
-                            urlsplit(current_url).scheme.lower() == "http"
-                            and not self._config.allow_insecure_download_redirects
-                        ):
-                            raise UnsafeUrlError(
-                                "Refusing to download from non-https URL",
-                                url=_redact_external_url(current_url),
-                            )
-
-                        with self._client.stream(
-                            "GET",
-                            current_url,
-                            follow_redirects=False,
-                        ) as streamed:
-                            if streamed.is_redirect:
-                                next_url = self._get_download_redirect_url(streamed)
-                                if next_url is None:
-                                    return
-                                current_url = next_url
-                                redirects_followed += 1
-                                continue
-
+                        current_url = redirect_url
+                        redirects_followed = 0
+                        while True:
+                            if redirects_followed > _MAX_DOWNLOAD_REDIRECTS:
+                                raise UnsafeUrlError(
+                                    "Refusing to follow too many redirects for download",
+                                    url=_redact_external_url(current_url),
+                                )
                             if (
-                                streamed.url.scheme.lower() != "https"
+                                urlsplit(current_url).scheme.lower() == "http"
                                 and not self._config.allow_insecure_download_redirects
                             ):
                                 raise UnsafeUrlError(
                                     "Refusing to download from non-https URL",
-                                    url=_redact_external_url(str(streamed.url)),
+                                    url=_redact_external_url(current_url),
                                 )
-                            self._raise_for_status_with_diagnostics(
-                                streamed,
-                                method="GET",
-                                url=current_url,
-                                v1=v1,
-                                external=True,
-                            )
-                            stream_total: int | None = None
-                            if on_progress:
-                                raw_total = streamed.headers.get("Content-Length")
-                                if raw_total and raw_total.isdigit():
-                                    stream_total = int(raw_total)
-                                on_progress(0, stream_total, phase="download")
-                            transferred = 0
-                            for chunk in streamed.iter_bytes(chunk_size=chunk_size):
-                                yielded_any = True
-                                transferred += len(chunk)
-                                if on_progress:
-                                    on_progress(transferred, stream_total, phase="download")
-                                yield chunk
-                            return
-                except RateLimitError as e:
-                    last_error = e
-                    if yielded_any:
-                        raise
-                    if attempt >= self._config.max_retries:
-                        break
-                    wait_time = (
-                        float(e.retry_after)
-                        if e.retry_after is not None
-                        else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                    )
-                    time.sleep(wait_time)
-                except AffinityError as e:
-                    last_error = e
-                    status = e.status_code
-                    if yielded_any or status is None or status < 500 or status >= 600:
-                        raise
-                    if attempt >= self._config.max_retries:
-                        break
-                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                    time.sleep(wait_time)
-                except httpx.TimeoutException as e:
-                    last_error = e
-                    if yielded_any:
-                        raise TimeoutError(f"Request timed out: {e}") from e
-                    if attempt >= self._config.max_retries:
-                        timeout_error = TimeoutError(f"Request timed out: {e}")
-                        timeout_error.__cause__ = e
-                        last_error = timeout_error
-                        break
-                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                    time.sleep(wait_time)
-                except httpx.NetworkError as e:
-                    last_error = e
-                    if yielded_any:
-                        raise NetworkError(f"Network error: {e}") from e
-                    if attempt >= self._config.max_retries:
-                        network_error = NetworkError(f"Network error: {e}")
-                        network_error.__cause__ = e
-                        last_error = network_error
-                        break
-                    wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                    time.sleep(wait_time)
 
-            if last_error:
-                raise last_error
-            raise AffinityError("Download failed after retries")
+                            stream_kwargs: dict[str, Any] = {"follow_redirects": False}
+                            if timeout is not None:
+                                stream_kwargs["timeout"] = timeout
+
+                            with self._client.stream(
+                                "GET",
+                                current_url,
+                                **stream_kwargs,
+                            ) as streamed:
+                                if streamed.is_redirect:
+                                    next_url = self._get_download_redirect_url(streamed)
+                                    if next_url is None:
+                                        redirect_total: int | None = None
+                                        if on_progress:
+                                            raw_total = streamed.headers.get("Content-Length")
+                                            if raw_total and raw_total.isdigit():
+                                                redirect_total = int(raw_total)
+                                            on_progress(0, redirect_total, phase="download")
+                                        transferred = 0
+                                        for chunk in streamed.iter_bytes(chunk_size=chunk_size):
+                                            _check_deadline()
+                                            yielded_any = True
+                                            transferred += len(chunk)
+                                            if on_progress:
+                                                on_progress(
+                                                    transferred,
+                                                    redirect_total,
+                                                    phase="download",
+                                                )
+                                            yield chunk
+                                        return
+                                    current_url = next_url
+                                    redirects_followed += 1
+                                    continue
+
+                                if (
+                                    streamed.url.scheme.lower() != "https"
+                                    and not self._config.allow_insecure_download_redirects
+                                ):
+                                    raise UnsafeUrlError(
+                                        "Refusing to download from non-https URL",
+                                        url=_redact_external_url(str(streamed.url)),
+                                    )
+                                self._raise_for_status_with_diagnostics(
+                                    streamed,
+                                    method="GET",
+                                    url=current_url,
+                                    v1=v1,
+                                    external=True,
+                                )
+                                stream_total: int | None = None
+                                if on_progress:
+                                    raw_total = streamed.headers.get("Content-Length")
+                                    if raw_total and raw_total.isdigit():
+                                        stream_total = int(raw_total)
+                                    on_progress(0, stream_total, phase="download")
+                                transferred = 0
+                                for chunk in streamed.iter_bytes(chunk_size=chunk_size):
+                                    _check_deadline()
+                                    yielded_any = True
+                                    transferred += len(chunk)
+                                    if on_progress:
+                                        on_progress(transferred, stream_total, phase="download")
+                                    yield chunk
+                                return
+                    except TimeoutError:
+                        raise
+                    except RateLimitError as e:
+                        last_error = e
+                        if yielded_any:
+                            raise
+                        if attempt >= self._config.max_retries:
+                            break
+                        wait_time = (
+                            float(e.retry_after)
+                            if e.retry_after is not None
+                            else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                        )
+                        remaining = _check_deadline()
+                        if remaining is not None:
+                            wait_time = min(wait_time, remaining)
+                        time.sleep(wait_time)
+                    except AffinityError as e:
+                        last_error = e
+                        status = e.status_code
+                        if yielded_any or status is None or status < 500 or status >= 600:
+                            raise
+                        if attempt >= self._config.max_retries:
+                            break
+                        wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                        remaining = _check_deadline()
+                        if remaining is not None:
+                            wait_time = min(wait_time, remaining)
+                        time.sleep(wait_time)
+                    except httpx.TimeoutException as e:
+                        last_error = e
+                        if yielded_any:
+                            raise TimeoutError(f"Request timed out: {e}") from e
+                        if attempt >= self._config.max_retries:
+                            timeout_error = TimeoutError(f"Request timed out: {e}")
+                            timeout_error.__cause__ = e
+                            last_error = timeout_error
+                            break
+                        wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                        remaining = _check_deadline()
+                        if remaining is not None:
+                            wait_time = min(wait_time, remaining)
+                        time.sleep(wait_time)
+                    except httpx.NetworkError as e:
+                        last_error = e
+                        if yielded_any:
+                            raise NetworkError(f"Network error: {e}") from e
+                        if attempt >= self._config.max_retries:
+                            network_error = NetworkError(f"Network error: {e}")
+                            network_error.__cause__ = e
+                            last_error = network_error
+                            break
+                        wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                        remaining = _check_deadline()
+                        if remaining is not None:
+                            wait_time = min(wait_time, remaining)
+                        time.sleep(wait_time)
+
+                if last_error:
+                    raise last_error
+                raise AffinityError("Download failed after retries")
 
         total: int | None = None
         if on_progress:
@@ -1287,6 +1353,7 @@ class HTTPClient:
             on_progress(0, total, phase="download")
         transferred = 0
         for chunk in response.iter_bytes(chunk_size=chunk_size):
+            _check_deadline()
             transferred += len(chunk)
             if on_progress:
                 on_progress(transferred, total, phase="download")
@@ -1866,6 +1933,8 @@ class AsyncHTTPClient:
         path: str,
         *,
         v1: bool = False,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> bytes:
         """
         Download file content.
@@ -1877,7 +1946,12 @@ class AsyncHTTPClient:
           avoid leaking signed URLs in logs.
         """
         chunks: list[bytes] = []
-        async for chunk in self.stream_download(path, v1=v1):
+        async for chunk in self.stream_download(
+            path,
+            v1=v1,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
+        ):
             chunks.append(chunk)
         return b"".join(chunks)
 
@@ -1888,6 +1962,8 @@ class AsyncHTTPClient:
         v1: bool = False,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> AsyncIterator[bytes]:
         """
         Stream-download file content in chunks.
@@ -1898,6 +1974,25 @@ class AsyncHTTPClient:
         - Download traffic intentionally does not call request/response hooks to
           avoid leaking signed URLs in logs.
         """
+        start_time = time.monotonic()
+        deadline_at: float | None = None
+        if deadline_seconds is not None:
+            if deadline_seconds <= 0:
+                raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+            deadline_at = start_time + deadline_seconds
+
+        def _check_deadline() -> float | None:
+            if deadline_at is None:
+                return None
+            remaining = deadline_at - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+            return remaining
+
+        request_kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+
         url = self._build_url(path, v1=v1)
         response = await self._request_raw_with_retry(
             "GET",
@@ -1906,6 +2001,7 @@ class AsyncHTTPClient:
             apply_auth=True,
             follow_redirects=False,
             external=False,
+            **request_kwargs,
         )
 
         download_url = url
@@ -1936,23 +2032,44 @@ class AsyncHTTPClient:
 
         for attempt in range(self._config.max_retries + 1):
             try:
+                _check_deadline()
                 redirects_followed = 0
                 while True:
                     if redirects_followed > _MAX_DOWNLOAD_REDIRECTS:
-                        raise AffinityError("Too many download redirects")
+                        raise UnsafeUrlError(
+                            "Refusing to follow too many redirects for download",
+                            url=_redact_external_url(current_url),
+                        )
 
                     stream_kwargs: dict[str, Any] = {"follow_redirects": False}
                     if apply_auth:
                         stream_kwargs = self._apply_auth(v1=v1, kwargs=stream_kwargs)
                     else:
                         stream_kwargs["headers"] = {"Accept": "*/*"}
+                    if timeout is not None:
+                        stream_kwargs["timeout"] = timeout
 
                     async with client.stream("GET", current_url, **stream_kwargs) as streamed:
                         self._rate_limit.update_from_headers(streamed.headers)
                         if streamed.is_redirect:
                             next_url = self._get_download_redirect_url(streamed)
                             if next_url is None:
-                                break
+                                redirect_total: int | None = None
+                                if on_progress:
+                                    raw_total = streamed.headers.get("Content-Length")
+                                    if raw_total and raw_total.isdigit():
+                                        redirect_total = int(raw_total)
+                                    on_progress(0, redirect_total, phase="download")
+
+                                transferred = 0
+                                async for chunk in streamed.aiter_bytes(chunk_size=chunk_size):
+                                    _check_deadline()
+                                    yielded_any = True
+                                    transferred += len(chunk)
+                                    if on_progress:
+                                        on_progress(transferred, redirect_total, phase="download")
+                                    yield chunk
+                                return
                             current_url = next_url
                             apply_auth = False
                             external = True
@@ -1986,12 +2103,15 @@ class AsyncHTTPClient:
 
                         transferred = 0
                         async for chunk in streamed.aiter_bytes(chunk_size=chunk_size):
+                            _check_deadline()
                             yielded_any = True
                             transferred += len(chunk)
                             if on_progress:
                                 on_progress(transferred, total, phase="download")
                             yield chunk
                         return
+            except TimeoutError:
+                raise
             except RateLimitError as e:
                 last_error = e
                 if yielded_any:
@@ -2003,6 +2123,9 @@ class AsyncHTTPClient:
                     if e.retry_after is not None
                     else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
                 )
+                remaining = _check_deadline()
+                if remaining is not None:
+                    wait_time = min(wait_time, remaining)
                 await asyncio.sleep(wait_time)
             except AffinityError as e:
                 last_error = e
@@ -2012,6 +2135,9 @@ class AsyncHTTPClient:
                 if attempt >= self._config.max_retries:
                     break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                remaining = _check_deadline()
+                if remaining is not None:
+                    wait_time = min(wait_time, remaining)
                 await asyncio.sleep(wait_time)
             except httpx.TimeoutException as e:
                 last_error = e
@@ -2023,6 +2149,9 @@ class AsyncHTTPClient:
                     last_error = timeout_error
                     break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                remaining = _check_deadline()
+                if remaining is not None:
+                    wait_time = min(wait_time, remaining)
                 await asyncio.sleep(wait_time)
             except httpx.NetworkError as e:
                 last_error = e
@@ -2034,6 +2163,9 @@ class AsyncHTTPClient:
                     last_error = network_error
                     break
                 wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                remaining = _check_deadline()
+                if remaining is not None:
+                    wait_time = min(wait_time, remaining)
                 await asyncio.sleep(wait_time)
 
         if last_error:

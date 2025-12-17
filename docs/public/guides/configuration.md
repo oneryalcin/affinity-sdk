@@ -30,6 +30,17 @@ from affinity import Affinity
 client = Affinity(api_key="your-key", timeout=60.0)
 ```
 
+For file downloads, you can override timeouts per call, and (for streaming downloads) set a total time budget:
+
+```python
+from affinity import Affinity
+from affinity.types import FileId
+
+with Affinity(api_key="your-key") as client:
+    for chunk in client.files.download_stream(FileId(123), timeout=60.0, deadline_seconds=300):
+        ...
+```
+
 ## Retries
 
 - Retries apply to safe/idempotent methods (by default `GET`/`HEAD`).

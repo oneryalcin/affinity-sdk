@@ -26,6 +26,10 @@ By default, retries apply to:
 
 Retries are controlled by `max_retries` (default: 3).
 
+## Download deadlines
+
+For large file downloads, `timeout` controls per-request timeouts, and `deadline_seconds` enforces a total time budget for streaming downloads (including retries/backoff). When exceeded, the SDK raises `TimeoutError`.
+
 ## Diagnostics
 
 Many errors include diagnostics (method/URL/status and more). When you catch an `AffinityError`, you can log it and inspect attached context.

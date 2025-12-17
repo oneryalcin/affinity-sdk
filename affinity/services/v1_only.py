@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from ..models.entities import FieldCreate, FieldMetadata, FieldValue, FieldValueCreate
 from ..models.pagination import V1PaginatedResponse
 from ..models.secondary import (
@@ -757,9 +759,18 @@ class EntityFileService:
         data = self._client.get(f"/entity-files/{file_id}", v1=True)
         return EntityFile.model_validate(data)
 
-    def download(self, file_id: FileId) -> bytes:
+    def download(
+        self,
+        file_id: FileId,
+        *,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> bytes:
         """Download file content."""
-        return self._client.download_file(f"/entity-files/download/{file_id}", v1=True)
+        return self._client.download_file(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            timeout=timeout,
+        )
 
     def download_stream(
         self,
@@ -767,6 +778,8 @@ class EntityFileService:
         *,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> Iterator[bytes]:
         """Stream-download file content in chunks."""
         return self._client.stream_download(
@@ -774,6 +787,8 @@ class EntityFileService:
             v1=True,
             chunk_size=chunk_size,
             on_progress=on_progress,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
         )
 
     def download_to(
@@ -784,6 +799,8 @@ class EntityFileService:
         overwrite: bool = False,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> Path:
         """
         Download a file to disk.
@@ -806,6 +823,8 @@ class EntityFileService:
                 file_id,
                 chunk_size=chunk_size,
                 on_progress=on_progress,
+                timeout=timeout,
+                deadline_seconds=deadline_seconds,
             ):
                 f.write(chunk)
 
@@ -1577,8 +1596,19 @@ class AsyncEntityFileService:
         data = await self._client.get(f"/entity-files/{file_id}", v1=True)
         return EntityFile.model_validate(data)
 
-    async def download(self, file_id: FileId) -> bytes:
-        return await self._client.download_file(f"/entity-files/download/{file_id}", v1=True)
+    async def download(
+        self,
+        file_id: FileId,
+        *,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
+    ) -> bytes:
+        return await self._client.download_file(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
+        )
 
     def download_stream(
         self,
@@ -1586,12 +1616,16 @@ class AsyncEntityFileService:
         *,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> AsyncIterator[bytes]:
         return self._client.stream_download(
             f"/entity-files/download/{file_id}",
             v1=True,
             chunk_size=chunk_size,
             on_progress=on_progress,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
         )
 
     async def download_to(
@@ -1602,6 +1636,8 @@ class AsyncEntityFileService:
         overwrite: bool = False,
         chunk_size: int = 65_536,
         on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> Path:
         target = Path(path)
         if target.exists() and not overwrite:
@@ -1612,6 +1648,8 @@ class AsyncEntityFileService:
                 file_id,
                 chunk_size=chunk_size,
                 on_progress=on_progress,
+                timeout=timeout,
+                deadline_seconds=deadline_seconds,
             ):
                 f.write(chunk)
 

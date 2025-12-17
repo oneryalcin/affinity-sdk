@@ -268,11 +268,21 @@ with Affinity(api_key="your-key") as client:
     content = client.files.download(FileId(123))
 
     # Stream download (for progress bars / piping / large files)
-    for chunk in client.files.download_stream(FileId(123), chunk_size=64_000):
+    for chunk in client.files.download_stream(
+        FileId(123),
+        chunk_size=64_000,
+        timeout=60.0,          # per-call request timeout override (seconds)
+        deadline_seconds=300,  # total time budget (includes retries/backoff)
+    ):
         ...
 
     # Download to disk
-    saved_path = client.files.download_to(FileId(123), "report.pdf", overwrite=False)
+    saved_path = client.files.download_to(
+        FileId(123),
+        "report.pdf",
+        overwrite=False,
+        deadline_seconds=300,
+    )
 
     # Upload (multipart form data)
     client.files.upload(

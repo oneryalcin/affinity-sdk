@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from base64 import b64encode
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 
 from affinity.clients.http import ClientConfig, HTTPClient
+from affinity.exceptions import TimeoutError
 from affinity.services.v1_only import EntityFileService
 from affinity.types import FileId
 
@@ -150,5 +153,100 @@ def test_entity_file_download_to_writes_path(tmp_path: Path) -> None:
 
         files.download_to(FileId(5), dest, overwrite=True)
         assert dest.read_bytes() == b"abc"
+    finally:
+        http.close()
+
+
+def test_entity_file_download_stream_forwards_timeout_to_httpx_stream() -> None:
+    seen_timeouts: list[object] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://v1.example/entity-files/download/5"
+        ):
+            return httpx.Response(
+                302,
+                headers={"Location": "https://files.example/content.bin"},
+                request=request,
+            )
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://files.example/content.bin"
+        ):
+            return httpx.Response(200, content=b"ok", request=request)
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        orig_stream = http._client.stream
+
+        def stream_wrapper(method: str, url: str, **kwargs: object) -> object:
+            seen_timeouts.append(kwargs.get("timeout"))
+            return orig_stream(method, url, **kwargs)
+
+        http._client.stream = stream_wrapper  # type: ignore[method-assign]
+
+        files = EntityFileService(http)
+        assert b"".join(files.download_stream(FileId(5), timeout=1.23)) == b"ok"
+        assert 1.23 in seen_timeouts
+    finally:
+        http.close()
+
+
+def test_entity_file_download_stream_deadline_seconds_enforced(monkeypatch: Any) -> None:
+    t = {"now": 0.0}
+    monkeypatch.setattr("affinity.clients.http.time.monotonic", lambda: t["now"])
+
+    class TwoChunkStream(httpx.SyncByteStream):
+        def __init__(self, request: httpx.Request):
+            self._request = request
+
+        def __iter__(self) -> Iterator[bytes]:
+            yield b"a"
+            t["now"] = 1.0
+            yield b"b"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://v1.example/entity-files/download/5"
+        ):
+            return httpx.Response(
+                302,
+                headers={"Location": "https://files.example/content.bin"},
+                request=request,
+            )
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://files.example/content.bin"
+        ):
+            return httpx.Response(
+                200,
+                stream=TwoChunkStream(request),
+                headers={"Content-Length": "2"},
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        files = EntityFileService(http)
+        it = files.download_stream(FileId(5), chunk_size=1, deadline_seconds=0.1)
+        assert next(it) == b"a"
+        with pytest.raises(TimeoutError):
+            next(it)
     finally:
         http.close()
