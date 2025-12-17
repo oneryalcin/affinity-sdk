@@ -155,6 +155,90 @@ def _compute_backoff_seconds(attempt: int, *, base: float) -> float:
     return cast(float, jitter * max_delay)
 
 
+@dataclass(frozen=True, slots=True)
+class _RetryOutcome:
+    action: Literal["sleep", "break", "raise", "raise_wrapped"]
+    wait_time: float | None = None
+    last_error: Exception | None = None
+    log_message: str | None = None
+    wrapped_error: Exception | None = None
+
+
+def _retry_outcome(
+    *,
+    method: str,
+    attempt: int,
+    max_retries: int,
+    retry_delay: float,
+    error: Exception,
+) -> _RetryOutcome:
+    """
+    Decide whether to retry after an exception.
+
+    The caller is responsible for raising via `raise` (to preserve tracebacks) when
+    outcome.action == "raise", and for chaining `from error` when
+    outcome.action == "raise_wrapped".
+    """
+    if isinstance(error, RateLimitError):
+        if method not in _RETRYABLE_METHODS:
+            return _RetryOutcome(action="raise")
+        if attempt >= max_retries:
+            return _RetryOutcome(action="break", last_error=error)
+        wait_time = (
+            float(error.retry_after)
+            if error.retry_after is not None
+            else _compute_backoff_seconds(attempt, base=retry_delay)
+        )
+        return _RetryOutcome(
+            action="sleep",
+            wait_time=wait_time,
+            last_error=error,
+            log_message=f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})",
+        )
+
+    if isinstance(error, AffinityError):
+        status = error.status_code
+        if method not in _RETRYABLE_METHODS or status is None or status < 500 or status >= 600:
+            return _RetryOutcome(action="raise")
+        if attempt >= max_retries:
+            return _RetryOutcome(action="break", last_error=error)
+        wait_time = _compute_backoff_seconds(attempt, base=retry_delay)
+        return _RetryOutcome(
+            action="sleep",
+            wait_time=wait_time,
+            last_error=error,
+            log_message=f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})",
+        )
+
+    if isinstance(error, httpx.TimeoutException):
+        if method not in _RETRYABLE_METHODS:
+            return _RetryOutcome(
+                action="raise_wrapped",
+                wrapped_error=TimeoutError(f"Request timed out: {error}"),
+            )
+        if attempt >= max_retries:
+            timeout_error = TimeoutError(f"Request timed out: {error}")
+            timeout_error.__cause__ = error
+            return _RetryOutcome(action="break", last_error=timeout_error)
+        wait_time = _compute_backoff_seconds(attempt, base=retry_delay)
+        return _RetryOutcome(action="sleep", wait_time=wait_time, last_error=error)
+
+    if isinstance(error, httpx.NetworkError):
+        if method not in _RETRYABLE_METHODS:
+            return _RetryOutcome(
+                action="raise_wrapped",
+                wrapped_error=NetworkError(f"Network error: {error}"),
+            )
+        if attempt >= max_retries:
+            network_error = NetworkError(f"Network error: {error}")
+            network_error.__cause__ = error
+            return _RetryOutcome(action="break", last_error=network_error)
+        wait_time = _compute_backoff_seconds(attempt, base=retry_delay)
+        return _RetryOutcome(action="sleep", wait_time=wait_time, last_error=error)
+
+    return _RetryOutcome(action="raise")
+
+
 def _parse_retry_after(value: str) -> int | None:
     """
     Parse `Retry-After` header per RFC7231.
@@ -876,61 +960,29 @@ class HTTPClient:
                     v1=v1,
                 )
 
-            except RateLimitError as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise
-                if attempt >= self._config.max_retries:
-                    break
-                wait_time = (
-                    float(e.retry_after)
-                    if e.retry_after is not None
-                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+            except (RateLimitError, AffinityError, httpx.TimeoutException, httpx.NetworkError) as e:
+                outcome = _retry_outcome(
+                    method=method,
+                    attempt=attempt,
+                    max_retries=self._config.max_retries,
+                    retry_delay=self._config.retry_delay,
+                    error=e,
                 )
-                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
-                time.sleep(wait_time)
-
-            except AffinityError as e:
-                last_error = e
-                status = e.status_code
-                if (
-                    method not in _RETRYABLE_METHODS
-                    or status is None
-                    or status < 500
-                    or status >= 600
-                ):
+                if outcome.action == "raise":
                     raise
-                if attempt >= self._config.max_retries:
-                    break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                logger.warning(
-                    f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
-                )
-                time.sleep(wait_time)
+                if outcome.action == "raise_wrapped":
+                    assert outcome.wrapped_error is not None
+                    raise outcome.wrapped_error from e
 
-            except httpx.TimeoutException as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise TimeoutError(f"Request timed out: {e}") from e
-                if attempt >= self._config.max_retries:
-                    timeout_error = TimeoutError(f"Request timed out: {e}")
-                    timeout_error.__cause__ = e
-                    last_error = timeout_error
+                assert outcome.last_error is not None
+                last_error = outcome.last_error
+                if outcome.action == "break":
                     break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                time.sleep(wait_time)
 
-            except httpx.NetworkError as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise NetworkError(f"Network error: {e}") from e
-                if attempt >= self._config.max_retries:
-                    network_error = NetworkError(f"Network error: {e}")
-                    network_error.__cause__ = e
-                    last_error = network_error
-                    break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                time.sleep(wait_time)
+                assert outcome.wait_time is not None
+                if outcome.log_message:
+                    logger.warning(outcome.log_message)
+                time.sleep(outcome.wait_time)
 
         # Exhausted retries
         if last_error:
@@ -1591,61 +1643,29 @@ class AsyncHTTPClient:
                     v1=v1,
                 )
 
-            except RateLimitError as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise
-                if attempt >= self._config.max_retries:
-                    break
-                wait_time = (
-                    float(e.retry_after)
-                    if e.retry_after is not None
-                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+            except (RateLimitError, AffinityError, httpx.TimeoutException, httpx.NetworkError) as e:
+                outcome = _retry_outcome(
+                    method=method,
+                    attempt=attempt,
+                    max_retries=self._config.max_retries,
+                    retry_delay=self._config.retry_delay,
+                    error=e,
                 )
-                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
-                await asyncio.sleep(wait_time)
-
-            except AffinityError as e:
-                last_error = e
-                status = e.status_code
-                if (
-                    method not in _RETRYABLE_METHODS
-                    or status is None
-                    or status < 500
-                    or status >= 600
-                ):
+                if outcome.action == "raise":
                     raise
-                if attempt >= self._config.max_retries:
-                    break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                logger.warning(
-                    f"Server error {status}, waiting {wait_time}s (attempt {attempt + 1})"
-                )
-                await asyncio.sleep(wait_time)
+                if outcome.action == "raise_wrapped":
+                    assert outcome.wrapped_error is not None
+                    raise outcome.wrapped_error from e
 
-            except httpx.TimeoutException as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise TimeoutError(f"Request timed out: {e}") from e
-                if attempt >= self._config.max_retries:
-                    timeout_error = TimeoutError(f"Request timed out: {e}")
-                    timeout_error.__cause__ = e
-                    last_error = timeout_error
+                assert outcome.last_error is not None
+                last_error = outcome.last_error
+                if outcome.action == "break":
                     break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                await asyncio.sleep(wait_time)
 
-            except httpx.NetworkError as e:
-                last_error = e
-                if method not in _RETRYABLE_METHODS:
-                    raise NetworkError(f"Network error: {e}") from e
-                if attempt >= self._config.max_retries:
-                    network_error = NetworkError(f"Network error: {e}")
-                    network_error.__cause__ = e
-                    last_error = network_error
-                    break
-                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
-                await asyncio.sleep(wait_time)
+                assert outcome.wait_time is not None
+                if outcome.log_message:
+                    logger.warning(outcome.log_message)
+                await asyncio.sleep(outcome.wait_time)
 
         if last_error:
             raise last_error
