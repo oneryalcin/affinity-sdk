@@ -1,0 +1,12 @@
+{
+  "type": "organization.created",
+  "body": {
+    "id": 64779194,
+    "name": "Example Org",
+    "domain": "example.com",
+    "domains": ["example.com"],
+    "crunchbase_uuid": null,
+    "global": true
+  },
+  "sent_at": 1636645351
+}

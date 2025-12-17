@@ -1,0 +1,7 @@
+{
+  "type": "made.up",
+  "body": {
+    "hello": "world"
+  },
+  "sent_at": 1
+}

@@ -1,0 +1,13 @@
+{
+  "type": "person.created",
+  "body": {
+    "id": 38706,
+    "type": 0,
+    "first_name": "John",
+    "last_name": "Doe",
+    "primary_email": "john@example.com",
+    "emails": [],
+    "organization_ids": []
+  },
+  "sent_at": 1636645209
+}

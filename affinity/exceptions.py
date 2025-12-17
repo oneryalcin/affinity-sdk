@@ -443,3 +443,40 @@ def error_from_response(
         response_body=response_body,
         diagnostics=diagnostics,
     )
+
+
+# =============================================================================
+# Webhook parsing errors (inbound webhook helpers)
+# =============================================================================
+
+
+class WebhookParseError(AffinityError):
+    """Base error for inbound webhook parsing/validation failures."""
+
+    pass
+
+
+class WebhookInvalidJsonError(WebhookParseError):
+    """Raised when a webhook payload cannot be decoded as JSON."""
+
+    pass
+
+
+class WebhookInvalidPayloadError(WebhookParseError):
+    """Raised when a decoded webhook payload is not in the expected envelope shape."""
+
+    pass
+
+
+class WebhookMissingKeyError(WebhookParseError):
+    """Raised when a webhook payload is missing a required key."""
+
+    def __init__(self, message: str, *, key: str):
+        super().__init__(message)
+        self.key = key
+
+
+class WebhookInvalidSentAtError(WebhookParseError):
+    """Raised when a webhook `sent_at` field is missing or invalid."""
+
+    pass

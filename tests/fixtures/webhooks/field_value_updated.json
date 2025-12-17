@@ -1,0 +1,26 @@
+{
+  "type": "field_value.updated",
+  "body": {
+    "id": 250616,
+    "field_id": 337,
+    "list_entry_id": null,
+    "entity_type": 0,
+    "value_type": 0,
+    "entity_id": 91407761,
+    "value": {
+      "city": "San Francisco",
+      "state": "California",
+      "country": "United States"
+    },
+    "field": {
+      "id": 318500,
+      "name": "Location",
+      "list_id": null,
+      "value_type": 5,
+      "allows_multiple": false,
+      "track_changes": false,
+      "dropdown_options": []
+    }
+  },
+  "sent_at": 1636635565
+}

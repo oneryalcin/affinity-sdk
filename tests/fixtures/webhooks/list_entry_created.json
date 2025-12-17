@@ -1,0 +1,20 @@
+{
+  "type": "list_entry.created",
+  "body": {
+    "id": 16367,
+    "list_id": 450,
+    "creator_id": 38706,
+    "entity_id": 287125,
+    "entity_type": 1,
+    "created_at": "2021-11-11 06:58:31 -0800",
+    "entity": {
+      "id": 84547971,
+      "type": 1,
+      "first_name": "John",
+      "last_name": "Doe",
+      "primary_email": "jdoe@example.com",
+      "emails": ["jdoe@example.com", "jdoe2@example.com"]
+    }
+  },
+  "sent_at": 1636642712
+}

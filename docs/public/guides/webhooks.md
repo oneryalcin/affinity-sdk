@@ -35,13 +35,31 @@ If you do not have a signature mechanism, treat the webhook endpoint like a publ
 - **Use HTTPS only** (terminate TLS at a load balancer/reverse proxy if needed).
 - **Use an unguessable URL** (include a random secret in the path) and reject requests missing it.
 - **Validate method/content-type** and parse JSON defensively.
+- **Optionally enforce a replay window** using `sent_at` (e.g., reject events older than N seconds).
 - **Respond fast** (2xx) and enqueue work; assume retries can happen.
 - **Avoid logging raw payloads** unless you have a PII-safe pipeline.
+
+## Parse inbound payloads (optional)
+
+The SDK includes small, framework-agnostic helpers to parse the webhook envelope and (optionally) dispatch to a typed body for a few common events.
+
+```python
+from affinity import dispatch_webhook, parse_webhook
+from affinity.types import WebhookEvent
+
+envelope = parse_webhook(raw_body_bytes)  # or raw str / dict
+event = dispatch_webhook(envelope)  # typed for some events, dict otherwise
+
+if event.type == WebhookEvent.LIST_ENTRY_CREATED:
+    # event.body may be typed (or a dict, depending on the event)
+    print(event.sent_at, event.body)
+```
 
 ## Minimal receiver example (FastAPI)
 
 ```python
 from fastapi import FastAPI, HTTPException, Request
+from affinity import dispatch_webhook, parse_webhook
 
 app = FastAPI()
 
@@ -53,7 +71,9 @@ async def affinity_webhook(secret: str, request: Request) -> dict[str, str]:
     if secret != WEBHOOK_SECRET:
         raise HTTPException(status_code=401, detail="invalid secret")
 
-    payload = await request.json()
-    # Process `payload` (shape is defined by Affinity)
+    raw = await request.body()
+    envelope = parse_webhook(raw)
+    event = dispatch_webhook(envelope)
+    # Process `event` (shape is defined by Affinity)
     return {"ok": "true"}
 ```

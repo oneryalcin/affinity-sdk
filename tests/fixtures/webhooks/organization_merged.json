@@ -1,0 +1,31 @@
+{
+  "type": "organization.merged",
+  "body": {
+    "changer": {
+      "id": 38706,
+      "type": 1,
+      "first_name": "John",
+      "last_name": "Doe",
+      "primary_email": "john@example.com",
+      "emails": []
+    },
+    "removed_company": {
+      "id": 64779194,
+      "name": "Example Org A",
+      "domain": "example.com",
+      "domains": ["example.com"],
+      "crunchbase_uuid": null,
+      "global": true
+    },
+    "company": {
+      "id": 64779195,
+      "name": "Example Org B",
+      "domain": "example.com",
+      "domains": ["example.com"],
+      "crunchbase_uuid": null,
+      "global": false
+    },
+    "merged_at": "2021-11-15 13:45:16 -0800"
+  },
+  "sent_at": 1637012717
+}

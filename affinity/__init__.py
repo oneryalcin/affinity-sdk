@@ -58,10 +58,18 @@ from .exceptions import (
     TimeoutError,
     ValidationError,
     VersionCompatibilityError,
+    WebhookInvalidJsonError,
+    WebhookInvalidPayloadError,
+    WebhookInvalidSentAtError,
+    WebhookMissingKeyError,
+    WebhookParseError,
 )
 
 # Filter builder (FR-007)
 from .filters import F, Filter, FilterExpression
+
+# Inbound webhook parsing helpers (optional)
+from .inbound_webhooks import BodyRegistry, WebhookEnvelope, dispatch_webhook, parse_webhook
 
 __version__ = "0.2.0"
 
@@ -90,10 +98,20 @@ __all__ = [
     "TimeoutError",
     "NetworkError",
     "VersionCompatibilityError",
+    "WebhookParseError",
+    "WebhookInvalidJsonError",
+    "WebhookInvalidPayloadError",
+    "WebhookMissingKeyError",
+    "WebhookInvalidSentAtError",
     # Filter builder
     "Filter",
     "FilterExpression",
     "F",
+    # Inbound webhooks
+    "WebhookEnvelope",
+    "parse_webhook",
+    "dispatch_webhook",
+    "BodyRegistry",
     # Type aliases (re-exported for convenience)
     "types",
     "models",
