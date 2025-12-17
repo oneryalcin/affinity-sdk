@@ -28,4 +28,22 @@ async def main() -> None:
 ## Parity
 
 `AsyncAffinity` currently exposes a smaller service surface area than `Affinity`.
-If you need a V1-only service (notes, reminders, webhooks, etc.), use the sync client or contribute async support.
+
+| Service | Sync (`Affinity`) | Async (`AsyncAffinity`) |
+|---|:---:|:---:|
+| companies | ✅ | ✅ |
+| persons | ✅ | ✅ |
+| lists | ✅ | ✅ |
+| opportunities | ✅ | ✅ |
+| tasks | ✅ | ✅ |
+| notes | ✅ | ❌ |
+| reminders | ✅ | ❌ |
+| webhooks | ✅ | ❌ |
+| interactions | ✅ | ❌ |
+| fields | ✅ | ❌ |
+| field_values | ✅ | ❌ |
+| files | ✅ | ❌ |
+| relationships | ✅ | ❌ |
+| auth | ✅ | ❌ |
+
+If you need a sync-only service today, use `Affinity` (sync) or contribute async support.

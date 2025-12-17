@@ -29,6 +29,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[docs]"
 
+      - name: Smoke import
+        run: |
+          python -c "import affinity; print(affinity.__version__)"
+
       - name: Build
         run: |
           mkdocs build -s
@@ -58,6 +62,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[docs]"
+
+      - name: Smoke import
+        run: |
+          python -c "import affinity; print(affinity.__version__)"
 
       - name: Configure git
         run: |

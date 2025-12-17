@@ -30,11 +30,17 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Examples: examples.md
+  - Changelog: changelog.md
   - Guides:
       - Authentication: guides/authentication.md
+      - Configuration: guides/configuration.md
+      - V1 vs V2 routing: guides/v1-v2-routing.md
       - Pagination: guides/pagination.md
       - Errors & retries: guides/errors-and-retries.md
+      - Rate limits: guides/rate-limits.md
       - Filtering: guides/filtering.md
+      - Field types & values: guides/field-types-and-values.md
       - IDs & types: guides/ids-and-types.md
       - Sync vs async: guides/sync-vs-async.md
       - Debugging hooks: guides/debugging-hooks.md
@@ -60,4 +66,3 @@ nav:
               - Files: reference/services/v1/files.md
               - Relationships: reference/services/v1/relationships.md
               - Auth: reference/services/v1/auth.md
-  - Changelog: changelog.md
