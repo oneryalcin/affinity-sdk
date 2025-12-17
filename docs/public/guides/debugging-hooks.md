@@ -14,3 +14,9 @@ def on_response(res) -> None:
 with Affinity(api_key="your-key", on_request=on_request, on_response=on_response) as client:
     client.companies.list()
 ```
+
+## Next steps
+
+- [Configuration](configuration.md)
+- [Troubleshooting](../troubleshooting.md)
+- [Errors & retries](errors-and-retries.md)

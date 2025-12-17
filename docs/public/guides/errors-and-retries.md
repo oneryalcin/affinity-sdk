@@ -49,3 +49,10 @@ except AffinityError as e:
 ## Rate limits
 
 If you are consistently hitting 429s, see [Rate limits](rate-limits.md) for strategies and the rate limit APIs.
+
+## Next steps
+
+- [Rate limits](rate-limits.md)
+- [Troubleshooting](../troubleshooting.md)
+- [Configuration](configuration.md)
+- [Exceptions reference](../reference/exceptions.md)

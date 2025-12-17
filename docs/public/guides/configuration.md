@@ -101,3 +101,10 @@ See also:
 
 - [V1 vs V2 routing](v1-v2-routing.md)
 - [Errors & retries](errors-and-retries.md)
+
+## Next steps
+
+- [Getting started](../getting-started.md)
+- [Debugging hooks](debugging-hooks.md)
+- [Rate limits](rate-limits.md)
+- [API reference](../reference/client.md)

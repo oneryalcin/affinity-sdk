@@ -24,3 +24,9 @@ Suggested steps:
 
 1. Check your API key’s “Default API Version” in the Affinity dashboard.
 2. Set `expected_v2_version=...` if you want that mismatch called out in errors.
+
+## Next steps
+
+- [Configuration](configuration.md)
+- [Sync vs async](sync-vs-async.md)
+- [Errors & retries](errors-and-retries.md)

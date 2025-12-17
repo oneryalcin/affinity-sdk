@@ -37,6 +37,15 @@ jobs:
         run: |
           mkdocs build -s
 
+      - name: Check internal links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --exclude '^https?://'
+            --exclude '^mailto:'
+            site/
+
   deploy:
     runs-on: ubuntu-latest
     needs: build

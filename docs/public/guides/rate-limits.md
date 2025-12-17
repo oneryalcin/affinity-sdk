@@ -26,3 +26,9 @@ with Affinity(api_key="your-key") as client:
 
 When the API returns 429, the SDK raises `RateLimitError` (and may retry safe methods).
 See [Errors & retries](errors-and-retries.md).
+
+## Next steps
+
+- [Errors & retries](errors-and-retries.md)
+- [Configuration](configuration.md)
+- [Troubleshooting](../troubleshooting.md)

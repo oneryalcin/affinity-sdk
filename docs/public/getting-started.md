@@ -65,6 +65,11 @@ except RateLimitError as e:
     print(f"Rate limited. Retry after: {e.retry_after}")
 ```
 
+!!! warning "SDK-specific gotchas"
+    - Use typed IDs (e.g., `CompanyId(123)`) instead of raw integers.
+    - Entity `fields` are only present when requested; check `entity.fields.requested`.
+    - Some write operations still route to V1; see the V1 vs V2 routing guide.
+
 ## Sync vs async
 
 - Use `Affinity` for synchronous code.

@@ -8,6 +8,8 @@ A modern, strongly-typed Python wrapper for the Affinity CRM API.
 pip install affinity-sdk
 ```
 
+Requires Python 3.10+.
+
 ## Quickstart
 
 ```python

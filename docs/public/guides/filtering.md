@@ -13,3 +13,10 @@ with Affinity(api_key="your-key") as client:
     for c in companies.data:
         print(c.name)
 ```
+
+## Next steps
+
+- [Pagination](pagination.md)
+- [Field types & values](field-types-and-values.md)
+- [Examples](../examples.md)
+- [Filters reference](../reference/filters.md)

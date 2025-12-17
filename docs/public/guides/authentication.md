@@ -19,3 +19,11 @@ from affinity import Affinity
 
 client = Affinity.from_env()
 ```
+
+## Next steps
+
+- [Getting started](../getting-started.md)
+- [Configuration](configuration.md)
+- [Examples](../examples.md)
+- [Errors & retries](errors-and-retries.md)
+- [API reference](../reference/client.md)

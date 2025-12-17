@@ -41,14 +41,16 @@ nav:
       - Rate limits: guides/rate-limits.md
       - Filtering: guides/filtering.md
       - Field types & values: guides/field-types-and-values.md
+      - Models: guides/models.md
       - IDs & types: guides/ids-and-types.md
       - Sync vs async: guides/sync-vs-async.md
       - Debugging hooks: guides/debugging-hooks.md
-      - Troubleshooting: troubleshooting.md
+  - Troubleshooting: troubleshooting.md
   - Reference:
       - Client: reference/client.md
       - Exceptions: reference/exceptions.md
       - Types: reference/types.md
+      - Filters: reference/filters.md
       - Models: reference/models.md
       - Services:
           - Companies: reference/services/companies.md

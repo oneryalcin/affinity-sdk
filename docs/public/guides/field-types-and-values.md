@@ -44,3 +44,9 @@ Entities expose a `fields` container that preserves whether the API returned fie
 
 - `entity.fields.requested == False`: you didn’t request fields (or the API omitted them)
 - `entity.fields.requested == True`: field data was requested and returned (possibly empty)
+
+## Next steps
+
+- [Filtering](filtering.md)
+- [Models](models.md)
+- [Types reference](../reference/types.md)

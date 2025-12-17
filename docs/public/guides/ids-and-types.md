@@ -12,3 +12,10 @@ with Affinity(api_key="your-key") as client:
 ```
 
 See `reference/types.md`.
+
+## Next steps
+
+- [Field types & values](field-types-and-values.md)
+- [Models](models.md)
+- [Examples](../examples.md)
+- [Types reference](../reference/types.md)
