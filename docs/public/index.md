@@ -12,15 +12,16 @@ pip install affinity-sdk
 
 ```python
 from affinity import Affinity
-from affinity.types import FieldType
 
 with Affinity(api_key="your-api-key") as client:
-    for company in client.companies.all(field_types=[FieldType.ENRICHED]):
-        print(company.name)
+    me = client.auth.whoami()
+    print(me.user.email)
 ```
 
 ## Next steps
 
 - [Getting started](getting-started.md)
+- [Examples](examples.md)
+- [Troubleshooting](troubleshooting.md)
 - [Guides](guides/authentication.md)
 - [API reference](reference/client.md)
