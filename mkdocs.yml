@@ -24,6 +24,8 @@ plugins:
 markdown_extensions:
   - admonition
   - fenced_code
+  - pymdownx.details
+  - pymdownx.superfences
   - toc:
       permalink: true
 

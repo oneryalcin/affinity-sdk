@@ -1,4 +1,11 @@
-# V1 vs V2 routing
+# API versions & SDK routing
+
+??? info "Quick glossary"
+    - **V1 API**: legacy endpoints at `https://api.affinity.co`
+    - **V2 API**: newer endpoints at `https://api.affinity.co/v2`
+    - **V2 API version**: dated versions like `2024-01-01` within V2 (configured in Affinity)
+    - **Default API Version**: your Affinity setting that selects the V2 version
+    - **Beta endpoints**: newer V2 endpoints that require opt-in
 
 The SDK prefers V2 endpoints where available and falls back to V1 for operations not yet supported in V2.
 
@@ -24,6 +31,12 @@ Suggested steps:
 
 1. Check your API key’s “Default API Version” in the Affinity dashboard.
 2. Set `expected_v2_version=...` if you want that mismatch called out in errors.
+
+References:
+
+- V1 docs: https://api-docs.affinity.co/
+- V2 portal: https://developer.affinity.co/
+- V2 versioning: https://developer.affinity.co/#section/Getting-Started/Versioning
 
 ## Next steps
 

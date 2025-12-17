@@ -325,7 +325,7 @@ class VersionCompatibilityError(AffinityError):
     Guidance:
     1. Check your API key's v2 Default API Version in the Affinity dashboard
     2. Ensure it matches the expected_v2_version configured in the SDK
-    3. See: https://developer.affinity.co/docs/versioning
+    3. See: https://developer.affinity.co/#section/Getting-Started/Versioning
     """
 
     def __init__(
