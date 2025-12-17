@@ -63,7 +63,7 @@ from .exceptions import (
 # Filter builder (FR-007)
 from .filters import F, Filter, FilterExpression
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 _logger = logging.getLogger("affinity_sdk")
 if not any(isinstance(h, logging.NullHandler) for h in _logger.handlers):
