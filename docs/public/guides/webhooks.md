@@ -39,6 +39,41 @@ If you do not have a signature mechanism, treat the webhook endpoint like a publ
 - **Respond fast** (2xx) and enqueue work; assume retries can happen.
 - **Avoid logging raw payloads** unless you have a PII-safe pipeline.
 
+## Defense in depth (recommended)
+
+Even with a secret URL path, you should assume the endpoint can become discoverable (logs, referrers, misconfiguration, shared links). Add additional layers:
+
+### IP allowlisting (when possible)
+
+- If Affinity provides stable egress IP ranges for webhook delivery, enforce them at your load balancer / WAF.
+- If Affinity does not publish IP ranges for your account, you can still:
+  - restrict by geography/ASN where appropriate,
+  - alert on unexpected source IPs,
+  - rate-limit and apply bot protections at the edge.
+
+### Signature verification (when available)
+
+If your Affinity account includes a signature header, validate it before parsing the body.
+
+The exact header names and signing scheme are account/tenant-specific; follow Affinity’s documentation. A common pattern is HMAC over `(timestamp + "." + raw_body)`:
+
+```python
+import hmac
+import hashlib
+
+def verify_hmac_signature(*, secret: bytes, timestamp: str, raw_body: bytes, signature: str) -> bool:
+    signed = timestamp.encode("utf-8") + b"." + raw_body
+    expected = hmac.new(secret, signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+### Replay protection
+
+Even with signatures, protect against replay:
+
+- Enforce a timestamp window (e.g., reject events where `sent_at` is older than N seconds).
+- Optionally store a short-lived dedupe key (e.g., `(type, sent_at, sha256(body))`) for a few minutes and reject repeats.
+
 ## Parse inbound payloads (optional)
 
 The SDK includes small, framework-agnostic helpers to parse the webhook envelope and (optionally) dispatch to a typed body for a few common events.
