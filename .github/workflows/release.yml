@@ -1,0 +1,178 @@
+name: Release (PyPI)
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target (manual runs only)"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - testpypi
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      version_tag: ${{ steps.meta.outputs.version_tag }}
+      publish_target: ${{ steps.meta.outputs.publish_target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine publish target
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # For tag pushes, always publish to PyPI.
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "publish_target=pypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != v* ]]; then
+              echo "Expected tag to start with 'v' (got: ${GITHUB_REF_NAME})" >&2
+              exit 1
+            fi
+            echo "version_tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require tag ref for publishing
+        if: ${{ steps.meta.outputs.publish_target == 'pypi' && github.ref_type != 'tag' }}
+        shell: bash
+        run: |
+          echo "Publishing requires running the workflow on a tag ref (vX.Y.Z)." >&2
+          exit 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate tag matches pyproject version
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYPROJECT_VERSION="$(python -c "import tomllib, pathlib; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text()); print(d['project']['version'])")"
+          TAG_VERSION="${{ steps.meta.outputs.version_tag }}"
+          if [[ "${PYPROJECT_VERSION}" != "${TAG_VERSION}" ]]; then
+            echo "Version mismatch: pyproject.toml=${PYPROJECT_VERSION} tag=${TAG_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Validate tag is on main
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff format --check .
+          ruff check .
+
+      - name: Type check
+        run: |
+          mypy affinity
+
+      - name: Test
+        run: |
+          pytest
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ needs.validate.outputs.tag_name }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [validate, build]
+    if: ${{ needs.validate.outputs.publish_target != 'none' }}
+    environment: ${{ needs.validate.outputs.publish_target }}
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate.outputs.tag_name }}
+          path: dist/
+
+      - name: Publish to PyPI (trusted publishing)
+        if: ${{ needs.validate.outputs.publish_target == 'pypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+
+      - name: Publish to TestPyPI (trusted publishing)
+        if: ${{ needs.validate.outputs.publish_target == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
