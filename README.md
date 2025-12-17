@@ -454,7 +454,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Async support currently covers core read flows (`companies`, `persons`, `lists`, `opportunities`) plus `tasks`. V1-only services (notes, reminders, webhooks, etc.) are sync-only.
+Async support mirrors the sync client surface area (including V1-only services like notes/reminders/webhooks/files).
 
 If you don't use `async with`, make sure to `await client.close()` (e.g., in a `finally`) to avoid leaking connections.
 

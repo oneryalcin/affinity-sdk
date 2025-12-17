@@ -25,6 +25,15 @@ from .services.opportunities import AsyncOpportunityService, OpportunityService
 from .services.persons import AsyncPersonService, PersonService
 from .services.tasks import AsyncTaskService, TaskService
 from .services.v1_only import (
+    AsyncAuthService,
+    AsyncEntityFileService,
+    AsyncFieldService,
+    AsyncFieldValueService,
+    AsyncInteractionService,
+    AsyncNoteService,
+    AsyncRelationshipStrengthService,
+    AsyncReminderService,
+    AsyncWebhookService,
     AuthService,
     EntityFileService,
     FieldService,
@@ -444,6 +453,15 @@ class AsyncAffinity:
         self._opportunities: AsyncOpportunityService | None = None
         self._lists: AsyncListService | None = None
         self._tasks: AsyncTaskService | None = None
+        self._notes: AsyncNoteService | None = None
+        self._reminders: AsyncReminderService | None = None
+        self._webhooks: AsyncWebhookService | None = None
+        self._interactions: AsyncInteractionService | None = None
+        self._fields: AsyncFieldService | None = None
+        self._field_values: AsyncFieldValueService | None = None
+        self._files: AsyncEntityFileService | None = None
+        self._relationships: AsyncRelationshipStrengthService | None = None
+        self._auth: AsyncAuthService | None = None
 
     @classmethod
     def from_env(
@@ -503,6 +521,69 @@ class AsyncAffinity:
         if self._tasks is None:
             self._tasks = AsyncTaskService(self._http)
         return self._tasks
+
+    @property
+    def notes(self) -> AsyncNoteService:
+        """Note operations."""
+        if self._notes is None:
+            self._notes = AsyncNoteService(self._http)
+        return self._notes
+
+    @property
+    def reminders(self) -> AsyncReminderService:
+        """Reminder operations."""
+        if self._reminders is None:
+            self._reminders = AsyncReminderService(self._http)
+        return self._reminders
+
+    @property
+    def webhooks(self) -> AsyncWebhookService:
+        """Webhook subscription operations."""
+        if self._webhooks is None:
+            self._webhooks = AsyncWebhookService(self._http)
+        return self._webhooks
+
+    @property
+    def interactions(self) -> AsyncInteractionService:
+        """Interaction operations."""
+        if self._interactions is None:
+            self._interactions = AsyncInteractionService(self._http)
+        return self._interactions
+
+    @property
+    def fields(self) -> AsyncFieldService:
+        """Custom field operations."""
+        if self._fields is None:
+            self._fields = AsyncFieldService(self._http)
+        return self._fields
+
+    @property
+    def field_values(self) -> AsyncFieldValueService:
+        """Field value operations."""
+        if self._field_values is None:
+            self._field_values = AsyncFieldValueService(self._http)
+        return self._field_values
+
+    @property
+    def files(self) -> AsyncEntityFileService:
+        """Entity file operations."""
+        if self._files is None:
+            self._files = AsyncEntityFileService(self._http)
+        return self._files
+
+    @property
+    def relationships(self) -> AsyncRelationshipStrengthService:
+        """Relationship strength queries."""
+        if self._relationships is None:
+            self._relationships = AsyncRelationshipStrengthService(self._http)
+        return self._relationships
+
+    @property
+    def auth(self) -> AsyncAuthService:
+        """Authentication and rate limit info."""
+        if self._auth is None:
+            self._auth = AsyncAuthService(self._http)
+        return self._auth
 
     async def __aenter__(self) -> AsyncAffinity:
         """Enter an async context and return this client."""

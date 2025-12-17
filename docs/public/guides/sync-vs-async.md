@@ -27,7 +27,7 @@ async def main() -> None:
 
 ## Parity
 
-`AsyncAffinity` currently exposes a smaller service surface area than `Affinity`.
+`AsyncAffinity` mirrors the `Affinity` service surface area.
 
 | Service | Sync (`Affinity`) | Async (`AsyncAffinity`) |
 |---|:---:|:---:|
@@ -36,17 +36,15 @@ async def main() -> None:
 | lists | ✅ | ✅ |
 | opportunities | ✅ | ✅ |
 | tasks | ✅ | ✅ |
-| notes | ✅ | ❌ |
-| reminders | ✅ | ❌ |
-| webhooks | ✅ | ❌ |
-| interactions | ✅ | ❌ |
-| fields | ✅ | ❌ |
-| field_values | ✅ | ❌ |
-| files | ✅ | ❌ |
-| relationships | ✅ | ❌ |
-| auth | ✅ | ❌ |
-
-If you need a sync-only service today, use `Affinity` (sync) or contribute async support.
+| notes | ✅ | ✅ |
+| reminders | ✅ | ✅ |
+| webhooks | ✅ | ✅ |
+| interactions | ✅ | ✅ |
+| fields | ✅ | ✅ |
+| field_values | ✅ | ✅ |
+| files | ✅ | ✅ |
+| relationships | ✅ | ✅ |
+| auth | ✅ | ✅ |
 
 ## Next steps
 

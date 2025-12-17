@@ -18,7 +18,7 @@ import hashlib
 import logging
 import math
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -1684,6 +1684,361 @@ class AsyncHTTPClient:
         return await self._request_with_retry(
             "DELETE", url, v1=v1, params=_encode_query_params(params)
         )
+
+    async def upload_file(
+        self,
+        path: str,
+        *,
+        files: dict[str, Any],
+        data: dict[str, Any] | None = None,
+        v1: bool = False,
+    ) -> dict[str, Any]:
+        """Upload files with multipart form data."""
+        url = self._build_url(path, v1=v1)
+        client = await self._get_client()
+
+        headers = dict(client.headers)
+        headers.pop("Content-Type", None)
+        return await self._request_with_retry(
+            "POST",
+            url,
+            v1=v1,
+            files=files,
+            data=data,
+            headers=headers,
+        )
+
+    def _get_download_redirect_url(self, response: httpx.Response) -> str | None:
+        """Return the absolute redirect URL for a download response (if any)."""
+        location = response.headers.get("Location")
+        if not location:
+            return None
+
+        redirect_url = str(urljoin(str(response.url), location))
+        scheme = urlsplit(redirect_url).scheme.lower()
+        if scheme and scheme not in ("https", "http"):
+            raise UnsafeUrlError("Refusing to follow non-http(s) redirect", url=redirect_url)
+        if scheme == "http" and not self._config.allow_insecure_download_redirects:
+            raise UnsafeUrlError(
+                "Refusing to follow non-https redirect for download",
+                url=_redact_external_url(redirect_url),
+            )
+        return redirect_url
+
+    def _raise_for_status_with_diagnostics(
+        self,
+        response: httpx.Response,
+        *,
+        method: str,
+        url: str,
+        v1: bool,
+        external: bool = False,
+    ) -> None:
+        if response.status_code < 400:
+            return
+
+        try:
+            body: Any = response.json()
+        except Exception:
+            body = {"message": response.text}
+
+        retry_after = None
+        if response.status_code == 429:
+            header_value = response.headers.get("Retry-After")
+            if header_value is not None:
+                retry_after = _parse_retry_after(header_value)
+
+        selected_headers = _select_response_headers(response.headers)
+        request_id = _extract_request_id(selected_headers)
+        redacted_url = (
+            _redact_external_url(str(response.url))
+            if external
+            else _redact_url(url, self._config.api_key)
+        )
+        diagnostics = ErrorDiagnostics(
+            method=method,
+            url=redacted_url,
+            api_version="v1" if v1 else "v2",
+            base_url=self._config.v1_base_url if v1 else self._config.v2_base_url,
+            request_id=request_id,
+            http_version=response.http_version,
+            response_headers=selected_headers,
+            response_body_snippet=str(body)[:512].replace(self._config.api_key, "[REDACTED]"),
+        )
+        raise error_from_response(
+            response.status_code,
+            body,
+            retry_after=retry_after,
+            diagnostics=diagnostics,
+        )
+
+    async def _request_raw_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        v1: bool,
+        apply_auth: bool,
+        follow_redirects: bool,
+        external: bool,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        client = await self._get_client()
+        last_error: Exception | None = None
+
+        for attempt in range(self._config.max_retries + 1):
+            try:
+                request_kwargs = dict(kwargs)
+                request_kwargs["follow_redirects"] = follow_redirects
+                if apply_auth:
+                    request_kwargs = self._apply_auth(v1=v1, kwargs=request_kwargs)
+                else:
+                    headers = dict(request_kwargs.pop("headers", {}) or {})
+                    headers.pop("Authorization", None)
+                    request_kwargs["headers"] = headers
+                    request_kwargs.pop("auth", None)
+
+                response = await client.request(method, url, **request_kwargs)
+                self._rate_limit.update_from_headers(response.headers)
+                self._raise_for_status_with_diagnostics(
+                    response,
+                    method=method,
+                    url=url,
+                    v1=v1,
+                    external=external,
+                )
+                return response
+            except RateLimitError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS:
+                    raise
+                if attempt >= self._config.max_retries:
+                    break
+                wait_time = (
+                    float(e.retry_after)
+                    if e.retry_after is not None
+                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                )
+                await asyncio.sleep(wait_time)
+            except AffinityError as e:
+                last_error = e
+                status = e.status_code
+                if (
+                    method not in _RETRYABLE_METHODS
+                    or status is None
+                    or status < 500
+                    or status >= 600
+                ):
+                    raise
+                if attempt >= self._config.max_retries:
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+            except httpx.TimeoutException as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS:
+                    raise TimeoutError(f"Request timed out: {e}") from e
+                if attempt >= self._config.max_retries:
+                    timeout_error = TimeoutError(f"Request timed out: {e}")
+                    timeout_error.__cause__ = e
+                    last_error = timeout_error
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+            except httpx.NetworkError as e:
+                last_error = e
+                if method not in _RETRYABLE_METHODS:
+                    raise NetworkError(f"Network error: {e}") from e
+                if attempt >= self._config.max_retries:
+                    network_error = NetworkError(f"Network error: {e}")
+                    network_error.__cause__ = e
+                    last_error = network_error
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+
+        if last_error:
+            raise last_error
+        raise AffinityError("Request failed after retries")
+
+    async def download_file(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+    ) -> bytes:
+        """
+        Download file content.
+
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - Download traffic intentionally does not call request/response hooks to
+          avoid leaking signed URLs in logs.
+        """
+        chunks: list[bytes] = []
+        async for chunk in self.stream_download(path, v1=v1):
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    async def stream_download(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
+    ) -> AsyncIterator[bytes]:
+        """
+        Stream-download file content in chunks.
+
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - Download traffic intentionally does not call request/response hooks to
+          avoid leaking signed URLs in logs.
+        """
+        url = self._build_url(path, v1=v1)
+        response = await self._request_raw_with_retry(
+            "GET",
+            url,
+            v1=v1,
+            apply_auth=True,
+            follow_redirects=False,
+            external=False,
+        )
+
+        download_url = url
+        apply_auth = True
+        external = False
+        if response.is_redirect:
+            redirect_url = self._get_download_redirect_url(response)
+            if redirect_url is not None:
+                download_url = redirect_url
+                apply_auth = False
+                external = True
+
+        if (
+            urlsplit(download_url).scheme.lower() != "https"
+            and external
+            and not self._config.allow_insecure_download_redirects
+        ):
+            raise UnsafeUrlError(
+                "Refusing to download from non-https URL",
+                url=_redact_external_url(download_url),
+            )
+
+        client = await self._get_client()
+
+        yielded_any = False
+        last_error: Exception | None = None
+        current_url = download_url
+
+        for attempt in range(self._config.max_retries + 1):
+            try:
+                redirects_followed = 0
+                while True:
+                    if redirects_followed > _MAX_DOWNLOAD_REDIRECTS:
+                        raise AffinityError("Too many download redirects")
+
+                    stream_kwargs: dict[str, Any] = {"follow_redirects": False}
+                    if apply_auth:
+                        stream_kwargs = self._apply_auth(v1=v1, kwargs=stream_kwargs)
+                    else:
+                        stream_kwargs["headers"] = {"Accept": "*/*"}
+
+                    async with client.stream("GET", current_url, **stream_kwargs) as streamed:
+                        self._rate_limit.update_from_headers(streamed.headers)
+                        if streamed.is_redirect:
+                            next_url = self._get_download_redirect_url(streamed)
+                            if next_url is None:
+                                break
+                            current_url = next_url
+                            apply_auth = False
+                            external = True
+                            redirects_followed += 1
+                            continue
+
+                        if (
+                            urlsplit(str(streamed.url)).scheme.lower() != "https"
+                            and external
+                            and not self._config.allow_insecure_download_redirects
+                        ):
+                            raise UnsafeUrlError(
+                                "Refusing to download from non-https URL",
+                                url=_redact_external_url(str(streamed.url)),
+                            )
+
+                        self._raise_for_status_with_diagnostics(
+                            streamed,
+                            method="GET",
+                            url=current_url,
+                            v1=v1,
+                            external=external,
+                        )
+
+                        total: int | None = None
+                        if on_progress:
+                            raw_total = streamed.headers.get("Content-Length")
+                            if raw_total and raw_total.isdigit():
+                                total = int(raw_total)
+                            on_progress(0, total, phase="download")
+
+                        transferred = 0
+                        async for chunk in streamed.aiter_bytes(chunk_size=chunk_size):
+                            yielded_any = True
+                            transferred += len(chunk)
+                            if on_progress:
+                                on_progress(transferred, total, phase="download")
+                            yield chunk
+                        return
+            except RateLimitError as e:
+                last_error = e
+                if yielded_any:
+                    raise
+                if attempt >= self._config.max_retries:
+                    break
+                wait_time = (
+                    float(e.retry_after)
+                    if e.retry_after is not None
+                    else _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                )
+                await asyncio.sleep(wait_time)
+            except AffinityError as e:
+                last_error = e
+                status = e.status_code
+                if yielded_any or status is None or status < 500 or status >= 600:
+                    raise
+                if attempt >= self._config.max_retries:
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+            except httpx.TimeoutException as e:
+                last_error = e
+                if yielded_any:
+                    raise TimeoutError(f"Request timed out: {e}") from e
+                if attempt >= self._config.max_retries:
+                    timeout_error = TimeoutError(f"Request timed out: {e}")
+                    timeout_error.__cause__ = e
+                    last_error = timeout_error
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+            except httpx.NetworkError as e:
+                last_error = e
+                if yielded_any:
+                    raise NetworkError(f"Network error: {e}") from e
+                if attempt >= self._config.max_retries:
+                    network_error = NetworkError(f"Network error: {e}")
+                    network_error.__cause__ = e
+                    last_error = network_error
+                    break
+                wait_time = _compute_backoff_seconds(attempt, base=self._config.retry_delay)
+                await asyncio.sleep(wait_time)
+
+        if last_error:
+            raise last_error
+        raise AffinityError("Download failed after retries")
 
     def wrap_validation_error(
         self,

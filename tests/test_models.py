@@ -642,6 +642,26 @@ def test_async_client_exposes_core_entity_services() -> None:
     assert callable(client.opportunities.list)
     assert callable(client.opportunities.iter)
 
+    assert hasattr(client, "notes")
+    assert hasattr(client, "reminders")
+    assert hasattr(client, "webhooks")
+    assert hasattr(client, "interactions")
+    assert hasattr(client, "fields")
+    assert hasattr(client, "field_values")
+    assert hasattr(client, "files")
+    assert hasattr(client, "relationships")
+    assert hasattr(client, "auth")
+
+    assert callable(client.notes.list)
+    assert callable(client.reminders.list)
+    assert callable(client.webhooks.list)
+    assert callable(client.interactions.list)
+    assert callable(client.fields.list)
+    assert callable(client.field_values.list)
+    assert callable(client.files.list)
+    assert callable(client.relationships.get)
+    assert callable(client.auth.whoami)
+
 
 @pytest.mark.req("DX-001a")
 def test_service_tree_avoids_top_level_callable_entries() -> None:
