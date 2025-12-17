@@ -101,29 +101,37 @@ class PageIterator(Generic[T]):
         return self
 
     def __next__(self) -> T:
-        # If we have items in current page, return next
-        if self._index < len(self._current_page):
-            item = self._current_page[self._index]
-            self._index += 1
-            return item
+        while True:
+            # If we have items in current page, return next
+            if self._index < len(self._current_page):
+                item = self._current_page[self._index]
+                self._index += 1
+                return item
 
-        # Need to fetch next page
-        if self._exhausted:
-            raise StopIteration
+            # Need to fetch next page
+            if self._exhausted:
+                raise StopIteration
 
-        response = self._fetch_page(self._next_url)
-        self._current_page = list(response.data)
-        self._next_url = response.next_url
-        self._index = 0
+            requested_url = self._next_url
+            response = self._fetch_page(requested_url)
+            self._current_page = list(response.data)
+            self._next_url = response.next_url
+            self._index = 0
 
-        if not self._current_page:
-            self._exhausted = True
-            raise StopIteration
+            # Guard against pagination loops (no cursor progress).
+            if response.has_next and response.next_url == requested_url:
+                self._exhausted = True
 
-        if not response.has_next:
-            self._exhausted = True
+            # Empty pages can still legitimately include nextUrl; keep paging
+            # until we get data or the cursor is exhausted.
+            if not self._current_page:
+                if response.has_next and not self._exhausted:
+                    continue
+                self._exhausted = True
+                raise StopIteration
 
-        return self.__next__()
+            if not response.has_next:
+                self._exhausted = True
 
 
 class AsyncPageIterator(Generic[T]):
@@ -150,29 +158,37 @@ class AsyncPageIterator(Generic[T]):
         return self
 
     async def __anext__(self) -> T:
-        # If we have items in current page, return next
-        if self._index < len(self._current_page):
-            item = self._current_page[self._index]
-            self._index += 1
-            return item
+        while True:
+            # If we have items in current page, return next
+            if self._index < len(self._current_page):
+                item = self._current_page[self._index]
+                self._index += 1
+                return item
 
-        # Need to fetch next page
-        if self._exhausted:
-            raise StopAsyncIteration
+            # Need to fetch next page
+            if self._exhausted:
+                raise StopAsyncIteration
 
-        response = await self._fetch_page(self._next_url)
-        self._current_page = list(response.data)
-        self._next_url = response.next_url
-        self._index = 0
+            requested_url = self._next_url
+            response = await self._fetch_page(requested_url)
+            self._current_page = list(response.data)
+            self._next_url = response.next_url
+            self._index = 0
 
-        if not self._current_page:
-            self._exhausted = True
-            raise StopAsyncIteration
+            # Guard against pagination loops (no cursor progress).
+            if response.has_next and response.next_url == requested_url:
+                self._exhausted = True
 
-        if not response.has_next:
-            self._exhausted = True
+            # Empty pages can still legitimately include nextUrl; keep paging
+            # until we get data or the cursor is exhausted.
+            if not self._current_page:
+                if response.has_next and not self._exhausted:
+                    continue
+                self._exhausted = True
+                raise StopAsyncIteration
 
-        return await self.__anext__()
+            if not response.has_next:
+                self._exhausted = True
 
 
 # =============================================================================
