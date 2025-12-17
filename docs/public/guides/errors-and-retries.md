@@ -42,7 +42,7 @@ except AffinityError as e:
     print("Affinity error:", e)
     if e.diagnostics:
         print("Request:", e.diagnostics.method, e.diagnostics.url)
-        print("Status:", e.diagnostics.status_code)
+        print("Status:", e.status_code)
         print("Request ID:", e.diagnostics.request_id)
 ```
 

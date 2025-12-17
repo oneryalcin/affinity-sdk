@@ -16,6 +16,13 @@ with Affinity(api_key="your-key") as client:
         print(person.fields.data)
 ```
 
+Common values include:
+
+- `FieldType.ENRICHED`
+- `FieldType.GLOBAL`
+- `FieldType.LIST`
+- `FieldType.LIST_SPECIFIC`
+
 ## Field IDs
 
 If you know specific field IDs, you can request only those:

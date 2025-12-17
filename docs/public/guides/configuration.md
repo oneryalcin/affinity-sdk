@@ -2,6 +2,26 @@
 
 This guide documents the knobs exposed on `Affinity` / `AsyncAffinity`.
 
+## Load from environment
+
+```python
+from affinity import Affinity
+
+client = Affinity.from_env()
+```
+
+To load a local `.env` file, install the optional extra and set `load_dotenv=True`:
+
+```bash
+pip install "affinity-sdk[dotenv]"
+```
+
+```python
+from affinity import Affinity
+
+client = Affinity.from_env(load_dotenv=True)
+```
+
 ## Timeouts
 
 ```python
