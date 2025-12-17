@@ -214,7 +214,11 @@ class CompanyService:
         data = self._client.get(
             "/companies/fields",
             params=params or None,
-            cache_key=f"company_fields:{','.join(field_types or [])}",
+            cache_key=(
+                "company_fields:_all_"
+                if field_types is None
+                else f"company_fields:{','.join(field_types)}"
+            ),
             cache_ttl=300,
         )
 

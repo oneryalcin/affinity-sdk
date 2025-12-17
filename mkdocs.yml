@@ -39,6 +39,7 @@ nav:
   - Guides:
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
+      - Performance tuning: guides/performance.md
       - API versions & routing: guides/api-versions-and-routing.md
       - Pagination: guides/pagination.md
       - Errors & retries: guides/errors-and-retries.md
