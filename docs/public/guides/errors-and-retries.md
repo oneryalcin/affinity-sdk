@@ -15,6 +15,4 @@ except AffinityError as e:
     print("Affinity error:", e)
 ```
 
-See `reference/exceptions.md`.
-
-See also [Exceptions](../reference/exceptions.md).
+See [Exceptions](../reference/exceptions.md).

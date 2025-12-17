@@ -7,7 +7,7 @@ from affinity import Affinity
 
 with Affinity(api_key="your-api-key") as client:
     me = client.auth.whoami()
-    print(me.user_id)
+    print(me.user.email)
 ```
 
 ## Environment variables
