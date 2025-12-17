@@ -56,12 +56,12 @@ class TestFilterBuilder:
     @pytest.mark.req("FR-007")
     def test_starts_with(self) -> None:
         f = Filter.field("name").starts_with("A")
-        assert f.to_string() == 'name ^= "A"'
+        assert f.to_string() == 'name =^ "A"'
 
     @pytest.mark.req("FR-007")
     def test_ends_with(self) -> None:
         f = Filter.field("name").ends_with("Inc")
-        assert f.to_string() == 'name $= "Inc"'
+        assert f.to_string() == 'name =$ "Inc"'
 
     @pytest.mark.req("FR-007")
     def test_not_equals(self) -> None:
@@ -79,10 +79,10 @@ class TestFilterBuilder:
     @pytest.mark.req("FR-007")
     def test_null_check(self) -> None:
         f = Filter.field("email").is_null()
-        assert f.to_string() == "email = null"
+        assert f.to_string() == "email != *"
 
         f = Filter.field("email").is_not_null()
-        assert f.to_string() == "email != null"
+        assert f.to_string() == "email = *"
 
     @pytest.mark.req("FR-007")
     def test_boolean_value(self) -> None:
@@ -108,7 +108,7 @@ class TestFilterBuilder:
     def test_and_combination(self) -> None:
         f = Filter.field("name").contains("Corp") & Filter.field("status").equals("active")
         result = f.to_string()
-        assert "AND" in result
+        assert "&" in result
         assert 'name =~ "Corp"' in result
         assert 'status = "active"' in result
 
@@ -116,13 +116,13 @@ class TestFilterBuilder:
     def test_or_combination(self) -> None:
         f = Filter.field("type").equals("customer") | Filter.field("type").equals("prospect")
         result = f.to_string()
-        assert "OR" in result
+        assert "|" in result
 
     @pytest.mark.req("FR-007")
     def test_not_negation(self) -> None:
         f = ~Filter.field("archived").equals(True)
         result = f.to_string()
-        assert result.startswith("NOT")
+        assert result.startswith("!(")
         assert "archived = true" in result
 
     @pytest.mark.req("FR-007")
@@ -132,30 +132,30 @@ class TestFilterBuilder:
             "archived"
         ).equals(True)
         result = f.to_string()
-        assert "AND" in result
-        assert "OR" in result
-        assert "NOT" in result
+        assert "&" in result
+        assert "|" in result
+        assert "!(" in result
 
     @pytest.mark.req("FR-007")
     def test_in_list(self) -> None:
         f = Filter.field("status").in_list(["active", "pending", "review"])
         result = f.to_string()
         # Should be OR combination of equals
-        assert "OR" in result
+        assert "|" in result
         assert '"active"' in result
         assert '"pending"' in result
         assert '"review"' in result
 
     @pytest.mark.req("FR-007")
     def test_in_list_empty(self) -> None:
-        f = Filter.field("status").in_list([])
-        assert f.to_string() == "false"
+        with pytest.raises(ValueError):
+            _ = Filter.field("status").in_list([])
 
     @pytest.mark.req("FR-007")
     def test_raw_filter_escape_hatch(self) -> None:
         """Test raw filter string for power users."""
-        f = Filter.raw('name =~ "Acme" AND status = "active"')
-        assert f.to_string() == 'name =~ "Acme" AND status = "active"'
+        f = Filter.raw('name =~ "Acme" & status = "active"')
+        assert f.to_string() == 'name =~ "Acme" & status = "active"'
 
     @pytest.mark.req("FR-007")
     def test_and_multiple(self) -> None:
@@ -165,7 +165,7 @@ class TestFilterBuilder:
             F.field("type").equals("customer"),
         )
         result = f.to_string()
-        assert result.count("AND") == 2
+        assert result.count("&") == 2
 
     @pytest.mark.req("FR-007")
     def test_or_multiple(self) -> None:
@@ -175,7 +175,7 @@ class TestFilterBuilder:
             F.field("type").equals("partner"),
         )
         result = f.to_string()
-        assert result.count("OR") == 2
+        assert result.count("|") == 2
 
     @pytest.mark.req("FR-007")
     def test_shorthand_f_alias(self) -> None:
@@ -228,7 +228,8 @@ class TestFilterEscaping:
     @pytest.mark.req("FR-007")
     def test_format_value_types(self) -> None:
         """Test value formatting for different types."""
-        assert _format_value(None) == "null"
+        with pytest.raises(ValueError):
+            _format_value(None)
         assert _format_value(True) == "true"
         assert _format_value(False) == "false"
         assert _format_value(42) == "42"

@@ -85,10 +85,10 @@ def test_filters_str_and_factories_and_field_builder_gte() -> None:
     assert str(expr) == "age >= 10"
 
     combined = Filter.and_(F.field("name").contains("x"), RawFilter("true"))
-    assert "AND" in str(combined)
+    assert "&" in str(combined)
 
     combined_or = Filter.or_(F.field("name").contains("x"), RawFilter("false"))
-    assert "OR" in str(combined_or)
+    assert "|" in str(combined_or)
 
     with pytest.raises(ValueError):
         Filter.and_()

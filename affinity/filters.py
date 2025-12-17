@@ -32,6 +32,17 @@ from datetime import date, datetime
 from typing import Any
 
 
+@dataclass(frozen=True)
+class RawToken:
+    """
+    A raw token inserted into a filter expression without quoting.
+
+    Used for special Affinity Filtering Language literals like `*`.
+    """
+
+    token: str
+
+
 def _escape_string(value: str) -> str:
     """
     Escape a string value for use in a filter expression.
@@ -54,8 +65,10 @@ def _escape_string(value: str) -> str:
 
 def _format_value(value: Any) -> str:
     """Format a Python value for use in a filter expression."""
+    if isinstance(value, RawToken):
+        return value.token
     if value is None:
-        return "null"
+        raise ValueError("None is not a valid filter literal; use is_null()/is_not_null().")
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
@@ -79,15 +92,15 @@ class FilterExpression(ABC):
         ...
 
     def __and__(self, other: FilterExpression) -> FilterExpression:
-        """Combine two expressions with AND."""
+        """Combine two expressions with `&`."""
         return AndExpression(self, other)
 
     def __or__(self, other: FilterExpression) -> FilterExpression:
-        """Combine two expressions with OR."""
+        """Combine two expressions with `|`."""
         return OrExpression(self, other)
 
     def __invert__(self) -> FilterExpression:
-        """Negate the expression with NOT."""
+        """Negate the expression with `!`."""
         return NotExpression(self)
 
     def __str__(self) -> str:
@@ -122,7 +135,7 @@ class RawFilter(FilterExpression):
 
 @dataclass
 class AndExpression(FilterExpression):
-    """AND combination of two expressions."""
+    """`&` combination of two expressions."""
 
     left: FilterExpression
     right: FilterExpression
@@ -131,12 +144,12 @@ class AndExpression(FilterExpression):
         left_str = self.left.to_string()
         right_str = self.right.to_string()
         # Wrap in parentheses for correct precedence
-        return f"({left_str}) AND ({right_str})"
+        return f"({left_str}) & ({right_str})"
 
 
 @dataclass
 class OrExpression(FilterExpression):
-    """OR combination of two expressions."""
+    """`|` combination of two expressions."""
 
     left: FilterExpression
     right: FilterExpression
@@ -144,17 +157,17 @@ class OrExpression(FilterExpression):
     def to_string(self) -> str:
         left_str = self.left.to_string()
         right_str = self.right.to_string()
-        return f"({left_str}) OR ({right_str})"
+        return f"({left_str}) | ({right_str})"
 
 
 @dataclass
 class NotExpression(FilterExpression):
-    """NOT negation of an expression."""
+    """`!` negation of an expression."""
 
     expr: FilterExpression
 
     def to_string(self) -> str:
-        return f"NOT ({self.expr.to_string()})"
+        return f"!({self.expr.to_string()})"
 
 
 class FieldBuilder:
@@ -177,11 +190,11 @@ class FieldBuilder:
 
     def starts_with(self, value: str) -> FieldComparison:
         """Field starts with prefix."""
-        return FieldComparison(self._field_name, "^=", value)
+        return FieldComparison(self._field_name, "=^", value)
 
     def ends_with(self, value: str) -> FieldComparison:
         """Field ends with suffix."""
-        return FieldComparison(self._field_name, "$=", value)
+        return FieldComparison(self._field_name, "=$", value)
 
     def greater_than(self, value: int | float | datetime | date) -> FieldComparison:
         """Field is greater than value."""
@@ -201,17 +214,16 @@ class FieldBuilder:
 
     def is_null(self) -> FieldComparison:
         """Field is null."""
-        return FieldComparison(self._field_name, "=", None)
+        return FieldComparison(self._field_name, "!=", RawToken("*"))
 
     def is_not_null(self) -> FieldComparison:
         """Field is not null."""
-        return FieldComparison(self._field_name, "!=", None)
+        return FieldComparison(self._field_name, "=", RawToken("*"))
 
     def in_list(self, values: list[Any]) -> FilterExpression:
         """Field value is in the given list (OR of equals)."""
         if not values:
-            # Empty list: nothing matches
-            return RawFilter("false")
+            raise ValueError("in_list() requires at least one value")
         expressions: list[FilterExpression] = [self.equals(v) for v in values]
         result: FilterExpression = expressions[0]
         for expr in expressions[1:]:
@@ -255,7 +267,7 @@ class Filter:
 
     @staticmethod
     def and_(*expressions: FilterExpression) -> FilterExpression:
-        """Combine multiple expressions with AND."""
+        """Combine multiple expressions with `&`."""
         if not expressions:
             raise ValueError("and_() requires at least one expression")
         result = expressions[0]
@@ -265,7 +277,7 @@ class Filter:
 
     @staticmethod
     def or_(*expressions: FilterExpression) -> FilterExpression:
-        """Combine multiple expressions with OR."""
+        """Combine multiple expressions with `|`."""
         if not expressions:
             raise ValueError("or_() requires at least one expression")
         result = expressions[0]
