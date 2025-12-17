@@ -1,6 +1,13 @@
 # Affinity Python SDK
 
+[![CI](https://github.com/yaniv-golan/affinity-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/yaniv-golan/affinity-sdk/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/yaniv-golan/affinity-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/yaniv-golan/affinity-sdk)
+[![PyPI version](https://img.shields.io/pypi/v/affinity-sdk.svg)](https://pypi.org/project/affinity-sdk/)
+[![Python versions](https://img.shields.io/pypi/pyversions/affinity-sdk.svg)](https://pypi.org/project/affinity-sdk/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Typed](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy-lang.org/)
+[![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-orange.svg)](https://docs.pydantic.dev/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/)
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
