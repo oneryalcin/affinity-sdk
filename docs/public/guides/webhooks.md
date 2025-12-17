@@ -22,9 +22,9 @@ with Affinity.from_env() as client:
     print(webhook.id, webhook.webhook_url)
 ```
 
-Notes:
-- Affinity limits webhook subscriptions (see `WebhookService` docs).
-- Affinity may attempt to contact your `webhook_url` during creation/updates; ensure your endpoint is reachable and responds quickly.
+!!! note "Notes"
+    - Affinity limits webhook subscriptions (see `WebhookService` docs).
+    - Affinity may attempt to contact your `webhook_url` during creation/updates; ensure your endpoint is reachable and responds quickly.
 
 ## Verify inbound requests (recommended)
 
