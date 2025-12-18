@@ -77,6 +77,48 @@ def test_affinity_whoami_convenience_method() -> None:
         client.close()
 
 
+def test_affinity_whoami_v2_shape_allows_null_last_name() -> None:
+    now = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url == httpx.URL("https://v2.example/v2/auth/whoami"):
+            return httpx.Response(
+                200,
+                json={
+                    "tenant": {"id": 1, "name": "T", "subdomain": "t"},
+                    "user": {
+                        "id": 1,
+                        "firstName": "A",
+                        "lastName": None,
+                        "emailAddress": "a@example.com",
+                    },
+                    "grant": {"type": "api-key", "scopes": ["api"], "createdAt": now},
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = Affinity(api_key="k", max_retries=0)
+    try:
+        client._http.close()
+        client._http = HTTPClient(
+            ClientConfig(
+                api_key="k",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+                transport=httpx.MockTransport(handler),
+            )
+        )
+        client._auth = None
+        me = client.whoami()
+        assert me.user.last_name is None
+        assert me.user.email == "a@example.com"
+        assert me.grant.scopes == ["api"]
+    finally:
+        client.close()
+
+
 def test_affinity_clear_cache_is_noop_when_cache_disabled() -> None:
     client = Affinity(api_key="k", enable_cache=False, max_retries=0)
     try:

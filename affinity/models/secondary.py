@@ -318,7 +318,7 @@ class User(AffinityModel):
 
     id: UserId
     first_name: str = Field(alias="firstName")
-    last_name: str = Field(alias="lastName")
+    last_name: str | None = Field(alias="lastName")
     email: str = Field(alias="emailAddress")
 
 
