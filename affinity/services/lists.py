@@ -33,6 +33,7 @@ from ..models.types import (
     FieldType,
     ListEntryId,
     ListId,
+    ListType,
     OpportunityId,
     PersonId,
     SavedViewId,
@@ -51,6 +52,7 @@ class ListService:
 
     def __init__(self, client: HTTPClient):
         self._client = client
+        self._resolve_cache: dict[tuple[str, ListType | None], AffinityList | None] = {}
 
     def entries(self, list_id: ListId) -> ListEntryService:
         """
@@ -111,6 +113,57 @@ class ListService:
         data = self._client.get(f"/lists/{list_id}")
         return AffinityList.model_validate(data)
 
+    def resolve(
+        self,
+        *,
+        name: str,
+        list_type: ListType | None = None,
+    ) -> AffinityList | None:
+        """
+        Find a single list by name (optionally filtered by type).
+
+        Notes:
+        - This iterates list pages client-side (the API does not expose a list-search endpoint).
+        - Results are cached in-memory on this service instance. If you call this frequently,
+          reuse the client, or persist the resolved `ListId` in your own configuration.
+
+        If multiple matches exist, returns the first match in server-provided order.
+        """
+        key = (name.lower(), list_type)
+        if key in self._resolve_cache:
+            return self._resolve_cache[key]
+
+        for item in self.all():
+            if item.name.lower() == name.lower() and (list_type is None or item.type == list_type):
+                self._resolve_cache[key] = item
+                return item
+
+        self._resolve_cache[key] = None
+        return None
+
+    def resolve_all(
+        self,
+        *,
+        name: str,
+        list_type: ListType | None = None,
+    ) -> builtins.list[AffinityList]:
+        """
+        Find all lists matching a name (optionally filtered by type).
+
+        Notes:
+        - This iterates list pages client-side (the API does not expose a list-search endpoint).
+        - Unlike `resolve()`, this does not cache results.
+        """
+        matches: builtins.list[AffinityList] = []
+        name_lower = name.lower()
+        for item in self.all():
+            if item.name.lower() != name_lower:
+                continue
+            if list_type is not None and item.type != list_type:
+                continue
+            matches.append(item)
+        return matches
+
     def create(self, data: ListCreate) -> AffinityList:
         """
         Create a new list.
@@ -135,6 +188,7 @@ class ListService:
         # Invalidate cache
         if self._client.cache:
             self._client.cache.invalidate_prefix("list")
+        self._resolve_cache.clear()
 
         return AffinityList.model_validate(result)
 
@@ -558,6 +612,7 @@ class AsyncListService:
 
     def __init__(self, client: AsyncHTTPClient):
         self._client = client
+        self._resolve_cache: dict[tuple[str, ListType | None], AffinityList | None] = {}
 
     def entries(self, list_id: ListId) -> AsyncListEntryService:
         """
@@ -612,6 +667,57 @@ class AsyncListService:
         """
         data = await self._client.get(f"/lists/{list_id}")
         return AffinityList.model_validate(data)
+
+    async def resolve(
+        self,
+        *,
+        name: str,
+        list_type: ListType | None = None,
+    ) -> AffinityList | None:
+        """
+        Find a single list by name (optionally filtered by type).
+
+        Notes:
+        - This iterates list pages client-side (the API does not expose a list-search endpoint).
+        - Results are cached in-memory on this service instance. If you call this frequently,
+          reuse the client, or persist the resolved `ListId` in your own configuration.
+
+        If multiple matches exist, returns the first match in server-provided order.
+        """
+        key = (name.lower(), list_type)
+        if key in self._resolve_cache:
+            return self._resolve_cache[key]
+
+        async for item in self.all():
+            if item.name.lower() == name.lower() and (list_type is None or item.type == list_type):
+                self._resolve_cache[key] = item
+                return item
+
+        self._resolve_cache[key] = None
+        return None
+
+    async def resolve_all(
+        self,
+        *,
+        name: str,
+        list_type: ListType | None = None,
+    ) -> builtins.list[AffinityList]:
+        """
+        Find all lists matching a name (optionally filtered by type).
+
+        Notes:
+        - This iterates list pages client-side (the API does not expose a list-search endpoint).
+        - Unlike `resolve()`, this does not cache results.
+        """
+        matches: builtins.list[AffinityList] = []
+        name_lower = name.lower()
+        async for item in self.all():
+            if item.name.lower() != name_lower:
+                continue
+            if list_type is not None and item.type != list_type:
+                continue
+            matches.append(item)
+        return matches
 
 
 class AsyncListEntryService:

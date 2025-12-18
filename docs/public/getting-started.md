@@ -65,6 +65,22 @@ except RateLimitError as e:
     print(f"Rate limited. Retry after: {e.retry_after}")
 ```
 
+## Resolve a list by name
+
+If you have a list name from configuration (and not a `ListId`), you can resolve it:
+
+```python
+from affinity import Affinity
+from affinity.models.types import ListType
+
+with Affinity.from_env() as client:
+    pipeline = client.lists.resolve(name="Deal Pipeline", list_type=ListType.OPPORTUNITY)
+    if pipeline is None:
+        raise ValueError("List not found")
+    for entry in client.lists.entries(pipeline.id).all():
+        ...
+```
+
 !!! warning "SDK-specific gotchas"
     - Use typed IDs (e.g., `CompanyId(123)`) instead of raw integers.
     - Entity `fields` are only present when requested; check `entity.fields.requested`.

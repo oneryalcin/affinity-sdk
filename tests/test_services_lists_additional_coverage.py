@@ -271,6 +271,70 @@ def test_list_service_list_all_get_fields_and_create_entry_helpers() -> None:
         http.close()
 
 
+def test_list_service_resolve_and_resolve_all_case_insensitive_and_cache() -> None:
+    calls: dict[str, int] = {"lists": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL("https://v2.example/v2/lists"):
+            calls["lists"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "name": "Pipeline", "type": 8, "public": True, "ownerId": 1},
+                        {"id": 2, "name": "Pipeline", "type": 0, "public": True, "ownerId": 1},
+                        {"id": 3, "name": "Other", "type": 0, "public": True, "ownerId": 1},
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = ListService(http)
+
+        resolved = svc.resolve(name="pipeline")
+        assert resolved is not None
+        assert resolved.id == ListId(1)
+
+        # Cached: no additional GET /lists call.
+        resolved_again = svc.resolve(name="pipeline")
+        assert resolved_again is not None
+        assert resolved_again.id == ListId(1)
+        assert calls["lists"] == 1
+
+        matches = svc.resolve_all(name="PIPELINE")
+        assert [m.id for m in matches] == [ListId(1), ListId(2)]
+        assert calls["lists"] == 2
+
+        filtered = svc.resolve(name="pipeline", list_type=ListType.OPPORTUNITY)
+        assert filtered is not None
+        assert filtered.id == ListId(1)
+        filtered_again = svc.resolve(name="pipeline", list_type=ListType.OPPORTUNITY)
+        assert filtered_again is not None
+        assert filtered_again.id == ListId(1)
+        assert calls["lists"] == 3
+
+        not_found = svc.resolve(name="missing")
+        assert not_found is None
+        not_found_again = svc.resolve(name="missing")
+        assert not_found_again is None
+        # Cached negative result should also avoid further calls.
+        assert calls["lists"] == 4
+    finally:
+        http.close()
+
+
 @pytest.mark.asyncio
 async def test_async_list_service_and_list_entry_membership() -> None:
     created_at = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
@@ -510,6 +574,57 @@ def test_list_service_create_saved_views_and_list_entry_params() -> None:
         assert created_entry.id == ListEntryId(99)
     finally:
         http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_list_service_resolve_and_resolve_all_case_insensitive_and_cache() -> None:
+    calls: dict[str, int] = {"lists": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL("https://v2.example/v2/lists"):
+            calls["lists"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "name": "Pipeline", "type": 8, "public": True, "ownerId": 1},
+                        {"id": 2, "name": "Pipeline", "type": 0, "public": True, "ownerId": 1},
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = AsyncListService(http)
+
+        resolved = await svc.resolve(name="pipeline")
+        assert resolved is not None
+        assert resolved.id == ListId(1)
+
+        resolved_again = await svc.resolve(name="pipeline")
+        assert resolved_again is not None
+        assert resolved_again.id == ListId(1)
+        assert calls["lists"] == 1
+
+        matches = await svc.resolve_all(name="PIPELINE")
+        assert [m.id for m in matches] == [ListId(1), ListId(2)]
+
+        filtered = await svc.resolve(name="pipeline", list_type=ListType.OPPORTUNITY)
+        assert filtered is not None
+        assert filtered.id == ListId(1)
+    finally:
+        await http.close()
 
 
 def test_list_create_does_not_invalidate_when_cache_disabled() -> None:
