@@ -18,7 +18,7 @@ Requires Python 3.10+.
 from affinity import Affinity
 
 with Affinity(api_key="your-api-key") as client:
-    me = client.auth.whoami()
+    me = client.whoami()
     print(me.user.email)
 ```
 

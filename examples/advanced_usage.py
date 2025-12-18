@@ -283,7 +283,7 @@ def setup_follow_up_workflow(
     print("\n=== Follow-up Workflow Setup ===\n")
 
     # Get current user
-    whoami = client.auth.whoami()
+    whoami = client.whoami()
     current_user_id = UserId(whoami.user.id)
     print(f"Acting as: {whoami.user.first_name} {whoami.user.last_name}")
 

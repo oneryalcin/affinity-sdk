@@ -230,9 +230,9 @@ from affinity import Affinity
 from affinity.models import ReminderCreate
 from affinity.types import PersonId, ReminderResetType, ReminderType, UserId
 
-with Affinity(api_key="your-key") as client:
-    # Get current user
-    me = client.auth.whoami()
+	with Affinity(api_key="your-key") as client:
+	    # Get current user
+	    me = client.whoami()
 
     # Create a follow-up reminder
     reminder = client.reminders.create(

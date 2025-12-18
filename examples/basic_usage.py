@@ -24,7 +24,7 @@ def main() -> None:
     # Initialize the client with context manager for automatic cleanup
     with Affinity(api_key=api_key) as client:
         # Get current user info
-        me = client.auth.whoami()
+        me = client.whoami()
         print(f"Logged in as: {me.user.first_name} {me.user.last_name}")
         print(f"Tenant: {me.tenant.name}")
         print()

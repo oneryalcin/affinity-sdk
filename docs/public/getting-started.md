@@ -57,7 +57,7 @@ from affinity.exceptions import AuthenticationError, RateLimitError
 
 try:
     with Affinity.from_env() as client:
-        me = client.auth.whoami()
+        me = client.whoami()
         print(f"Authenticated as: {me.user.email}")
 except AuthenticationError:
     print("Check AFFINITY_API_KEY is set correctly")

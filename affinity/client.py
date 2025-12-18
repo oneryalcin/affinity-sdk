@@ -18,6 +18,7 @@ from .clients.http import (
     RequestHook,
     ResponseHook,
 )
+from .models.secondary import WhoAmI
 from .models.types import V1_BASE_URL, V2_BASE_URL
 from .services.companies import AsyncCompanyService, CompanyService
 from .services.lists import AsyncListService, ListService
@@ -356,6 +357,10 @@ class Affinity:
         if self._http.cache:
             self._http.cache.clear()
 
+    def whoami(self) -> WhoAmI:
+        """Convenience wrapper for `client.auth.whoami()`."""
+        return self.auth.whoami()
+
     @property
     def rate_limit_state(self) -> dict[str, Any]:
         """Get the current rate limit state tracked by the client."""
@@ -596,3 +601,7 @@ class AsyncAffinity:
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._http.close()
+
+    async def whoami(self) -> WhoAmI:
+        """Convenience wrapper for `client.auth.whoami()`."""
+        return await self.auth.whoami()

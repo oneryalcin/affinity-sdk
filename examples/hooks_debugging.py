@@ -33,7 +33,7 @@ def main() -> None:
         on_request=on_request,
         on_response=on_response,
     ) as client:
-        _ = client.auth.whoami()
+        _ = client.whoami()
 
 
 if __name__ == "__main__":
