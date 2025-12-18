@@ -108,7 +108,7 @@ def resolve_saved_view(
 def list_all_saved_views(*, client: Any, list_id: ListId) -> list[SavedView]:
     first = client.lists.get_saved_views(list_id)
     views: list[SavedView] = list(first.data)
-    next_url = first.pagination.next_url
+    next_url = first.pagination.next_cursor
     while next_url:
         data = client._http.get_url(next_url)
         page = [SavedView.model_validate(item) for item in data.get("data", [])]

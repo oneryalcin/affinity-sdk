@@ -5,13 +5,13 @@ import pytest
 from affinity.models import AsyncPageIterator, PageIterator, PaginatedResponse
 
 
-def _page(data: list[int], next_url: str | None) -> PaginatedResponse[int]:
+def _page(data: list[int], next_cursor: str | None) -> PaginatedResponse[int]:
     return PaginatedResponse[int].model_validate(
-        {"data": data, "pagination": {"nextUrl": next_url}}
+        {"data": data, "pagination": {"nextUrl": next_cursor}}
     )
 
 
-def test_page_iterator_skips_empty_pages_when_next_url_present() -> None:
+def test_page_iterator_skips_empty_pages_when_next_cursor_present() -> None:
     calls: list[str | None] = []
 
     def fetch_page(url: str | None) -> PaginatedResponse[int]:
@@ -27,39 +27,39 @@ def test_page_iterator_skips_empty_pages_when_next_url_present() -> None:
     assert calls == [None, "u2"]
 
 
-def test_page_iterator_stops_on_empty_page_when_no_next_url() -> None:
+def test_page_iterator_stops_on_empty_page_when_no_next_cursor() -> None:
     def fetch_page(_url: str | None) -> PaginatedResponse[int]:
         return _page([], None)
 
     assert list(PageIterator(fetch_page)) == []
 
 
-def test_page_iterator_stops_if_next_url_does_not_advance() -> None:
+def test_page_iterator_stops_if_next_cursor_does_not_advance() -> None:
     calls: list[str | None] = []
 
     def fetch_page(url: str | None) -> PaginatedResponse[int]:
         calls.append(url)
         return _page([], "u1")
 
-    it = PageIterator(fetch_page, initial_url="u1")
+    it = PageIterator(fetch_page, initial_cursor="u1")
     assert list(it) == []
     assert calls == ["u1"]
 
 
-def test_page_iterator_yields_current_page_even_if_next_url_loops() -> None:
+def test_page_iterator_yields_current_page_even_if_next_cursor_loops() -> None:
     calls: list[str | None] = []
 
     def fetch_page(url: str | None) -> PaginatedResponse[int]:
         calls.append(url)
         return _page([1], "u1")
 
-    it = PageIterator(fetch_page, initial_url="u1")
+    it = PageIterator(fetch_page, initial_cursor="u1")
     assert list(it) == [1]
     assert calls == ["u1"]
 
 
 @pytest.mark.asyncio
-async def test_async_page_iterator_skips_empty_pages_when_next_url_present() -> None:
+async def test_async_page_iterator_skips_empty_pages_when_next_cursor_present() -> None:
     calls: list[str | None] = []
 
     async def fetch_page(url: str | None) -> PaginatedResponse[int]:
@@ -79,7 +79,7 @@ async def test_async_page_iterator_skips_empty_pages_when_next_url_present() -> 
 
 
 @pytest.mark.asyncio
-async def test_async_page_iterator_stops_on_empty_page_when_no_next_url() -> None:
+async def test_async_page_iterator_stops_on_empty_page_when_no_next_cursor() -> None:
     async def fetch_page(_url: str | None) -> PaginatedResponse[int]:
         return _page([], None)
 
@@ -91,14 +91,14 @@ async def test_async_page_iterator_stops_on_empty_page_when_no_next_url() -> Non
 
 
 @pytest.mark.asyncio
-async def test_async_page_iterator_stops_if_next_url_does_not_advance() -> None:
+async def test_async_page_iterator_stops_if_next_cursor_does_not_advance() -> None:
     calls: list[str | None] = []
 
     async def fetch_page(url: str | None) -> PaginatedResponse[int]:
         calls.append(url)
         return _page([], "u1")
 
-    it = AsyncPageIterator(fetch_page, initial_url="u1")
+    it = AsyncPageIterator(fetch_page, initial_cursor="u1")
     items: list[int] = []
     async for item in it:
         items.append(item)
@@ -107,14 +107,14 @@ async def test_async_page_iterator_stops_if_next_url_does_not_advance() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_page_iterator_yields_current_page_even_if_next_url_loops() -> None:
+async def test_async_page_iterator_yields_current_page_even_if_next_cursor_loops() -> None:
     calls: list[str | None] = []
 
     async def fetch_page(url: str | None) -> PaginatedResponse[int]:
         calls.append(url)
         return _page([1], "u1")
 
-    it = AsyncPageIterator(fetch_page, initial_url="u1")
+    it = AsyncPageIterator(fetch_page, initial_cursor="u1")
     items: list[int] = []
     async for item in it:
         items.append(item)

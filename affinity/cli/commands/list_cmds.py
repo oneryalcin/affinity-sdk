@@ -96,7 +96,7 @@ def list_ls(
             if max_results is not None and len(rows) >= max_results:
                 return CommandOutput(
                     data=rows[:max_results],
-                    pagination={"nextUrl": page.pagination.next_url},
+                    pagination={"nextUrl": page.pagination.next_cursor},
                     api_called=True,
                 )
 
@@ -104,15 +104,17 @@ def list_ls(
             return CommandOutput(
                 data=rows,
                 pagination=(
-                    {"nextUrl": page.pagination.next_url} if page.pagination.next_url else None
+                    {"nextUrl": page.pagination.next_cursor}
+                    if page.pagination.next_cursor
+                    else None
                 ),
                 api_called=True,
             )
 
-        next_url = page.pagination.next_url
+        next_url = page.pagination.next_cursor
         while next_url:
             page = fetch_page(next_url)
-            next_url = page.pagination.next_url
+            next_url = page.pagination.next_cursor
             for item in page.data:
                 rows.append(
                     {
@@ -499,7 +501,7 @@ def _iterate_list_entries(
             limit=page_size,
         )
 
-    next_url = page.pagination.next_url
+    next_url = page.pagination.next_cursor
     for entry in page.data:
         fetched += 1
         yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_url
@@ -512,7 +514,7 @@ def _iterate_list_entries(
     while next_url:
         raw = client._http.get_url(next_url)
         page = page_from_raw(raw)
-        next_url = page.pagination.next_url
+        next_url = page.pagination.next_cursor
         for entry in page.data:
             fetched += 1
             yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_url

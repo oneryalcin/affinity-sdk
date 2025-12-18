@@ -32,8 +32,8 @@ class AffinityModel(BaseModel):
 class PaginationInfo(AffinityModel):
     """V2 pagination info returned in responses."""
 
-    next_url: str | None = Field(None, alias="nextUrl")
-    prev_url: str | None = Field(None, alias="prevUrl")
+    next_cursor: str | None = Field(None, alias="nextUrl")
+    prev_cursor: str | None = Field(None, alias="prevUrl")
 
 
 class PaginationInfoWithTotal(PaginationInfo):
@@ -64,12 +64,12 @@ class PaginatedResponse(AffinityModel, Generic[T]):
     @property
     def has_next(self) -> bool:
         """Whether there are more pages."""
-        return self.pagination.next_url is not None
+        return self.pagination.next_cursor is not None
 
     @property
-    def next_url(self) -> str | None:
-        """URL for the next page, if any."""
-        return self.pagination.next_url
+    def next_cursor(self) -> str | None:
+        """Cursor for the next page, if any."""
+        return self.pagination.next_cursor
 
 
 # =============================================================================
@@ -89,10 +89,10 @@ class PageIterator(Generic[T]):
     def __init__(
         self,
         fetch_page: Callable[[str | None], PaginatedResponse[T]],
-        initial_url: str | None = None,
+        initial_cursor: str | None = None,
     ):
         self._fetch_page = fetch_page
-        self._next_url = initial_url
+        self._next_cursor = initial_cursor
         self._current_page: list[T] = []
         self._index = 0
         self._exhausted = False
@@ -112,14 +112,14 @@ class PageIterator(Generic[T]):
             if self._exhausted:
                 raise StopIteration
 
-            requested_url = self._next_url
+            requested_url = self._next_cursor
             response = self._fetch_page(requested_url)
             self._current_page = list(response.data)
-            self._next_url = response.next_url
+            self._next_cursor = response.next_cursor
             self._index = 0
 
             # Guard against pagination loops (no cursor progress).
-            if response.has_next and response.next_url == requested_url:
+            if response.has_next and response.next_cursor == requested_url:
                 self._exhausted = True
 
             # Empty pages can still legitimately include nextUrl; keep paging
@@ -146,10 +146,10 @@ class AsyncPageIterator(Generic[T]):
     def __init__(
         self,
         fetch_page: Callable[[str | None], Awaitable[PaginatedResponse[T]]],
-        initial_url: str | None = None,
+        initial_cursor: str | None = None,
     ):
         self._fetch_page = fetch_page
-        self._next_url = initial_url
+        self._next_cursor = initial_cursor
         self._current_page: list[T] = []
         self._index = 0
         self._exhausted = False
@@ -169,14 +169,14 @@ class AsyncPageIterator(Generic[T]):
             if self._exhausted:
                 raise StopAsyncIteration
 
-            requested_url = self._next_url
+            requested_url = self._next_cursor
             response = await self._fetch_page(requested_url)
             self._current_page = list(response.data)
-            self._next_url = response.next_url
+            self._next_cursor = response.next_cursor
             self._index = 0
 
             # Guard against pagination loops (no cursor progress).
-            if response.has_next and response.next_url == requested_url:
+            if response.has_next and response.next_cursor == requested_url:
                 self._exhausted = True
 
             # Empty pages can still legitimately include nextUrl; keep paging

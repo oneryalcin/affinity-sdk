@@ -264,9 +264,9 @@ class ListEntryService:
         while True:
             entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
             pagination = PaginationInfo.model_validate(data.get("pagination", {}))
-            if not pagination.next_url:
+            if not pagination.next_cursor:
                 break
-            data = self._client.get_url(pagination.next_url)
+            data = self._client.get_url(pagination.next_cursor)
 
         return entries
 
@@ -739,9 +739,9 @@ class AsyncListEntryService:
         while True:
             entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
             pagination = PaginationInfo.model_validate(data.get("pagination", {}))
-            if not pagination.next_url:
+            if not pagination.next_cursor:
                 break
-            data = await self._client.get_url(pagination.next_url)
+            data = await self._client.get_url(pagination.next_cursor)
 
         return entries
 

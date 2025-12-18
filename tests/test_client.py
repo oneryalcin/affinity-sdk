@@ -734,8 +734,8 @@ class TestListService:
             http.close()
 
     @pytest.mark.req("FR-006")
-    def test_lists_iter_auto_paginates_next_url(self) -> None:
-        """Test that iter() auto-paginates through nextUrl."""
+    def test_lists_iter_auto_paginates_next_cursor(self) -> None:
+        """Test that iter() auto-paginates through nextUrl cursor."""
         call_count = {"value": 0}
 
         def handler(request: httpx.Request) -> httpx.Response:

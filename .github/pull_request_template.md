@@ -1,6 +1,6 @@
 ## Summary
 
-- 
+-
 
 ## Test plan
 
@@ -11,4 +11,4 @@
 
 ## Notes
 
-- 
+-
