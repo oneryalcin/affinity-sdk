@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .entities import AffinityModel, PersonSummary
 from .types import (
@@ -319,15 +319,38 @@ class User(AffinityModel):
     id: UserId
     first_name: str = Field(alias="firstName")
     last_name: str = Field(alias="lastName")
-    email: str
+    email: str = Field(alias="emailAddress")
 
 
 class Grant(AffinityModel):
     """API key grant information."""
 
     type: str
-    scope: str
+    scopes: list[str] = Field(default_factory=list)
     created_at: ISODatetime = Field(alias="createdAt")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_scope_to_scopes(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        if "scopes" in value:
+            return value
+        scope = value.get("scope")
+        if isinstance(scope, str):
+            updated = dict(value)
+            updated["scopes"] = [scope]
+            return updated
+        return value
+
+    @property
+    def scope(self) -> str | None:
+        """
+        Backwards-compatible convenience for older response shapes.
+
+        Returns the first scope string when present, otherwise None.
+        """
+        return self.scopes[0] if self.scopes else None
 
 
 class WhoAmI(AffinityModel):
