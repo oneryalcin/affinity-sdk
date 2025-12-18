@@ -28,3 +28,13 @@ repos:
         additional_dependencies:
           - httpx>=0.25.0
           - pydantic>=2.0.0
+          # CLI dependencies (optional at runtime, required for type-checking affinity/cli/*)
+          - click>=8.1
+          - rich>=13
+          - rich-click>=1.8
+          - platformdirs>=4
+          # Mypy is configured with python_version=3.10, so it will type-check the tomli branch.
+          - tomli>=2
+          - tomli-w>=1.0
+          - python-dotenv>=1.0.0
+          - types-click

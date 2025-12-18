@@ -53,6 +53,15 @@ dev = [
 dotenv = [
     "python-dotenv>=1.0.0",
 ]
+cli = [
+    "click>=8.1",
+    "rich>=13",
+    "rich-click>=1.8",
+    "platformdirs>=4",
+    "tomli>=2; python_version<'3.11'",
+    "tomli-w>=1.0",
+    "python-dotenv>=1.0.0",
+]
 docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
@@ -60,6 +69,9 @@ docs = [
     "mike>=2.0.0",
     "mkdocs-include-markdown-plugin>=7.0.0",
 ]
+
+[project.scripts]
+affinity = "affinity.cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/yaniv-golan/affinity-sdk"
@@ -126,6 +138,10 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = "httpx.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "affinity.cli.*"
+disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

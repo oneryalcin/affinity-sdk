@@ -42,6 +42,14 @@ Optional (local dev): load `.env` automatically:
 pip install "affinity-sdk[dotenv]"
 ```
 
+Optional: install the CLI:
+
+```bash
+pipx install "affinity-sdk[cli]"
+```
+
+CLI docs: https://yaniv-golan.github.io/affinity-sdk/cli/
+
 ## Quick Start
 
 ```python

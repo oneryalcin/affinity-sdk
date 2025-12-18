@@ -36,6 +36,10 @@ nav:
   - Examples: examples.md
   - Glossary: glossary.md
   - Changelog: changelog.md
+  - CLI:
+      - Overview: cli/index.md
+      - Commands: cli/commands.md
+      - Scripting: cli/scripting.md
   - Guides:
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
