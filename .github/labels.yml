@@ -1,0 +1,51 @@
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+
+- name: enhancement
+  color: a2eeef
+  description: New feature or improvement
+
+- name: documentation
+  color: 0075ca
+  description: Documentation-only changes
+
+- name: dependencies
+  color: 0366d6
+  description: Dependency updates
+
+- name: security
+  color: b60205
+  description: Security-related changes
+
+- name: breaking-change
+  color: b60205
+  description: Backwards-incompatible change
+
+- name: needs-triage
+  color: fbca04
+  description: Needs initial review and categorization
+
+- name: question
+  color: d876e3
+  description: Question or support request
+
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers
+
+- name: help wanted
+  color: 008672
+  description: Extra attention is needed
+
+- name: tests
+  color: cfd3d7
+  description: Tests or test infrastructure
+
+- name: ci
+  color: cfd3d7
+  description: CI/workflows
+
+- name: release
+  color: 0e8a16
+  description: Release process and packaging
