@@ -7,8 +7,10 @@ Provides operations for managing lists (spreadsheets) and their entries (rows).
 from __future__ import annotations
 
 import builtins
+import re
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from ..filters import FilterExpression
 from ..models.entities import (
@@ -43,6 +45,23 @@ if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
 
 
+_LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\\d+)/saved-views(?:/|$)")
+
+
+def _saved_views_list_id_from_cursor(cursor: str) -> int | None:
+    try:
+        path = urlsplit(cursor).path or ""
+    except Exception:
+        return None
+    m = _LIST_SAVED_VIEWS_CURSOR_RE.search(path)
+    if not m:
+        return None
+    try:
+        return int(m.group("list_id"))
+    except ValueError:
+        return None
+
+
 class ListService:
     """
     Service for managing lists.
@@ -66,19 +85,70 @@ class ListService:
     # List Operations (V2 for read, V1 for write)
     # =========================================================================
 
-    def list(self) -> PaginatedResponse[AffinityList]:
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PaginatedResponse[AffinityList]:
         """
         Get all lists accessible to you.
+
+        Args:
+            limit: Maximum results per page.
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list of lists (without field metadata)
         """
-        data = self._client.get("/lists")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if limit is not None:
+                params["limit"] = limit
+            data = self._client.get("/lists", params=params or None)
 
         return PaginatedResponse[AffinityList](
             data=[AffinityList.model_validate(list_item) for list_item in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    def pages(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Iterator[PaginatedResponse[AffinityList]]:
+        """
+        Iterate list pages (not items), yielding `PaginatedResponse[AffinityList]`.
+
+        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        """
+        if cursor is not None and limit is not None:
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = self.list(limit=limit) if cursor is None else self.list(cursor=cursor)
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = self.list(cursor=next_cursor)
 
     def all(self) -> Iterator[AffinityList]:
         """Iterate through all accessible lists."""
@@ -225,14 +295,81 @@ class ListService:
     # Saved View Operations
     # =========================================================================
 
-    def get_saved_views(self, list_id: ListId) -> PaginatedResponse[SavedView]:
-        """Get saved views for a list."""
-        data = self._client.get(f"/lists/{list_id}/saved-views")
+    def get_saved_views(
+        self,
+        list_id: ListId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PaginatedResponse[SavedView]:
+        """
+        Get saved views for a list.
+
+        Args:
+            list_id: List id for the initial request.
+            limit: Maximum results per page.
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
+        """
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            cursor_list_id = _saved_views_list_id_from_cursor(cursor)
+            if cursor_list_id is not None and int(list_id) != cursor_list_id:
+                raise ValueError(
+                    f"Cursor does not match list_id: cursor is for list {cursor_list_id}, "
+                    f"requested list_id is {int(list_id)}"
+                )
+            data = self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if limit is not None:
+                params["limit"] = limit
+            data = self._client.get(f"/lists/{list_id}/saved-views", params=params or None)
 
         return PaginatedResponse[SavedView](
             data=[SavedView.model_validate(v) for v in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    def saved_views_pages(
+        self,
+        list_id: ListId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Iterator[PaginatedResponse[SavedView]]:
+        """Iterate saved view pages, yielding `PaginatedResponse[SavedView]`."""
+        if cursor is not None and limit is not None:
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = (
+            self.get_saved_views(list_id, limit=limit)
+            if cursor is None
+            else self.get_saved_views(list_id, cursor=cursor)
+        )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = self.get_saved_views(list_id, cursor=next_cursor)
+
+    def saved_views_all(self, list_id: ListId) -> Iterator[SavedView]:
+        """Iterate all saved views for a list."""
+        for page in self.saved_views_pages(list_id):
+            yield from page.data
 
     def get_saved_view(self, list_id: ListId, view_id: SavedViewId) -> SavedView:
         """Get a single saved view."""
@@ -281,6 +418,7 @@ class ListEntryService:
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
         limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListEntryWithEntity]:
         """
         Get list entries with entity data and field values.
@@ -290,31 +428,76 @@ class ListEntryService:
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum results per page
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list entries with entity data
         """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter is not None:
-            filter_text = str(filter).strip()
-            if filter_text:
-                params["filter"] = filter_text
-        if limit:
-            params["limit"] = limit
+        if cursor is not None:
+            if field_ids or field_types or filter is not None or limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if field_ids:
+                params["fieldIds"] = [str(field_id) for field_id in field_ids]
+            if field_types:
+                params["fieldTypes"] = [field_type.value for field_type in field_types]
+            if filter is not None:
+                filter_text = str(filter).strip()
+                if filter_text:
+                    params["filter"] = filter_text
+            if limit is not None:
+                params["limit"] = limit
 
-        data = self._client.get(
-            f"/lists/{self._list_id}/list-entries",
-            params=params or None,
-        )
+            data = self._client.get(
+                f"/lists/{self._list_id}/list-entries",
+                params=params or None,
+            )
 
         return PaginatedResponse[ListEntryWithEntity](
             data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    def pages(
+        self,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        filter: str | FilterExpression | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Iterator[PaginatedResponse[ListEntryWithEntity]]:
+        """Iterate list-entry pages, yielding `PaginatedResponse[ListEntryWithEntity]`."""
+        if cursor is not None and (
+            field_ids or field_types or filter is not None or limit is not None
+        ):
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = (
+            self.list(field_ids=field_ids, field_types=field_types, filter=filter, limit=limit)
+            if cursor is None
+            else self.list(cursor=cursor)
+        )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = self.list(cursor=next_cursor)
 
     def all(
         self,
@@ -622,18 +805,69 @@ class AsyncListService:
         """
         return AsyncListEntryService(self._client, list_id)
 
-    async def list(self) -> PaginatedResponse[AffinityList]:
+    async def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PaginatedResponse[AffinityList]:
         """
         Get all lists accessible to you.
+
+        Args:
+            limit: Maximum results per page.
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list of lists (without field metadata)
         """
-        data = await self._client.get("/lists")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if limit is not None:
+                params["limit"] = limit
+            data = await self._client.get("/lists", params=params or None)
         return PaginatedResponse[AffinityList](
             data=[AffinityList.model_validate(list_item) for list_item in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    async def pages(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AsyncIterator[PaginatedResponse[AffinityList]]:
+        """
+        Iterate list pages (not items), yielding `PaginatedResponse[AffinityList]`.
+
+        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        """
+        if cursor is not None and limit is not None:
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = await self.list(limit=limit) if cursor is None else await self.list(cursor=cursor)
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = await self.list(cursor=next_cursor)
 
     def all(self) -> AsyncIterator[AffinityList]:
         """Iterate through all accessible lists."""
@@ -658,6 +892,92 @@ class AsyncListService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all()
+
+    # =========================================================================
+    # Saved View Operations
+    # =========================================================================
+
+    async def get_saved_views(
+        self,
+        list_id: ListId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> PaginatedResponse[SavedView]:
+        """
+        Get saved views for a list.
+
+        Args:
+            list_id: List id for the initial request.
+            limit: Maximum results per page.
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
+        """
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            cursor_list_id = _saved_views_list_id_from_cursor(cursor)
+            if cursor_list_id is not None and int(list_id) != cursor_list_id:
+                raise ValueError(
+                    f"Cursor does not match list_id: cursor is for list {cursor_list_id}, "
+                    f"requested list_id is {int(list_id)}"
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if limit is not None:
+                params["limit"] = limit
+            data = await self._client.get(f"/lists/{list_id}/saved-views", params=params or None)
+
+        return PaginatedResponse[SavedView](
+            data=[SavedView.model_validate(v) for v in data.get("data", [])],
+            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+        )
+
+    async def saved_views_pages(
+        self,
+        list_id: ListId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AsyncIterator[PaginatedResponse[SavedView]]:
+        """Iterate saved view pages, yielding `PaginatedResponse[SavedView]`."""
+        if cursor is not None and limit is not None:
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = (
+            await self.get_saved_views(list_id, limit=limit)
+            if cursor is None
+            else await self.get_saved_views(list_id, cursor=cursor)
+        )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = await self.get_saved_views(list_id, cursor=next_cursor)
+
+    async def saved_views_all(self, list_id: ListId) -> AsyncIterator[SavedView]:
+        """Iterate all saved views for a list."""
+        async for page in self.saved_views_pages(list_id):
+            for item in page.data:
+                yield item
+
+    async def get_saved_view(self, list_id: ListId, view_id: SavedViewId) -> SavedView:
+        """Get a single saved view."""
+        data = await self._client.get(f"/lists/{list_id}/saved-views/{view_id}")
+        return SavedView.model_validate(data)
 
     async def get(self, list_id: ListId) -> AffinityList:
         """
@@ -752,6 +1072,7 @@ class AsyncListEntryService:
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
         limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListEntryWithEntity]:
         """
         Get list entries with entity data and field values.
@@ -761,30 +1082,77 @@ class AsyncListEntryService:
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum results per page
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list entries with entity data
         """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter is not None:
-            filter_text = str(filter).strip()
-            if filter_text:
-                params["filter"] = filter_text
-        if limit:
-            params["limit"] = limit
+        if cursor is not None:
+            if field_ids or field_types or filter is not None or limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            if limit is not None and limit <= 0:
+                raise ValueError("'limit' must be > 0")
+            params: dict[str, Any] = {}
+            if field_ids:
+                params["fieldIds"] = [str(field_id) for field_id in field_ids]
+            if field_types:
+                params["fieldTypes"] = [field_type.value for field_type in field_types]
+            if filter is not None:
+                filter_text = str(filter).strip()
+                if filter_text:
+                    params["filter"] = filter_text
+            if limit is not None:
+                params["limit"] = limit
 
-        data = await self._client.get(
-            f"/lists/{self._list_id}/list-entries",
-            params=params or None,
-        )
+            data = await self._client.get(
+                f"/lists/{self._list_id}/list-entries",
+                params=params or None,
+            )
         return PaginatedResponse[ListEntryWithEntity](
             data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    async def pages(
+        self,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        filter: str | FilterExpression | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AsyncIterator[PaginatedResponse[ListEntryWithEntity]]:
+        """Iterate list-entry pages, yielding `PaginatedResponse[ListEntryWithEntity]`."""
+        if cursor is not None and (
+            field_ids or field_types or filter is not None or limit is not None
+        ):
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = (
+            await self.list(
+                field_ids=field_ids, field_types=field_types, filter=filter, limit=limit
+            )
+            if cursor is None
+            else await self.list(cursor=cursor)
+        )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = await self.list(cursor=next_cursor)
 
     def all(
         self,

@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.entities import AffinityList, FieldMetadata, ListEntryWithEntity
-from affinity.models.pagination import PaginatedResponse, PaginationInfo
+from affinity.models.pagination import PaginatedResponse
 from affinity.models.types import ListType
 from affinity.types import ListId
 
@@ -49,7 +49,7 @@ def _parse_list_type(value: str | None) -> ListType | None:
 @list_group.command(name="ls", cls=rich_click.RichCommand)
 @click.option("--type", "list_type", type=str, default=None, help="Filter by list type.")
 @click.option("--page-size", type=int, default=None, help="v2 page size (limit).")
-@click.option("--cursor-url", type=str, default=None, help="Resume from a prior nextUrl.")
+@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N items total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
@@ -59,7 +59,7 @@ def list_ls(
     *,
     list_type: str | None,
     page_size: int | None,
-    cursor_url: str | None,
+    cursor: str | None,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
@@ -67,21 +67,25 @@ def list_ls(
         client = ctx.get_client(warnings=warnings)
         lt = _parse_list_type(list_type)
 
-        def fetch_page(next_url: str | None) -> PaginatedResponse[AffinityList]:
-            if next_url:
-                raw = client._http.get_url(next_url)
-            else:
-                params: dict[str, Any] = {}
-                if page_size:
-                    params["limit"] = page_size
-                raw = client._http.get("/lists", params=params or None)
-            items = [AffinityList.model_validate(x) for x in raw.get("data", [])]
+        if cursor is not None and page_size is not None:
+            raise CLIError(
+                "--cursor cannot be combined with --page-size.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        def fetch_page(next_cursor: str | None) -> PaginatedResponse[AffinityList]:
+            page = (
+                client.lists.list(cursor=next_cursor)
+                if next_cursor is not None
+                else client.lists.list(limit=page_size)
+            )
+            items = list(page.data)
             if lt is not None:
                 items = [x for x in items if x.type == lt]
-            pagination = PaginationInfo.model_validate(raw.get("pagination", {}))
-            return PaginatedResponse[AffinityList](data=items, pagination=pagination)
+            return PaginatedResponse[AffinityList](data=items, pagination=page.pagination)
 
-        page = fetch_page(cursor_url)
+        page = fetch_page(cursor)
         rows: list[dict[str, object]] = []
         for item in page.data:
             rows.append(
@@ -96,7 +100,7 @@ def list_ls(
             if max_results is not None and len(rows) >= max_results:
                 return CommandOutput(
                     data=rows[:max_results],
-                    pagination={"nextUrl": page.pagination.next_cursor},
+                    pagination={"nextCursor": page.pagination.next_cursor},
                     api_called=True,
                 )
 
@@ -104,17 +108,17 @@ def list_ls(
             return CommandOutput(
                 data=rows,
                 pagination=(
-                    {"nextUrl": page.pagination.next_cursor}
+                    {"nextCursor": page.pagination.next_cursor}
                     if page.pagination.next_cursor
                     else None
                 ),
                 api_called=True,
             )
 
-        next_url = page.pagination.next_cursor
-        while next_url:
-            page = fetch_page(next_url)
-            next_url = page.pagination.next_cursor
+        next_cursor = page.pagination.next_cursor
+        while next_cursor:
+            page = fetch_page(next_cursor)
+            next_cursor = page.pagination.next_cursor
             for item in page.data:
                 rows.append(
                     {
@@ -128,7 +132,7 @@ def list_ls(
                 if max_results is not None and len(rows) >= max_results:
                     return CommandOutput(
                         data=rows[:max_results],
-                        pagination={"nextUrl": next_url},
+                        pagination={"nextCursor": next_cursor},
                         api_called=True,
                     )
         return CommandOutput(data=rows, pagination=None, api_called=True)
@@ -172,7 +176,7 @@ CsvHeaderMode = Literal["names", "ids"]
     help="V2 filter string (mutually exclusive with --saved-view).",
 )
 @click.option("--page-size", type=int, default=200, show_default=True, help="v2 page size (limit).")
-@click.option("--cursor-url", type=str, default=None, help="Resume from a prior nextUrl.")
+@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N rows total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all rows.")
 @click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV.")
@@ -194,7 +198,7 @@ def list_export(
     fields: tuple[str, ...],
     filter_expr: str | None,
     page_size: int,
-    cursor_url: str | None,
+    cursor: str | None,
     max_results: int | None,
     all_pages: bool,
     csv_path: str | None,
@@ -209,9 +213,15 @@ def list_export(
                 exit_code=2,
                 error_type="usage_error",
             )
-        if cursor_url and (saved_view or filter_expr or fields or page_size):
+        if cursor and (saved_view or filter_expr or fields):
             raise CLIError(
-                "--cursor-url cannot be combined with --saved-view/--filter/--field/--page-size.",
+                "--cursor cannot be combined with --saved-view/--filter/--field.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+        if cursor and page_size != 200:
+            raise CLIError(
+                "--cursor cannot be combined with --page-size (cursor encodes page size).",
                 exit_code=2,
                 error_type="usage_error",
             )
@@ -264,6 +274,7 @@ def list_export(
                 "fieldIds": selected_field_ids,
                 "filter": filter_expr,
                 "pageSize": page_size,
+                "cursor": cursor,
                 "csv": str(csv_path) if csv_path else None,
             }
             return CommandOutput(
@@ -319,7 +330,7 @@ def list_export(
                     filter_expr=filter_expr,
                     selected_field_ids=selected_field_ids,
                     page_size=page_size,
-                    cursor_url=cursor_url,
+                    cursor=cursor,
                     max_results=max_results,
                     all_pages=all_pages,
                     field_by_id=field_by_id,
@@ -359,7 +370,7 @@ def list_export(
                         partial=False,
                     )
                 ],
-                pagination={"nextUrl": next_url} if next_url else None,
+                pagination={"nextCursor": next_url} if next_url else None,
                 resolved=resolved,
                 columns=columns,
                 api_called=True,
@@ -374,7 +385,7 @@ def list_export(
             filter_expr=filter_expr,
             selected_field_ids=selected_field_ids,
             page_size=page_size,
-            cursor_url=cursor_url,
+            cursor=cursor,
             max_results=max_results,
             all_pages=all_pages,
             field_by_id=field_by_id,
@@ -390,7 +401,7 @@ def list_export(
 
         return CommandOutput(
             data=rows,
-            pagination={"nextUrl": next_url} if next_url else None,
+            pagination={"nextCursor": next_url} if next_url else None,
             resolved=resolved,
             columns=columns,
             api_called=True,
@@ -470,54 +481,51 @@ def _iterate_list_entries(
     filter_expr: str | None,
     selected_field_ids: list[str],
     page_size: int,
-    cursor_url: str | None,
+    cursor: str | None,
     max_results: int | None,
     all_pages: bool,
     field_by_id: dict[str, FieldMetadata],
     key_mode: Literal["names", "ids"],
 ) -> Any:
     """
-    Yield `(row_dict, next_url)` where `next_url` is the resume token after the yielded row.
+    Yield `(row_dict, next_cursor)` where `next_cursor` is the resume token after the yielded row.
     """
     fetched = 0
 
-    def page_from_raw(raw: dict[str, Any]) -> PaginatedResponse[ListEntryWithEntity]:
-        return PaginatedResponse[ListEntryWithEntity](
-            data=[ListEntryWithEntity.model_validate(e) for e in raw.get("data", [])],
-            pagination=PaginationInfo.model_validate(raw.get("pagination", {})),
-        )
+    entries = client.lists.entries(list_id)
 
-    next_url: str | None = None
-    if cursor_url:
-        raw = client._http.get_url(cursor_url)
-        page = page_from_raw(raw)
+    next_cursor: str | None = None
+    if cursor:
+        page = entries.list(cursor=cursor)
     elif saved_view:
         view, _ = resolve_saved_view(client=client, list_id=list_id, selector=saved_view)
-        page = client.lists.entries(list_id).from_saved_view(view.id, limit=page_size)
+        page = entries.from_saved_view(view.id, limit=page_size)
     else:
-        page = client.lists.entries(list_id).list(
+        page = entries.list(
             field_ids=selected_field_ids,
             filter=filter_expr,
             limit=page_size,
         )
 
-    next_url = page.pagination.next_cursor
+    next_cursor = page.pagination.next_cursor
     for entry in page.data:
         fetched += 1
-        yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_url
+        yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_cursor
         if max_results is not None and fetched >= max_results:
             return
 
     if not all_pages and max_results is None:
         return
 
-    while next_url:
-        raw = client._http.get_url(next_url)
-        page = page_from_raw(raw)
-        next_url = page.pagination.next_cursor
+    while next_cursor:
+        page = entries.list(cursor=next_cursor)
+        next_cursor = page.pagination.next_cursor
         for entry in page.data:
             fetched += 1
-            yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_url
+            yield (
+                _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
+                next_cursor,
+            )
             if max_results is not None and fetched >= max_results:
                 return
 

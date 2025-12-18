@@ -12,7 +12,7 @@ affinity whoami --json | jq
 
 Some commands include resume tokens in `meta.pagination`.
 
-- v2 endpoints: `meta.pagination.nextUrl` (resume with `--cursor-url`)
+- v2 endpoints: `meta.pagination.nextCursor` (resume with `--cursor`)
 - v1 search: `meta.pagination.nextPageToken` (resume with `--page-token`)
 
 Example (v1 search):

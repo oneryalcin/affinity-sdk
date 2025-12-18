@@ -194,6 +194,19 @@ class ListType(OpenIntEnum):
     ORGANIZATION = 1  # Company in V2 terminology
     OPPORTUNITY = 8
 
+    @classmethod
+    def _missing_(cls, value: object) -> OpenIntEnum:
+        # V2 list endpoints commonly return string types (e.g. "company").
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in ("person", "people"):
+                return cls.PERSON
+            if text in ("company", "organization", "organisation"):
+                return cls.ORGANIZATION
+            if text in ("opportunity", "opportunities"):
+                return cls.OPPORTUNITY
+        return super()._missing_(value)
+
 
 class EntityType(OpenIntEnum):
     """Entity types in Affinity."""

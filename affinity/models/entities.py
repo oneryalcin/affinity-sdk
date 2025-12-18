@@ -355,6 +355,16 @@ class AffinityList(AffinityModel):
         default_factory=list, alias="additionalPermissions"
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_v2_is_public(cls, value: Any) -> Any:
+        # V2 list endpoints use `isPublic`; v1 uses `public`.
+        if isinstance(value, Mapping) and "public" not in value and "isPublic" in value:
+            data = dict(value)
+            data["public"] = data.get("isPublic")
+            return data
+        return value
+
 
 class ListSummary(AffinityModel):
     """Minimal list reference used by relationship endpoints."""
@@ -365,6 +375,15 @@ class ListSummary(AffinityModel):
     is_public: bool | None = Field(None, alias="public")
     owner_id: UserId | None = Field(None, alias="ownerId")
     list_size: int | None = Field(None, alias="listSize")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_v2_is_public(cls, value: Any) -> Any:
+        if isinstance(value, Mapping) and "public" not in value and "isPublic" in value:
+            data = dict(value)
+            data["public"] = data.get("isPublic")
+            return data
+        return value
 
 
 class ListCreate(AffinityModel):
