@@ -6,6 +6,7 @@ from .companies import CompanyService
 from .lists import ListEntryService, ListService
 from .opportunities import OpportunityService
 from .persons import PersonService
+from .rate_limits import RateLimitService
 from .v1_only import (
     AuthService,
     EntityFileService,
@@ -25,6 +26,7 @@ __all__ = [
     "ListService",
     "ListEntryService",
     "OpportunityService",
+    "RateLimitService",
     # V1-only services
     "NoteService",
     "ReminderService",

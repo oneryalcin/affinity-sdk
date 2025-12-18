@@ -38,6 +38,7 @@ from affinity.models.types import (
     UserId,
     WebhookId,
 )
+from affinity.services.rate_limits import RateLimitService
 from affinity.services.v1_only import (
     AuthService,
     EntityFileService,
@@ -486,6 +487,9 @@ def test_v1_only_services_end_to_end_smoke_and_branch_coverage(tmp_path: Path) -
 
         auth = AuthService(http)
         assert auth.whoami().tenant.name == "T"
-        assert auth.get_rate_limits().org_monthly.limit == 1
+        rate_limits = RateLimitService(http)
+        refreshed = rate_limits.refresh()
+        assert refreshed.source == "endpoint"
+        assert refreshed.org_monthly.limit == 1
     finally:
         http.close()

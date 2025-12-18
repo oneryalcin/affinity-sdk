@@ -49,11 +49,11 @@ class TestRateLimitState:
     """Test rate limit tracking."""
 
     def test_default_values(self) -> None:
-        """Test default rate limit values."""
+        """Test default rate limit values (unknown until observed)."""
         state = RateLimitState()
-        assert state.user_limit == 900
-        assert state.user_remaining == 900
-        assert state.org_limit == 100_000
+        assert state.user_limit is None
+        assert state.user_remaining is None
+        assert state.org_limit is None
 
     @pytest.mark.req("NFR-003b")
     def test_update_from_headers(self) -> None:
@@ -74,6 +74,7 @@ class TestRateLimitState:
         assert state.user_remaining == 850
         assert state.user_reset_seconds == 45
         assert state.org_remaining == 99500
+        assert state.last_updated is not None
 
     def test_should_throttle(self) -> None:
         """Test throttle detection."""
@@ -1045,13 +1046,11 @@ class TestClientLifecycle:
 
             assert client._companies is not None
 
-    def test_rate_limit_state_access(self) -> None:
-        """Test rate limit state access."""
+    def test_rate_limits_snapshot_access(self) -> None:
+        """Test rate limit snapshot access."""
         with Affinity(api_key="test-key") as client:
-            state = client.rate_limit_state
-
-            assert "user_remaining" in state
-            assert "org_remaining" in state
+            snapshot = client.rate_limits.snapshot()
+            assert snapshot.source in {"unknown", "headers"}
 
 
 @pytest.mark.asyncio

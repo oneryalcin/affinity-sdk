@@ -24,6 +24,7 @@ from .services.companies import AsyncCompanyService, CompanyService
 from .services.lists import AsyncListService, ListService
 from .services.opportunities import AsyncOpportunityService, OpportunityService
 from .services.persons import AsyncPersonService, PersonService
+from .services.rate_limits import AsyncRateLimitService, RateLimitService
 from .services.tasks import AsyncTaskService, TaskService
 from .services.v1_only import (
     AsyncAuthService,
@@ -211,6 +212,7 @@ class Affinity:
         self._files: EntityFileService | None = None
         self._relationships: RelationshipStrengthService | None = None
         self._auth: AuthService | None = None
+        self._rate_limits: RateLimitService | None = None
 
     @classmethod
     def from_env(
@@ -343,10 +345,17 @@ class Affinity:
 
     @property
     def auth(self) -> AuthService:
-        """Authentication and rate limit info."""
+        """Authentication info."""
         if self._auth is None:
             self._auth = AuthService(self._http)
         return self._auth
+
+    @property
+    def rate_limits(self) -> RateLimitService:
+        """Unified rate limit information (version-agnostic)."""
+        if self._rate_limits is None:
+            self._rate_limits = RateLimitService(self._http)
+        return self._rate_limits
 
     # =========================================================================
     # Utility Methods
@@ -361,18 +370,7 @@ class Affinity:
         """Convenience wrapper for `client.auth.whoami()`."""
         return self.auth.whoami()
 
-    @property
-    def rate_limit_state(self) -> dict[str, Any]:
-        """Get the current rate limit state tracked by the client."""
-        state = self._http.rate_limit_state
-        return {
-            "user_limit": state.user_limit,
-            "user_remaining": state.user_remaining,
-            "user_reset_seconds": state.user_reset_seconds,
-            "org_limit": state.org_limit,
-            "org_remaining": state.org_remaining,
-            "org_reset_seconds": state.org_reset_seconds,
-        }
+    # Note: dict-style `rate_limit_state` is intentionally not part of the public API.
 
 
 # =============================================================================
@@ -467,6 +465,7 @@ class AsyncAffinity:
         self._files: AsyncEntityFileService | None = None
         self._relationships: AsyncRelationshipStrengthService | None = None
         self._auth: AsyncAuthService | None = None
+        self._rate_limits: AsyncRateLimitService | None = None
 
     @classmethod
     def from_env(
@@ -585,10 +584,17 @@ class AsyncAffinity:
 
     @property
     def auth(self) -> AsyncAuthService:
-        """Authentication and rate limit info."""
+        """Authentication info."""
         if self._auth is None:
             self._auth = AsyncAuthService(self._http)
         return self._auth
+
+    @property
+    def rate_limits(self) -> AsyncRateLimitService:
+        """Unified rate limit information (version-agnostic)."""
+        if self._rate_limits is None:
+            self._rate_limits = AsyncRateLimitService(self._http)
+        return self._rate_limits
 
     async def __aenter__(self) -> AsyncAffinity:
         """Enter an async context and return this client."""

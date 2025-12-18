@@ -25,7 +25,6 @@ from ..models.secondary import (
     Note,
     NoteCreate,
     NoteUpdate,
-    RateLimits,
     RelationshipStrength,
     Reminder,
     ReminderCreate,
@@ -1012,7 +1011,7 @@ class EntityFileService:
 
 
 class AuthService:
-    """Service for authentication and rate limit info."""
+    """Service for authentication info."""
 
     def __init__(self, client: HTTPClient):
         self._client = client
@@ -1023,10 +1022,7 @@ class AuthService:
         data = self._client.get("/auth/whoami")
         return WhoAmI.model_validate(data)
 
-    def get_rate_limits(self) -> RateLimits:
-        """Get current rate limit status."""
-        data = self._client.get("/rate-limit", v1=True)
-        return RateLimits.model_validate(data.get("rate", {}))
+    # Note: rate limit handling is exposed via `client.rate_limits` (version-agnostic).
 
 
 # =============================================================================
@@ -1803,7 +1799,7 @@ class AsyncEntityFileService:
 
 
 class AsyncAuthService:
-    """Async service for authentication and rate limit info."""
+    """Async service for authentication info."""
 
     def __init__(self, client: AsyncHTTPClient):
         self._client = client
@@ -1812,6 +1808,4 @@ class AsyncAuthService:
         data = await self._client.get("/auth/whoami")
         return WhoAmI.model_validate(data)
 
-    async def get_rate_limits(self) -> RateLimits:
-        data = await self._client.get("/rate-limit", v1=True)
-        return RateLimits.model_validate(data.get("rate", {}))
+    # Note: rate limit handling is exposed via `client.rate_limits` (version-agnostic).

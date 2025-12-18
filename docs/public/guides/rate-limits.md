@@ -1,24 +1,26 @@
 # Rate limits
 
-The SDK tracks rate-limit state from responses and can also query rate-limit status via the API.
+The SDK exposes a version-agnostic rate limit surface via `client.rate_limits`:
+- `snapshot()` is best-effort and does not make network calls.
+- `refresh()` makes one request and returns the best available snapshot.
 
-## Local tracking
+## Snapshot (no network)
 
 ```python
 from affinity import Affinity
 
 with Affinity(api_key="your-key") as client:
     client.companies.list()
-    print(client.rate_limit_state)
+    print(client.rate_limits.snapshot())
 ```
 
-## Query current limits
+## Refresh (one request)
 
 ```python
 from affinity import Affinity
 
 with Affinity(api_key="your-key") as client:
-    limits = client.auth.get_rate_limits()
+    limits = client.rate_limits.refresh()
     print(limits)
 ```
 

@@ -335,15 +335,14 @@ with Affinity(api_key="your-key") as client:
 from affinity import Affinity
 
 with Affinity(api_key="your-key") as client:
-    # Get rate limit info from API
-    limits = client.auth.get_rate_limits()
-    print(f"API key per minute: {limits.api_key_per_minute.remaining}/{limits.api_key_per_minute.per}")
-    print(f"API key per month: {limits.api_key_per_month.remaining}/{limits.api_key_per_month.per}")
+    # Fetch/observe current rate limits now (one request)
+    limits = client.rate_limits.refresh()
+    print(f"API key per minute: {limits.api_key_per_minute.remaining}/{limits.api_key_per_minute.limit}")
+    print(f"Org monthly: {limits.org_monthly.remaining}/{limits.org_monthly.limit}")
 
-    # Get locally tracked rate limit state
-    state = client.rate_limit_state
-    print(f"User remaining: {state['user_remaining']}")
-    print(f"Org remaining: {state['org_remaining']}")
+    # Best-effort snapshot derived from tracked response headers (no network)
+    snapshot = client.rate_limits.snapshot()
+    print(f"Snapshot source: {snapshot.source}")
 ```
 
 ## Type System

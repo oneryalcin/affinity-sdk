@@ -388,30 +388,30 @@ def monitor_rate_limits(client: Affinity) -> dict:
     """
     print("\n=== Rate Limit Status ===\n")
 
-    # Get rate limits from API (most accurate)
+    # Refresh rate limits now (one request)
     try:
-        api_limits = client.auth.get_rate_limits()
-        print("From API:")
+        refreshed = client.rate_limits.refresh()
+        print("Refreshed:")
         print(
-            f"  Per minute: {api_limits.api_key_per_minute.remaining}/{api_limits.api_key_per_minute.per}"
+            f"  API key per minute: {refreshed.api_key_per_minute.remaining}/{refreshed.api_key_per_minute.limit}"
         )
-        print(
-            f"  Per month: {api_limits.api_key_per_month.remaining}/{api_limits.api_key_per_month.per}"
-        )
+        print(f"  Org monthly: {refreshed.org_monthly.remaining}/{refreshed.org_monthly.limit}")
     except AffinityError:
-        print("Could not fetch API rate limits")
-        api_limits = None
+        print("Could not refresh rate limits")
+        refreshed = None
 
-    # Get locally tracked limits (updated from response headers)
-    local_state = client.rate_limit_state
-    print("\nLocal tracking:")
-    print(f"  User remaining: {local_state['user_remaining']}/{local_state['user_limit']}")
-    print(f"  Org remaining: {local_state['org_remaining']}/{local_state['org_limit']}")
-    print(f"  User reset in: {local_state['user_reset_seconds']}s")
+    # Best-effort snapshot (updated from response headers)
+    snapshot = client.rate_limits.snapshot()
+    print("\nSnapshot:")
+    print(f"  Source: {snapshot.source}")
+    print(
+        f"  API key per minute: {snapshot.api_key_per_minute.remaining}/{snapshot.api_key_per_minute.limit}"
+    )
+    print(f"  Org monthly: {snapshot.org_monthly.remaining}/{snapshot.org_monthly.limit}")
 
     return {
-        "api_limits": api_limits,
-        "local_state": local_state,
+        "refreshed": refreshed,
+        "snapshot": snapshot,
     }
 
 

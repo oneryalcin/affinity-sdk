@@ -54,6 +54,9 @@ from .pagination import (
     PaginationInfo,
 )
 
+# Rate limit snapshot (unified)
+from .rate_limit_snapshot import RateLimitBucket, RateLimitSnapshot
+
 # Secondary models
 from .secondary import (
     # File
@@ -140,6 +143,8 @@ __all__ = [
     "WhoAmI",
     "RateLimits",
     "RateLimitInfo",
+    "RateLimitBucket",
+    "RateLimitSnapshot",
     "Tenant",
     "Grant",
     # Pagination

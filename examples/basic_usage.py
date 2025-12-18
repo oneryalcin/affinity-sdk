@@ -63,9 +63,11 @@ def main() -> None:
         # Show rate limit status
         print("Rate limits:")
         print("-" * 50)
-        state = client.rate_limit_state
-        print(f"  User remaining: {state['user_remaining']}")
-        print(f"  Org remaining: {state['org_remaining']}")
+        snapshot = client.rate_limits.snapshot()
+        print(
+            f"  API key per minute: {snapshot.api_key_per_minute.remaining}/{snapshot.api_key_per_minute.limit}"
+        )
+        print(f"  Org monthly: {snapshot.org_monthly.remaining}/{snapshot.org_monthly.limit}")
 
 
 if __name__ == "__main__":

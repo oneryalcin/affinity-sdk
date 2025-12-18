@@ -17,6 +17,7 @@ import email.utils
 import hashlib
 import logging
 import math
+import threading
 import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -400,46 +401,90 @@ def _redact_external_url(url: str) -> str:
 class RateLimitState:
     """Tracks rate limit status from response headers."""
 
-    user_limit: int = 900
-    user_remaining: int = 900
-    user_reset_seconds: int = 60
-    org_limit: int = 100_000
-    org_remaining: int = 100_000
-    org_reset_seconds: int = 2_592_000  # ~30 days
-    last_updated: float = field(default_factory=time.time)
+    user_limit: int | None = None
+    user_remaining: int | None = None
+    user_reset_seconds: int | None = None
+    org_limit: int | None = None
+    org_remaining: int | None = None
+    org_reset_seconds: int | None = None
+    last_updated: float | None = None
+    last_request_id: str | None = None
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def update_from_headers(self, headers: httpx.Headers) -> None:
         """Update state from response headers."""
-        self.last_updated = time.time()
 
-        # Handle both uppercase (current) and lowercase (future) headers
-        def get_header(name: str) -> int | None:
+        # Handle both uppercase (current) and lowercase (future) headers.
+        def get_int(name: str) -> int | None:
             value = headers.get(name) or headers.get(name.lower())
             return int(value) if value else None
 
-        if (v := get_header("X-Ratelimit-Limit-User")) is not None:
-            self.user_limit = v
-        if (v := get_header("X-Ratelimit-Limit-User-Remaining")) is not None:
-            self.user_remaining = v
-        if (v := get_header("X-Ratelimit-Limit-User-Reset")) is not None:
-            self.user_reset_seconds = v
-        if (v := get_header("X-Ratelimit-Limit-Org")) is not None:
-            self.org_limit = v
-        if (v := get_header("X-Ratelimit-Limit-Org-Remaining")) is not None:
-            self.org_remaining = v
-        if (v := get_header("X-Ratelimit-Limit-Org-Reset")) is not None:
-            self.org_reset_seconds = v
+        request_id = _extract_request_id(_select_response_headers(headers))
+        observed_any = False
+
+        user_limit = get_int("X-Ratelimit-Limit-User")
+        user_remaining = get_int("X-Ratelimit-Limit-User-Remaining")
+        user_reset = get_int("X-Ratelimit-Limit-User-Reset")
+        org_limit = get_int("X-Ratelimit-Limit-Org")
+        org_remaining = get_int("X-Ratelimit-Limit-Org-Remaining")
+        org_reset = get_int("X-Ratelimit-Limit-Org-Reset")
+
+        with self._lock:
+            if request_id is not None:
+                self.last_request_id = request_id
+
+            # Only update timestamps when we actually observed rate limit headers.
+            for v in (user_limit, user_remaining, user_reset, org_limit, org_remaining, org_reset):
+                if v is not None:
+                    observed_any = True
+                    break
+
+            if not observed_any:
+                return
+
+            self.last_updated = time.time()
+
+            if user_limit is not None:
+                self.user_limit = user_limit
+            if user_remaining is not None:
+                self.user_remaining = user_remaining
+            if user_reset is not None:
+                self.user_reset_seconds = user_reset
+            if org_limit is not None:
+                self.org_limit = org_limit
+            if org_remaining is not None:
+                self.org_remaining = org_remaining
+            if org_reset is not None:
+                self.org_reset_seconds = org_reset
 
     @property
     def should_throttle(self) -> bool:
         """Whether we should slow down requests."""
-        return self.user_remaining < 50 or self.org_remaining < 1000
+        return (self.user_remaining is not None and self.user_remaining < 50) or (
+            self.org_remaining is not None and self.org_remaining < 1000
+        )
 
     @property
     def seconds_until_user_reset(self) -> float:
         """Seconds until per-minute limit resets."""
+        if self.user_reset_seconds is None or self.last_updated is None:
+            return 0.0
         elapsed = time.time() - self.last_updated
-        return max(0, self.user_reset_seconds - elapsed)
+        return max(0.0, float(self.user_reset_seconds) - elapsed)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a coherent snapshot of the tracked state."""
+        with self._lock:
+            return {
+                "user_limit": self.user_limit,
+                "user_remaining": self.user_remaining,
+                "user_reset_seconds": self.user_reset_seconds,
+                "org_limit": self.org_limit,
+                "org_remaining": self.org_remaining,
+                "org_reset_seconds": self.org_reset_seconds,
+                "last_updated": self.last_updated,
+                "last_request_id": self.last_request_id,
+            }
 
 
 # =============================================================================
