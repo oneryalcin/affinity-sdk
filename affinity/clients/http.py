@@ -49,6 +49,7 @@ _RETRYABLE_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
 _MAX_RETRY_DELAY_SECONDS: float = 60.0
 _MAX_DOWNLOAD_REDIRECTS: int = 10
 
+_DEFAULT_HEADERS: dict[str, str] = {"Accept": "application/json"}
 
 T = TypeVar("T")
 
@@ -579,9 +580,7 @@ class HTTPClient:
             timeout=config.timeout,
             limits=config.limits,
             transport=config.transport,
-            headers={
-                "Accept": "application/json",
-            },
+            headers=dict(_DEFAULT_HEADERS),
         )
 
     def _apply_auth(
@@ -1474,9 +1473,7 @@ class AsyncHTTPClient:
                 timeout=self._config.timeout,
                 limits=self._config.limits,
                 transport=self._config.async_transport,
-                headers={
-                    "Accept": "application/json",
-                },
+                headers=dict(_DEFAULT_HEADERS),
             )
         return self._client
 
