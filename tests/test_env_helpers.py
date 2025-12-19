@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 import affinity.client as affinity_client
@@ -11,6 +12,17 @@ def test_affinity_from_env_reads_affinity_api_key(monkeypatch: pytest.MonkeyPatc
     client = Affinity.from_env()
     try:
         assert client._http._config.api_key == "secret-key"
+    finally:
+        client.close()
+
+
+def test_affinity_from_env_threads_mode_and_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AFFINITY_API_KEY", "secret-key")
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
+    client = Affinity.from_env(mode="readonly", transport=transport, max_retries=0)
+    try:
+        assert client._http._config.mode == "readonly"
+        assert client._http._config.transport is transport
     finally:
         client.close()
 

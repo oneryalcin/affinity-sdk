@@ -30,6 +30,17 @@ from affinity import Affinity
 client = Affinity.from_env(load_dotenv=True)
 ```
 
+## Read-only mode
+
+If you want the SDK to guarantee it does not perform write operations (POST/PUT/PATCH/DELETE),
+initialize the client with `mode="readonly"`:
+
+```python
+from affinity import Affinity
+
+client = Affinity.from_env(mode="readonly")
+```
+
 ## Create a client
 
 ```python

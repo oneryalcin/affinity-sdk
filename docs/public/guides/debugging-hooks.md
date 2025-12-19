@@ -15,6 +15,15 @@ with Affinity(api_key="your-key", on_request=on_request, on_response=on_response
     client.companies.list()
 ```
 
+If you need request interception for tests (without real network calls), use transport injection:
+
+```python
+import httpx
+from affinity import Affinity
+
+client = Affinity(api_key="your-key", transport=httpx.MockTransport(lambda req: httpx.Response(200)))
+```
+
 ## Next steps
 
 - [Configuration](configuration.md)

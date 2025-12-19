@@ -20,6 +20,14 @@ from affinity import Affinity
 client = Affinity.from_env()
 ```
 
+For defensive “no writes” usage (scripts, audits), enable read-only mode:
+
+```python
+from affinity import Affinity
+
+client = Affinity.from_env(mode="readonly")
+```
+
 ## Next steps
 
 - [Getting started](../getting-started.md)
