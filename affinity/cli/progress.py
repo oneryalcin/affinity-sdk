@@ -71,14 +71,15 @@ class ProgressManager(AbstractContextManager["ProgressManager"]):
     def task(self, *, description: str, total_bytes: int | None) -> tuple[TaskID, ProgressCallback]:
         if not self.enabled or self._progress is None:
 
-            def noop(_: int, __: int | None, *, _phase: ProgressPhase) -> None:
-                return
+            def noop(_: int, __: int | None, *, phase: ProgressPhase) -> None:
+                del phase
 
             return TaskID(0), cast(ProgressCallback, noop)
 
         task_id = self._progress.add_task(description, total=total_bytes)
 
-        def callback(bytes_transferred: int, total: int | None, *, _phase: ProgressPhase) -> None:
+        def callback(bytes_transferred: int, total: int | None, *, phase: ProgressPhase) -> None:
+            del phase
             if self._progress is None:
                 return
             if total is not None:
