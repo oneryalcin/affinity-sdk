@@ -40,8 +40,8 @@ def test_table_from_rows_marks_offset_varies_when_dst_applies(
         rendered = "\n".join(
             str(line) for line in console.render_lines(table, options=console.options)
         )
-        assert "t (local, UTC offset varies)" in rendered
-        assert "UTC-" in rendered
+        assert "t (local)" in rendered
+        assert "UTC-" not in rendered
     finally:
         if old_tz is None:
             monkeypatch.delenv("TZ", raising=False)

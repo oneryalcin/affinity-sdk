@@ -219,7 +219,7 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
                 offset_str = format_utc_offset(next(iter(offsets)))
                 table.add_column(f"{col} (local, {offset_str})")
             else:
-                table.add_column(f"{col} (local, UTC offset varies)")
+                table.add_column(f"{col} (local)")
         else:
             table.add_column(col)
 
@@ -229,13 +229,8 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
         column_lower = column.lower()
         if isinstance(value, datetime):
             show_seconds = datetime_show_seconds.get(column, False)
-            base, offset_minutes = format_local_datetime(value, show_seconds=show_seconds)
-            offsets = datetime_offsets.get(column, set())
-            if len(offsets) == 1:
-                return base
-            if offset_minutes is None:
-                return f"{base} UTC?"
-            return f"{base} {format_utc_offset(offset_minutes)}"
+            base, _offset_minutes = format_local_datetime(value, show_seconds=show_seconds)
+            return base
         if isinstance(value, list) and all(isinstance(v, str) for v in value):
             parts = [
                 maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
