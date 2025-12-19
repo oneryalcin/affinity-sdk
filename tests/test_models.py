@@ -35,10 +35,13 @@ from affinity.services.v1_only import (
 )
 from affinity.types import (
     CompanyId,
+    DropdownOptionId,
     EnrichedFieldId,
     FieldId,
     FieldType,
+    FieldValueId,
     FieldValueType,
+    InteractionId,
     InteractionType,
     ListId,
     ListType,
@@ -67,6 +70,18 @@ class TestTypedIds:
         """Test ListId can be created from int."""
         lid = ListId(789)
         assert lid == 789
+
+    def test_interaction_id_creation(self) -> None:
+        """Test InteractionId can be created from int."""
+        iid = InteractionId(123)
+        assert iid == 123
+        assert isinstance(iid, int)
+
+    def test_dropdown_option_id_creation(self) -> None:
+        """Test DropdownOptionId can be created from int."""
+        oid = DropdownOptionId(456)
+        assert oid == 456
+        assert isinstance(oid, int)
 
     @pytest.mark.req("TR-003b")
     def test_ids_are_runtime_distinct_types(self) -> None:
@@ -300,6 +315,21 @@ class TestFieldMetadataModel:
 
         assert field.type == FieldType.ENRICHED
 
+    def test_field_metadata_parses_dropdown_options(self) -> None:
+        field = FieldMetadata.model_validate(
+            {
+                "id": "field-1",
+                "name": "Status",
+                "type": "list-specific",
+                "valueType": 7,  # DROPDOWN (v1 numeric)
+                "allowsMultiple": False,
+                "dropdownOptions": [{"id": 10, "text": "Active"}],
+            }
+        )
+        assert len(field.dropdown_options) == 1
+        assert type(field.dropdown_options[0].id) is DropdownOptionId
+        assert field.dropdown_options[0].id == 10
+
 
 @pytest.mark.req("TR-011")
 class TestNullVsEmptyNormalization:
@@ -340,6 +370,7 @@ class TestDateTimePolicy:
                 "createdAt": "2025-01-01T12:00:00Z",
             }
         )
+        assert type(field_value.id) is FieldValueId
         assert field_value.created_at is not None
         assert field_value.created_at.tzinfo is not None
         assert field_value.created_at.utcoffset() is not None

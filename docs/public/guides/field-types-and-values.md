@@ -61,8 +61,8 @@ Unknown future values are treated as open enums and preserved as strings.
 | `datetime` | `str` / `datetime.datetime` | Typically ISO-8601 datetime strings on read |
 | `person` / `person-multi` | `PersonId` / `list[PersonId]` | Under the hood: `int` or `list[int]` |
 | `company` / `company-multi` | `CompanyId` / `list[CompanyId]` | Under the hood: `int` or `list[int]` |
-| `dropdown` / `dropdown-multi` | `int` / `list[int]` | Dropdown option IDs |
-| `ranked-dropdown` | `int` | Dropdown option ID (ranked dropdown) |
+| `dropdown` / `dropdown-multi` | `DropdownOptionId` / `list[DropdownOptionId]` | Under the hood: `int` or `list[int]` |
+| `ranked-dropdown` | `DropdownOptionId` | Under the hood: `int` |
 | `location` / `location-multi` | `dict[str, Any]` / `list[dict[str, Any]]` | Structured location object(s); shape varies by API |
 | `interaction` | `Any` | Relationship-intelligence fields; shape varies by API |
 

@@ -15,6 +15,7 @@ from .types import (
     CompanyId,
     FileId,
     InteractionDirection,
+    InteractionId,
     InteractionType,
     ISODatetime,
     NoteId,
@@ -125,7 +126,7 @@ class Interaction(AffinityModel):
     Different interaction types have different fields available.
     """
 
-    id: int
+    id: InteractionId
     type: InteractionType
     date: ISODatetime
 

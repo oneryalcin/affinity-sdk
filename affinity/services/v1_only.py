@@ -40,7 +40,9 @@ from ..models.types import (
     FieldId,
     FieldValueId,
     FileId,
+    InteractionId,
     InteractionType,
+    ListEntryId,
     ListId,
     NoteId,
     OpportunityId,
@@ -418,10 +420,10 @@ class InteractionService:
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
 
-    def get(self, interaction_id: int, type: InteractionType) -> Interaction:
+    def get(self, interaction_id: InteractionId, type: InteractionType) -> Interaction:
         """Get a single interaction by ID and type."""
         data = self._client.get(
-            f"/interactions/{interaction_id}",
+            f"/interactions/{int(interaction_id)}",
             params={"type": int(type)},
             v1=True,
         )
@@ -443,7 +445,7 @@ class InteractionService:
 
     def update(
         self,
-        interaction_id: int,
+        interaction_id: InteractionId,
         type: InteractionType,
         data: InteractionUpdate,
     ) -> Interaction:
@@ -458,13 +460,17 @@ class InteractionService:
         if data.direction is not None:
             payload["direction"] = int(data.direction)
 
-        result = self._client.put(f"/interactions/{interaction_id}", json=payload, v1=True)
+        result = self._client.put(
+            f"/interactions/{int(interaction_id)}",
+            json=payload,
+            v1=True,
+        )
         return Interaction.model_validate(result)
 
-    def delete(self, interaction_id: int, type: InteractionType) -> bool:
+    def delete(self, interaction_id: InteractionId, type: InteractionType) -> bool:
         """Delete an interaction."""
         result = self._client.delete(
-            f"/interactions/{interaction_id}",
+            f"/interactions/{int(interaction_id)}",
             params={"type": int(type)},
             v1=True,
         )
@@ -578,7 +584,7 @@ class FieldValueService:
         person_id: PersonId | None = None,
         organization_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
-        list_entry_id: int | None = None,
+        list_entry_id: ListEntryId | None = None,
     ) -> list[FieldValue]:
         """
         Get field values for an entity.
@@ -613,7 +619,7 @@ class FieldValueService:
         if opportunity_id is not None:
             params["opportunity_id"] = int(opportunity_id)
         if list_entry_id is not None:
-            params["list_entry_id"] = list_entry_id
+            params["list_entry_id"] = int(list_entry_id)
 
         data = self._client.get("/field-values", params=params or None, v1=True)
         items = data.get("data", [])

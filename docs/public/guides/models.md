@@ -20,6 +20,20 @@ with Affinity(api_key="your-key") as client:
 
 The SDK accepts and populates both API-style keys (camelCase) and Python attribute names (snake_case) when parsing.
 
+## Typed IDs
+
+Many model `.id` fields use strongly-typed ID wrappers (for example: `PersonId`, `CompanyId`, `ListId`, `FieldValueId`).
+They behave like `int` at runtime, but help static type checkers prevent mixing IDs across entity types.
+
+```python
+from affinity.types import DropdownOptionId, FieldValueId, InteractionId, PersonId
+
+person_id = PersonId(123)
+interaction_id = InteractionId(456)
+field_value_id = FieldValueId(789)
+dropdown_option_id = DropdownOptionId(10)
+```
+
 ## Field values container
 
 Entities like `Person`, `Company`, and `Opportunity` expose `fields`, which preserves whether you requested field data:

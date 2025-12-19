@@ -16,8 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .types import (
     AnyFieldId,
     CompanyId,
+    DropdownOptionId,
     EntityType,
     FieldId,
+    FieldValueId,
     FieldValueType,
     ISODatetime,
     ListEntryId,
@@ -110,7 +112,7 @@ class Location(AffinityModel):
 class DropdownOption(AffinityModel):
     """A selectable option in a dropdown field."""
 
-    id: int
+    id: DropdownOptionId
     text: str
     rank: int | None = None
     color: int | None = None
@@ -569,7 +571,7 @@ class FieldValue(AffinityModel):
     The value can be various types depending on the field's value_type.
     """
 
-    id: int
+    id: FieldValueId
     field_id: AnyFieldId = Field(alias="fieldId")
     entity_id: int = Field(alias="entityId")
     list_entry_id: ListEntryId | None = Field(None, alias="listEntryId")
