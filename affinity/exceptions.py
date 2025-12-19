@@ -427,7 +427,9 @@ def error_from_response(
         422: ValidationError,
         429: RateLimitError,
         500: ServerError,
+        502: ServerError,
         503: ServerError,
+        504: ServerError,
     }
 
     error_class = error_mapping.get(status_code, AffinityError)

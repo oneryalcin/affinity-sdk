@@ -238,9 +238,9 @@ from affinity import Affinity
 from affinity.models import ReminderCreate
 from affinity.types import PersonId, ReminderResetType, ReminderType, UserId
 
-	with Affinity(api_key="your-key") as client:
-	    # Get current user
-	    me = client.whoami()
+with Affinity(api_key="your-key") as client:
+    # Get current user
+    me = client.whoami()
 
     # Create a follow-up reminder
     reminder = client.reminders.create(
@@ -258,7 +258,8 @@ from affinity.types import PersonId, ReminderResetType, ReminderType, UserId
         ReminderCreate(
             owner_id=UserId(me.user.id),
             type=ReminderType.RECURRING,
-            reset_type=ReminderResetType.THIRTY_DAYS,
+            reset_type=ReminderResetType.INTERACTION,
+            reminder_days=30,
             content="Monthly check-in",
             person_id=PersonId(123),
         )

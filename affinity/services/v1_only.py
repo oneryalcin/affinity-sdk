@@ -1328,7 +1328,7 @@ class AsyncInteractionService:
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
 
-    async def get(self, interaction_id: int, type: InteractionType) -> Interaction:
+    async def get(self, interaction_id: InteractionId, type: InteractionType) -> Interaction:
         data = await self._client.get(
             f"/interactions/{interaction_id}",
             params={"type": int(type)},
@@ -1351,7 +1351,7 @@ class AsyncInteractionService:
 
     async def update(
         self,
-        interaction_id: int,
+        interaction_id: InteractionId,
         type: InteractionType,
         data: InteractionUpdate,
     ) -> Interaction:
@@ -1368,7 +1368,7 @@ class AsyncInteractionService:
         result = await self._client.put(f"/interactions/{interaction_id}", json=payload, v1=True)
         return Interaction.model_validate(result)
 
-    async def delete(self, interaction_id: int, type: InteractionType) -> bool:
+    async def delete(self, interaction_id: InteractionId, type: InteractionType) -> bool:
         result = await self._client.delete(
             f"/interactions/{interaction_id}",
             params={"type": int(type)},
@@ -1454,7 +1454,7 @@ class AsyncFieldValueService:
         person_id: PersonId | None = None,
         organization_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
-        list_entry_id: int | None = None,
+        list_entry_id: ListEntryId | None = None,
     ) -> builtins.list[FieldValue]:
         provided = [
             name

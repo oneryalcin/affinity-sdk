@@ -153,6 +153,11 @@ class Person(AffinityModel):
     organization_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
     opportunity_ids: list[OpportunityId] = Field(default_factory=list, alias="opportunityIds")
 
+    # V1: only returned when `with_current_organizations=true`
+    current_organization_ids: list[CompanyId] = Field(
+        default_factory=list, alias="currentOrganizationIds"
+    )
+
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
 
@@ -166,6 +171,8 @@ class Person(AffinityModel):
                 "emailAddresses",
                 "organizationIds",
                 "organization_ids",
+                "currentOrganizationIds",
+                "current_organization_ids",
                 "opportunityIds",
                 "opportunity_ids",
             ),
@@ -179,6 +186,9 @@ class Person(AffinityModel):
 
     # Interaction dates (V1 format, returned when with_interaction_dates=True)
     interaction_dates: InteractionDates | None = Field(None, alias="interactionDates")
+
+    # V1: only returned when with_interaction_dates=true; preserve shape for forward compatibility.
+    interactions: dict[str, Any] | None = None
 
     @property
     def full_name(self) -> str:

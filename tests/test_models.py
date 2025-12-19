@@ -226,6 +226,20 @@ class TestPersonModel:
             person = Person.model_validate(data)
             assert person.type == PersonType(type_str)
 
+    def test_person_accepts_v1_current_organization_ids_and_interactions(self) -> None:
+        data = {
+            "id": 1,
+            "type": "external",
+            "current_organization_ids": [123],
+            "interactions": {
+                "last_interaction": {"date": "2025-01-01T12:00:00Z", "person_ids": [999]}
+            },
+        }
+        person = Person.model_validate(data)
+        assert person.current_organization_ids == [CompanyId(123)]
+        assert person.interactions is not None
+        assert "last_interaction" in person.interactions
+
 
 @pytest.mark.req("TR-002")
 class TestCompanyModel:
@@ -410,7 +424,7 @@ class TestDateTimePolicy:
         assert dumped["createdAt"].endswith("Z") or "+00:00" in dumped["createdAt"]
 
 
-@pytest.mark.req("TR-012a")
+@pytest.mark.req("TR-003")
 def test_field_value_change_id_is_typed() -> None:
     change = FieldValueChange.model_validate(
         {
@@ -425,7 +439,7 @@ def test_field_value_change_id_is_typed() -> None:
     assert type(change.id) is FieldValueChangeId
 
 
-@pytest.mark.req("TR-002a")
+@pytest.mark.req("TR-002")
 def test_list_entry_entity_is_discriminated_by_entity_type_for_opportunities() -> None:
     entry = ListEntry.model_validate(
         {

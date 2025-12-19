@@ -23,6 +23,11 @@ Common values include:
 - `FieldType.LIST`
 - `FieldType.LIST_SPECIFIC`
 
+Notes:
+
+- `FieldType.LIST_SPECIFIC` is an alternate string value the API uses for list-scoped fields (you may see
+  it in responses as `"list-specific"`). Treat it as equivalent to `FieldType.LIST` for most use cases.
+
 ## Field IDs
 
 If you know specific field IDs, you can request only those:
