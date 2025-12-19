@@ -1112,6 +1112,7 @@ class HTTPClient:
             elapsed_ms = (time.monotonic() - started_at) * 1000
             resp.context.setdefault("client_request_id", client_request_id)
             resp.context.setdefault("external", external)
+            resp.context.setdefault("elapsed_seconds", elapsed_ms / 1000.0)
 
             if config.on_response and request_info is not None:
                 config.on_response(
@@ -2352,6 +2353,7 @@ class AsyncHTTPClient:
             elapsed_ms = (time.monotonic() - started_at) * 1000
             resp.context.setdefault("client_request_id", client_request_id)
             resp.context.setdefault("external", external)
+            resp.context.setdefault("elapsed_seconds", elapsed_ms / 1000.0)
 
             if config.on_response and request_info is not None:
                 config.on_response(
