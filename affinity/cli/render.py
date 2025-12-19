@@ -244,6 +244,7 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
             if isinstance(result.data.get("savedViews"), list)
             else []
         )
+        show_is_default = any(isinstance(v, dict) and v.get("isDefault") is not None for v in views)
         fields_table = _table_from_rows(
             [
                 {"id": f.get("id"), "name": f.get("name"), "valueType": f.get("valueType")}
@@ -254,6 +255,8 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
         views_table = _table_from_rows(
             [
                 {"id": v.get("id"), "name": v.get("name"), "isDefault": v.get("isDefault")}
+                if show_is_default
+                else {"id": v.get("id"), "name": v.get("name")}
                 for v in views
                 if isinstance(v, dict)
             ]

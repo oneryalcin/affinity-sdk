@@ -144,7 +144,9 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
         data = {
             "list": resolved.list.model_dump(by_alias=True, mode="json"),
             "fields": [f.model_dump(by_alias=True, mode="json") for f in fields],
-            "savedViews": [v.model_dump(by_alias=True, mode="json") for v in views],
+            "savedViews": [
+                v.model_dump(by_alias=True, mode="json", exclude_none=True) for v in views
+            ],
         }
         return CommandOutput(data=data, resolved=resolved.resolved, api_called=True)
 

@@ -534,7 +534,8 @@ class SavedView(AffinityModel):
     name: str
     type: str | None = None  # V2 field: view type
     list_id: ListId | None = Field(None, alias="listId")
-    is_default: bool = Field(False, alias="isDefault")
+    # The Affinity API does not consistently include this field.
+    is_default: bool | None = Field(None, alias="isDefault")
     created_at: ISODatetime | None = Field(None, alias="createdAt")
 
     # Field IDs included in this view
