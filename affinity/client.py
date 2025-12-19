@@ -22,6 +22,7 @@ from .clients.http import (
 )
 from .models.secondary import WhoAmI
 from .models.types import V1_BASE_URL, V2_BASE_URL
+from .policies import Policies
 from .services.companies import AsyncCompanyService, CompanyService
 from .services.lists import AsyncListService, ListService
 from .services.opportunities import AsyncOpportunityService, OpportunityService
@@ -160,7 +161,7 @@ class Affinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
-        mode: Literal["readwrite", "readonly"] = "readwrite",
+        policies: Policies | None = None,
     ):
         """
         Initialize the Affinity client.
@@ -186,7 +187,7 @@ class Affinity:
             log_requests: Log all HTTP requests (for debugging)
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
-            mode: "readonly" blocks all write operations before any network call
+            policies: Client policies (e.g., disable writes)
         """
         config = ClientConfig(
             api_key=api_key,
@@ -205,7 +206,7 @@ class Affinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
-            mode=mode,
+            policies=policies or Policies(),
         )
         self._http = HTTPClient(config)
 
@@ -236,7 +237,7 @@ class Affinity:
         dotenv_override: bool = False,
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
-        mode: Literal["readwrite", "readonly"] = "readwrite",
+        policies: Policies | None = None,
         **kwargs: Any,
     ) -> Affinity:
         """
@@ -255,7 +256,7 @@ class Affinity:
             api_key=api_key,
             transport=transport,
             async_transport=async_transport,
-            mode=mode,
+            policies=policies,
             **kwargs,
         )
 
@@ -434,7 +435,7 @@ class AsyncAffinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
-        mode: Literal["readwrite", "readonly"] = "readwrite",
+        policies: Policies | None = None,
     ):
         """
         Initialize the async Affinity client.
@@ -479,7 +480,7 @@ class AsyncAffinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
-            mode=mode,
+            policies=policies or Policies(),
         )
         self._http = AsyncHTTPClient(config)
         self._companies: AsyncCompanyService | None = None
@@ -508,7 +509,7 @@ class AsyncAffinity:
         dotenv_override: bool = False,
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
-        mode: Literal["readwrite", "readonly"] = "readwrite",
+        policies: Policies | None = None,
         **kwargs: Any,
     ) -> AsyncAffinity:
         """
@@ -527,7 +528,7 @@ class AsyncAffinity:
             api_key=api_key,
             transport=transport,
             async_transport=async_transport,
-            mode=mode,
+            policies=policies,
             **kwargs,
         )
 

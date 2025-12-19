@@ -275,7 +275,8 @@ class EntityFile(AffinityModel):
     id: FileId
     name: str
     size: int
-    content_type: str = Field(alias="contentType")
+    # Observed missing in some V1 responses; treat as optional for robustness.
+    content_type: str | None = Field(None, alias="contentType")
 
     # Associated entity
     person_id: PersonId | None = Field(None, alias="personId")

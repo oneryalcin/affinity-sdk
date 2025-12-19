@@ -160,7 +160,7 @@ def person_files_dump(
                 class ManifestFile(TypedDict):
                     fileId: int
                     name: str
-                    contentType: str
+                    contentType: str | None
                     size: int
                     createdAt: object
                     uploaderId: int

@@ -10,7 +10,7 @@ The SDK raises typed exceptions (subclasses of `AffinityError`) and retries some
 - `ValidationError` (400/422): invalid parameters/payload
 - `RateLimitError` (429): you are being rate limited (may include `retry_after`)
 - `ServerError` (500/503): transient server-side errors
-- `ReadOnlyModeError`: you attempted a write while `mode="readonly"`
+- `WriteNotAllowedError`: you attempted a write while writes are disabled by policy
 - `BetaEndpointDisabledError`: you called a beta V2 endpoint without `enable_beta_endpoints=True`
 - `VersionCompatibilityError`: response parsing failed, often due to V2 API version mismatch
 

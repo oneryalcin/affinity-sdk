@@ -265,6 +265,23 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
                     },
                     request=request,
                 )
+            if url.params.get("organization_id") == "999" and page_token is None:
+                return httpx.Response(
+                    200,
+                    json={
+                        "entity_files": [
+                            {
+                                "id": 2,
+                                "name": "missing-content-type",
+                                "size": 1,
+                                "uploaderId": 1,
+                                "createdAt": created_at,
+                            }
+                        ],
+                        "next_page_token": None,
+                    },
+                    request=request,
+                )
             if url.params.get("organization_id") == "2" and page_token is None:
                 return httpx.Response(
                     200,
@@ -463,6 +480,8 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         page = files.list(organization_id=CompanyId(2), page_size=1, page_token="p1")
         assert page.data[0].id == 1
         assert files.list(opportunity_id=OpportunityId(3)).data == []
+        page_missing = files.list(organization_id=CompanyId(999))
+        assert page_missing.data[0].content_type is None
 
         progress: list[tuple[int, int | None, str]] = []
         p = tmp_path / "x.bin"

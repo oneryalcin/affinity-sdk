@@ -30,15 +30,16 @@ from affinity import Affinity
 client = Affinity.from_env(load_dotenv=True)
 ```
 
-## Read-only mode
+## Disable writes (policy)
 
 If you want the SDK to guarantee it does not perform write operations (POST/PUT/PATCH/DELETE),
-initialize the client with `mode="readonly"`:
+disable writes via policy:
 
 ```python
 from affinity import Affinity
+from affinity.policies import Policies, WritePolicy
 
-client = Affinity.from_env(mode="readonly")
+client = Affinity.from_env(policies=Policies(write=WritePolicy.DENY))
 ```
 
 ## Create a client

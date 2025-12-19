@@ -93,15 +93,16 @@ client = Affinity(
 )
 ```
 
-## Read-only mode
+## Disable writes (policy)
 
 To guarantee the SDK does not perform write operations (POST/PUT/PATCH/DELETE, including uploads),
-use read-only mode:
+disable writes via policy:
 
 ```python
 from affinity import Affinity
+from affinity.policies import Policies, WritePolicy
 
-client = Affinity(api_key="your-key", mode="readonly")
+client = Affinity(api_key="your-key", policies=Policies(write=WritePolicy.DENY))
 ```
 
 ## HTTP transport injection (advanced)

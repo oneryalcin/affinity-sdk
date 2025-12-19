@@ -13,14 +13,16 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import base64
 import email.utils
 import hashlib
+import json
 import logging
 import math
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, TypeAlias, TypeVar, cast
@@ -33,14 +35,16 @@ from ..exceptions import (
     ErrorDiagnostics,
     NetworkError,
     RateLimitError,
-    ReadOnlyModeError,
     TimeoutError,
     UnsafeUrlError,
     VersionCompatibilityError,
+    WriteNotAllowedError,
     error_from_response,
 )
 from ..models.types import V1_BASE_URL, V2_BASE_URL
+from ..policies import Policies, WritePolicy
 from ..progress import ProgressCallback
+from .pipeline import RequestContext, SDKRequest, SDKResponse, compose, compose_async
 
 logger = logging.getLogger("affinity_sdk")
 
@@ -356,7 +360,7 @@ def _redact_url(url: str, api_key: str) -> str:
     return redacted.replace(api_key, "[REDACTED]")
 
 
-def _select_response_headers(headers: httpx.Headers) -> dict[str, str]:
+def _select_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
     allow = [
         "Retry-After",
         "Date",
@@ -413,7 +417,7 @@ class RateLimitState:
     last_request_id: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def update_from_headers(self, headers: httpx.Headers) -> None:
+    def update_from_headers(self, headers: Mapping[str, str]) -> None:
         """Update state from response headers."""
 
         # Handle both uppercase (current) and lowercase (future) headers.
@@ -588,7 +592,7 @@ class ClientConfig:
     on_response: ResponseHook | None = None
     # TR-015: Expected v2 API version for diagnostics and safety checks
     expected_v2_version: str | None = None
-    mode: Literal["readwrite", "readonly"] = "readwrite"
+    policies: Policies = field(default_factory=Policies)
 
     def __post_init__(self) -> None:
         if isinstance(self.timeout, (int, float)):
@@ -629,6 +633,242 @@ class HTTPClient:
             limits=config.limits,
             transport=config.transport,
             headers=dict(_DEFAULT_HEADERS),
+        )
+        self._pipeline = self._build_pipeline()
+
+    def _build_pipeline(self) -> Callable[[SDKRequest], SDKResponse]:
+        config = self._config
+
+        def terminal(req: SDKRequest) -> SDKResponse:
+            external = bool(req.context.get("external", False))
+            if config.log_requests and not external:
+                logger.debug(f"{req.method} {req.url}")
+
+            request_kwargs: dict[str, Any] = {}
+            if req.headers:
+                request_kwargs["headers"] = req.headers
+            if req.params is not None:
+                request_kwargs["params"] = req.params
+            if req.json is not None:
+                request_kwargs["json"] = req.json
+            if req.files is not None:
+                request_kwargs["files"] = req.files
+            if req.data is not None:
+                request_kwargs["data"] = req.data
+
+            timeout_seconds = req.context.get("timeout_seconds")
+            if timeout_seconds is not None:
+                request_kwargs["timeout"] = float(timeout_seconds)
+
+            response = self._client.request(req.method, req.url, **request_kwargs)
+            return SDKResponse(
+                status_code=response.status_code,
+                headers=list(response.headers.multi_items()),
+                content=response.content,
+                context={"external": external, "http_version": response.http_version},
+            )
+
+        def response_mapping(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            resp = next(req)
+            headers_map = dict(resp.headers)
+            external = bool(resp.context.get("external", False))
+            if not external:
+                self._rate_limit.update_from_headers(headers_map)
+
+            if req.context.get("safe_follow", False):
+                location = headers_map.get("Location") or headers_map.get("location")
+                if 300 <= resp.status_code < 400 and location:
+                    raise UnsafeUrlError(
+                        "Refusing to follow redirect for server-provided URL",
+                        url=req.url,
+                    )
+
+            if resp.status_code >= 400:
+                try:
+                    body = json.loads(resp.content) if resp.content else {}
+                except Exception:
+                    body = {"message": resp.content.decode("utf-8", errors="replace")}
+
+                retry_after = None
+                if resp.status_code == 429:
+                    header_value = headers_map.get("Retry-After") or headers_map.get("retry-after")
+                    if header_value is not None:
+                        retry_after = _parse_retry_after(header_value)
+
+                selected_headers = _select_response_headers(headers_map)
+                request_id = _extract_request_id(selected_headers)
+                if request_id is not None:
+                    resp.context["request_id"] = request_id
+
+                diagnostics = ErrorDiagnostics(
+                    method=req.method.upper(),
+                    url=_redact_url(req.url, config.api_key),
+                    api_version=req.api_version,
+                    base_url=config.v1_base_url if req.api_version == "v1" else config.v2_base_url,
+                    request_id=request_id,
+                    http_version=resp.context.get("http_version"),
+                    response_headers=selected_headers,
+                    response_body_snippet=str(body)[:512].replace(config.api_key, "[REDACTED]"),
+                )
+                raise error_from_response(
+                    resp.status_code,
+                    body,
+                    retry_after=retry_after,
+                    diagnostics=diagnostics,
+                )
+
+            if resp.status_code == 204 or not resp.content:
+                resp.json = {}
+                return resp
+
+            try:
+                payload = json.loads(resp.content)
+            except Exception as e:
+                raise AffinityError("Expected JSON object/array response") from e
+
+            if isinstance(payload, dict):
+                resp.json = payload
+                return resp
+            if isinstance(payload, list):
+                resp.json = {"data": payload}
+                return resp
+            raise AffinityError("Expected JSON object/array response")
+
+        def cache_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            cache_key = req.context.get("cache_key")
+            if cache_key and self._cache:
+                cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
+                if cached is not None:
+                    return SDKResponse(
+                        status_code=200,
+                        headers=[],
+                        content=b"",
+                        json=cached,
+                        context={
+                            "cache_hit": True,
+                            "external": bool(req.context.get("external", False)),
+                        },
+                    )
+
+            resp = next(req)
+            if cache_key and self._cache and isinstance(resp.json, dict):
+                self._cache.set(
+                    f"{cache_key}{self._cache_suffix}",
+                    cast(dict[str, Any], resp.json),
+                    req.context.get("cache_ttl"),
+                )
+            return resp
+
+        def auth_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            headers = [(k, v) for (k, v) in req.headers if k.lower() != "authorization"]
+            if req.api_version == "v1" and config.v1_auth_mode == "basic":
+                token = base64.b64encode(f":{config.api_key}".encode()).decode("ascii")
+                headers.append(("Authorization", f"Basic {token}"))
+            else:
+                headers.append(("Authorization", f"Bearer {config.api_key}"))
+            return next(replace(req, headers=headers))
+
+        def retry_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            last_error: Exception | None = None
+            for attempt in range(config.max_retries + 1):
+                try:
+                    resp = next(req)
+                    resp.context["retry_count"] = attempt
+                    return resp
+                except (
+                    RateLimitError,
+                    AffinityError,
+                    httpx.TimeoutException,
+                    httpx.NetworkError,
+                ) as e:
+                    outcome = _retry_outcome(
+                        method=req.method.upper(),
+                        attempt=attempt,
+                        max_retries=config.max_retries,
+                        retry_delay=config.retry_delay,
+                        error=e,
+                    )
+                    if outcome.action == "raise":
+                        raise
+                    if outcome.action == "raise_wrapped":
+                        assert outcome.wrapped_error is not None
+                        raise outcome.wrapped_error from e
+
+                    assert outcome.last_error is not None
+                    last_error = outcome.last_error
+                    if outcome.action == "break":
+                        break
+
+                    assert outcome.wait_time is not None
+                    if outcome.log_message:
+                        logger.warning(outcome.log_message)
+                    time.sleep(outcome.wait_time)
+
+            if last_error:
+                raise last_error
+            raise AffinityError("Request failed after retries")
+
+        def write_guard_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            if config.policies.write is WritePolicy.DENY and req.write_intent:
+                method_upper = req.method.upper()
+                raise WriteNotAllowedError(
+                    f"Cannot {method_upper} while writes are disabled by policy",
+                    method=method_upper,
+                    url=_redact_url(req.url, config.api_key),
+                )
+            return next(req)
+
+        def hooks_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], SDKResponse]
+        ) -> SDKResponse:
+            if config.on_request:
+                sanitized_headers = {k: v for (k, v) in req.headers if k.lower() != "authorization"}
+                config.on_request(
+                    RequestInfo(
+                        method=req.method.upper(),
+                        url=_redact_url(req.url, config.api_key),
+                        headers=sanitized_headers,
+                    )
+                )
+
+            start_time = time.monotonic()
+            resp = next(req)
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            if config.on_response:
+                config.on_response(
+                    ResponseInfo(
+                        status_code=resp.status_code,
+                        headers=dict(resp.headers),
+                        elapsed_ms=elapsed_ms,
+                        request=RequestInfo(
+                            method=req.method.upper(),
+                            url=_redact_url(req.url, config.api_key),
+                            headers={},
+                        ),
+                    )
+                )
+            return resp
+
+        return compose(
+            [
+                cache_middleware,
+                hooks_middleware,
+                write_guard_middleware,
+                retry_middleware,
+                auth_middleware,
+                response_mapping,
+            ],
+            terminal,
         )
 
     def _apply_auth(
@@ -813,9 +1053,12 @@ class HTTPClient:
         for attempt in range(self._config.max_retries + 1):
             try:
                 method_upper = method.upper()
-                if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
-                    raise ReadOnlyModeError(
-                        f"Cannot {method_upper} in read-only mode",
+                if (
+                    self._config.policies.write is WritePolicy.DENY
+                    and method_upper in _WRITE_METHODS
+                ):
+                    raise WriteNotAllowedError(
+                        f"Cannot {method_upper} while writes are disabled by policy",
                         method=method_upper,
                         url=_redact_url(url, self._config.api_key),
                     )
@@ -955,101 +1198,50 @@ class HTTPClient:
         *,
         v1: bool,
         safe_follow: bool = False,
+        write_intent: bool = False,
+        cache_key: str | None = None,
+        cache_ttl: float | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Make request with retry policy for safe methods."""
-        last_error: Exception | None = None
+        headers = kwargs.pop("headers", None) or {}
+        params = kwargs.pop("params", None)
+        json_payload = kwargs.pop("json", None)
+        files = kwargs.pop("files", None)
+        data = kwargs.pop("data", None)
+        timeout = kwargs.pop("timeout", None)
+        if kwargs:
+            raise TypeError(f"Unsupported request kwargs: {sorted(kwargs.keys())}")
 
-        method_upper = method.upper()
-        if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
-            raise ReadOnlyModeError(
-                f"Cannot {method_upper} in read-only mode",
-                method=method_upper,
-                url=_redact_url(url, self._config.api_key),
-            )
+        context: RequestContext = {}
+        if safe_follow:
+            context["safe_follow"] = True
+        if cache_key is not None:
+            context["cache_key"] = cache_key
+        if cache_ttl is not None:
+            context["cache_ttl"] = float(cache_ttl)
+        if timeout is not None:
+            if isinstance(timeout, (int, float)):
+                context["timeout_seconds"] = float(timeout)
+            else:
+                raise TypeError("timeout must be float seconds for JSON requests")
 
-        for attempt in range(self._config.max_retries + 1):
-            try:
-                if self._config.log_requests:
-                    logger.debug(f"{method} {url}")
-
-                request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
-                if safe_follow:
-                    request_kwargs["follow_redirects"] = False
-
-                # Call request hook (DX-008)
-                if self._config.on_request:
-                    # Build sanitized headers (no auth)
-                    sanitized_headers = {
-                        k: v
-                        for k, v in request_kwargs.get("headers", {}).items()
-                        if k.lower() != "authorization"
-                    }
-                    req_info = RequestInfo(
-                        method=method,
-                        url=_redact_url(url, self._config.api_key),
-                        headers=sanitized_headers,
-                    )
-                    self._config.on_request(req_info)
-
-                start_time = time.monotonic()
-                response = self._client.request(method, url, **request_kwargs)
-                elapsed_ms = (time.monotonic() - start_time) * 1000
-
-                # Call response hook (DX-008)
-                if self._config.on_response:
-                    resp_info = ResponseInfo(
-                        status_code=response.status_code,
-                        headers=dict(response.headers),
-                        elapsed_ms=elapsed_ms,
-                        request=RequestInfo(
-                            method=method,
-                            url=_redact_url(url, self._config.api_key),
-                            headers={},
-                        ),
-                    )
-                    self._config.on_response(resp_info)
-
-                if safe_follow and response.is_redirect:
-                    raise UnsafeUrlError(
-                        "Refusing to follow redirect for server-provided URL",
-                        url=url,
-                    )
-                return self._handle_response(
-                    response,
-                    method=method,
-                    url=url,
-                    v1=v1,
-                )
-
-            except (RateLimitError, AffinityError, httpx.TimeoutException, httpx.NetworkError) as e:
-                outcome = _retry_outcome(
-                    method=method,
-                    attempt=attempt,
-                    max_retries=self._config.max_retries,
-                    retry_delay=self._config.retry_delay,
-                    error=e,
-                )
-                if outcome.action == "raise":
-                    raise
-                if outcome.action == "raise_wrapped":
-                    assert outcome.wrapped_error is not None
-                    raise outcome.wrapped_error from e
-
-                assert outcome.last_error is not None
-                last_error = outcome.last_error
-                if outcome.action == "break":
-                    break
-
-                assert outcome.wait_time is not None
-                if outcome.log_message:
-                    logger.warning(outcome.log_message)
-                time.sleep(outcome.wait_time)
-
-        # Exhausted retries
-        if last_error:
-            raise last_error
-        raise AffinityError("Request failed after retries")
+        req = SDKRequest(
+            method=method.upper(),
+            url=url,
+            headers=list(headers.items()),
+            params=params,
+            json=json_payload,
+            files=files,
+            data=data,
+            api_version="v1" if v1 else "v2",
+            write_intent=write_intent,
+            context=context,
+        )
+        resp = self._pipeline(req)
+        payload = resp.json
+        if not isinstance(payload, dict):
+            raise AffinityError("Expected JSON object response")
+        return cast(dict[str, Any], payload)
 
     # =========================================================================
     # Public Request Methods
@@ -1077,21 +1269,16 @@ class HTTPClient:
         Returns:
             Parsed JSON response
         """
-        # Check cache
-        if cache_key and self._cache:
-            cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
-            if cached is not None:
-                return cached
-
         url = self._build_url(path, v1=v1)
         encoded_params = _encode_query_params(params)
-        result = self._request_with_retry("GET", url, v1=v1, params=encoded_params)
-
-        # Store in cache
-        if cache_key and self._cache and result is not None:
-            self._cache.set(f"{cache_key}{self._cache_suffix}", result, cache_ttl)
-
-        return result
+        return self._request_with_retry(
+            "GET",
+            url,
+            v1=v1,
+            params=encoded_params,
+            cache_key=cache_key,
+            cache_ttl=cache_ttl,
+        )
 
     def get_v1_page(
         self,
@@ -1134,7 +1321,7 @@ class HTTPClient:
     ) -> dict[str, Any]:
         """Make a POST request."""
         url = self._build_url(path, v1=v1)
-        return self._request_with_retry("POST", url, v1=v1, json=json)
+        return self._request_with_retry("POST", url, v1=v1, json=json, write_intent=True)
 
     def put(
         self,
@@ -1145,7 +1332,7 @@ class HTTPClient:
     ) -> dict[str, Any]:
         """Make a PUT request."""
         url = self._build_url(path, v1=v1)
-        return self._request_with_retry("PUT", url, v1=v1, json=json)
+        return self._request_with_retry("PUT", url, v1=v1, json=json, write_intent=True)
 
     def patch(
         self,
@@ -1156,7 +1343,7 @@ class HTTPClient:
     ) -> dict[str, Any]:
         """Make a PATCH request."""
         url = self._build_url(path, v1=v1)
-        return self._request_with_retry("PATCH", url, v1=v1, json=json)
+        return self._request_with_retry("PATCH", url, v1=v1, json=json, write_intent=True)
 
     def delete(
         self,
@@ -1167,7 +1354,13 @@ class HTTPClient:
     ) -> dict[str, Any]:
         """Make a DELETE request."""
         url = self._build_url(path, v1=v1)
-        return self._request_with_retry("DELETE", url, v1=v1, params=_encode_query_params(params))
+        return self._request_with_retry(
+            "DELETE",
+            url,
+            v1=v1,
+            params=_encode_query_params(params),
+            write_intent=True,
+        )
 
     def upload_file(
         self,
@@ -1180,7 +1373,7 @@ class HTTPClient:
         """Upload files with multipart form data."""
         url = self._build_url(path, v1=v1)
 
-        # Remove Content-Type header for multipart
+        # Ensure we don't force a Content-Type; httpx must generate multipart boundaries.
         headers = dict(self._client.headers)
         headers.pop("Content-Type", None)
         return self._request_with_retry(
@@ -1190,6 +1383,7 @@ class HTTPClient:
             files=files,
             data=data,
             headers=headers,
+            write_intent=True,
         )
 
     def download_file(
@@ -1527,6 +1721,245 @@ class AsyncHTTPClient:
             self._config.api_key,
         )
         self._client: httpx.AsyncClient | None = None
+        self._pipeline = self._build_pipeline()
+
+    def _build_pipeline(self) -> Callable[[SDKRequest], Awaitable[SDKResponse]]:
+        config = self._config
+
+        async def terminal(req: SDKRequest) -> SDKResponse:
+            external = bool(req.context.get("external", False))
+            if config.log_requests and not external:
+                logger.debug(f"{req.method} {req.url}")
+
+            request_kwargs: dict[str, Any] = {}
+            if req.headers:
+                request_kwargs["headers"] = req.headers
+            if req.params is not None:
+                request_kwargs["params"] = req.params
+            if req.json is not None:
+                request_kwargs["json"] = req.json
+            if req.files is not None:
+                request_kwargs["files"] = req.files
+            if req.data is not None:
+                request_kwargs["data"] = req.data
+
+            timeout_seconds = req.context.get("timeout_seconds")
+            if timeout_seconds is not None:
+                request_kwargs["timeout"] = float(timeout_seconds)
+
+            client = await self._get_client()
+            response = await client.request(req.method, req.url, **request_kwargs)
+            return SDKResponse(
+                status_code=response.status_code,
+                headers=list(response.headers.multi_items()),
+                content=response.content,
+                context={"external": external, "http_version": response.http_version},
+            )
+
+        async def response_mapping(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            resp = await next(req)
+            headers_map = dict(resp.headers)
+            external = bool(resp.context.get("external", False))
+            if not external:
+                self._rate_limit.update_from_headers(headers_map)
+
+            if req.context.get("safe_follow", False):
+                location = headers_map.get("Location") or headers_map.get("location")
+                if 300 <= resp.status_code < 400 and location:
+                    raise UnsafeUrlError(
+                        "Refusing to follow redirect for server-provided URL",
+                        url=req.url,
+                    )
+
+            if resp.status_code >= 400:
+                try:
+                    body = json.loads(resp.content) if resp.content else {}
+                except Exception:
+                    body = {"message": resp.content.decode("utf-8", errors="replace")}
+
+                retry_after = None
+                if resp.status_code == 429:
+                    header_value = headers_map.get("Retry-After") or headers_map.get("retry-after")
+                    if header_value is not None:
+                        retry_after = _parse_retry_after(header_value)
+
+                selected_headers = _select_response_headers(headers_map)
+                request_id = _extract_request_id(selected_headers)
+                if request_id is not None:
+                    resp.context["request_id"] = request_id
+
+                diagnostics = ErrorDiagnostics(
+                    method=req.method.upper(),
+                    url=_redact_url(req.url, config.api_key),
+                    api_version=req.api_version,
+                    base_url=config.v1_base_url if req.api_version == "v1" else config.v2_base_url,
+                    request_id=request_id,
+                    http_version=resp.context.get("http_version"),
+                    response_headers=selected_headers,
+                    response_body_snippet=str(body)[:512].replace(config.api_key, "[REDACTED]"),
+                )
+                raise error_from_response(
+                    resp.status_code,
+                    body,
+                    retry_after=retry_after,
+                    diagnostics=diagnostics,
+                )
+
+            if resp.status_code == 204 or not resp.content:
+                resp.json = {}
+                return resp
+
+            try:
+                payload = json.loads(resp.content)
+            except Exception as e:
+                raise AffinityError("Expected JSON object/array response") from e
+
+            if isinstance(payload, dict):
+                resp.json = payload
+                return resp
+            if isinstance(payload, list):
+                resp.json = {"data": payload}
+                return resp
+            raise AffinityError("Expected JSON object/array response")
+
+        async def cache_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            cache_key = req.context.get("cache_key")
+            if cache_key and self._cache:
+                cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
+                if cached is not None:
+                    return SDKResponse(
+                        status_code=200,
+                        headers=[],
+                        content=b"",
+                        json=cached,
+                        context={
+                            "cache_hit": True,
+                            "external": bool(req.context.get("external", False)),
+                        },
+                    )
+
+            resp = await next(req)
+            if cache_key and self._cache and isinstance(resp.json, dict):
+                self._cache.set(
+                    f"{cache_key}{self._cache_suffix}",
+                    cast(dict[str, Any], resp.json),
+                    req.context.get("cache_ttl"),
+                )
+            return resp
+
+        async def auth_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            headers = [(k, v) for (k, v) in req.headers if k.lower() != "authorization"]
+            if req.api_version == "v1" and config.v1_auth_mode == "basic":
+                token = base64.b64encode(f":{config.api_key}".encode()).decode("ascii")
+                headers.append(("Authorization", f"Basic {token}"))
+            else:
+                headers.append(("Authorization", f"Bearer {config.api_key}"))
+            return await next(replace(req, headers=headers))
+
+        async def retry_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            last_error: Exception | None = None
+            for attempt in range(config.max_retries + 1):
+                try:
+                    resp = await next(req)
+                    resp.context["retry_count"] = attempt
+                    return resp
+                except asyncio.CancelledError:
+                    raise
+                except (
+                    RateLimitError,
+                    AffinityError,
+                    httpx.TimeoutException,
+                    httpx.NetworkError,
+                ) as e:
+                    outcome = _retry_outcome(
+                        method=req.method.upper(),
+                        attempt=attempt,
+                        max_retries=config.max_retries,
+                        retry_delay=config.retry_delay,
+                        error=e,
+                    )
+                    if outcome.action == "raise":
+                        raise
+                    if outcome.action == "raise_wrapped":
+                        assert outcome.wrapped_error is not None
+                        raise outcome.wrapped_error from e
+
+                    assert outcome.last_error is not None
+                    last_error = outcome.last_error
+                    if outcome.action == "break":
+                        break
+
+                    assert outcome.wait_time is not None
+                    if outcome.log_message:
+                        logger.warning(outcome.log_message)
+                    await asyncio.sleep(outcome.wait_time)
+
+            if last_error:
+                raise last_error
+            raise AffinityError("Request failed after retries")
+
+        async def write_guard_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            if config.policies.write is WritePolicy.DENY and req.write_intent:
+                method_upper = req.method.upper()
+                raise WriteNotAllowedError(
+                    f"Cannot {method_upper} while writes are disabled by policy",
+                    method=method_upper,
+                    url=_redact_url(req.url, config.api_key),
+                )
+            return await next(req)
+
+        async def hooks_middleware(
+            req: SDKRequest, next: Callable[[SDKRequest], Awaitable[SDKResponse]]
+        ) -> SDKResponse:
+            if config.on_request:
+                sanitized_headers = {k: v for (k, v) in req.headers if k.lower() != "authorization"}
+                config.on_request(
+                    RequestInfo(
+                        method=req.method.upper(),
+                        url=_redact_url(req.url, config.api_key),
+                        headers=sanitized_headers,
+                    )
+                )
+
+            start_time = time.monotonic()
+            resp = await next(req)
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            if config.on_response:
+                config.on_response(
+                    ResponseInfo(
+                        status_code=resp.status_code,
+                        headers=dict(resp.headers),
+                        elapsed_ms=elapsed_ms,
+                        request=RequestInfo(
+                            method=req.method.upper(),
+                            url=_redact_url(req.url, config.api_key),
+                            headers={},
+                        ),
+                    )
+                )
+            return resp
+
+        return compose_async(
+            [
+                cache_middleware,
+                hooks_middleware,
+                write_guard_middleware,
+                retry_middleware,
+                auth_middleware,
+                response_mapping,
+            ],
+            terminal,
+        )
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Lazy initialization of async client."""
@@ -1645,99 +2078,50 @@ class AsyncHTTPClient:
         *,
         v1: bool,
         safe_follow: bool = False,
+        write_intent: bool = False,
+        cache_key: str | None = None,
+        cache_ttl: float | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        client = await self._get_client()
-        last_error: Exception | None = None
+        headers = kwargs.pop("headers", None) or {}
+        params = kwargs.pop("params", None)
+        json_payload = kwargs.pop("json", None)
+        files = kwargs.pop("files", None)
+        data = kwargs.pop("data", None)
+        timeout = kwargs.pop("timeout", None)
+        if kwargs:
+            raise TypeError(f"Unsupported request kwargs: {sorted(kwargs.keys())}")
 
-        method_upper = method.upper()
-        if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
-            raise ReadOnlyModeError(
-                f"Cannot {method_upper} in read-only mode",
-                method=method_upper,
-                url=_redact_url(url, self._config.api_key),
-            )
+        context: RequestContext = {}
+        if safe_follow:
+            context["safe_follow"] = True
+        if cache_key is not None:
+            context["cache_key"] = cache_key
+        if cache_ttl is not None:
+            context["cache_ttl"] = float(cache_ttl)
+        if timeout is not None:
+            if isinstance(timeout, (int, float)):
+                context["timeout_seconds"] = float(timeout)
+            else:
+                raise TypeError("timeout must be float seconds for JSON requests")
 
-        for attempt in range(self._config.max_retries + 1):
-            try:
-                if self._config.log_requests:
-                    logger.debug(f"{method} {url}")
-
-                request_kwargs = self._apply_auth(v1=v1, kwargs=kwargs)
-                if safe_follow:
-                    request_kwargs["follow_redirects"] = False
-
-                # Call request hook (DX-008)
-                if self._config.on_request:
-                    sanitized_headers = {
-                        k: v
-                        for k, v in request_kwargs.get("headers", {}).items()
-                        if k.lower() != "authorization"
-                    }
-                    req_info = RequestInfo(
-                        method=method,
-                        url=_redact_url(url, self._config.api_key),
-                        headers=sanitized_headers,
-                    )
-                    self._config.on_request(req_info)
-
-                start_time = time.monotonic()
-                response = await client.request(method, url, **request_kwargs)
-                elapsed_ms = (time.monotonic() - start_time) * 1000
-
-                # Call response hook (DX-008)
-                if self._config.on_response:
-                    resp_info = ResponseInfo(
-                        status_code=response.status_code,
-                        headers=dict(response.headers),
-                        elapsed_ms=elapsed_ms,
-                        request=RequestInfo(
-                            method=method,
-                            url=_redact_url(url, self._config.api_key),
-                            headers={},
-                        ),
-                    )
-                    self._config.on_response(resp_info)
-
-                if safe_follow and response.is_redirect:
-                    raise UnsafeUrlError(
-                        "Refusing to follow redirect for server-provided URL",
-                        url=url,
-                    )
-                return self._handle_response(
-                    response,
-                    method=method,
-                    url=url,
-                    v1=v1,
-                )
-
-            except (RateLimitError, AffinityError, httpx.TimeoutException, httpx.NetworkError) as e:
-                outcome = _retry_outcome(
-                    method=method,
-                    attempt=attempt,
-                    max_retries=self._config.max_retries,
-                    retry_delay=self._config.retry_delay,
-                    error=e,
-                )
-                if outcome.action == "raise":
-                    raise
-                if outcome.action == "raise_wrapped":
-                    assert outcome.wrapped_error is not None
-                    raise outcome.wrapped_error from e
-
-                assert outcome.last_error is not None
-                last_error = outcome.last_error
-                if outcome.action == "break":
-                    break
-
-                assert outcome.wait_time is not None
-                if outcome.log_message:
-                    logger.warning(outcome.log_message)
-                await asyncio.sleep(outcome.wait_time)
-
-        if last_error:
-            raise last_error
-        raise AffinityError("Request failed after retries")
+        req = SDKRequest(
+            method=method.upper(),
+            url=url,
+            headers=list(headers.items()),
+            params=params,
+            json=json_payload,
+            files=files,
+            data=data,
+            api_version="v1" if v1 else "v2",
+            write_intent=write_intent,
+            context=context,
+        )
+        resp = await self._pipeline(req)
+        payload = resp.json
+        if not isinstance(payload, dict):
+            raise AffinityError("Expected JSON object response")
+        return cast(dict[str, Any], payload)
 
     # =========================================================================
     # Public Request Methods
@@ -1752,24 +2136,16 @@ class AsyncHTTPClient:
         cache_key: str | None = None,
         cache_ttl: float | None = None,
     ) -> dict[str, Any]:
-        if cache_key and self._cache:
-            cached = self._cache.get(f"{cache_key}{self._cache_suffix}")
-            if cached is not None:
-                return cached
-
         url = self._build_url(path, v1=v1)
         encoded_params = _encode_query_params(params)
-        result = await self._request_with_retry(
+        return await self._request_with_retry(
             "GET",
             url,
             v1=v1,
             params=encoded_params,
+            cache_key=cache_key,
+            cache_ttl=cache_ttl,
         )
-
-        if cache_key and self._cache and result is not None:
-            self._cache.set(f"{cache_key}{self._cache_suffix}", result, cache_ttl)
-
-        return result
 
     async def get_v1_page(
         self,
@@ -1806,7 +2182,7 @@ class AsyncHTTPClient:
         v1: bool = False,
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
-        return await self._request_with_retry("POST", url, v1=v1, json=json)
+        return await self._request_with_retry("POST", url, v1=v1, json=json, write_intent=True)
 
     async def put(
         self,
@@ -1816,7 +2192,7 @@ class AsyncHTTPClient:
         v1: bool = False,
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
-        return await self._request_with_retry("PUT", url, v1=v1, json=json)
+        return await self._request_with_retry("PUT", url, v1=v1, json=json, write_intent=True)
 
     async def patch(
         self,
@@ -1826,7 +2202,7 @@ class AsyncHTTPClient:
         v1: bool = False,
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
-        return await self._request_with_retry("PATCH", url, v1=v1, json=json)
+        return await self._request_with_retry("PATCH", url, v1=v1, json=json, write_intent=True)
 
     async def delete(
         self,
@@ -1837,7 +2213,11 @@ class AsyncHTTPClient:
     ) -> dict[str, Any]:
         url = self._build_url(path, v1=v1)
         return await self._request_with_retry(
-            "DELETE", url, v1=v1, params=_encode_query_params(params)
+            "DELETE",
+            url,
+            v1=v1,
+            params=_encode_query_params(params),
+            write_intent=True,
         )
 
     async def upload_file(
@@ -1861,6 +2241,7 @@ class AsyncHTTPClient:
             files=files,
             data=data,
             headers=headers,
+            write_intent=True,
         )
 
     def _get_download_redirect_url(self, response: httpx.Response) -> str | None:
@@ -1944,9 +2325,12 @@ class AsyncHTTPClient:
         for attempt in range(self._config.max_retries + 1):
             try:
                 method_upper = method.upper()
-                if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
-                    raise ReadOnlyModeError(
-                        f"Cannot {method_upper} in read-only mode",
+                if (
+                    self._config.policies.write is WritePolicy.DENY
+                    and method_upper in _WRITE_METHODS
+                ):
+                    raise WriteNotAllowedError(
+                        f"Cannot {method_upper} while writes are disabled by policy",
                         method=method_upper,
                         url=_redact_url(url, self._config.api_key),
                     )

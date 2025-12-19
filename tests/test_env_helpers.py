@@ -5,6 +5,7 @@ import pytest
 
 import affinity.client as affinity_client
 from affinity import Affinity, AsyncAffinity
+from affinity.policies import Policies, WritePolicy
 
 
 def test_affinity_from_env_reads_affinity_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -16,12 +17,16 @@ def test_affinity_from_env_reads_affinity_api_key(monkeypatch: pytest.MonkeyPatc
         client.close()
 
 
-def test_affinity_from_env_threads_mode_and_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_affinity_from_env_threads_policies_and_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AFFINITY_API_KEY", "secret-key")
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request))
-    client = Affinity.from_env(mode="readonly", transport=transport, max_retries=0)
+    client = Affinity.from_env(
+        policies=Policies(write=WritePolicy.DENY),
+        transport=transport,
+        max_retries=0,
+    )
     try:
-        assert client._http._config.mode == "readonly"
+        assert client._http._config.policies.write is WritePolicy.DENY
         assert client._http._config.transport is transport
     finally:
         client.close()

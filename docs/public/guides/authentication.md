@@ -20,12 +20,13 @@ from affinity import Affinity
 client = Affinity.from_env()
 ```
 
-For defensive “no writes” usage (scripts, audits), enable read-only mode:
+For defensive “no writes” usage (scripts, audits), disable writes via policy:
 
 ```python
 from affinity import Affinity
+from affinity.policies import Policies, WritePolicy
 
-client = Affinity.from_env(mode="readonly")
+client = Affinity.from_env(policies=Policies(write=WritePolicy.DENY))
 ```
 
 ## Next steps

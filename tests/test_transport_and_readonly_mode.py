@@ -3,8 +3,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from affinity import Affinity, AsyncAffinity, ReadOnlyModeError
+from affinity import Affinity, AsyncAffinity, WriteNotAllowedError
 from affinity.models.secondary import NoteCreate
+from affinity.policies import Policies, WritePolicy
 
 
 def test_transport_injection_is_used_by_affinity_client() -> None:
@@ -27,7 +28,7 @@ def test_transport_injection_is_used_by_affinity_client() -> None:
         client.close()
 
 
-def test_readonly_mode_allows_get_and_blocks_write_before_network() -> None:
+def test_write_policy_denies_writes_and_blocks_before_network() -> None:
     calls: list[tuple[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -42,13 +43,13 @@ def test_readonly_mode_allows_get_and_blocks_write_before_network() -> None:
         v2_base_url="https://v2.example/v2",
         transport=httpx.MockTransport(handler),
         max_retries=0,
-        mode="readonly",
+        policies=Policies(write=WritePolicy.DENY),
     )
     try:
         _ = client.lists.list(limit=1)
         assert calls == [("GET", "/v2/lists")]
 
-        with pytest.raises(ReadOnlyModeError):
+        with pytest.raises(WriteNotAllowedError):
             _ = client.notes.create(NoteCreate(content="x"))
 
         # No additional network calls should be made for the blocked write.

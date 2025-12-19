@@ -219,12 +219,14 @@ class NetworkError(AffinityError):
     pass
 
 
-class ReadOnlyModeError(AffinityError):
-    """
-    Read-only mode violation.
+class PolicyError(AffinityError):
+    """Raised when a client policy blocks an attempted operation."""
 
-    Raised when the client is configured with mode="readonly" and a write operation is attempted.
-    """
+    pass
+
+
+class WriteNotAllowedError(PolicyError):
+    """Raised when a write operation is attempted while the write policy denies writes."""
 
     def __init__(self, message: str, *, method: str, url: str):
         super().__init__(message, diagnostics=ErrorDiagnostics(method=method, url=url))

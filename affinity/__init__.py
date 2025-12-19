@@ -53,8 +53,8 @@ from .exceptions import (
     NotFoundError,
     OpportunityNotFoundError,
     PersonNotFoundError,
+    PolicyError,
     RateLimitError,
-    ReadOnlyModeError,
     ServerError,
     TimeoutError,
     ValidationError,
@@ -64,6 +64,7 @@ from .exceptions import (
     WebhookInvalidSentAtError,
     WebhookMissingKeyError,
     WebhookParseError,
+    WriteNotAllowedError,
 )
 
 # Filter builder (FR-007)
@@ -71,6 +72,9 @@ from .filters import F, Filter, FilterExpression
 
 # Inbound webhook parsing helpers (optional)
 from .inbound_webhooks import BodyRegistry, WebhookEnvelope, dispatch_webhook, parse_webhook
+
+# Policies
+from .policies import Policies, WritePolicy
 
 __version__ = "0.2.0"
 
@@ -98,7 +102,8 @@ __all__ = [
     "ConfigurationError",
     "TimeoutError",
     "NetworkError",
-    "ReadOnlyModeError",
+    "PolicyError",
+    "WriteNotAllowedError",
     "VersionCompatibilityError",
     "WebhookParseError",
     "WebhookInvalidJsonError",
@@ -114,6 +119,9 @@ __all__ = [
     "parse_webhook",
     "dispatch_webhook",
     "BodyRegistry",
+    # Policies
+    "WritePolicy",
+    "Policies",
     # Type aliases (re-exported for convenience)
     "types",
     "models",
