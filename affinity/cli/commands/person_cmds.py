@@ -1,22 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import TypedDict
 
-from affinity import AsyncAffinity
 from affinity.models.entities import Person
-from affinity.models.rate_limit_snapshot import RateLimitSnapshot
-from affinity.models.secondary import EntityFile
-from affinity.models.types import V1_BASE_URL, V2_BASE_URL
 from affinity.types import PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
-from ..csv_utils import sanitize_filename
 from ..options import output_options
-from ..progress import ProgressManager, ProgressSettings
 from ..runner import CommandOutput, run_command
+from ._entity_files_dump import dump_entity_files_bundle
 
 
 @click.group(name="person", cls=RichGroup)
@@ -117,107 +110,19 @@ def person_files_dump(
     max_files: int | None,
 ) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Use AsyncAffinity for safe concurrency.
-        ctx.load_dotenv_if_requested()
-        api_key = ctx.resolve_api_key(warnings=warnings)
-
-        entity_dir = (
-            Path(out_dir)
-            if out_dir is not None
-            else Path.cwd() / f"affinity-person-{person_id}-files"
-        )
-        files_dir = entity_dir / "files"
-        files_dir.mkdir(parents=True, exist_ok=True)
-
-        rate_limit_snapshot: RateLimitSnapshot | None = None
-
-        async def run() -> dict[str, object]:
-            async with AsyncAffinity(
-                api_key=api_key,
-                v1_base_url=ctx.v1_base_url or V1_BASE_URL,
-                v2_base_url=ctx.v2_base_url or V2_BASE_URL,
-                timeout=ctx.timeout or 30.0,
-                log_requests=ctx.verbosity >= 2,
-            ) as async_client:
-                collected: list[EntityFile] = []
-                token: str | None = None
-                while True:
-                    resp = await async_client.files.list(
-                        person_id=PersonId(person_id), page_size=page_size, page_token=token
-                    )
-                    collected.extend(resp.data)
-                    if max_files is not None and len(collected) >= max_files:
-                        collected[:] = collected[:max_files]
-                        break
-                    if not resp.next_page_token:
-                        break
-                    token = resp.next_page_token
-
-                sem = asyncio.Semaphore(max(1, concurrency))
-
-                class ManifestFile(TypedDict):
-                    fileId: int
-                    name: str
-                    contentType: str | None
-                    size: int
-                    createdAt: object
-                    uploaderId: int
-                    path: str
-
-                manifest_files: list[ManifestFile] = []
-
-                with ProgressManager(
-                    settings=ProgressSettings(mode=ctx.progress, quiet=ctx.quiet)
-                ) as pm:
-
-                    async def download_one(f: EntityFile) -> None:
-                        async with sem:
-                            safe_name = sanitize_filename(f.name)
-                            dest = files_dir / f"{int(f.id)}__{safe_name}"
-                            _task_id, cb = pm.task(
-                                description=f"download {f.name}",
-                                total_bytes=int(f.size) if f.size else None,
-                            )
-                            await async_client.files.download_to(
-                                f.id,
-                                dest,
-                                overwrite=overwrite,
-                                on_progress=cb,
-                                timeout=ctx.timeout,
-                            )
-                            manifest_files.append(
-                                {
-                                    "fileId": int(f.id),
-                                    "name": f.name,
-                                    "contentType": f.content_type,
-                                    "size": f.size,
-                                    "createdAt": f.created_at,
-                                    "uploaderId": int(f.uploader_id),
-                                    "path": str(dest.relative_to(entity_dir)),
-                                }
-                            )
-
-                    await asyncio.gather(*(download_one(f) for f in collected))
-
-                manifest = {
-                    "entity": {"type": "person", "personId": person_id},
-                    "files": sorted(manifest_files, key=lambda x: x["fileId"]),
-                }
-                (entity_dir / "manifest.json").write_text(
-                    __import__("json").dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
-                )
-                nonlocal rate_limit_snapshot
-                rate_limit_snapshot = async_client.rate_limits.snapshot()
-                return {
-                    "out": str(entity_dir),
-                    "filesDownloaded": len(manifest_files),
-                    "manifest": str((entity_dir / "manifest.json").relative_to(entity_dir)),
-                }
-
-        data = asyncio.run(run())
-        return CommandOutput(
-            data=data, warnings=warnings, api_called=True, rate_limit=rate_limit_snapshot
+        return asyncio.run(
+            dump_entity_files_bundle(
+                ctx=ctx,
+                warnings=warnings,
+                out_dir=out_dir,
+                overwrite=overwrite,
+                concurrency=concurrency,
+                page_size=page_size,
+                max_files=max_files,
+                default_dirname=f"affinity-person-{person_id}-files",
+                manifest_entity={"type": "person", "personId": person_id},
+                files_list_kwargs={"person_id": PersonId(person_id)},
+            )
         )
 
     run_command(ctx, command="person files dump", fn=fn)

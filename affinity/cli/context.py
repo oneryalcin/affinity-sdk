@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import os
 import sys
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from affinity import Affinity
+from affinity.client import _maybe_load_dotenv as _sdk_maybe_load_dotenv
+from affinity.clients.http import ErrorHook, RequestHook, ResponseHook
 from affinity.exceptions import (
     AffinityError,
     AuthenticationError,
@@ -19,13 +21,43 @@ from affinity.exceptions import (
     ServerError,
 )
 from affinity.models.types import V1_BASE_URL, V2_BASE_URL
+from affinity.policies import Policies, WritePolicy
 
 from .config import LoadedConfig, ProfileConfig, config_file_permission_warnings, load_config
 from .errors import CLIError
+from .logging import set_redaction_api_key
 from .paths import CliPaths, get_paths
 from .results import CommandMeta, CommandResult, ErrorInfo
 
 OutputFormat = Literal["table", "json"]
+
+_CLI_CACHE_ENABLED = True
+_CLI_CACHE_TTL_SECONDS = 300.0
+
+
+def _strip_url_query_and_fragment(url: str) -> str:
+    """
+    Keep scheme/host/path but drop query/fragment to reduce accidental leakage of PII/filters.
+    """
+    try:
+        parts = urlsplit(url)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    except Exception:
+        return url
+
+
+@dataclass(frozen=True, slots=True)
+class ClientSettings:
+    api_key: str
+    timeout: float
+    v1_base_url: str
+    v2_base_url: str
+    log_requests: bool
+    max_retries: int
+    policies: Policies
+    on_request: RequestHook | None
+    on_response: ResponseHook | None
+    on_error: ErrorHook | None
 
 
 @dataclass
@@ -41,6 +73,9 @@ class CLIContext:
     api_key_file: str | None
     api_key_stdin: bool
     timeout: float | None
+    max_retries: int
+    readonly: bool
+    trace: bool
     log_file: Path | None
     enable_log_file: bool
     v1_base_url: str | None
@@ -51,16 +86,18 @@ class CLIContext:
     _client: Affinity | None = None
 
     def load_dotenv_if_requested(self) -> None:
-        if not self.dotenv:
-            return
-        if importlib.util.find_spec("dotenv") is None:
+        try:
+            _sdk_maybe_load_dotenv(
+                load_dotenv=self.dotenv,
+                dotenv_path=self.env_file,
+                override=False,
+            )
+        except ImportError as exc:
             raise CLIError(
                 "Optional .env support requires python-dotenv; install `affinity-sdk[cli]`.",
                 exit_code=2,
                 error_type="usage_error",
-            )
-        dotenv_module = importlib.import_module("dotenv")
-        dotenv_module.load_dotenv(dotenv_path=self.env_file, override=False)
+            ) from exc
 
     @property
     def paths(self) -> CliPaths:
@@ -126,17 +163,17 @@ class CLIContext:
             error_type="usage_error",
         )
 
-    def get_client(self, *, warnings: list[str]) -> Affinity:
-        if self._client is not None:
-            return self._client
-
+    def resolve_client_settings(self, *, warnings: list[str]) -> ClientSettings:
         self.load_dotenv_if_requested()
         api_key = self.resolve_api_key(warnings=warnings)
+        set_redaction_api_key(api_key)
 
         prof = self._profile_config()
         timeout = self.timeout if self.timeout is not None else prof.timeout_seconds
         if timeout is None:
             timeout = 30.0
+        if self.max_retries < 0:
+            raise CLIError("--max-retries must be >= 0.", exit_code=2, error_type="usage_error")
 
         v1_base_url = (
             self.v1_base_url or os.getenv("AFFINITY_V1_BASE_URL") or prof.v1_base_url or V1_BASE_URL
@@ -145,12 +182,82 @@ class CLIContext:
             self.v2_base_url or os.getenv("AFFINITY_V2_BASE_URL") or prof.v2_base_url or V2_BASE_URL
         )
 
-        self._client = Affinity(
+        on_request: RequestHook | None = None
+        on_response: ResponseHook | None = None
+        on_error: ErrorHook | None = None
+        if self.trace:
+
+            def _write(line: str) -> None:
+                sys.stderr.write(line + "\n")
+                with suppress(Exception):
+                    sys.stderr.flush()
+
+            def _on_request(req: Any) -> None:
+                method = str(getattr(req, "method", "?"))
+                url = _strip_url_query_and_fragment(str(getattr(req, "url", "?")))
+                _write(f"trace -> {method} {url}")
+
+            def _on_response(res: Any) -> None:
+                status = str(getattr(res, "status_code", "?"))
+                elapsed = getattr(res, "elapsed_ms", None)
+                cache_hit = bool(getattr(res, "cache_hit", False))
+                req = getattr(res, "request", None)
+                url = getattr(req, "url", "?") if req is not None else "?"
+                url = _strip_url_query_and_fragment(str(url))
+                extra = []
+                if elapsed is not None:
+                    extra.append(f"elapsedMs={int(elapsed)}")
+                if cache_hit:
+                    extra.append("cacheHit=true")
+                suffix = (" " + " ".join(extra)) if extra else ""
+                _write(f"trace <- {status} {url}{suffix}")
+
+            def _on_error(err: Any) -> None:
+                req = getattr(err, "request", None)
+                url = getattr(req, "url", "?") if req is not None else "?"
+                url = _strip_url_query_and_fragment(str(url))
+                exc = getattr(err, "error", None)
+                exc_name = type(exc).__name__ if exc is not None else "Error"
+                _write(f"trace !! {exc_name} {url}")
+
+            on_request = _on_request
+            on_response = _on_response
+            on_error = _on_error
+
+        policies = Policies(write=WritePolicy.DENY) if self.readonly else Policies()
+
+        return ClientSettings(
             api_key=api_key,
+            timeout=timeout,
             v1_base_url=v1_base_url,
             v2_base_url=v2_base_url,
-            timeout=timeout,
             log_requests=self.verbosity >= 2,
+            max_retries=self.max_retries,
+            policies=policies,
+            on_request=on_request,
+            on_response=on_response,
+            on_error=on_error,
+        )
+
+    def get_client(self, *, warnings: list[str]) -> Affinity:
+        if self._client is not None:
+            return self._client
+
+        settings = self.resolve_client_settings(warnings=warnings)
+
+        self._client = Affinity(
+            api_key=settings.api_key,
+            v1_base_url=settings.v1_base_url,
+            v2_base_url=settings.v2_base_url,
+            timeout=settings.timeout,
+            log_requests=settings.log_requests,
+            max_retries=settings.max_retries,
+            enable_cache=_CLI_CACHE_ENABLED,
+            cache_ttl=_CLI_CACHE_TTL_SECONDS,
+            on_request=settings.on_request,
+            on_response=settings.on_response,
+            on_error=settings.on_error,
+            policies=settings.policies,
         )
         return self._client
 

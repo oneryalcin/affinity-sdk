@@ -12,6 +12,9 @@ class _RedactFilter(logging.Filter):
         super().__init__()
         self._api_key = api_key
 
+    def set_api_key(self, api_key: str | None) -> None:
+        self._api_key = api_key
+
     def filter(self, record: logging.LogRecord) -> bool:
         if self._api_key:
             record.msg = str(record.getMessage()).replace(self._api_key, "[REDACTED]")
@@ -81,3 +84,17 @@ def restore_logging(state: LoggingState) -> None:
     for h in state.handlers:
         root.addHandler(h)
     root.setLevel(state.level)
+
+
+def set_redaction_api_key(api_key: str | None) -> None:
+    """
+    Update any CLI-installed redaction filters with the resolved API key.
+
+    This avoids resolving credentials eagerly at process start (so no-network commands
+    stay no-network), while still providing defense-in-depth once credentials exist.
+    """
+    root = logging.getLogger()
+    for handler in root.handlers:
+        for flt in handler.filters:
+            if isinstance(flt, _RedactFilter):
+                flt.set_api_key(api_key)

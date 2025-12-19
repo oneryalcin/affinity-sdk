@@ -10,6 +10,13 @@ These commands never call the Affinity API:
 - `affinity config path`
 - `affinity config init`
 
+## Global options
+
+These options can be used with any command:
+
+- `--json` / `--output json`: emit machine-readable `CommandResult` JSON to stdout.
+- `--trace`: emit request/response/error trace lines to stderr (safe redaction). Recommended with `--no-progress` for long-running commands.
+
 ## Identity
 
 ### `affinity whoami`

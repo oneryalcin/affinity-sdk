@@ -46,6 +46,23 @@ from .paths import get_paths
 )
 @click.option("--api-key-stdin", is_flag=True, help="Alias for --api-key-file -.")
 @click.option("--timeout", type=float, default=None, help="Per-request timeout in seconds.")
+@click.option(
+    "--max-retries",
+    type=int,
+    default=3,
+    show_default=True,
+    help="Maximum retries for rate-limited requests.",
+)
+@click.option(
+    "--readonly",
+    is_flag=True,
+    help="Disallow write operations (safety guard; affects all SDK calls).",
+)
+@click.option(
+    "--trace",
+    is_flag=True,
+    help="Trace request/response/error events to stderr (safe redaction).",
+)
 @click.option("--log-file", type=click.Path(dir_okay=False), default=None)
 @click.option("--no-log-file", is_flag=True, help="Disable file logging explicitly.")
 @click.option("--v1-base-url", type=str, default=None, help="Override v1 base URL.")
@@ -67,6 +84,9 @@ def cli(
     api_key_file: str | None,
     api_key_stdin: bool,
     timeout: float | None,
+    max_retries: int,
+    readonly: bool,
+    trace: bool,
     log_file: str | None,
     no_log_file: bool,
     v1_base_url: str | None,
@@ -82,6 +102,8 @@ def cli(
     if progress is True:
         progress_mode = "always"
     if progress is False:
+        progress_mode = "never"
+    if trace and progress is None:
         progress_mode = "never"
 
     paths = get_paths()
@@ -100,6 +122,9 @@ def cli(
         api_key_file=api_key_file,
         api_key_stdin=api_key_stdin,
         timeout=timeout,
+        max_retries=max_retries,
+        readonly=readonly,
+        trace=trace,
         log_file=effective_log_file,
         enable_log_file=enable_log_file,
         v1_base_url=v1_base_url,

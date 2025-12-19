@@ -28,6 +28,14 @@ from affinity import Affinity
 client = Affinity(api_key="your-key", transport=httpx.MockTransport(lambda req: httpx.Response(200)))
 ```
 
+## CLI
+
+The `affinity` CLI can also trace requests/responses/errors:
+
+```bash
+affinity --trace --no-progress whoami
+```
+
 ## Next steps
 
 - [Configuration](configuration.md)

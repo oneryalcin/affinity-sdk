@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
+from affinity.exceptions import NotFoundError
 from affinity.models.entities import AffinityList, FieldMetadata, SavedView
 from affinity.types import ListId, SavedViewId
 
@@ -63,23 +64,22 @@ def resolve_saved_view(
     selector = selector.strip()
     if _looks_int(selector):
         view_id = SavedViewId(int(selector))
-        # No direct get endpoint; resolve by listing and matching.
-        views = list_all_saved_views(client=client, list_id=list_id)
-        for v in views:
-            if int(v.id) == int(view_id):
-                return v, {
-                    "savedView": {
-                        "input": selector,
-                        "savedViewId": int(v.id),
-                        "name": v.name,
-                    }
-                }
-        raise CLIError(
-            f"Saved view not found: {selector}",
-            exit_code=4,
-            error_type="not_found",
-            details={"listId": int(list_id), "selector": selector},
-        )
+        try:
+            v = client.lists.get_saved_view(list_id, view_id)
+        except NotFoundError as exc:
+            raise CLIError(
+                f"Saved view not found: {selector}",
+                exit_code=4,
+                error_type="not_found",
+                details={"listId": int(list_id), "selector": selector},
+            ) from exc
+        return v, {
+            "savedView": {
+                "input": selector,
+                "savedViewId": int(v.id),
+                "name": v.name,
+            }
+        }
 
     views = list_all_saved_views(client=client, list_id=list_id)
     exact = [v for v in views if v.name.lower() == selector.lower()]

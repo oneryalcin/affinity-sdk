@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -73,35 +74,37 @@ def list_ls(
                 error_type="usage_error",
             )
 
-        def fetch_page(next_cursor: str | None) -> PaginatedResponse[AffinityList]:
-            page = (
-                client.lists.list(cursor=next_cursor)
-                if next_cursor is not None
-                else client.lists.list(limit=page_size)
-            )
-            items = list(page.data)
-            if lt is not None:
-                items = [x for x in items if x.type == lt]
-            return PaginatedResponse[AffinityList](data=items, pagination=page.pagination)
-
-        page = fetch_page(cursor)
+        pages = client.lists.pages(limit=page_size, cursor=cursor)
+        page = next(pages)
         rows: list[dict[str, object]] = []
-        for item in page.data:
-            rows.append(
-                {
-                    "id": int(item.id),
-                    "name": item.name,
-                    "type": item.type,
-                    "ownerId": int(item.owner_id) if getattr(item, "owner_id", None) else None,
-                    "isPublic": getattr(item, "is_public", None),
-                }
-            )
-            if max_results is not None and len(rows) >= max_results:
-                return CommandOutput(
-                    data=rows[:max_results],
-                    pagination={"nextCursor": page.pagination.next_cursor},
-                    api_called=True,
+        next_cursor = page.pagination.next_cursor
+
+        def add_page_rows(page: PaginatedResponse[AffinityList]) -> bool:
+            nonlocal next_cursor
+            next_cursor = page.pagination.next_cursor
+            for item in page.data:
+                if lt is not None and item.type != lt:
+                    continue
+                rows.append(
+                    {
+                        "id": int(item.id),
+                        "name": item.name,
+                        "type": item.type,
+                        "ownerId": int(item.owner_id) if getattr(item, "owner_id", None) else None,
+                        "isPublic": getattr(item, "is_public", None),
+                    }
                 )
+                if max_results is not None and len(rows) >= max_results:
+                    return False
+            return True
+
+        ok_to_continue = add_page_rows(page)
+        if not ok_to_continue:
+            return CommandOutput(
+                data=rows[:max_results],
+                pagination={"nextCursor": next_cursor},
+                api_called=True,
+            )
 
         if not all_pages and max_results is None:
             return CommandOutput(
@@ -114,26 +117,14 @@ def list_ls(
                 api_called=True,
             )
 
-        next_cursor = page.pagination.next_cursor
-        while next_cursor:
-            page = fetch_page(next_cursor)
-            next_cursor = page.pagination.next_cursor
-            for item in page.data:
-                rows.append(
-                    {
-                        "id": int(item.id),
-                        "name": item.name,
-                        "type": item.type,
-                        "ownerId": int(item.owner_id) if getattr(item, "owner_id", None) else None,
-                        "isPublic": getattr(item, "is_public", None),
-                    }
+        for page in pages:
+            ok_to_continue = add_page_rows(page)
+            if not ok_to_continue:
+                return CommandOutput(
+                    data=rows[:max_results],
+                    pagination={"nextCursor": next_cursor},
+                    api_called=True,
                 )
-                if max_results is not None and len(rows) >= max_results:
-                    return CommandOutput(
-                        data=rows[:max_results],
-                        pagination={"nextCursor": next_cursor},
-                        api_called=True,
-                    )
         return CommandOutput(data=rows, pagination=None, api_called=True)
 
     run_command(ctx, command="list ls", fn=fn)
@@ -287,124 +278,122 @@ def list_export(
         csv_path_obj = Path(csv_path) if csv_path is not None else None
         want_csv = csv_path_obj is not None
         rows_written = 0
-        next_url: str | None = None
+        next_cursor: str | None = None
 
-        progress: Progress | None = None
-        task_id: TaskID | None = None
-        if (
-            ctx.progress != "never"
-            and not ctx.quiet
-            and (ctx.progress == "always" or sys.stderr.isatty())
-        ):
-            progress = Progress(
-                TextColumn("{task.description}"),
-                BarColumn(),
-                TextColumn("{task.completed} rows"),
-                TimeElapsedColumn(),
-                console=Console(file=sys.stderr),
-                transient=True,
-            )
-            progress.__enter__()
-            task_id = progress.add_task("export", total=max_results if max_results else None)
-
-        if want_csv:
-            assert csv_path_obj is not None
-            field_headers = [
-                (
-                    (field_by_id[fid].name if fid in field_by_id else fid)
-                    if csv_header == "names"
-                    else fid
-                )
-                for fid in selected_field_ids
-            ]
-            header = ["listEntryId", "entityType", "entityId", "entityName", *field_headers]
-            temp_path = csv_path_obj.with_suffix(csv_path_obj.suffix + ".tmp")
-
-            def iter_rows() -> Any:
-                nonlocal rows_written, next_url
-                for row, page_next_url in _iterate_list_entries(
-                    client=client,
-                    list_id=list_id,
-                    saved_view=saved_view,
-                    filter_expr=filter_expr,
-                    selected_field_ids=selected_field_ids,
-                    page_size=page_size,
-                    cursor=cursor,
-                    max_results=max_results,
-                    all_pages=all_pages,
-                    field_by_id=field_by_id,
-                    key_mode=csv_header,
-                ):
-                    next_url = page_next_url
-                    rows_written += 1
-                    if progress is not None and task_id is not None:
-                        progress.update(task_id, completed=rows_written)
-                    yield row
-
-            write_result = write_csv(
-                path=temp_path,
-                rows=iter_rows(),
-                fieldnames=header,
-                bom=csv_bom,
-            )
-            temp_path.replace(csv_path_obj)
-
-            csv_ref, csv_is_relative = _artifact_path(csv_path_obj)
-            data = {
-                "listId": int(list_id),
-                "rowsWritten": rows_written,
-                "csv": csv_ref,
-            }
-            if progress is not None:
-                progress.__exit__(None, None, None)
-            return CommandOutput(
-                data=data,
-                artifacts=[
-                    Artifact(
-                        type="csv",
-                        path=csv_ref,
-                        path_is_relative=csv_is_relative,
-                        rows_written=write_result.rows_written,
-                        bytes_written=write_result.bytes_written,
-                        partial=False,
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if (
+                ctx.progress != "never"
+                and not ctx.quiet
+                and (ctx.progress == "always" or sys.stderr.isatty())
+            ):
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
                     )
-                ],
-                pagination={"nextCursor": next_url} if next_url else None,
+                )
+                task_id = progress.add_task("export", total=max_results if max_results else None)
+
+            if want_csv:
+                assert csv_path_obj is not None
+                field_headers = [
+                    (
+                        (field_by_id[fid].name if fid in field_by_id else fid)
+                        if csv_header == "names"
+                        else fid
+                    )
+                    for fid in selected_field_ids
+                ]
+                header = ["listEntryId", "entityType", "entityId", "entityName", *field_headers]
+                temp_path = csv_path_obj.with_suffix(csv_path_obj.suffix + ".tmp")
+
+                def iter_rows() -> Any:
+                    nonlocal rows_written, next_cursor
+                    for row, page_next_cursor in _iterate_list_entries(
+                        client=client,
+                        list_id=list_id,
+                        saved_view=saved_view,
+                        filter_expr=filter_expr,
+                        selected_field_ids=selected_field_ids,
+                        page_size=page_size,
+                        cursor=cursor,
+                        max_results=max_results,
+                        all_pages=all_pages,
+                        field_by_id=field_by_id,
+                        key_mode=csv_header,
+                    ):
+                        next_cursor = page_next_cursor
+                        rows_written += 1
+                        if progress is not None and task_id is not None:
+                            progress.update(task_id, completed=rows_written)
+                        yield row
+
+                write_result = write_csv(
+                    path=temp_path,
+                    rows=iter_rows(),
+                    fieldnames=header,
+                    bom=csv_bom,
+                )
+                temp_path.replace(csv_path_obj)
+
+                csv_ref, csv_is_relative = _artifact_path(csv_path_obj)
+                data = {
+                    "listId": int(list_id),
+                    "rowsWritten": rows_written,
+                    "csv": csv_ref,
+                }
+                return CommandOutput(
+                    data=data,
+                    artifacts=[
+                        Artifact(
+                            type="csv",
+                            path=csv_ref,
+                            path_is_relative=csv_is_relative,
+                            rows_written=write_result.rows_written,
+                            bytes_written=write_result.bytes_written,
+                            partial=False,
+                        )
+                    ],
+                    pagination={"nextCursor": next_cursor} if next_cursor else None,
+                    resolved=resolved,
+                    columns=columns,
+                    api_called=True,
+                )
+
+            # JSON/table rows in-memory (small exports).
+            rows: list[dict[str, Any]] = []
+            for row, page_next_cursor in _iterate_list_entries(
+                client=client,
+                list_id=list_id,
+                saved_view=saved_view,
+                filter_expr=filter_expr,
+                selected_field_ids=selected_field_ids,
+                page_size=page_size,
+                cursor=cursor,
+                max_results=max_results,
+                all_pages=all_pages,
+                field_by_id=field_by_id,
+                key_mode="names",
+            ):
+                next_cursor = page_next_cursor
+                rows.append(row)
+                if progress is not None and task_id is not None:
+                    progress.update(task_id, completed=len(rows))
+
+            return CommandOutput(
+                data=rows,
+                pagination={"nextCursor": next_cursor} if next_cursor else None,
                 resolved=resolved,
                 columns=columns,
                 api_called=True,
             )
-
-        # JSON/table rows in-memory (small exports).
-        rows: list[dict[str, Any]] = []
-        for row, page_next_url in _iterate_list_entries(
-            client=client,
-            list_id=list_id,
-            saved_view=saved_view,
-            filter_expr=filter_expr,
-            selected_field_ids=selected_field_ids,
-            page_size=page_size,
-            cursor=cursor,
-            max_results=max_results,
-            all_pages=all_pages,
-            field_by_id=field_by_id,
-            key_mode="names",
-        ):
-            next_url = page_next_url
-            rows.append(row)
-            if progress is not None and task_id is not None:
-                progress.update(task_id, completed=len(rows))
-
-        if progress is not None:
-            progress.__exit__(None, None, None)
-
-        return CommandOutput(
-            data=rows,
-            pagination={"nextCursor": next_url} if next_url else None,
-            resolved=resolved,
-            columns=columns,
-            api_called=True,
-        )
+        raise AssertionError("unreachable")
 
     run_command(ctx, command="list export", fn=fn)
 
@@ -487,46 +476,71 @@ def _iterate_list_entries(
     key_mode: Literal["names", "ids"],
 ) -> Any:
     """
-    Yield `(row_dict, next_cursor)` where `next_cursor` is the resume token after the yielded row.
+    Yield `(row_dict, next_cursor)` where `next_cursor` resumes at the next page (not per-row).
     """
     fetched = 0
 
     entries = client.lists.entries(list_id)
 
-    next_cursor: str | None = None
-    if cursor:
-        page = entries.list(cursor=cursor)
-    elif saved_view:
-        view, _ = resolve_saved_view(client=client, list_id=list_id, selector=saved_view)
-        page = entries.from_saved_view(view.id, limit=page_size)
-    else:
-        page = entries.list(
-            field_ids=selected_field_ids,
-            filter=filter_expr,
-            limit=page_size,
-        )
+    if saved_view:
+        next_page_cursor: str | None = None
+        if cursor:
+            page = entries.list(cursor=cursor)
+        else:
+            view, _ = resolve_saved_view(client=client, list_id=list_id, selector=saved_view)
+            page = entries.from_saved_view(view.id, limit=page_size)
 
-    next_cursor = page.pagination.next_cursor
-    for entry in page.data:
-        fetched += 1
-        yield _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode), next_cursor
-        if max_results is not None and fetched >= max_results:
-            return
-
-    if not all_pages and max_results is None:
-        return
-
-    while next_cursor:
-        page = entries.list(cursor=next_cursor)
-        next_cursor = page.pagination.next_cursor
+        next_page_cursor = page.pagination.next_cursor
         for entry in page.data:
             fetched += 1
             yield (
                 _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
-                next_cursor,
+                next_page_cursor,
             )
             if max_results is not None and fetched >= max_results:
                 return
+
+        if not all_pages and max_results is None:
+            return
+
+        while next_page_cursor:
+            page = entries.list(cursor=next_page_cursor)
+            next_page_cursor = page.pagination.next_cursor
+            for entry in page.data:
+                fetched += 1
+                yield (
+                    _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
+                    next_page_cursor,
+                )
+                if max_results is not None and fetched >= max_results:
+                    return
+        return
+
+    pages = (
+        entries.pages(cursor=cursor)
+        if cursor is not None
+        else entries.pages(
+            field_ids=selected_field_ids,
+            filter=filter_expr,
+            limit=page_size,
+        )
+    )
+
+    first_page = True
+    for page in pages:
+        next_page_cursor = page.pagination.next_cursor
+        for entry in page.data:
+            fetched += 1
+            yield (
+                _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
+                next_page_cursor,
+            )
+            if max_results is not None and fetched >= max_results:
+                return
+
+        if first_page and not all_pages and max_results is None:
+            return
+        first_page = False
 
 
 def _entry_to_row(

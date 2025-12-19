@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any, TypedDict
+
+from affinity import AsyncAffinity
+from affinity.models.rate_limit_snapshot import RateLimitSnapshot
+from affinity.models.secondary import EntityFile
+
+from ..context import CLIContext
+from ..csv_utils import sanitize_filename
+from ..progress import ProgressManager, ProgressSettings
+from ..runner import CommandOutput
+
+
+class ManifestFile(TypedDict):
+    fileId: int
+    name: str
+    contentType: str | None
+    size: int
+    createdAt: object
+    uploaderId: int
+    path: str
+
+
+async def dump_entity_files_bundle(
+    *,
+    ctx: CLIContext,
+    warnings: list[str],
+    out_dir: str | None,
+    overwrite: bool,
+    concurrency: int,
+    page_size: int,
+    max_files: int | None,
+    default_dirname: str,
+    manifest_entity: dict[str, Any],
+    files_list_kwargs: dict[str, Any],
+) -> CommandOutput:
+    """
+    Download all files for a single entity into a folder bundle with a manifest.
+
+    Notes:
+    - Uses a bounded worker pool (avoids spawning one task per file).
+    - Uses the same resolved client settings as sync commands (env/profile/flags).
+    """
+    settings = ctx.resolve_client_settings(warnings=warnings)
+
+    entity_dir = Path(out_dir) if out_dir is not None else (Path.cwd() / default_dirname)
+    files_dir = entity_dir / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+
+    workers = max(1, int(concurrency))
+    queue: asyncio.Queue[EntityFile | None] = asyncio.Queue(maxsize=workers * 2)
+
+    manifest_files: list[ManifestFile] = []
+    rate_limit_snapshot: RateLimitSnapshot | None = None
+    task_lock = asyncio.Lock()
+
+    async with AsyncAffinity(
+        api_key=settings.api_key,
+        v1_base_url=settings.v1_base_url,
+        v2_base_url=settings.v2_base_url,
+        timeout=settings.timeout,
+        log_requests=settings.log_requests,
+        max_retries=settings.max_retries,
+        on_request=settings.on_request,
+        on_response=settings.on_response,
+        on_error=settings.on_error,
+        policies=settings.policies,
+    ) as async_client:
+
+        async def producer() -> None:
+            token: str | None = None
+            produced = 0
+            while True:
+                resp = await async_client.files.list(
+                    **files_list_kwargs,
+                    page_size=page_size,
+                    page_token=token,
+                )
+                for f in resp.data:
+                    await queue.put(f)
+                    produced += 1
+                    if max_files is not None and produced >= max_files:
+                        token = None
+                        break
+                if max_files is not None and produced >= max_files:
+                    break
+                if not resp.next_page_token:
+                    break
+                token = resp.next_page_token
+
+            for _ in range(workers):
+                await queue.put(None)
+
+        with ProgressManager(settings=ProgressSettings(mode=ctx.progress, quiet=ctx.quiet)) as pm:
+
+            async def worker() -> None:
+                while True:
+                    f = await queue.get()
+                    if f is None:
+                        return
+
+                    safe_name = sanitize_filename(f.name)
+                    dest = files_dir / f"{int(f.id)}__{safe_name}"
+                    async with task_lock:
+                        _task_id, cb = pm.task(
+                            description=f"download {f.name}",
+                            total_bytes=int(f.size) if f.size else None,
+                        )
+                    await async_client.files.download_to(
+                        f.id,
+                        dest,
+                        overwrite=overwrite,
+                        on_progress=cb,
+                        timeout=settings.timeout,
+                    )
+                    manifest_files.append(
+                        {
+                            "fileId": int(f.id),
+                            "name": f.name,
+                            "contentType": f.content_type,
+                            "size": f.size,
+                            "createdAt": f.created_at,
+                            "uploaderId": int(f.uploader_id),
+                            "path": str(dest.relative_to(entity_dir)),
+                        }
+                    )
+
+            await asyncio.gather(
+                producer(),
+                *(worker() for _ in range(workers)),
+            )
+
+        manifest = {
+            "entity": manifest_entity,
+            "files": sorted(manifest_files, key=lambda x: x["fileId"]),
+        }
+        (entity_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        rate_limit_snapshot = async_client.rate_limits.snapshot()
+
+    data = {
+        "out": str(entity_dir),
+        "filesDownloaded": len(manifest_files),
+        "manifest": str((entity_dir / "manifest.json").relative_to(entity_dir)),
+    }
+    return CommandOutput(
+        data=data,
+        warnings=warnings,
+        api_called=True,
+        rate_limit=rate_limit_snapshot,
+    )

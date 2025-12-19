@@ -41,6 +41,10 @@ affinity --dotenv --env-file ./dev.env whoami
 - Human/table output goes to **stdout**; diagnostics go to **stderr**.
 - Commands build a single structured result and then render it as either JSON or table output (no “double implementations”).
 
+## Performance
+
+The CLI enables SDK in-memory caching for cacheable metadata requests (e.g., field metadata) automatically.
+
 ## Progress + quiet mode
 
 - Long operations show progress bars/spinners on **stderr** when interactive.
@@ -54,6 +58,14 @@ Override with:
 
 - `--log-file <path>`
 - `--no-log-file`
+
+## SDK controls
+
+These flags expose useful SDK behaviors directly from the CLI:
+
+- `--readonly`: disallow write operations (guard rail for scripts).
+- `--max-retries N`: tune rate-limit retry behavior.
+- `--trace`: trace request/response/error events to stderr (safe redaction).
 
 ## Exit codes
 
