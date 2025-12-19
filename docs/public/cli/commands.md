@@ -77,6 +77,8 @@ affinity list ls --all --json
 
 Accepts a list ID or an exact list name.
 
+The Fields table includes a `valueType` column using V2 string types (e.g., `dropdown-multi`, `ranked-dropdown`).
+
 ```bash
 affinity list view 123
 affinity list view "My Pipeline" --json

@@ -374,7 +374,7 @@ All magic numbers are replaced with enums:
 from affinity.types import (
     ListType,        # PERSON, ORGANIZATION, OPPORTUNITY
     PersonType,      # INTERNAL, EXTERNAL, COLLABORATOR
-    FieldValueType,  # TEXT, NUMBER, DATE, PERSON, etc.
+    FieldValueType,  # "text", "number", "datetime", "dropdown-multi", etc.
     InteractionType, # EMAIL, MEETING, CALL, CHAT
     # ... and more
 )

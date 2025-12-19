@@ -440,7 +440,7 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         assert seen["field_create"] == {
             "name": "F",
             "entity_type": int(EntityType.PERSON),
-            "value_type": int(FieldValueType.TEXT),
+            "value_type": 2,
         }
         assert fields.delete(FieldId("field-1")) is True
 

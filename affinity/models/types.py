@@ -186,6 +186,9 @@ class OpenStrEnum(str, Enum):
         cls._value2member_map_[text] = obj
         return obj
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 class ListType(OpenIntEnum):
     """Type of entities a list can contain."""
@@ -224,23 +227,124 @@ class PersonType(OpenStrEnum):
     COLLABORATOR = "collaborator"
 
 
-class FieldValueType(OpenIntEnum):
+class FieldValueType(OpenStrEnum):
     """
-    Field value types - determines what kind of data a field can hold.
+    Field value types (V2-first).
 
-    From V1 API documentation:
+    V2 represents `valueType` as strings (e.g. "dropdown-multi", "ranked-dropdown", "interaction").
+    V1 represents field value types as numeric codes; numeric inputs are normalized into the closest
+    V2 string type where possible.
     """
 
-    PERSON = 0
-    ORGANIZATION = 1  # Company
-    TEXT = 2
-    NUMBER = 3
-    DATE = 4
-    LOCATION = 5
-    # Note: 6 is not used
-    DROPDOWN = 7  # Ranked dropdown
-    # Additional V2 types
-    FILTERABLE_TEXT = 10
+    TEXT = "text"
+
+    NUMBER = "number"
+    NUMBER_MULTI = "number-multi"
+
+    DATETIME = "datetime"  # V2 canonical (V1 docs call this "Date")
+
+    LOCATION = "location"
+    LOCATION_MULTI = "location-multi"
+
+    DROPDOWN = "dropdown"
+    DROPDOWN_MULTI = "dropdown-multi"
+    RANKED_DROPDOWN = "ranked-dropdown"
+
+    PERSON = "person"
+    PERSON_MULTI = "person-multi"
+
+    COMPANY = "company"  # V1 calls this "organization"
+    COMPANY_MULTI = "company-multi"
+
+    FILTERABLE_TEXT = "filterable-text"
+    FILTERABLE_TEXT_MULTI = "filterable-text-multi"
+
+    INTERACTION = "interaction"  # V2-only (relationship-intelligence)
+
+    @classmethod
+    def _missing_(cls, value: object) -> OpenStrEnum:
+        # Normalize known V1 numeric codes to canonical V2 strings.
+        if isinstance(value, int):
+            mapping: dict[int, FieldValueType] = {
+                0: cls.PERSON,
+                1: cls.COMPANY,
+                2: cls.TEXT,
+                3: cls.NUMBER,
+                4: cls.DATETIME,
+                5: cls.LOCATION,
+                7: cls.DROPDOWN,
+                10: cls.FILTERABLE_TEXT,
+            }
+            if value in mapping:
+                return mapping[value]
+
+            # Keep "unknown numeric" inputs stable by caching under the int key as well.
+            text = str(value)
+            existing = cls._value2member_map_.get(text)
+            if existing is not None:
+                existing_enum = cast(OpenStrEnum, existing)
+                cls._value2member_map_[value] = existing_enum
+                return existing_enum
+            created = super()._missing_(text)
+            cls._value2member_map_[value] = created
+            return created
+
+        if isinstance(value, str):
+            text = value.strip()
+            lowered = text.lower()
+            if lowered == "date":
+                return cls.DATETIME
+            if lowered in ("organization", "organisation"):
+                return cls.COMPANY
+            if lowered in ("organization-multi", "organisation-multi"):
+                return cls.COMPANY_MULTI
+            if lowered == "filterable_text":
+                return cls.FILTERABLE_TEXT
+
+        return super()._missing_(value)
+
+
+def to_v1_value_type_code(
+    *,
+    value_type: FieldValueType,
+    raw: str | int | None = None,
+) -> int | None:
+    """
+    Convert a V2-first `FieldValueType` into a V1 numeric code (when possible).
+
+    Notes:
+    - If `raw` is already a known V1 numeric code, it is returned as-is.
+    - `interaction` is V2-only and has no V1 equivalent; returns None.
+    """
+
+    if isinstance(raw, int):
+        if raw in (0, 1, 2, 3, 4, 5, 7, 10):
+            return raw
+        return raw
+
+    match value_type:
+        case FieldValueType.PERSON | FieldValueType.PERSON_MULTI:
+            return 0
+        case FieldValueType.COMPANY | FieldValueType.COMPANY_MULTI:
+            return 1
+        case FieldValueType.TEXT:
+            return 2
+        case FieldValueType.NUMBER | FieldValueType.NUMBER_MULTI:
+            return 3
+        case FieldValueType.DATETIME:
+            return 4
+        case FieldValueType.LOCATION | FieldValueType.LOCATION_MULTI:
+            return 5
+        case (
+            FieldValueType.DROPDOWN | FieldValueType.DROPDOWN_MULTI | FieldValueType.RANKED_DROPDOWN
+        ):
+            return 7
+        case FieldValueType.FILTERABLE_TEXT | FieldValueType.FILTERABLE_TEXT_MULTI:
+            return 10
+        case FieldValueType.INTERACTION:
+            return None
+        case _:
+            return None
 
 
 class FieldType(OpenStrEnum):

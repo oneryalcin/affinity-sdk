@@ -114,7 +114,11 @@ def generate_pipeline_dashboard(client: Affinity, list_id: ListId) -> dict:
     # Find the status/stage field (typically a dropdown)
     stage_field = None
     for field in fields:
-        if field.value_type == FieldValueType.DROPDOWN:
+        if field.value_type in (
+            FieldValueType.DROPDOWN,
+            FieldValueType.DROPDOWN_MULTI,
+            FieldValueType.RANKED_DROPDOWN,
+        ):
             if "stage" in field.name.lower() or "status" in field.name.lower():
                 stage_field = field
                 break

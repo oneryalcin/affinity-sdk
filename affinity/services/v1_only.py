@@ -52,6 +52,7 @@ from ..models.types import (
     UserId,
     WebhookId,
     field_id_to_v1_numeric,
+    to_v1_value_type_code,
 )
 from ..progress import ProgressCallback
 
@@ -512,10 +513,13 @@ class FieldService:
 
     def create(self, data: FieldCreate) -> FieldMetadata:
         """Create a custom field."""
+        value_type_code = to_v1_value_type_code(value_type=data.value_type, raw=None)
+        if value_type_code is None:
+            raise ValueError(f"Field value_type has no V1 numeric mapping: {data.value_type!s}")
         payload: dict[str, Any] = {
             "name": data.name,
             "entity_type": int(data.entity_type),
-            "value_type": int(data.value_type),
+            "value_type": value_type_code,
         }
         if data.list_id:
             payload["list_id"] = int(data.list_id)
@@ -1392,10 +1396,13 @@ class AsyncFieldService:
         return [FieldMetadata.model_validate(f) for f in items]
 
     async def create(self, data: FieldCreate) -> FieldMetadata:
+        value_type_code = to_v1_value_type_code(value_type=data.value_type, raw=None)
+        if value_type_code is None:
+            raise ValueError(f"Field value_type has no V1 numeric mapping: {data.value_type!s}")
         payload: dict[str, Any] = {
             "name": data.name,
             "entity_type": int(data.entity_type),
-            "value_type": int(data.value_type),
+            "value_type": value_type_code,
         }
         if data.list_id:
             payload["list_id"] = int(data.list_id)

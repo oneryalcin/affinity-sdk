@@ -50,15 +50,21 @@ Entities expose a `fields` container that preserves whether the API returned fie
 When you read `entity.fields.data`, values are typed as `Any`. The expected shape depends on the field’s `valueType`
 (`FieldValueType`) and whether the field allows multiple values.
 
+`FieldValueType` is **V2-first** and string-based (for example: `dropdown-multi`, `ranked-dropdown`).
+Unknown future values are treated as open enums and preserved as strings.
+
 | Affinity `FieldValueType` | Typical Python value | Notes |
 |---|---|---|
-| `TEXT` / `FILTERABLE_TEXT` | `str` | Plain text |
-| `NUMBER` | `int \| float` | JSON number |
-| `DATE` | `str` / `datetime.date` | Typically ISO-8601 date strings on read; `date` is convenient on write |
-| `PERSON` | `PersonId` / `list[PersonId]` | Under the hood: `int` or `list[int]` |
-| `ORGANIZATION` | `CompanyId` / `list[CompanyId]` | Under the hood: `int` or `list[int]` |
-| `DROPDOWN` | `int` / `list[int]` | Dropdown option IDs (ranked dropdown) |
-| `LOCATION` | `dict[str, str]` | Typically a structured object (shape varies by API) |
+| `text` | `str` | Plain text |
+| `filterable-text` / `filterable-text-multi` | `str` / `list[str]` | Reserved for Affinity-populated fields |
+| `number` / `number-multi` | `int \| float` / `list[int \| float]` | JSON numbers |
+| `datetime` | `str` / `datetime.datetime` | Typically ISO-8601 datetime strings on read |
+| `person` / `person-multi` | `PersonId` / `list[PersonId]` | Under the hood: `int` or `list[int]` |
+| `company` / `company-multi` | `CompanyId` / `list[CompanyId]` | Under the hood: `int` or `list[int]` |
+| `dropdown` / `dropdown-multi` | `int` / `list[int]` | Dropdown option IDs |
+| `ranked-dropdown` | `int` | Dropdown option ID (ranked dropdown) |
+| `location` / `location-multi` | `dict[str, Any]` / `list[dict[str, Any]]` | Structured location object(s); shape varies by API |
+| `interaction` | `Any` | Relationship-intelligence fields; shape varies by API |
 
 ## Next steps
 

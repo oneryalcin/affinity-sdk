@@ -7,6 +7,7 @@ Opportunities, Lists, and List Entries. Uses V2 terminology throughout.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -29,6 +30,9 @@ from .types import (
     SavedViewId,
     UserId,
 )
+
+# Use the library logger; affinity/__init__.py installs a NullHandler by default.
+_logger = logging.getLogger("affinity_sdk")
 
 # =============================================================================
 # Base configuration for all models
@@ -284,7 +288,7 @@ class Opportunity(AffinityModel):
 
     id: OpportunityId
     name: str
-    list_id: ListId = Field(alias="listId")
+    list_id: ListId | None = Field(None, alias="listId")
 
     # Associations
     person_ids: list[PersonId] = Field(default_factory=list, alias="personIds")
@@ -468,7 +472,7 @@ class SavedView(AffinityModel):
     id: SavedViewId
     name: str
     type: str | None = None  # V2 field: view type
-    list_id: ListId = Field(alias="listId")
+    list_id: ListId | None = Field(None, alias="listId")
     is_default: bool = Field(False, alias="isDefault")
     created_at: ISODatetime | None = Field(None, alias="createdAt")
 
@@ -488,10 +492,13 @@ class FieldMetadata(AffinityModel):
     Includes both V1 numeric IDs and V2 string IDs for enriched fields.
     """
 
+    model_config = ConfigDict(use_enum_values=False)
+
     id: AnyFieldId  # Can be int (field-123) or string (affinity-data-description)
     name: str
     value_type: FieldValueType = Field(alias="valueType")
     allows_multiple: bool = Field(False, alias="allowsMultiple")
+    value_type_raw: str | int | None = Field(None, exclude=True)
 
     # V2 field type classification
     type: str | None = None  # "enriched", "list-specific", "global", etc.
@@ -505,9 +512,41 @@ class FieldMetadata(AffinityModel):
     # Dropdown options for dropdown fields
     dropdown_options: list[DropdownOption] = Field(default_factory=list, alias="dropdownOptions")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _preserve_value_type_raw(cls, value: Any) -> Any:
+        if not isinstance(value, Mapping):
+            return value
+
+        data: dict[str, Any] = dict(value)
+        raw = data.get("valueType")
+        if raw is None and "value_type" in data:
+            raw = data.get("value_type")
+        data["value_type_raw"] = raw
+        return data
+
+    @model_validator(mode="after")
+    def _coerce_allows_multiple_from_value_type(self) -> FieldMetadata:
+        # If the server returns a `*-multi` value type, treat it as authoritative for multiplicity.
+        try:
+            text = str(self.value_type)
+        except Exception:
+            text = ""
+        if text.endswith("-multi") and not self.allows_multiple:
+            _logger.debug(
+                "FieldMetadata allowsMultiple mismatch: valueType=%s allowsMultiple=%s "
+                "(auto-correcting)",
+                text,
+                self.allows_multiple,
+            )
+            self.allows_multiple = True
+        return self
+
 
 class FieldCreate(AffinityModel):
     """Data for creating a new field (V1 API)."""
+
+    model_config = ConfigDict(use_enum_values=False)
 
     name: str
     entity_type: EntityType

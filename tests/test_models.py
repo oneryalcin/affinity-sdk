@@ -109,18 +109,29 @@ class TestEnums:
         assert PersonType("future-new-type") is value
 
     @pytest.mark.req("TR-004a")
-    def test_open_int_enum_preserves_unknown_values(self) -> None:
+    def test_open_str_enum_preserves_unknown_values_for_field_value_type(self) -> None:
         value = FieldValueType(999)
-        assert int(value) == 999
+        assert value.value == "999"
         assert FieldValueType(999) is value
 
     def test_field_value_type_values(self) -> None:
         """Test FieldValueType enum values."""
-        assert FieldValueType.TEXT == 2
-        assert FieldValueType.NUMBER == 3
-        assert FieldValueType.DATE == 4
-        assert FieldValueType.PERSON == 0
-        assert FieldValueType.ORGANIZATION == 1
+        assert FieldValueType.TEXT == "text"
+        assert FieldValueType.NUMBER == "number"
+        assert FieldValueType.NUMBER_MULTI == "number-multi"
+        assert FieldValueType.DATETIME == "datetime"
+        assert FieldValueType.LOCATION == "location"
+        assert FieldValueType.LOCATION_MULTI == "location-multi"
+        assert FieldValueType.DROPDOWN == "dropdown"
+        assert FieldValueType.DROPDOWN_MULTI == "dropdown-multi"
+        assert FieldValueType.RANKED_DROPDOWN == "ranked-dropdown"
+        assert FieldValueType.PERSON == "person"
+        assert FieldValueType.PERSON_MULTI == "person-multi"
+        assert FieldValueType.COMPANY == "company"
+        assert FieldValueType.COMPANY_MULTI == "company-multi"
+        assert FieldValueType.FILTERABLE_TEXT == "filterable-text"
+        assert FieldValueType.FILTERABLE_TEXT_MULTI == "filterable-text-multi"
+        assert FieldValueType.INTERACTION == "interaction"
 
     def test_field_type_values(self) -> None:
         """Test FieldType string enum values."""
