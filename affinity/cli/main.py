@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Literal
 
 import click
-import rich_click
 
 import affinity
 
+from .click_compat import RichGroup
 from .context import CLIContext
 from .logging import configure_logging, restore_logging
 from .paths import get_paths
@@ -17,7 +17,7 @@ from .paths import get_paths
     name="affinity",
     invoke_without_command=True,
     context_settings={"help_option_names": ["-h", "--help"]},
-    cls=rich_click.RichGroup,
+    cls=RichGroup,
 )
 @click.option(
     "--output",

@@ -85,11 +85,15 @@ def on_request(req) -> None:
 def on_response(res) -> None:
     print("<-", res.status_code, res.request.url)
 
+def on_error(err) -> None:
+    print("!!", type(err.error).__name__, err.request.url)
+
 client = Affinity(
     api_key="your-key",
     log_requests=True,
     on_request=on_request,
     on_response=on_response,
+    on_error=on_error,
 )
 ```
 

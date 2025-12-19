@@ -3,16 +3,16 @@ from __future__ import annotations
 import platform
 
 import click
-import rich_click
 
 import affinity
 
+from ..click_compat import RichCommand
 from ..context import CLIContext
 from ..options import output_options
 from ..runner import CommandOutput, run_command
 
 
-@click.command(name="version", cls=rich_click.RichCommand)
+@click.command(name="version", cls=RichCommand)
 @output_options
 @click.pass_obj
 def version_cmd(ctx: CLIContext) -> None:

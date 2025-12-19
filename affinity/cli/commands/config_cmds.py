@@ -4,8 +4,8 @@ import os
 from contextlib import suppress
 
 import click
-import rich_click
 
+from ..click_compat import RichCommand, RichGroup
 from ..config import config_init_template
 from ..context import CLIContext
 from ..errors import CLIError
@@ -13,12 +13,12 @@ from ..options import output_options
 from ..runner import CommandOutput, run_command
 
 
-@click.group(name="config", cls=rich_click.RichGroup)
+@click.group(name="config", cls=RichGroup)
 def config_group() -> None:
     """Configuration and profiles."""
 
 
-@config_group.command(name="path", cls=rich_click.RichCommand)
+@config_group.command(name="path", cls=RichCommand)
 @output_options
 @click.pass_obj
 def config_path(ctx: CLIContext) -> None:
@@ -29,7 +29,7 @@ def config_path(ctx: CLIContext) -> None:
     run_command(ctx, command="config path", fn=fn)
 
 
-@config_group.command(name="init", cls=rich_click.RichCommand)
+@config_group.command(name="init", cls=RichCommand)
 @click.option("--force", is_flag=True, help="Overwrite existing config file.")
 @output_options
 @click.pass_obj

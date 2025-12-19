@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import click
-import rich_click
 
+from ..click_compat import RichCommand
 from ..context import CLIContext
 from ..options import output_options
 from ..runner import CommandOutput, run_command
 
 
-@click.command(name="whoami", cls=rich_click.RichCommand)
+@click.command(name="whoami", cls=RichCommand)
 @output_options
 @click.pass_obj
 def whoami_cmd(ctx: CLIContext) -> None:

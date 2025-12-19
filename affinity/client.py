@@ -16,6 +16,7 @@ import httpx
 from .clients.http import (
     AsyncHTTPClient,
     ClientConfig,
+    ErrorHook,
     HTTPClient,
     RequestHook,
     ResponseHook,
@@ -161,6 +162,7 @@ class Affinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
+        on_error: ErrorHook | None = None,
         policies: Policies | None = None,
     ):
         """
@@ -187,6 +189,7 @@ class Affinity:
             log_requests: Log all HTTP requests (for debugging)
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
+            on_error: Hook called when a request raises (DX-008)
             policies: Client policies (e.g., disable writes)
         """
         config = ClientConfig(
@@ -206,6 +209,7 @@ class Affinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
+            on_error=on_error,
             policies=policies or Policies(),
         )
         self._http = HTTPClient(config)
@@ -435,6 +439,7 @@ class AsyncAffinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
+        on_error: ErrorHook | None = None,
         policies: Policies | None = None,
     ):
         """
@@ -480,6 +485,7 @@ class AsyncAffinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
+            on_error=on_error,
             policies=policies or Policies(),
         )
         self._http = AsyncHTTPClient(config)

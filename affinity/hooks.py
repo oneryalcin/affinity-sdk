@@ -7,9 +7,11 @@ to import from `affinity.clients.http` (internal implementation detail).
 
 from __future__ import annotations
 
-from .clients.http import RequestHook, RequestInfo, ResponseHook, ResponseInfo
+from .clients.http import ErrorHook, ErrorInfo, RequestHook, RequestInfo, ResponseHook, ResponseInfo
 
 __all__ = [
+    "ErrorHook",
+    "ErrorInfo",
     "RequestHook",
     "RequestInfo",
     "ResponseHook",

@@ -6,10 +6,10 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import click
-import rich_click
 
 from affinity.types import CompanyId, ListEntryId, ListId, OpportunityId, PersonId
 
+from ..click_compat import RichCommand
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
@@ -66,7 +66,7 @@ def _parse_affinity_url(url: str) -> ResolvedUrl:
     raise CLIError("Unrecognized Affinity URL path.", exit_code=2, error_type="usage_error")
 
 
-@click.command(name="resolve-url", cls=rich_click.RichCommand)
+@click.command(name="resolve-url", cls=RichCommand)
 @click.argument("url")
 @output_options
 @click.pass_obj

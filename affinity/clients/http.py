@@ -89,11 +89,24 @@ class ResponseInfo:
     headers: dict[str, str]
     elapsed_ms: float
     request: RequestInfo
+    cache_hit: bool = False
+
+
+@dataclass
+class ErrorInfo:
+    """
+    Sanitized error metadata for hooks.
+    """
+
+    error: Exception
+    elapsed_ms: float
+    request: RequestInfo
 
 
 # Hook callback types
 RequestHook: TypeAlias = Callable[[RequestInfo], None]
 ResponseHook: TypeAlias = Callable[[ResponseInfo], None]
+ErrorHook: TypeAlias = Callable[[ErrorInfo], None]
 
 
 def _to_wire_value(value: Any) -> str:
@@ -590,6 +603,7 @@ class ClientConfig:
     # Request/response hooks (DX-008)
     on_request: RequestHook | None = None
     on_response: ResponseHook | None = None
+    on_error: ErrorHook | None = None
     # TR-015: Expected v2 API version for diagnostics and safety checks
     expected_v2_version: str | None = None
     policies: Policies = field(default_factory=Policies)
@@ -842,30 +856,48 @@ class HTTPClient:
                 )
 
             start_time = time.monotonic()
-            resp = next(req)
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            if config.on_response:
-                config.on_response(
-                    ResponseInfo(
-                        status_code=resp.status_code,
-                        headers=dict(resp.headers),
-                        elapsed_ms=elapsed_ms,
-                        request=RequestInfo(
-                            method=req.method.upper(),
-                            url=_redact_url(req.url, config.api_key),
-                            headers={},
-                        ),
+            try:
+                resp = next(req)
+            except Exception as exc:
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                if config.on_error:
+                    config.on_error(
+                        ErrorInfo(
+                            error=exc,
+                            elapsed_ms=elapsed_ms,
+                            request=RequestInfo(
+                                method=req.method.upper(),
+                                url=_redact_url(req.url, config.api_key),
+                                headers={},
+                            ),
+                        )
                     )
-                )
-            return resp
+                raise
+            else:
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                if config.on_response:
+                    config.on_response(
+                        ResponseInfo(
+                            status_code=resp.status_code,
+                            headers=dict(resp.headers),
+                            elapsed_ms=elapsed_ms,
+                            cache_hit=bool(resp.context.get("cache_hit", False)),
+                            request=RequestInfo(
+                                method=req.method.upper(),
+                                url=_redact_url(req.url, config.api_key),
+                                headers={},
+                            ),
+                        )
+                    )
+                return resp
 
         return compose(
             [
-                cache_middleware,
                 hooks_middleware,
                 write_guard_middleware,
                 retry_middleware,
                 auth_middleware,
+                cache_middleware,
                 response_mapping,
             ],
             terminal,
@@ -1041,6 +1073,7 @@ class HTTPClient:
         follow_redirects: bool,
         allow_hooks: bool,
         external: bool = False,
+        write_intent: bool | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
         """
@@ -1049,14 +1082,13 @@ class HTTPClient:
         Used for file download/streaming where the response is not JSON.
         """
         last_error: Exception | None = None
+        method_upper = method.upper()
+        if write_intent is None:
+            write_intent = method_upper in _WRITE_METHODS
 
         for attempt in range(self._config.max_retries + 1):
             try:
-                method_upper = method.upper()
-                if (
-                    self._config.policies.write is WritePolicy.DENY
-                    and method_upper in _WRITE_METHODS
-                ):
+                if self._config.policies.write is WritePolicy.DENY and write_intent:
                     raise WriteNotAllowedError(
                         f"Cannot {method_upper} while writes are disabled by policy",
                         method=method_upper,
@@ -1932,30 +1964,48 @@ class AsyncHTTPClient:
                 )
 
             start_time = time.monotonic()
-            resp = await next(req)
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            if config.on_response:
-                config.on_response(
-                    ResponseInfo(
-                        status_code=resp.status_code,
-                        headers=dict(resp.headers),
-                        elapsed_ms=elapsed_ms,
-                        request=RequestInfo(
-                            method=req.method.upper(),
-                            url=_redact_url(req.url, config.api_key),
-                            headers={},
-                        ),
+            try:
+                resp = await next(req)
+            except Exception as exc:
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                if config.on_error:
+                    config.on_error(
+                        ErrorInfo(
+                            error=exc,
+                            elapsed_ms=elapsed_ms,
+                            request=RequestInfo(
+                                method=req.method.upper(),
+                                url=_redact_url(req.url, config.api_key),
+                                headers={},
+                            ),
+                        )
                     )
-                )
-            return resp
+                raise
+            else:
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                if config.on_response:
+                    config.on_response(
+                        ResponseInfo(
+                            status_code=resp.status_code,
+                            headers=dict(resp.headers),
+                            elapsed_ms=elapsed_ms,
+                            cache_hit=bool(resp.context.get("cache_hit", False)),
+                            request=RequestInfo(
+                                method=req.method.upper(),
+                                url=_redact_url(req.url, config.api_key),
+                                headers={},
+                            ),
+                        )
+                    )
+                return resp
 
         return compose_async(
             [
-                cache_middleware,
                 hooks_middleware,
                 write_guard_middleware,
                 retry_middleware,
                 auth_middleware,
+                cache_middleware,
                 response_mapping,
             ],
             terminal,
@@ -2317,18 +2367,18 @@ class AsyncHTTPClient:
         apply_auth: bool,
         follow_redirects: bool,
         external: bool,
+        write_intent: bool | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
         client = await self._get_client()
         last_error: Exception | None = None
+        method_upper = method.upper()
+        if write_intent is None:
+            write_intent = method_upper in _WRITE_METHODS
 
         for attempt in range(self._config.max_retries + 1):
             try:
-                method_upper = method.upper()
-                if (
-                    self._config.policies.write is WritePolicy.DENY
-                    and method_upper in _WRITE_METHODS
-                ):
+                if self._config.policies.write is WritePolicy.DENY and write_intent:
                     raise WriteNotAllowedError(
                         f"Cannot {method_upper} while writes are disabled by policy",
                         method=method_upper,

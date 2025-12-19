@@ -9,9 +9,13 @@ def on_request(req) -> None:
     print("->", req.method, req.url)
 
 def on_response(res) -> None:
-    print("<-", res.status_code, res.request.url)
+    cache = " (cache hit)" if res.cache_hit else ""
+    print("<-", res.status_code, res.request.url, cache)
 
-with Affinity(api_key="your-key", on_request=on_request, on_response=on_response) as client:
+def on_error(err) -> None:
+    print("!!", type(err.error).__name__, err.request.url)
+
+with Affinity(api_key="your-key", on_request=on_request, on_response=on_response, on_error=on_error) as client:
     client.companies.list()
 ```
 

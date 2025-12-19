@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import click
-import rich_click
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
@@ -14,6 +13,7 @@ from affinity.models.pagination import PaginatedResponse
 from affinity.models.types import ListType
 from affinity.types import ListId
 
+from ..click_compat import RichCommand, RichGroup
 from ..context import CLIContext
 from ..csv_utils import write_csv
 from ..errors import CLIError
@@ -28,7 +28,7 @@ from ..results import Artifact
 from ..runner import CommandOutput, run_command
 
 
-@click.group(name="list", cls=rich_click.RichGroup)
+@click.group(name="list", cls=RichGroup)
 def list_group() -> None:
     """List commands."""
 
@@ -46,7 +46,7 @@ def _parse_list_type(value: str | None) -> ListType | None:
     raise CLIError(f"Unknown list type: {value}", exit_code=2, error_type="usage_error")
 
 
-@list_group.command(name="ls", cls=rich_click.RichCommand)
+@list_group.command(name="ls", cls=RichCommand)
 @click.option("--type", "list_type", type=str, default=None, help="Filter by list type.")
 @click.option("--page-size", type=int, default=None, help="v2 page size (limit).")
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
@@ -140,7 +140,7 @@ def list_ls(
     run_command(ctx, command="list ls", fn=fn)
 
 
-@list_group.command(name="view", cls=rich_click.RichCommand)
+@list_group.command(name="view", cls=RichCommand)
 @click.argument("list_selector")
 @output_options
 @click.pass_obj
@@ -164,7 +164,7 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
 CsvHeaderMode = Literal["names", "ids"]
 
 
-@list_group.command(name="export", cls=rich_click.RichCommand)
+@list_group.command(name="export", cls=RichCommand)
 @click.argument("list_selector")
 @click.option("--saved-view", type=str, default=None, help="Saved view id or name.")
 @click.option("--field", "fields", type=str, multiple=True, help="Field name or id (repeatable).")

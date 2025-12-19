@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TypedDict
 
 import click
-import rich_click
 
 from affinity import AsyncAffinity
 from affinity.models.entities import Company
@@ -14,6 +13,7 @@ from affinity.models.secondary import EntityFile
 from affinity.models.types import V1_BASE_URL, V2_BASE_URL
 from affinity.types import CompanyId
 
+from ..click_compat import RichCommand, RichGroup
 from ..context import CLIContext
 from ..csv_utils import sanitize_filename
 from ..options import output_options
@@ -21,12 +21,12 @@ from ..progress import ProgressManager, ProgressSettings
 from ..runner import CommandOutput, run_command
 
 
-@click.group(name="company", cls=rich_click.RichGroup)
+@click.group(name="company", cls=RichGroup)
 def company_group() -> None:
     """Company commands."""
 
 
-@company_group.command(name="search", cls=rich_click.RichCommand)
+@company_group.command(name="search", cls=RichCommand)
 @click.argument("query")
 @click.option("--page-size", type=int, default=None, help="v1 page size (max 500).")
 @click.option("--page-token", type=str, default=None, help="v1 page token for resuming.")
@@ -94,12 +94,12 @@ def _company_row(company: Company) -> dict[str, object]:
     }
 
 
-@company_group.group(name="files", cls=rich_click.RichGroup)
+@company_group.group(name="files", cls=RichGroup)
 def company_files_group() -> None:
     """Company files."""
 
 
-@company_files_group.command(name="dump", cls=rich_click.RichCommand)
+@company_files_group.command(name="dump", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option("--out", "out_dir", type=click.Path(), default=None)
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")

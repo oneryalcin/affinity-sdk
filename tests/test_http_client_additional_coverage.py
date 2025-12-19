@@ -350,6 +350,7 @@ async def test_async_http_client_hooks_cache_and_safe_follow_redirect_block(
     monkeypatch: Any,
 ) -> None:
     events: dict[str, Any] = {"on_request": 0, "on_response": 0}
+    response_cache_hits: list[bool] = []
     sleeps: list[float] = []
 
     async def fake_sleep(seconds: float) -> None:
@@ -362,6 +363,7 @@ async def test_async_http_client_hooks_cache_and_safe_follow_redirect_block(
 
     def on_response(_info: Any) -> None:
         events["on_response"] += 1
+        response_cache_hits.append(bool(getattr(_info, "cache_hit", False)))
 
     calls: list[str] = []
 
@@ -392,8 +394,9 @@ async def test_async_http_client_hooks_cache_and_safe_follow_redirect_block(
         second = await client.get("/companies", cache_key="k")
         assert first == second
         assert calls.count("https://v2.example/v2/companies") == 1
-        assert events["on_request"] == 1
-        assert events["on_response"] == 1
+        assert events["on_request"] == 2
+        assert events["on_response"] == 2
+        assert response_cache_hits.count(True) == 1
 
         with pytest.raises(UnsafeUrlError):
             await client.get_url("https://v2.example/v2/paged")
