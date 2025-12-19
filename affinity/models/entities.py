@@ -19,6 +19,7 @@ from .types import (
     DropdownOptionId,
     EntityType,
     FieldId,
+    FieldValueChangeId,
     FieldValueId,
     FieldValueType,
     ISODatetime,
@@ -607,7 +608,7 @@ class FieldValueUpdate(AffinityModel):
 class FieldValueChange(AffinityModel):
     """Historical change to a field value."""
 
-    id: int
+    id: FieldValueChangeId
     field_id: FieldId = Field(alias="fieldId")
     entity_id: int = Field(alias="entityId")
     list_entry_id: ListEntryId | None = Field(None, alias="listEntryId")

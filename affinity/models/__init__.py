@@ -24,6 +24,7 @@ from .entities import (
     # Field
     FieldMetadata,
     FieldValue,
+    FieldValueChange,
     FieldValueCreate,
     ListCreate,
     # List Entry
@@ -115,6 +116,7 @@ __all__ = [
     "FieldMetadata",
     "FieldCreate",
     "FieldValue",
+    "FieldValueChange",
     "FieldValueCreate",
     "DropdownOption",
     # Saved View

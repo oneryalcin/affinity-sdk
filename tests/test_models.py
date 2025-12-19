@@ -21,6 +21,7 @@ from affinity.models import (
     Company,
     FieldMetadata,
     FieldValue,
+    FieldValueChange,
     Person,
 )
 from affinity.services.companies import CompanyService
@@ -39,6 +40,7 @@ from affinity.types import (
     EnrichedFieldId,
     FieldId,
     FieldType,
+    FieldValueChangeId,
     FieldValueId,
     FieldValueType,
     InteractionId,
@@ -47,6 +49,7 @@ from affinity.types import (
     ListType,
     PersonId,
     PersonType,
+    TenantId,
     field_id_to_v1_numeric,
 )
 
@@ -82,6 +85,18 @@ class TestTypedIds:
         oid = DropdownOptionId(456)
         assert oid == 456
         assert isinstance(oid, int)
+
+    def test_tenant_id_creation(self) -> None:
+        """Test TenantId can be created from int."""
+        tid = TenantId(99)
+        assert tid == 99
+        assert isinstance(tid, int)
+
+    def test_field_value_change_id_creation(self) -> None:
+        """Test FieldValueChangeId can be created from int."""
+        cid = FieldValueChangeId(123)
+        assert cid == 123
+        assert isinstance(cid, int)
 
     @pytest.mark.req("TR-003b")
     def test_ids_are_runtime_distinct_types(self) -> None:
@@ -391,6 +406,21 @@ class TestDateTimePolicy:
         assert isinstance(dumped["createdAt"], str)
         assert "2025-01-01T12:00:00" in dumped["createdAt"]
         assert dumped["createdAt"].endswith("Z") or "+00:00" in dumped["createdAt"]
+
+
+@pytest.mark.req("TR-012a")
+def test_field_value_change_id_is_typed() -> None:
+    change = FieldValueChange.model_validate(
+        {
+            "id": 1,
+            "fieldId": 1,
+            "entityId": 1,
+            "actionType": 0,
+            "value": "x",
+            "changedAt": "2025-01-01T12:00:00Z",
+        }
+    )
+    assert type(change.id) is FieldValueChangeId
 
 
 @pytest.mark.req("TR-001")

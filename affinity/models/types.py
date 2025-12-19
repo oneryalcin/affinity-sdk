@@ -126,6 +126,10 @@ class TenantId(IntId):
     pass
 
 
+class FieldValueChangeId(IntId):
+    pass
+
+
 class TaskId(StrId):
     """UUIDs for async tasks."""
 

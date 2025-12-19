@@ -26,6 +26,7 @@ from .types import (
     ReminderResetType,
     ReminderStatus,
     ReminderType,
+    TenantId,
     UserId,
     WebhookEvent,
     WebhookId,
@@ -309,7 +310,7 @@ class RelationshipStrength(AffinityModel):
 class Tenant(AffinityModel):
     """Affinity tenant (organization/team) information."""
 
-    id: int
+    id: TenantId
     name: str
     subdomain: str
 

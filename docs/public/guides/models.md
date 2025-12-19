@@ -26,12 +26,21 @@ Many model `.id` fields use strongly-typed ID wrappers (for example: `PersonId`,
 They behave like `int` at runtime, but help static type checkers prevent mixing IDs across entity types.
 
 ```python
-from affinity.types import DropdownOptionId, FieldValueId, InteractionId, PersonId
+from affinity.types import (
+    DropdownOptionId,
+    FieldValueChangeId,
+    FieldValueId,
+    InteractionId,
+    PersonId,
+    TenantId,
+)
 
 person_id = PersonId(123)
 interaction_id = InteractionId(456)
 field_value_id = FieldValueId(789)
+field_value_change_id = FieldValueChangeId(321)
 dropdown_option_id = DropdownOptionId(10)
+tenant_id = TenantId(99)
 ```
 
 ## Field values container
