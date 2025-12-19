@@ -163,28 +163,79 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
             return value
         return f"https://{value}"
 
-    def format_local_datetime(value: datetime) -> str:
+    def localize_datetime(value: datetime) -> tuple[datetime, int | None]:
         dt = value
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         local = dt.astimezone()
+        offset = local.utcoffset()
+        if offset is None:
+            return local, None
+        return local, int(offset.total_seconds() // 60)
 
+    def format_utc_offset(minutes: int) -> str:
+        sign = "+" if minutes >= 0 else "-"
+        minutes_abs = abs(minutes)
+        hours = minutes_abs // 60
+        mins = minutes_abs % 60
+        if mins == 0:
+            return f"UTC{sign}{hours}"
+        return f"UTC{sign}{hours}:{mins:02d}"
+
+    def format_local_datetime(value: datetime, *, show_seconds: bool) -> tuple[str, int | None]:
+        local, offset_minutes = localize_datetime(value)
         base = (
             local.strftime("%Y-%m-%d %H:%M:%S")
-            if local.second or local.microsecond
+            if show_seconds
             else local.strftime("%Y-%m-%d %H:%M")
         )
-        offset = local.strftime("%z")  # e.g. -0800
-        offset_fmt = f"{offset[:3]}:{offset[3:]}" if offset else ""
-        suffix = f"(local, UTC{offset_fmt})" if offset_fmt else "(local)"
-        return f"{base} {suffix}"
+        return base, offset_minutes
+
+    datetime_columns: set[str] = set()
+    datetime_offsets: dict[str, set[int]] = {}
+    datetime_show_seconds: dict[str, bool] = {}
+    for col in columns:
+        offsets: set[int] = set()
+        any_dt = False
+        show_seconds = False
+        for row in rows:
+            value = row.get(col)
+            if isinstance(value, datetime):
+                any_dt = True
+                if value.second or value.microsecond:
+                    show_seconds = True
+                _local, offset_minutes = localize_datetime(value)
+                if offset_minutes is not None:
+                    offsets.add(offset_minutes)
+        if any_dt:
+            datetime_columns.add(col)
+            datetime_offsets[col] = offsets
+            datetime_show_seconds[col] = show_seconds
+
+    for col in columns:
+        if col in datetime_columns:
+            offsets = datetime_offsets.get(col, set())
+            if len(offsets) == 1:
+                offset_str = format_utc_offset(next(iter(offsets)))
+                table.add_column(f"{col} (local, {offset_str})")
+            else:
+                table.add_column(f"{col} (local, UTC offset varies)")
+        else:
+            table.add_column(col)
 
     def format_cell(*, column: str, value: Any) -> str:
         if value is None:
             return ""
         column_lower = column.lower()
         if isinstance(value, datetime):
-            return format_local_datetime(value)
+            show_seconds = datetime_show_seconds.get(column, False)
+            base, offset_minutes = format_local_datetime(value, show_seconds=show_seconds)
+            offsets = datetime_offsets.get(column, set())
+            if len(offsets) == 1:
+                return base
+            if offset_minutes is None:
+                return f"{base} UTC?"
+            return f"{base} {format_utc_offset(offset_minutes)}"
         if isinstance(value, list) and all(isinstance(v, str) for v in value):
             parts = [
                 maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
@@ -195,8 +246,6 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
             return maybe_urlify_domain(value)
         return str(value)
 
-    for col in columns:
-        table.add_column(col)
     for row in rows:
         table.add_row(*[format_cell(column=c, value=row.get(c, "")) for c in columns])
     return table
