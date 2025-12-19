@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from rich.console import Console, Group
@@ -162,10 +163,28 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
             return value
         return f"https://{value}"
 
+    def format_local_datetime(value: datetime) -> str:
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local = dt.astimezone()
+
+        base = (
+            local.strftime("%Y-%m-%d %H:%M:%S")
+            if local.second or local.microsecond
+            else local.strftime("%Y-%m-%d %H:%M")
+        )
+        offset = local.strftime("%z")  # e.g. -0800
+        offset_fmt = f"{offset[:3]}:{offset[3:]}" if offset else ""
+        suffix = f"(local, UTC{offset_fmt})" if offset_fmt else "(local)"
+        return f"{base} {suffix}"
+
     def format_cell(*, column: str, value: Any) -> str:
         if value is None:
             return ""
         column_lower = column.lower()
+        if isinstance(value, datetime):
+            return format_local_datetime(value)
         if isinstance(value, list) and all(isinstance(v, str) for v in value):
             parts = [
                 maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
