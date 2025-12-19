@@ -219,6 +219,19 @@ class NetworkError(AffinityError):
     pass
 
 
+class ReadOnlyModeError(AffinityError):
+    """
+    Read-only mode violation.
+
+    Raised when the client is configured with mode="readonly" and a write operation is attempted.
+    """
+
+    def __init__(self, message: str, *, method: str, url: str):
+        super().__init__(message, diagnostics=ErrorDiagnostics(method=method, url=url))
+        self.method = method
+        self.url = url
+
+
 # =============================================================================
 # URL Safety Errors
 # =============================================================================

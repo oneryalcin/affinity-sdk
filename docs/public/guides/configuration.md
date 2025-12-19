@@ -93,6 +93,33 @@ client = Affinity(
 )
 ```
 
+## Read-only mode
+
+To guarantee the SDK does not perform write operations (POST/PUT/PATCH/DELETE, including uploads),
+use read-only mode:
+
+```python
+from affinity import Affinity
+
+client = Affinity(api_key="your-key", mode="readonly")
+```
+
+## HTTP transport injection (advanced)
+
+For testing/mocking without real network calls, inject an `httpx` transport:
+
+```python
+import httpx
+from affinity import Affinity
+
+def handler(request: httpx.Request) -> httpx.Response:
+    if request.method == "GET" and request.url.path.endswith("/lists"):
+        return httpx.Response(200, json={"data": [], "pagination": {}}, request=request)
+    return httpx.Response(404, json={}, request=request)
+
+client = Affinity(api_key="your-key", transport=httpx.MockTransport(handler))
+```
+
 ## V1/V2 URLs and auth mode
 
 ```python

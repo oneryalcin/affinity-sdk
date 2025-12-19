@@ -33,6 +33,7 @@ from ..exceptions import (
     ErrorDiagnostics,
     NetworkError,
     RateLimitError,
+    ReadOnlyModeError,
     TimeoutError,
     UnsafeUrlError,
     VersionCompatibilityError,
@@ -47,6 +48,7 @@ RepeatableQueryParam: TypeAlias = Literal["fieldIds", "fieldTypes"]
 REPEATABLE_QUERY_PARAMS: frozenset[str] = frozenset({"fieldIds", "fieldTypes"})
 
 _RETRYABLE_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
+_WRITE_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _MAX_RETRY_DELAY_SECONDS: float = 60.0
 _MAX_DOWNLOAD_REDIRECTS: int = 10
 
@@ -586,6 +588,7 @@ class ClientConfig:
     on_response: ResponseHook | None = None
     # TR-015: Expected v2 API version for diagnostics and safety checks
     expected_v2_version: str | None = None
+    mode: Literal["readwrite", "readonly"] = "readwrite"
 
     def __post_init__(self) -> None:
         if isinstance(self.timeout, (int, float)):
@@ -809,6 +812,13 @@ class HTTPClient:
 
         for attempt in range(self._config.max_retries + 1):
             try:
+                method_upper = method.upper()
+                if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
+                    raise ReadOnlyModeError(
+                        f"Cannot {method_upper} in read-only mode",
+                        method=method_upper,
+                        url=_redact_url(url, self._config.api_key),
+                    )
                 if self._config.log_requests and not external:
                     logger.debug(f"{method} {url}")
 
@@ -949,6 +959,14 @@ class HTTPClient:
     ) -> dict[str, Any]:
         """Make request with retry policy for safe methods."""
         last_error: Exception | None = None
+
+        method_upper = method.upper()
+        if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
+            raise ReadOnlyModeError(
+                f"Cannot {method_upper} in read-only mode",
+                method=method_upper,
+                url=_redact_url(url, self._config.api_key),
+            )
 
         for attempt in range(self._config.max_retries + 1):
             try:
@@ -1632,6 +1650,14 @@ class AsyncHTTPClient:
         client = await self._get_client()
         last_error: Exception | None = None
 
+        method_upper = method.upper()
+        if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
+            raise ReadOnlyModeError(
+                f"Cannot {method_upper} in read-only mode",
+                method=method_upper,
+                url=_redact_url(url, self._config.api_key),
+            )
+
         for attempt in range(self._config.max_retries + 1):
             try:
                 if self._config.log_requests:
@@ -1917,6 +1943,13 @@ class AsyncHTTPClient:
 
         for attempt in range(self._config.max_retries + 1):
             try:
+                method_upper = method.upper()
+                if self._config.mode == "readonly" and method_upper in _WRITE_METHODS:
+                    raise ReadOnlyModeError(
+                        f"Cannot {method_upper} in read-only mode",
+                        method=method_upper,
+                        url=_redact_url(url, self._config.api_key),
+                    )
                 request_kwargs = dict(kwargs)
                 request_kwargs["follow_redirects"] = follow_redirects
                 if apply_auth:

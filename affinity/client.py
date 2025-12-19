@@ -11,6 +11,8 @@ import importlib.util
 import os
 from typing import Any, Literal, cast
 
+import httpx
+
 from .clients.http import (
     AsyncHTTPClient,
     ClientConfig,
@@ -146,6 +148,8 @@ class Affinity:
         v1_base_url: str = V1_BASE_URL,
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
+        transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
         enable_beta_endpoints: bool = False,
         allow_insecure_download_redirects: bool = False,
         expected_v2_version: str | None = None,
@@ -156,6 +160,7 @@ class Affinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
+        mode: Literal["readwrite", "readonly"] = "readwrite",
     ):
         """
         Initialize the Affinity client.
@@ -165,6 +170,9 @@ class Affinity:
             v1_base_url: V1 API base URL (default: https://api.affinity.co)
             v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
             v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
+            transport: Optional `httpx` transport (advanced; useful for mocking in tests)
+            async_transport: Optional async `httpx` transport (advanced; useful for mocking in
+                tests)
             enable_beta_endpoints: Enable beta V2 endpoints
             allow_insecure_download_redirects: Allow `http://` redirects for file downloads.
                 Not recommended; prefer HTTPS-only downloads.
@@ -178,12 +186,15 @@ class Affinity:
             log_requests: Log all HTTP requests (for debugging)
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
+            mode: "readonly" blocks all write operations before any network call
         """
         config = ClientConfig(
             api_key=api_key,
             v1_base_url=v1_base_url,
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
+            transport=transport,
+            async_transport=async_transport,
             enable_beta_endpoints=enable_beta_endpoints,
             allow_insecure_download_redirects=allow_insecure_download_redirects,
             expected_v2_version=expected_v2_version,
@@ -194,6 +205,7 @@ class Affinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
+            mode=mode,
         )
         self._http = HTTPClient(config)
 
@@ -222,6 +234,9 @@ class Affinity:
         load_dotenv: bool = False,
         dotenv_path: str | os.PathLike[str] | None = None,
         dotenv_override: bool = False,
+        transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
+        mode: Literal["readwrite", "readonly"] = "readwrite",
         **kwargs: Any,
     ) -> Affinity:
         """
@@ -236,7 +251,13 @@ class Affinity:
             dotenv_path=dotenv_path,
             dotenv_override=dotenv_override,
         )
-        return cls(api_key=api_key, **kwargs)
+        return cls(
+            api_key=api_key,
+            transport=transport,
+            async_transport=async_transport,
+            mode=mode,
+            **kwargs,
+        )
 
     def __enter__(self) -> Affinity:
         return self
@@ -401,6 +422,8 @@ class AsyncAffinity:
         v1_base_url: str = V1_BASE_URL,
         v2_base_url: str = V2_BASE_URL,
         v1_auth_mode: Literal["bearer", "basic"] = "bearer",
+        transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
         enable_beta_endpoints: bool = False,
         allow_insecure_download_redirects: bool = False,
         expected_v2_version: str | None = None,
@@ -411,6 +434,7 @@ class AsyncAffinity:
         log_requests: bool = False,
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
+        mode: Literal["readwrite", "readonly"] = "readwrite",
     ):
         """
         Initialize the async Affinity client.
@@ -420,6 +444,9 @@ class AsyncAffinity:
             v1_base_url: V1 API base URL (default: https://api.affinity.co)
             v2_base_url: V2 API base URL (default: https://api.affinity.co/v2)
             v1_auth_mode: Auth mode for V1 API ("bearer" or "basic")
+            transport: Optional `httpx` transport (advanced; useful for mocking in tests)
+            async_transport: Optional async `httpx` transport (advanced; useful for mocking in
+                tests)
             enable_beta_endpoints: Enable beta V2 endpoints
             allow_insecure_download_redirects: Allow `http://` redirects for file downloads.
                 Not recommended; prefer HTTPS-only downloads.
@@ -433,12 +460,15 @@ class AsyncAffinity:
             log_requests: Log all HTTP requests (for debugging)
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
+            mode: "readonly" blocks all write operations before any network call
         """
         config = ClientConfig(
             api_key=api_key,
             v1_base_url=v1_base_url,
             v2_base_url=v2_base_url,
             v1_auth_mode=v1_auth_mode,
+            transport=transport,
+            async_transport=async_transport,
             enable_beta_endpoints=enable_beta_endpoints,
             allow_insecure_download_redirects=allow_insecure_download_redirects,
             expected_v2_version=expected_v2_version,
@@ -449,6 +479,7 @@ class AsyncAffinity:
             log_requests=log_requests,
             on_request=on_request,
             on_response=on_response,
+            mode=mode,
         )
         self._http = AsyncHTTPClient(config)
         self._companies: AsyncCompanyService | None = None
@@ -475,6 +506,9 @@ class AsyncAffinity:
         load_dotenv: bool = False,
         dotenv_path: str | os.PathLike[str] | None = None,
         dotenv_override: bool = False,
+        transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
+        mode: Literal["readwrite", "readonly"] = "readwrite",
         **kwargs: Any,
     ) -> AsyncAffinity:
         """
@@ -489,7 +523,13 @@ class AsyncAffinity:
             dotenv_path=dotenv_path,
             dotenv_override=dotenv_override,
         )
-        return cls(api_key=api_key, **kwargs)
+        return cls(
+            api_key=api_key,
+            transport=transport,
+            async_transport=async_transport,
+            mode=mode,
+            **kwargs,
+        )
 
     @property
     def companies(self) -> AsyncCompanyService:
