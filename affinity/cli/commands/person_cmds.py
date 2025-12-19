@@ -34,6 +34,20 @@ def person_search(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
+    """
+    Search people by name or email.
+
+    `QUERY` is a free-text term passed to Affinity's person search. Typical inputs:
+
+    - Email: `alice@example.com`
+    - Name: `Alice` (or `Alice Smith`)
+
+    Examples:
+
+    - `affinity person search alice@example.com`
+    - `affinity person search \"Alice\" --all`
+    """
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         results: list[dict[str, object]] = []

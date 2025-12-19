@@ -34,6 +34,20 @@ def company_search(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
+    """
+    Search companies by name or domain.
+
+    `QUERY` is a free-text term passed to Affinity's company search. Typical inputs:
+
+    - Domain: `longevitix.co`
+    - Company name: `Longevitix`
+
+    Examples:
+
+    - `affinity company search longevitix`
+    - `affinity company search longevitix.co`
+    """
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         results: list[dict[str, object]] = []

@@ -43,6 +43,8 @@ affinity resolve-url "https://lool.affinity.co/companies/263169568" --json
 
 ### `affinity person search <query>`
 
+`<query>` is a free-text term (typically a name or email address) passed to Affinity's person search.
+
 ```bash
 affinity person search "alice@example.com"
 affinity person search "Alice" --all --json
@@ -59,6 +61,8 @@ affinity person files dump 12345 --out ./bundle
 ## Companies
 
 ### `affinity company search <query>`
+
+`<query>` is a free-text term (typically a company name or domain) passed to Affinity's company search.
 
 ```bash
 affinity company search "example.com"
