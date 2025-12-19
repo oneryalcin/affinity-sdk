@@ -11,6 +11,7 @@ from affinity.models.secondary import EntityFile
 
 from ..context import CLIContext
 from ..csv_utils import sanitize_filename
+from ..errors import CLIError
 from ..progress import ProgressManager, ProgressSettings
 from ..runner import CommandOutput
 
@@ -20,7 +21,7 @@ class ManifestFile(TypedDict):
     name: str
     contentType: str | None
     size: int
-    createdAt: object
+    createdAt: str
     uploaderId: int
     path: str
 
@@ -57,6 +58,8 @@ async def dump_entity_files_bundle(
     manifest_files: list[ManifestFile] = []
     rate_limit_snapshot: RateLimitSnapshot | None = None
     task_lock = asyncio.Lock()
+    skipped_existing = 0
+    downloaded = 0
 
     async with AsyncAffinity(
         api_key=settings.api_key,
@@ -98,6 +101,8 @@ async def dump_entity_files_bundle(
         with ProgressManager(settings=ProgressSettings(mode=ctx.progress, quiet=ctx.quiet)) as pm:
 
             async def worker() -> None:
+                nonlocal skipped_existing
+                nonlocal downloaded
                 while True:
                     f = await queue.get()
                     if f is None:
@@ -105,6 +110,30 @@ async def dump_entity_files_bundle(
 
                     safe_name = sanitize_filename(f.name)
                     dest = files_dir / f"{int(f.id)}__{safe_name}"
+                    if dest.exists() and not overwrite:
+                        existing_size = dest.stat().st_size
+                        if f.size and existing_size != int(f.size):
+                            raise CLIError(
+                                (
+                                    "Refusing to skip existing file with size mismatch: "
+                                    f"{dest} (expected {int(f.size)} bytes, got {existing_size}); "
+                                    "use --overwrite to re-download."
+                                ),
+                                error_type="usage_error",
+                            )
+                        skipped_existing += 1
+                        manifest_files.append(
+                            {
+                                "fileId": int(f.id),
+                                "name": f.name,
+                                "contentType": f.content_type,
+                                "size": f.size,
+                                "createdAt": f.created_at.isoformat(),
+                                "uploaderId": int(f.uploader_id),
+                                "path": str(dest.relative_to(entity_dir)),
+                            }
+                        )
+                        continue
                     async with task_lock:
                         _task_id, cb = pm.task(
                             description=f"download {f.name}",
@@ -117,13 +146,14 @@ async def dump_entity_files_bundle(
                         on_progress=cb,
                         timeout=settings.timeout,
                     )
+                    downloaded += 1
                     manifest_files.append(
                         {
                             "fileId": int(f.id),
                             "name": f.name,
                             "contentType": f.content_type,
                             "size": f.size,
-                            "createdAt": f.created_at,
+                            "createdAt": f.created_at.isoformat(),
                             "uploaderId": int(f.uploader_id),
                             "path": str(dest.relative_to(entity_dir)),
                         }
@@ -132,6 +162,11 @@ async def dump_entity_files_bundle(
             await asyncio.gather(
                 producer(),
                 *(worker() for _ in range(workers)),
+            )
+
+        if skipped_existing and not overwrite:
+            warnings.append(
+                f"Skipped {skipped_existing} existing file(s); use --overwrite to re-download."
             )
 
         manifest = {
@@ -147,7 +182,9 @@ async def dump_entity_files_bundle(
 
     data = {
         "out": str(entity_dir),
-        "filesDownloaded": len(manifest_files),
+        "filesDownloaded": downloaded,
+        "filesSkippedExisting": skipped_existing,
+        "filesTotal": len(manifest_files),
         "manifest": str((entity_dir / "manifest.json").relative_to(entity_dir)),
     }
     return CommandOutput(
