@@ -328,6 +328,18 @@ class OpportunityUpdate(AffinityModel):
 
 
 # =============================================================================
+# Opportunity Summary
+# =============================================================================
+
+
+class OpportunitySummary(AffinityModel):
+    """Minimal opportunity data returned in nested contexts."""
+
+    id: OpportunityId
+    name: str
+
+
+# =============================================================================
 # List Models
 # =============================================================================
 
@@ -423,10 +435,56 @@ class ListEntry(AffinityModel):
     created_at: ISODatetime = Field(alias="createdAt")
 
     # The entity this entry represents (can be Person, Company, or Opportunity)
-    entity: PersonSummary | CompanySummary | dict[str, Any] | None = None
+    entity: PersonSummary | CompanySummary | OpportunitySummary | dict[str, Any] | None = None
 
     # Field values on this list entry (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_entity_by_entity_type(cls, value: Any) -> Any:
+        """
+        The v1 list-entry payload includes `entity_type` alongside a minimal `entity` dict.
+
+        Some entity summaries overlap in shape (e.g. opportunity and company both have
+        `{id, name}`), so we must use `entity_type` as the discriminator to avoid mis-parsing.
+        """
+        if not isinstance(value, Mapping):
+            return value
+
+        data: dict[str, Any] = dict(value)
+        entity = data.get("entity")
+        if not isinstance(entity, Mapping):
+            return data
+
+        raw_entity_type = data.get("entityType")
+        if raw_entity_type is None:
+            raw_entity_type = data.get("entity_type")
+        if raw_entity_type is None:
+            return data
+
+        try:
+            entity_type = EntityType(raw_entity_type)
+        except Exception:
+            return data
+
+        if entity_type == EntityType.PERSON:
+            try:
+                data["entity"] = PersonSummary.model_validate(entity)
+            except Exception:
+                return data
+        elif entity_type == EntityType.ORGANIZATION:
+            try:
+                data["entity"] = CompanySummary.model_validate(entity)
+            except Exception:
+                return data
+        elif entity_type == EntityType.OPPORTUNITY:
+            try:
+                data["entity"] = OpportunitySummary.model_validate(entity)
+            except Exception:
+                return data
+
+        return data
 
     @model_validator(mode="after")
     def _mark_fields_not_requested_when_omitted(self) -> ListEntry:

@@ -22,6 +22,7 @@ from affinity.models import (
     FieldMetadata,
     FieldValue,
     FieldValueChange,
+    ListEntry,
     Person,
 )
 from affinity.services.companies import CompanyService
@@ -47,6 +48,7 @@ from affinity.types import (
     InteractionType,
     ListId,
     ListType,
+    OpportunityId,
     PersonId,
     PersonType,
     TenantId,
@@ -421,6 +423,23 @@ def test_field_value_change_id_is_typed() -> None:
         }
     )
     assert type(change.id) is FieldValueChangeId
+
+
+@pytest.mark.req("TR-002a")
+def test_list_entry_entity_is_discriminated_by_entity_type_for_opportunities() -> None:
+    entry = ListEntry.model_validate(
+        {
+            "id": 1,
+            "list_id": 2,
+            "creator_id": 3,
+            "entity_id": 4,
+            "entity_type": 8,  # EntityType.OPPORTUNITY (v1 numeric)
+            "created_at": "2025-01-01T12:00:00Z",
+            "entity": {"id": 4, "name": "Deal A"},
+        }
+    )
+    assert entry.entity is not None
+    assert type(entry.entity.id) is OpportunityId  # type: ignore[union-attr]
 
 
 @pytest.mark.req("TR-001")
