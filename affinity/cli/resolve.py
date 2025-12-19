@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
+from affinity import Affinity
 from affinity.exceptions import NotFoundError
 from affinity.models.entities import AffinityList, FieldMetadata, SavedView
 from affinity.types import ListId, SavedViewId
@@ -22,7 +23,7 @@ def _looks_int(value: str) -> bool:
 
 def resolve_list_selector(
     *,
-    client: Any,
+    client: Affinity,
     selector: str,
 ) -> ResolvedList:
     selector = selector.strip()
@@ -57,7 +58,7 @@ def resolve_list_selector(
 
 def resolve_saved_view(
     *,
-    client: Any,
+    client: Affinity,
     list_id: ListId,
     selector: str,
 ) -> tuple[SavedView, dict[str, Any]]:
@@ -105,9 +106,9 @@ def resolve_saved_view(
     return v, {"savedView": {"input": selector, "savedViewId": int(v.id), "name": v.name}}
 
 
-def list_all_saved_views(*, client: Any, list_id: ListId) -> list[SavedView]:
+def list_all_saved_views(*, client: Affinity, list_id: ListId) -> list[SavedView]:
     return list(client.lists.saved_views_all(list_id))
 
 
-def list_fields_for_list(*, client: Any, list_id: ListId) -> list[FieldMetadata]:
-    return cast(list[FieldMetadata], client.lists.get_fields(list_id))
+def list_fields_for_list(*, client: Affinity, list_id: ListId) -> list[FieldMetadata]:
+    return client.lists.get_fields(list_id)

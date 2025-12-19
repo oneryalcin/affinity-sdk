@@ -10,7 +10,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from affinity import Affinity
-from affinity.client import _maybe_load_dotenv as _sdk_maybe_load_dotenv
+from affinity.client import maybe_load_dotenv
 from affinity.exceptions import (
     AffinityError,
     AuthenticationError,
@@ -19,7 +19,16 @@ from affinity.exceptions import (
     RateLimitError,
     ServerError,
 )
-from affinity.hooks import ErrorHook, RequestHook, ResponseHook
+from affinity.hooks import (
+    ErrorHook,
+    RequestHook,
+    RequestInfo,
+    ResponseHook,
+    ResponseInfo,
+)
+from affinity.hooks import (
+    ErrorInfo as HookErrorInfo,
+)
 from affinity.models.types import V1_BASE_URL, V2_BASE_URL
 from affinity.policies import Policies, WritePolicy
 
@@ -87,7 +96,7 @@ class CLIContext:
 
     def load_dotenv_if_requested(self) -> None:
         try:
-            _sdk_maybe_load_dotenv(
+            maybe_load_dotenv(
                 load_dotenv=self.dotenv,
                 dotenv_path=self.env_file,
                 override=False,
@@ -192,32 +201,24 @@ class CLIContext:
                 with suppress(Exception):
                     sys.stderr.flush()
 
-            def _on_request(req: Any) -> None:
-                method = str(getattr(req, "method", "?"))
-                url = _strip_url_query_and_fragment(str(getattr(req, "url", "?")))
+            def _on_request(req: RequestInfo) -> None:
+                method = req.method
+                url = _strip_url_query_and_fragment(req.url)
                 _write(f"trace -> {method} {url}")
 
-            def _on_response(res: Any) -> None:
-                status = str(getattr(res, "status_code", "?"))
-                elapsed = getattr(res, "elapsed_ms", None)
-                cache_hit = bool(getattr(res, "cache_hit", False))
-                req = getattr(res, "request", None)
-                url = getattr(req, "url", "?") if req is not None else "?"
-                url = _strip_url_query_and_fragment(str(url))
+            def _on_response(res: ResponseInfo) -> None:
+                status = str(res.status_code)
+                url = _strip_url_query_and_fragment(res.request.url)
                 extra = []
-                if elapsed is not None:
-                    extra.append(f"elapsedMs={int(elapsed)}")
-                if cache_hit:
+                extra.append(f"elapsedMs={int(res.elapsed_ms)}")
+                if res.cache_hit:
                     extra.append("cacheHit=true")
                 suffix = (" " + " ".join(extra)) if extra else ""
                 _write(f"trace <- {status} {url}{suffix}")
 
-            def _on_error(err: Any) -> None:
-                req = getattr(err, "request", None)
-                url = getattr(req, "url", "?") if req is not None else "?"
-                url = _strip_url_query_and_fragment(str(url))
-                exc = getattr(err, "error", None)
-                exc_name = type(exc).__name__ if exc is not None else "Error"
+            def _on_error(err: HookErrorInfo) -> None:
+                url = _strip_url_query_and_fragment(err.request.url)
+                exc_name = type(err.error).__name__
                 _write(f"trace !! {exc_name} {url}")
 
             on_request = _on_request

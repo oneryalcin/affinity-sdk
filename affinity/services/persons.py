@@ -258,6 +258,67 @@ class PersonService:
             next_page_token=data.get("next_page_token"),
         )
 
+    def search_pages(
+        self,
+        term: str,
+        *,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
+        with_opportunities: bool = False,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> Iterator[V1PaginatedResponse[Person]]:
+        """
+        Iterate V1 person-search result pages.
+
+        This is useful for scripts that want to checkpoint/resume with a
+        `next_page_token`.
+        """
+        requested_token = page_token
+        page = self.search(
+            term,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
+            with_opportunities=with_opportunities,
+            page_size=page_size,
+            page_token=page_token,
+        )
+        while True:
+            yield page
+            next_token = page.next_page_token
+            if not next_token or next_token == requested_token:
+                return
+            requested_token = next_token
+            page = self.search(
+                term,
+                with_interaction_dates=with_interaction_dates,
+                with_interaction_persons=with_interaction_persons,
+                with_opportunities=with_opportunities,
+                page_size=page_size,
+                page_token=next_token,
+            )
+
+    def search_all(
+        self,
+        term: str,
+        *,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
+        with_opportunities: bool = False,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> Iterator[Person]:
+        """Iterate all V1 person-search results with automatic pagination."""
+        for page in self.search_pages(
+            term,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
+            with_opportunities=with_opportunities,
+            page_size=page_size,
+            page_token=page_token,
+        ):
+            yield from page.data
+
     def resolve(
         self,
         *,

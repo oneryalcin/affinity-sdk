@@ -51,37 +51,33 @@ def company_search(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         results: list[dict[str, object]] = []
-        next_token = page_token
-
-        fetched_first_page = False
-        while True:
-            resp = client.companies.search(
-                query,
-                with_interaction_dates=True,
-                page_size=page_size,
-                page_token=next_token,
-            )
-            fetched_first_page = True
-            for company in resp.data:
+        first_page = True
+        for page in client.companies.search_pages(
+            query,
+            with_interaction_dates=True,
+            page_size=page_size,
+            page_token=page_token,
+        ):
+            for company in page.data:
                 results.append(_company_row(company))
                 if max_results is not None and len(results) >= max_results:
                     return CommandOutput(
                         data=results[:max_results],
-                        pagination={"nextPageToken": resp.next_page_token},
+                        pagination={"nextPageToken": page.next_page_token},
                         api_called=True,
                     )
 
-            if not resp.next_page_token:
-                return CommandOutput(data=results, pagination=None, api_called=True)
-
-            if not all_pages and fetched_first_page and max_results is None:
+            if first_page and not all_pages and max_results is None:
                 return CommandOutput(
                     data=results,
-                    pagination={"nextPageToken": resp.next_page_token},
+                    pagination=(
+                        {"nextPageToken": page.next_page_token} if page.next_page_token else None
+                    ),
                     api_called=True,
                 )
+            first_page = False
 
-            next_token = resp.next_page_token
+        return CommandOutput(data=results, pagination=None, api_called=True)
 
     run_command(ctx, command="company search", fn=fn)
 

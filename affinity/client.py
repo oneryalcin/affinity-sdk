@@ -71,6 +71,22 @@ def _maybe_load_dotenv(
     dotenv_module.load_dotenv(dotenv_path=dotenv_path, override=override)
 
 
+def maybe_load_dotenv(
+    *,
+    load_dotenv: bool,
+    dotenv_path: str | os.PathLike[str] | None = None,
+    override: bool = False,
+) -> None:
+    """
+    Optionally load a `.env` file.
+
+    This is a public wrapper for the SDK's internal dotenv loader. It is used by
+    `Affinity.from_env(...)` and can be reused by integrations (like the CLI)
+    that want consistent behavior and error messaging.
+    """
+    _maybe_load_dotenv(load_dotenv=load_dotenv, dotenv_path=dotenv_path, override=override)
+
+
 def _api_key_from_env(
     *,
     env_var: str,
