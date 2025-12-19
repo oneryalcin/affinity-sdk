@@ -421,6 +421,7 @@ client = Affinity(
     log_requests=False,     # Log all HTTP requests
 
     # Hooks (DX-008)
+    # on_event=lambda event: print(event.type),
     # on_request=lambda req: print(req.method, req.url),
     # on_response=lambda resp: print(resp.status_code, resp.request.url),
 )

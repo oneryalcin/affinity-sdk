@@ -74,7 +74,7 @@ from .filters import F, Filter, FilterExpression
 from .inbound_webhooks import BodyRegistry, WebhookEnvelope, dispatch_webhook, parse_webhook
 
 # Policies
-from .policies import Policies, WritePolicy
+from .policies import ExternalHookPolicy, Policies, WritePolicy
 
 __version__ = "0.2.0"
 
@@ -121,6 +121,7 @@ __all__ = [
     "BodyRegistry",
     # Policies
     "WritePolicy",
+    "ExternalHookPolicy",
     "Policies",
     # Type aliases (re-exported for convenience)
     "types",

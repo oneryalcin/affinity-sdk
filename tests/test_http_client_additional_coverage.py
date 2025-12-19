@@ -290,7 +290,7 @@ def test_stream_download_redirect_timeout_after_partial_yield_is_not_retried() -
         http.close()
 
 
-def test_request_raw_with_retry_calls_hooks_and_redacts_auth(monkeypatch: Any) -> None:
+def test_download_file_calls_hooks_and_redacts_auth(monkeypatch: Any) -> None:
     events: dict[str, Any] = {"on_request": None, "on_response": None}
 
     def on_request(info: Any) -> None:
@@ -308,7 +308,7 @@ def test_request_raw_with_retry_calls_hooks_and_redacts_auth(monkeypatch: Any) -
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers.get("Authorization", "").startswith("Basic ")
-        return httpx.Response(200, json={"ok": True}, request=request)
+        return httpx.Response(200, content=b"ok", request=request)
 
     http = HTTPClient(
         ClientConfig(
@@ -324,20 +324,13 @@ def test_request_raw_with_retry_calls_hooks_and_redacts_auth(monkeypatch: Any) -
         )
     )
     try:
-        resp = http._request_raw_with_retry(
-            "GET",
-            "https://v1.example/auth/whoami",
-            v1=True,
-            apply_auth=True,
-            follow_redirects=False,
-            allow_hooks=True,
-        )
-        assert resp.json()["ok"] is True
+        data = http.download_file("/auth/whoami", v1=True)
+        assert data == b"ok"
         assert debug_calls == ["GET https://v1.example/auth/whoami"]
 
         req_info = events["on_request"]
         assert req_info is not None
-        assert req_info.headers.get("Authorization") == "[REDACTED]"
+        assert "Authorization" not in req_info.headers
 
         resp_info = events["on_response"]
         assert resp_info is not None

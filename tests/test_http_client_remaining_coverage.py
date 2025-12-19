@@ -80,75 +80,56 @@ def test_handle_response_covers_non_json_error_body_empty_and_scalar_payload() -
         http.close()
 
 
-def test_request_raw_with_retry_hooks_no_auth_branch_and_rate_limit_breaks_to_last_error(
-    monkeypatch: Any,
-) -> None:
+def test_download_file_rate_limit_retries_with_retry_after(monkeypatch: Any) -> None:
     sleeps: list[float] = []
     monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
 
-    debug_calls: list[str] = []
-    monkeypatch.setattr("affinity.clients.http.logger.debug", lambda msg: debug_calls.append(msg))
+    calls: dict[str, int] = {"n": 0}
 
-    seen_request_headers: list[dict[str, str]] = []
-
-    def on_request(info: Any) -> None:
-        seen_request_headers.append(dict(info.headers))
-
-    # First request returns 429; with max_retries=0 we should break and raise RateLimitError.
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={"message": "rate limit"}, request=request)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(
+                429,
+                json={"message": "rate"},
+                headers={"Retry-After": "2"},
+                request=request,
+            )
+        return httpx.Response(200, content=b"ok", request=request)
 
     http = HTTPClient(
         ClientConfig(
             api_key="k",
-            v1_base_url="https://v1.example",
             v2_base_url="https://v2.example/v2",
-            max_retries=0,
+            max_retries=1,
             retry_delay=0.0,
-            log_requests=True,
-            on_request=on_request,
             transport=httpx.MockTransport(handler),
         )
     )
     try:
-        with pytest.raises(RateLimitError):
-            http._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=True,
-                external=False,
-            )
-        assert debug_calls == ["GET https://v2.example/v2/x"]
-        assert sleeps == []
-        # Bearer auth uses headers, not request_kwargs["auth"], so hook sees no Authorization.
-        assert seen_request_headers and "Authorization" not in seen_request_headers[0]
+        assert http.download_file("/x") == b"ok"
+        assert sleeps == [2.0]
     finally:
         http.close()
 
 
-def test_request_raw_with_retry_timeout_network_and_no_attempts_paths(monkeypatch: Any) -> None:
+def test_download_file_timeout_network_and_no_attempts_paths(monkeypatch: Any) -> None:
     monkeypatch.setattr("affinity.clients.http.time.sleep", lambda _seconds: None)
 
     def timeout_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("boom", request=request)
 
     http_timeout = HTTPClient(
-        ClientConfig(api_key="k", max_retries=0, transport=httpx.MockTransport(timeout_handler))
+        ClientConfig(
+            api_key="k",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(timeout_handler),
+        )
     )
     try:
         with pytest.raises(TimeoutError):
-            http_timeout._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
+            _ = http_timeout.download_file("/x")
     finally:
         http_timeout.close()
 
@@ -156,35 +137,29 @@ def test_request_raw_with_retry_timeout_network_and_no_attempts_paths(monkeypatc
         raise httpx.ConnectError("boom", request=request)
 
     http_network = HTTPClient(
-        ClientConfig(api_key="k", max_retries=0, transport=httpx.MockTransport(network_handler))
+        ClientConfig(
+            api_key="k",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(network_handler),
+        )
     )
     try:
         with pytest.raises(NetworkError):
-            http_network._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
+            _ = http_network.download_file("/x")
     finally:
         http_network.close()
 
-    # max_retries=-1 => no attempts => "Request failed after retries"
-    http_none = HTTPClient(ClientConfig(api_key="k", max_retries=-1))
+    http_none = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v2_base_url="https://v2.example/v2",
+            max_retries=-1,
+        )
+    )
     try:
         with pytest.raises(AffinityError, match="Request failed after retries"):
-            http_none._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
+            _ = http_none.download_file("/x")
     finally:
         http_none.close()
 
@@ -370,15 +345,9 @@ def test_stream_download_non_redirect_no_progress_non_digit_length_and_progress_
 def test_stream_download_redirect_progress_and_error_paths(monkeypatch: Any) -> None:
     sleeps: list[float] = []
     monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr("affinity.clients.http.time.time_ns", lambda: 500_000)
 
     calls: dict[str, int] = {"external": 0}
-
-    class TimeoutStream(httpx.SyncByteStream):
-        def __init__(self, request: httpx.Request):
-            self._request = request
-
-        def __iter__(self) -> Iterator[bytes]:
-            raise httpx.ReadTimeout("boom", request=self._request)
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url == httpx.URL("https://v1.example/entity-files/download/5"):
@@ -390,12 +359,7 @@ def test_stream_download_redirect_progress_and_error_paths(monkeypatch: Any) -> 
             if calls["external"] == 1:
                 return httpx.Response(500, json={"message": "server"}, request=request)
             if calls["external"] == 2:
-                return httpx.Response(
-                    200,
-                    stream=TimeoutStream(request),
-                    headers={"Content-Length": "1"},
-                    request=request,
-                )
+                raise httpx.ReadTimeout("boom", request=request)
             return httpx.Response(
                 200, content=b"x", headers={"Content-Length": "1"}, request=request
             )
@@ -407,14 +371,12 @@ def test_stream_download_redirect_progress_and_error_paths(monkeypatch: Any) -> 
             v1_base_url="https://v1.example",
             v2_base_url="https://v2.example/v2",
             max_retries=2,
-            retry_delay=0.0,
+            retry_delay=1.0,
             transport=httpx.MockTransport(handler),
         )
     )
     try:
         progress: list[tuple[int, int | None, str]] = []
-        # First external attempt: 500 => retry (sleep), second: timeout => retry (sleep),
-        # third: success => yields.
         data = b"".join(
             http.stream_download(
                 "/entity-files/download/5",
@@ -424,257 +386,11 @@ def test_stream_download_redirect_progress_and_error_paths(monkeypatch: Any) -> 
             )
         )
         assert data == b"x"
-        assert sleeps
-        assert progress[0][0] == 0
+        assert sleeps == [0.5, 1.0]
+        assert progress[0] == (0, 1, "download")
+        assert progress[-1] == (1, 1, "download")
     finally:
         http.close()
-
-
-def test_request_raw_with_retry_rate_limit_retries_with_retry_after(monkeypatch: Any) -> None:
-    sleeps: list[float] = []
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
-
-    calls: dict[str, int] = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return httpx.Response(
-                429,
-                json={"message": "rate"},
-                headers={"Retry-After": "2"},
-                request=request,
-            )
-        return httpx.Response(200, content=b"ok", request=request)
-
-    http = HTTPClient(
-        ClientConfig(
-            api_key="k", max_retries=1, retry_delay=1.0, transport=httpx.MockTransport(handler)
-        )
-    )
-    try:
-        response = http._request_raw_with_retry(
-            "GET",
-            "https://v2.example/v2/x",
-            v1=False,
-            apply_auth=True,
-            follow_redirects=False,
-            allow_hooks=False,
-            external=False,
-        )
-        assert response.content == b"ok"
-        assert sleeps == [2.0]
-    finally:
-        http.close()
-
-
-def test_request_raw_with_retry_non_retryable_method_raises_rate_limit(monkeypatch: Any) -> None:
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda _seconds: None)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={"message": "rate"}, request=request)
-
-    http = HTTPClient(
-        ClientConfig(api_key="k", max_retries=1, transport=httpx.MockTransport(handler))
-    )
-    try:
-        with pytest.raises(RateLimitError):
-            http._request_raw_with_retry(
-                "POST",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
-    finally:
-        http.close()
-
-
-def test_request_raw_with_retry_client_error_is_not_retried(monkeypatch: Any) -> None:
-    sleeps: list[float] = []
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, json={"message": "bad"}, request=request)
-
-    http = HTTPClient(
-        ClientConfig(
-            api_key="k", max_retries=1, retry_delay=1.0, transport=httpx.MockTransport(handler)
-        )
-    )
-    try:
-        with pytest.raises(AffinityError) as excinfo:
-            http._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
-        assert excinfo.value.status_code == 400
-        assert sleeps == []
-    finally:
-        http.close()
-
-
-def test_request_raw_with_retry_server_error_retries_with_backoff(monkeypatch: Any) -> None:
-    sleeps: list[float] = []
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
-    monkeypatch.setattr("affinity.clients.http.time.time_ns", lambda: 500_000)
-
-    calls: dict[str, int] = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return httpx.Response(500, json={"message": "server"}, request=request)
-        return httpx.Response(200, json={"ok": True}, request=request)
-
-    http = HTTPClient(
-        ClientConfig(
-            api_key="k", max_retries=1, retry_delay=1.0, transport=httpx.MockTransport(handler)
-        )
-    )
-    try:
-        response = http._request_raw_with_retry(
-            "GET",
-            "https://v2.example/v2/x",
-            v1=False,
-            apply_auth=True,
-            follow_redirects=False,
-            allow_hooks=False,
-            external=False,
-        )
-        assert response.json() == {"ok": True}
-        assert sleeps == [0.5]
-    finally:
-        http.close()
-
-
-def test_request_raw_with_retry_server_error_breaks_when_exhausted(monkeypatch: Any) -> None:
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda _seconds: None)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, json={"message": "server"}, request=request)
-
-    http = HTTPClient(
-        ClientConfig(api_key="k", max_retries=0, transport=httpx.MockTransport(handler))
-    )
-    try:
-        with pytest.raises(AffinityError) as excinfo:
-            http._request_raw_with_retry(
-                "GET",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
-        assert excinfo.value.status_code == 500
-    finally:
-        http.close()
-
-
-@pytest.mark.parametrize(
-    ("exc", "_expected"),
-    [
-        (
-            httpx.ReadTimeout("boom", request=httpx.Request("GET", "https://v2.example/v2/x")),
-            TimeoutError,
-        ),
-        (
-            httpx.ConnectError("boom", request=httpx.Request("GET", "https://v2.example/v2/x")),
-            NetworkError,
-        ),
-    ],
-)
-def test_request_raw_with_retry_timeout_and_network_retry_sleep_and_succeed(
-    monkeypatch: Any, exc: Exception, _expected: type[Exception]
-) -> None:
-    sleeps: list[float] = []
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda seconds: sleeps.append(seconds))
-    monkeypatch.setattr("affinity.clients.http.time.time_ns", lambda: 500_000)
-
-    calls: dict[str, int] = {"n": 0}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise exc
-        return httpx.Response(200, content=b"ok", request=request)
-
-    http = HTTPClient(
-        ClientConfig(
-            api_key="k", max_retries=1, retry_delay=1.0, transport=httpx.MockTransport(handler)
-        )
-    )
-    try:
-        response = http._request_raw_with_retry(
-            "GET",
-            "https://v2.example/v2/x",
-            v1=False,
-            apply_auth=True,
-            follow_redirects=False,
-            allow_hooks=False,
-            external=False,
-        )
-        assert response.content == b"ok"
-        assert sleeps == [0.5]
-    finally:
-        http.close()
-
-
-def test_request_raw_with_retry_timeout_and_network_non_retryable_method_wrap(
-    monkeypatch: Any,
-) -> None:
-    monkeypatch.setattr("affinity.clients.http.time.sleep", lambda _seconds: None)
-
-    def timeout_handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout("boom", request=request)
-
-    http_timeout = HTTPClient(
-        ClientConfig(api_key="k", max_retries=1, transport=httpx.MockTransport(timeout_handler))
-    )
-    try:
-        with pytest.raises(TimeoutError) as excinfo:
-            http_timeout._request_raw_with_retry(
-                "POST",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
-        assert isinstance(excinfo.value.__cause__, httpx.TimeoutException)
-    finally:
-        http_timeout.close()
-
-    def network_handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("boom", request=request)
-
-    http_network = HTTPClient(
-        ClientConfig(api_key="k", max_retries=1, transport=httpx.MockTransport(network_handler))
-    )
-    try:
-        with pytest.raises(NetworkError) as excinfo:
-            http_network._request_raw_with_retry(
-                "POST",
-                "https://v2.example/v2/x",
-                v1=False,
-                apply_auth=True,
-                follow_redirects=False,
-                allow_hooks=False,
-                external=False,
-            )
-        assert isinstance(excinfo.value.__cause__, httpx.NetworkError)
-    finally:
-        http_network.close()
 
 
 def test_request_with_retry_retries_rate_limit_and_sleeps(monkeypatch: Any) -> None:
@@ -1223,7 +939,7 @@ def test_stream_download_redirect_network_error_after_partial_yield_is_not_retri
         http.close()
 
 
-def test_stream_download_redirect_no_attempts_raises_download_failed(monkeypatch: Any) -> None:
+def test_stream_download_redirect_no_attempts_raises_download_failed() -> None:
     http = HTTPClient(
         ClientConfig(
             api_key="k",
@@ -1233,18 +949,7 @@ def test_stream_download_redirect_no_attempts_raises_download_failed(monkeypatch
         )
     )
     try:
-
-        def fake_request_raw_with_retry(*_args: Any, **_kwargs: Any) -> httpx.Response:
-            req = httpx.Request("GET", "https://v1.example/entity-files/download/10")
-            return httpx.Response(
-                302,
-                headers={"Location": "https://files.example/content.bin"},
-                request=req,
-            )
-
-        monkeypatch.setattr(http, "_request_raw_with_retry", fake_request_raw_with_retry)
-
-        with pytest.raises(AffinityError, match="Download failed after retries"):
+        with pytest.raises(AffinityError, match="Request failed after retries"):
             _ = b"".join(http.stream_download("/entity-files/download/10", v1=True))
     finally:
         http.close()

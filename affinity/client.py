@@ -16,11 +16,9 @@ import httpx
 from .clients.http import (
     AsyncHTTPClient,
     ClientConfig,
-    ErrorHook,
     HTTPClient,
-    RequestHook,
-    ResponseHook,
 )
+from .hooks import AnyEventHook, ErrorHook, RequestHook, ResponseHook
 from .models.secondary import WhoAmI
 from .models.types import V1_BASE_URL, V2_BASE_URL
 from .policies import Policies
@@ -163,6 +161,8 @@ class Affinity:
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
         on_error: ErrorHook | None = None,
+        on_event: AnyEventHook | None = None,
+        hook_error_policy: Literal["swallow", "raise"] = "swallow",
         policies: Policies | None = None,
     ):
         """
@@ -190,6 +190,8 @@ class Affinity:
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
             on_error: Hook called when a request raises (DX-008)
+            on_event: Event hook called for request/response lifecycle events (DX-008)
+            hook_error_policy: What to do if hooks raise ("swallow" or "raise")
             policies: Client policies (e.g., disable writes)
         """
         config = ClientConfig(
@@ -210,6 +212,8 @@ class Affinity:
             on_request=on_request,
             on_response=on_response,
             on_error=on_error,
+            on_event=on_event,
+            hook_error_policy=hook_error_policy,
             policies=policies or Policies(),
         )
         self._http = HTTPClient(config)
@@ -242,6 +246,8 @@ class Affinity:
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
         policies: Policies | None = None,
+        on_event: AnyEventHook | None = None,
+        hook_error_policy: Literal["swallow", "raise"] = "swallow",
         **kwargs: Any,
     ) -> Affinity:
         """
@@ -261,6 +267,8 @@ class Affinity:
             transport=transport,
             async_transport=async_transport,
             policies=policies,
+            on_event=on_event,
+            hook_error_policy=hook_error_policy,
             **kwargs,
         )
 
@@ -440,6 +448,8 @@ class AsyncAffinity:
         on_request: RequestHook | None = None,
         on_response: ResponseHook | None = None,
         on_error: ErrorHook | None = None,
+        on_event: AnyEventHook | None = None,
+        hook_error_policy: Literal["swallow", "raise"] = "swallow",
         policies: Policies | None = None,
     ):
         """
@@ -466,7 +476,9 @@ class AsyncAffinity:
             log_requests: Log all HTTP requests (for debugging)
             on_request: Hook called before each request (DX-008)
             on_response: Hook called after each response (DX-008)
-            mode: "readonly" blocks all write operations before any network call
+            on_error: Hook called when a request raises (DX-008)
+            on_event: Event hook called for request/response lifecycle events (DX-008)
+            hook_error_policy: What to do if hooks raise ("swallow" or "raise")
         """
         config = ClientConfig(
             api_key=api_key,
@@ -486,6 +498,8 @@ class AsyncAffinity:
             on_request=on_request,
             on_response=on_response,
             on_error=on_error,
+            on_event=on_event,
+            hook_error_policy=hook_error_policy,
             policies=policies or Policies(),
         )
         self._http = AsyncHTTPClient(config)
@@ -516,6 +530,8 @@ class AsyncAffinity:
         transport: httpx.BaseTransport | None = None,
         async_transport: httpx.AsyncBaseTransport | None = None,
         policies: Policies | None = None,
+        on_event: AnyEventHook | None = None,
+        hook_error_policy: Literal["swallow", "raise"] = "swallow",
         **kwargs: Any,
     ) -> AsyncAffinity:
         """
@@ -535,6 +551,8 @@ class AsyncAffinity:
             transport=transport,
             async_transport=async_transport,
             policies=policies,
+            on_event=on_event,
+            hook_error_policy=hook_error_policy,
             **kwargs,
         )
 

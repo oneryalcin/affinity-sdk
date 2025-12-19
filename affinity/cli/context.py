@@ -11,7 +11,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from affinity import Affinity
 from affinity.client import _maybe_load_dotenv as _sdk_maybe_load_dotenv
-from affinity.clients.http import ErrorHook, RequestHook, ResponseHook
 from affinity.exceptions import (
     AffinityError,
     AuthenticationError,
@@ -20,6 +19,7 @@ from affinity.exceptions import (
     RateLimitError,
     ServerError,
 )
+from affinity.hooks import ErrorHook, RequestHook, ResponseHook
 from affinity.models.types import V1_BASE_URL, V2_BASE_URL
 from affinity.policies import Policies, WritePolicy
 

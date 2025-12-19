@@ -78,22 +78,35 @@ client = Affinity(api_key="your-key", enable_cache=True, cache_ttl=300.0)
 
 ```python
 from affinity import Affinity
+from affinity.hooks import HookEvent
 
-def on_request(req) -> None:
-    print("->", req.method, req.url)
-
-def on_response(res) -> None:
-    print("<-", res.status_code, res.request.url)
-
-def on_error(err) -> None:
-    print("!!", type(err.error).__name__, err.request.url)
+def on_event(event: HookEvent) -> None:
+    print(event.type)
 
 client = Affinity(
     api_key="your-key",
     log_requests=True,
-    on_request=on_request,
-    on_response=on_response,
-    on_error=on_error,
+    on_event=on_event,
+    hook_error_policy="swallow",  # or "raise"
+)
+```
+
+Notes:
+
+- For the synchronous client (`Affinity`), `on_event` must be a synchronous function. If it returns an awaitable, the SDK raises `ConfigurationError`.
+- For the async client (`AsyncAffinity`), `on_event` can be sync or async.
+
+Affinity downloads may redirect to externally-hosted signed URLs; external URLs are redacted in events by default.
+If you want to change that behavior, configure `Policies(external_hooks=...)`:
+
+```python
+from affinity import Affinity, ExternalHookPolicy
+from affinity.policies import Policies
+
+client = Affinity(
+    api_key="your-key",
+    on_event=lambda e: print(e.type),
+    policies=Policies(external_hooks=ExternalHookPolicy.REDACT),  # or SUPPRESS / EMIT_UNSAFE
 )
 ```
 
