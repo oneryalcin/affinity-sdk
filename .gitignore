@@ -54,3 +54,4 @@ site/
 docs/internal/
 .cursorrules
 tools/tmp_readonly_endpoint_syntax_suite.py
+.claude/
