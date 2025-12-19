@@ -166,14 +166,9 @@ def _should_use_pager(*, settings: RenderSettings, stdout: Console, renderable: 
     if settings.pager is True:
         return True
 
-    # Auto mode: only page when interactive and the output is likely to scroll
-    # (tables, or output taller than the terminal).
+    # Auto mode: only page when interactive and the output is likely to scroll.
     if not sys.stdout.isatty():
         return False
-    if isinstance(renderable, Table):
-        return True
-    if isinstance(renderable, Group) and any(isinstance(r, Table) for r in renderable.renderables):
-        return True
 
     try:
         height = stdout.size.height
