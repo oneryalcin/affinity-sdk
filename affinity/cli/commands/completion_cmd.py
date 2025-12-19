@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import sys
 
-import click
-
-from ..click_compat import RichCommand
+from ..click_compat import RichCommand, click
 from ..context import CLIContext
 from ..options import output_options
 from ..runner import CommandOutput, run_command

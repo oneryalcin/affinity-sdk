@@ -7,9 +7,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-import click
 from rich.console import Console
 
+from .click_compat import click
 from .context import CLIContext, build_result, error_info_for_exception, exit_code_for_exception
 from .render import RenderSettings, render_result
 from .results import Artifact, CommandResult

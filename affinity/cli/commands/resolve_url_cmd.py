@@ -5,11 +5,9 @@ from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlparse
 
-import click
-
 from affinity.types import CompanyId, ListEntryId, ListId, OpportunityId, PersonId
 
-from ..click_compat import RichCommand
+from ..click_compat import RichCommand, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options

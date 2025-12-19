@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeVar
 
-import click
-
+from .click_compat import click
 from .context import CLIContext
 
 F = TypeVar("F", bound=Callable[..., object])

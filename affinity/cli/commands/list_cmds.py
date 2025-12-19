@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import click
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
@@ -13,7 +12,7 @@ from affinity.models.pagination import PaginatedResponse
 from affinity.models.types import ListType
 from affinity.types import ListId
 
-from ..click_compat import RichCommand, RichGroup
+from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import write_csv
 from ..errors import CLIError

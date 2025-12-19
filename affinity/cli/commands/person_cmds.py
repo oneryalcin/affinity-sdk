@@ -4,8 +4,6 @@ import asyncio
 from pathlib import Path
 from typing import TypedDict
 
-import click
-
 from affinity import AsyncAffinity
 from affinity.models.entities import Person
 from affinity.models.rate_limit_snapshot import RateLimitSnapshot
@@ -13,7 +11,7 @@ from affinity.models.secondary import EntityFile
 from affinity.models.types import V1_BASE_URL, V2_BASE_URL
 from affinity.types import PersonId
 
-from ..click_compat import RichCommand, RichGroup
+from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import sanitize_filename
 from ..options import output_options

@@ -3,9 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import suppress
 
-import click
-
-from ..click_compat import RichCommand, RichGroup
+from ..click_compat import RichCommand, RichGroup, click
 from ..config import config_init_template
 from ..context import CLIContext
 from ..errors import CLIError

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-import click
+try:
+    import click  # pyright: ignore[reportMissingImports]
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise ModuleNotFoundError(
+        'The Affinity CLI requires `click`. Install it with `pip install "affinity-sdk[cli]"`.'
+    ) from exc
 
 rich_click: Any
 try:
@@ -19,4 +24,4 @@ else:
     RichGroup = click.Group
     RichCommand = click.Command
 
-__all__ = ["RichCommand", "RichGroup"]
+__all__ = ["RichCommand", "RichGroup", "click"]

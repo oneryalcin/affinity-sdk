@@ -3,11 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-import click
-
 import affinity
 
-from .click_compat import RichGroup
+from .click_compat import RichGroup, click
 from .context import CLIContext
 from .logging import configure_logging, restore_logging
 from .paths import get_paths
