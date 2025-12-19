@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -400,5 +401,31 @@ async def test_async_http_client_hooks_cache_and_safe_follow_redirect_block(
 
         with pytest.raises(UnsafeUrlError):
             await client.get_url("https://v2.example/v2/paged")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_http_client_on_error_hook_is_called_on_cancellation() -> None:
+    events: list[str] = []
+
+    def on_error(_info: Any) -> None:
+        events.append("error")
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        raise asyncio.CancelledError()
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            max_retries=0,
+            on_error=on_error,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await client.get("/companies")
+        assert events == ["error"]
     finally:
         await client.close()

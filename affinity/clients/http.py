@@ -98,7 +98,7 @@ class ErrorInfo:
     Sanitized error metadata for hooks.
     """
 
-    error: Exception
+    error: BaseException
     elapsed_ms: float
     request: RequestInfo
 
@@ -1966,6 +1966,21 @@ class AsyncHTTPClient:
             start_time = time.monotonic()
             try:
                 resp = await next(req)
+            except asyncio.CancelledError as exc:
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                if config.on_error:
+                    config.on_error(
+                        ErrorInfo(
+                            error=exc,
+                            elapsed_ms=elapsed_ms,
+                            request=RequestInfo(
+                                method=req.method.upper(),
+                                url=_redact_url(req.url, config.api_key),
+                                headers={},
+                            ),
+                        )
+                    )
+                raise
             except Exception as exc:
                 elapsed_ms = (time.monotonic() - start_time) * 1000
                 if config.on_error:
