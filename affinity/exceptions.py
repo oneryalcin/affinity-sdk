@@ -14,6 +14,7 @@ from typing import Any
 class ErrorDiagnostics:
     method: str | None = None
     url: str | None = None
+    request_params: dict[str, Any] | None = None
     api_version: str | None = None  # "v1" | "v2" (string to avoid circular types)
     base_url: str | None = None
     request_id: str | None = None
@@ -409,13 +410,65 @@ def error_from_response(
     message = "Unknown error"
     param = None
 
+    extracted = False
     if isinstance(response_body, dict):
-        errors = response_body.get("errors", [])
-        if errors and isinstance(errors, list) and len(errors) > 0:
-            first_error = errors[0]
-            if isinstance(first_error, dict):
-                message = first_error.get("message", message)
-                param = first_error.get("param")
+        errors = response_body.get("errors")
+        if isinstance(errors, list) and errors:
+            for item in errors:
+                if isinstance(item, dict):
+                    msg = item.get("message")
+                    if isinstance(msg, str) and msg.strip():
+                        message = msg.strip()
+                        p = item.get("param")
+                        if isinstance(p, str) and p.strip():
+                            param = p
+                        extracted = True
+                        break
+                elif isinstance(item, str) and item.strip():
+                    message = item.strip()
+                    extracted = True
+                    break
+
+        if not extracted:
+            top_message = response_body.get("message")
+            if isinstance(top_message, str) and top_message.strip():
+                message = top_message.strip()
+                extracted = True
+            else:
+                detail = response_body.get("detail")
+                if isinstance(detail, str) and detail.strip():
+                    message = detail.strip()
+                    extracted = True
+                else:
+                    error_obj = response_body.get("error")
+                    if isinstance(error_obj, dict):
+                        nested_message = error_obj.get("message")
+                        if isinstance(nested_message, str) and nested_message.strip():
+                            message = nested_message.strip()
+                            extracted = True
+                    elif isinstance(error_obj, str) and error_obj.strip():
+                        message = error_obj.strip()
+                        extracted = True
+
+    if not extracted and isinstance(response_body, list) and response_body:
+        first = response_body[0]
+        if isinstance(first, dict):
+            msg = first.get("message") or first.get("error") or first.get("detail")
+            if isinstance(msg, str) and msg.strip():
+                message = msg.strip()
+                extracted = True
+        elif isinstance(first, str) and first.strip():
+            message = first.strip()
+            extracted = True
+
+    if (
+        message == "Unknown error"
+        and diagnostics is not None
+        and isinstance(diagnostics.response_body_snippet, str)
+    ):
+        snippet = diagnostics.response_body_snippet.strip()
+        if snippet and snippet not in {"{}", "[]"}:
+            message = snippet
 
     # Map status codes to exceptions
     error_mapping: dict[int, type[AffinityError]] = {

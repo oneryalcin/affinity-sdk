@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import errno
 import os
+import re
 import sys
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import urlsplit as _urlsplit_for_qs
 
 from affinity import Affinity
 from affinity.client import maybe_load_dotenv
@@ -15,9 +18,16 @@ from affinity.exceptions import (
     AffinityError,
     AuthenticationError,
     AuthorizationError,
+    ConfigurationError,
+    NetworkError,
     NotFoundError,
     RateLimitError,
     ServerError,
+    ValidationError,
+    WriteNotAllowedError,
+)
+from affinity.exceptions import (
+    TimeoutError as AffinityTimeoutError,
 )
 from affinity.hooks import (
     ErrorHook,
@@ -282,12 +292,325 @@ def exit_code_for_exception(exc: Exception) -> int:
     return 1
 
 
-def error_info_for_exception(exc: Exception) -> ErrorInfo:
+def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
     if isinstance(exc, CLIError):
-        return ErrorInfo(type=exc.error_type, message=exc.message, details=exc.details)
+        return exc
+
+    if isinstance(exc, FileExistsError):
+        path = str(exc.filename) if getattr(exc, "filename", None) else str(exc)
+        return CLIError(
+            f"Destination already exists: {path}",
+            error_type="file_exists",
+            exit_code=2,
+            hint="Re-run with --overwrite or choose a different --out directory.",
+            details={"path": path},
+            cause=exc,
+        )
+
+    if isinstance(exc, PermissionError):
+        path = str(exc.filename) if getattr(exc, "filename", None) else "file"
+        return CLIError(
+            f"Permission denied: {path}",
+            error_type="permission_denied",
+            exit_code=2,
+            hint="Check file permissions or choose a different output location.",
+            details={"path": path},
+            cause=exc,
+        )
+
+    if isinstance(exc, IsADirectoryError):
+        path = str(exc.filename) if getattr(exc, "filename", None) else str(exc)
+        return CLIError(
+            f"Expected a file path but got a directory: {path}",
+            error_type="io_error",
+            exit_code=2,
+            details={"path": path},
+            cause=exc,
+        )
+
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == errno.ENOSPC:
+        path = str(getattr(exc, "filename", "") or "")
+        suffix = f": {path}" if path else ""
+        return CLIError(
+            f"No space left on device{suffix}",
+            error_type="disk_full",
+            exit_code=2,
+            hint="Free disk space or choose a different output directory.",
+            details={"path": path} if path else None,
+            cause=exc,
+        )
+
+    if isinstance(exc, WriteNotAllowedError):
+        details: dict[str, Any] = {}
+        if getattr(exc, "method", None):
+            details["method"] = exc.method
+        if getattr(exc, "url", None):
+            details["url"] = _strip_url_query_and_fragment(exc.url)
+        return CLIError(
+            "Write operation blocked by policy (--readonly).",
+            error_type="write_not_allowed",
+            exit_code=2,
+            hint="Re-run without --readonly to allow writes.",
+            details=details or None,
+            cause=exc,
+        )
+
+    if isinstance(exc, RateLimitError):
+        hint = "Wait and retry, or reduce request frequency."
+        if getattr(exc, "retry_after", None):
+            hint = f"Retry after {exc.retry_after} seconds."
+        return CLIError(
+            str(exc),
+            error_type="rate_limited",
+            exit_code=5,
+            hint=hint,
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, ValidationError):
+        sanitized_params = _sanitized_request_params_from_diagnostics(exc) or {}
+
+        message = getattr(exc, "message", None)
+        if not isinstance(message, str) or not message:
+            message = str(exc) or "Request validation failed."
+
+        field_name: str | None = getattr(exc, "param", None)
+        if not field_name:
+            match = re.search(r"\bField\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:", message)
+            if match:
+                field_name = match.group(1)
+        if not field_name and len(sanitized_params) == 1:
+            field_name = next(iter(sanitized_params.keys()))
+
+        hint = "Check command arguments and retry."
+        if "organization_id" in sanitized_params or "company_id" in sanitized_params:
+            company_id = sanitized_params.get("organization_id") or sanitized_params.get(
+                "company_id"
+            )
+            if isinstance(company_id, int):
+                hint = (
+                    f"Verify the company id exists and you have access (company_id={company_id})."
+                )
+        elif "person_id" in sanitized_params:
+            person_id = sanitized_params.get("person_id")
+            if isinstance(person_id, int):
+                hint = f"Verify the person id exists and you have access (person_id={person_id})."
+        elif "opportunity_id" in sanitized_params:
+            opportunity_id = sanitized_params.get("opportunity_id")
+            if isinstance(opportunity_id, int):
+                hint = (
+                    "Verify the opportunity id exists and you have access "
+                    f"(opportunity_id={opportunity_id})."
+                )
+        elif field_name:
+            hint = f"Check the value for `{field_name}` and retry."
+        elif sanitized_params:
+            bits = ", ".join(f"{k}={v}" for k, v in sorted(sanitized_params.items()))
+            hint = f"Check parameter values ({bits}) and retry."
+
+        details = _details_for_affinity_error(exc, verbosity=verbosity) or {}
+        if sanitized_params:
+            details.setdefault("params", sanitized_params)
+        if field_name:
+            details.setdefault("param", field_name)
+
+        if message == "Unknown error":
+            diagnostics = getattr(exc, "diagnostics", None)
+            snippet = getattr(diagnostics, "response_body_snippet", None) if diagnostics else None
+            if isinstance(snippet, str) and snippet.strip() and snippet.strip() not in {"{}", "[]"}:
+                message = snippet.strip()
+            else:
+                message = str(exc)
+
+        return CLIError(
+            message,
+            error_type="validation_error",
+            exit_code=2,
+            hint=hint,
+            details=details or None,
+            cause=exc,
+        )
+
+    if isinstance(exc, AuthenticationError):
+        return CLIError(
+            str(exc),
+            error_type="auth_error",
+            exit_code=3,
+            hint="Check AFFINITY_API_KEY, or use --api-key-file / --api-key-stdin.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, AuthorizationError):
+        return CLIError(
+            str(exc),
+            error_type="forbidden",
+            exit_code=3,
+            hint="Check that your API key has access to this resource.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, NotFoundError):
+        return CLIError(
+            str(exc),
+            error_type="not_found",
+            exit_code=4,
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, (ServerError,)):
+        return CLIError(
+            str(exc),
+            error_type="server_error",
+            exit_code=5,
+            hint="Retry later; if the issue persists, contact Affinity support.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, NetworkError):
+        return CLIError(
+            str(exc),
+            error_type="network_error",
+            exit_code=1,
+            hint="Check your network connection and retry.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, AffinityTimeoutError):
+        return CLIError(
+            str(exc),
+            error_type="timeout",
+            exit_code=1,
+            hint="Increase --timeout and retry, or narrow the request.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, ConfigurationError):
+        return CLIError(
+            str(exc),
+            error_type="config_error",
+            exit_code=2,
+            hint="Check configuration (API key, base URLs) and retry.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
     if isinstance(exc, AffinityError):
-        return ErrorInfo(type=exc.__class__.__name__, message=str(exc), details=None)
-    return ErrorInfo(type=exc.__class__.__name__, message=str(exc), details=None)
+        return CLIError(
+            str(exc),
+            error_type="api_error",
+            exit_code=1,
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    return CLIError(
+        str(exc) or exc.__class__.__name__,
+        error_type="internal_error",
+        exit_code=1,
+        cause=exc,
+    )
+
+
+def _details_for_affinity_error(exc: AffinityError, *, verbosity: int) -> dict[str, Any] | None:
+    details: dict[str, Any] = {}
+    if exc.status_code is not None:
+        details["statusCode"] = exc.status_code
+    diagnostics = getattr(exc, "diagnostics", None)
+    if diagnostics is not None:
+        if getattr(diagnostics, "method", None):
+            details["method"] = diagnostics.method
+        if getattr(diagnostics, "url", None):
+            details["url"] = _strip_url_query_and_fragment(diagnostics.url)
+        if getattr(diagnostics, "api_version", None):
+            details["apiVersion"] = diagnostics.api_version
+        if getattr(diagnostics, "request_id", None):
+            details["requestId"] = diagnostics.request_id
+        if verbosity >= 2:
+            if getattr(diagnostics, "response_headers", None):
+                details["responseHeaders"] = diagnostics.response_headers
+            if getattr(diagnostics, "response_body_snippet", None):
+                details["responseBodySnippet"] = diagnostics.response_body_snippet
+    return details or None
+
+
+def _sanitized_request_params_from_diagnostics(exc: AffinityError) -> dict[str, Any] | None:
+    diagnostics = getattr(exc, "diagnostics", None)
+    if diagnostics is None:
+        return None
+
+    allow = {
+        "organization_id",
+        "person_id",
+        "opportunity_id",
+        "list_id",
+        "list_entry_id",
+        "page_size",
+        "page_token",
+    }
+
+    raw_params = getattr(diagnostics, "request_params", None)
+    if isinstance(raw_params, dict) and raw_params:
+        sanitized_from_params: dict[str, Any] = {}
+        for k, v in raw_params.items():
+            if k not in allow:
+                continue
+            if isinstance(v, list) and v:
+                v = v[0]
+            if isinstance(v, int):
+                sanitized_from_params[k] = v
+            elif isinstance(v, str) and v.isdigit():
+                sanitized_from_params[k] = int(v)
+        if sanitized_from_params:
+            return sanitized_from_params
+
+    if not getattr(diagnostics, "url", None):
+        return None
+
+    try:
+        parts = _urlsplit_for_qs(diagnostics.url)
+        qs = parse_qs(parts.query, keep_blank_values=False)
+    except Exception:
+        return None
+
+    sanitized: dict[str, Any] = {}
+    for k, values in qs.items():
+        if k not in allow or not values:
+            continue
+        v = values[0]
+        if isinstance(v, str) and v.isdigit():
+            sanitized[k] = int(v)
+        else:
+            # Avoid leaking free-text search terms or other potential PII.
+            continue
+    return sanitized or None
+
+
+def error_info_for_exception(exc: Exception, *, verbosity: int = 0) -> ErrorInfo:
+    normalized = normalize_exception(exc, verbosity=verbosity)
+    details = normalized.details
+    if verbosity >= 2 and normalized.cause is not None:
+        extra: dict[str, Any] = {}
+        if details and isinstance(details, dict):
+            extra.update(details)
+        extra.setdefault("causeType", type(normalized.cause).__name__)
+        msg = str(normalized.cause)
+        if msg:
+            extra.setdefault("causeMessage", msg)
+        details = extra
+    return ErrorInfo(
+        type=normalized.error_type,
+        message=normalized.message,
+        hint=normalized.hint,
+        docs_url=normalized.docs_url,
+        details=details,
+    )
 
 
 def build_result(

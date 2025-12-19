@@ -30,6 +30,21 @@ def _error_title(error_type: str) -> str:
         "usage_error": "Usage error",
         "ambiguous_resolution": "Ambiguous",
         "not_found": "Not found",
+        "validation_error": "Validation error",
+        "file_exists": "File exists",
+        "permission_denied": "Permission denied",
+        "disk_full": "Disk full",
+        "io_error": "I/O error",
+        "config_error": "Configuration error",
+        "auth_error": "Authentication error",
+        "forbidden": "Permission denied",
+        "rate_limited": "Rate limited",
+        "server_error": "Server error",
+        "network_error": "Network error",
+        "timeout": "Timeout",
+        "write_not_allowed": "Write blocked",
+        "api_error": "API error",
+        "internal_error": "Internal error",
         "AuthenticationError": "Authentication error",
         "AuthorizationError": "Permission denied",
         "NotFoundError": "Not found",
@@ -45,18 +60,27 @@ def _render_error_details(
     command: str,
     error_type: str,
     message: str,
+    hint: str | None,
+    docs_url: str | None,
     details: dict[str, Any] | None,
     settings: RenderSettings,
 ) -> None:
     if settings.quiet:
         return
+
+    if hint:
+        stderr.print(f"Hint: {hint}")
+    if docs_url:
+        stderr.print(f"Docs: {docs_url}")
+
     if not details:
         if error_type == "ambiguous_resolution":
-            stderr.print(f"Hint: run `affinity {command} --help`")
+            if not hint:
+                stderr.print(f"Hint: run `affinity {command} --help`")
         elif error_type == "usage_error":
             # Avoid noisy hints for credential/config errors where --help doesn't help.
             lowered = message.lower()
-            if "api key" not in lowered and "python-dotenv" not in lowered:
+            if "api key" not in lowered and "python-dotenv" not in lowered and not hint:
                 stderr.print(f"Hint: run `affinity {command} --help`")
         return
 
@@ -82,11 +106,13 @@ def _render_error_details(
             field_ids = details.get("fieldIds")
             stderr.print("Matches: " + ", ".join(str(x) for x in cast(list[Any], field_ids)[:20]))
 
-        stderr.print(f"Hint: run `affinity {command} --help`")
+        if not hint:
+            stderr.print(f"Hint: run `affinity {command} --help`")
         return
 
     if error_type == "usage_error":
-        stderr.print(f"Hint: run `affinity {command} --help`")
+        if not hint:
+            stderr.print(f"Hint: run `affinity {command} --help`")
         if settings.verbosity >= 1:
             stderr.print(Panel.fit(Text(json.dumps(details, ensure_ascii=False, indent=2))))
         return
@@ -285,6 +311,8 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
                 command=result.command,
                 error_type=result.error.type,
                 message=result.error.message,
+                hint=result.error.hint,
+                docs_url=result.error.docs_url,
                 details=result.error.details,
                 settings=settings,
             )

@@ -20,6 +20,8 @@ class Artifact(AffinityModel):
 class ErrorInfo(AffinityModel):
     type: str
     message: str
+    hint: str | None = None
+    docs_url: str | None = Field(None, alias="docsUrl")
     details: dict[str, Any] | None = None
 
 

@@ -388,6 +388,24 @@ def _extract_request_id(headers: dict[str, str]) -> str | None:
     return None
 
 
+def _diagnostic_request_params(
+    params: Sequence[tuple[str, str]] | None,
+) -> dict[str, Any] | None:
+    if not params:
+        return None
+    out: dict[str, Any] = {}
+    for k, v in params:
+        if k in out:
+            existing = out[k]
+            if isinstance(existing, list):
+                existing.append(v)
+            else:
+                out[k] = [existing, v]
+        else:
+            out[k] = v
+    return out or None
+
+
 def _redact_external_url(url: str) -> str:
     """
     Redact external URLs for logs/diagnostics.
@@ -1322,6 +1340,7 @@ class HTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=_redact_url(req.url, config.api_key),
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=req.api_version,
                     base_url=config.v1_base_url if req.api_version == "v1" else config.v2_base_url,
                     request_id=request_id,
@@ -1472,6 +1491,7 @@ class HTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=redacted_url,
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=api_version,
                     base_url=base_url,
                     request_id=request_id,
@@ -1689,6 +1709,7 @@ class HTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=redacted_url,
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=api_version,
                     base_url=base_url,
                     request_id=request_id,
@@ -2563,6 +2584,7 @@ class AsyncHTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=_redact_url(req.url, config.api_key),
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=req.api_version,
                     base_url=config.v1_base_url if req.api_version == "v1" else config.v2_base_url,
                     request_id=request_id,
@@ -2714,6 +2736,7 @@ class AsyncHTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=redacted_url,
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=api_version,
                     base_url=base_url,
                     request_id=request_id,
@@ -2933,6 +2956,7 @@ class AsyncHTTPClient:
                 diagnostics = ErrorDiagnostics(
                     method=req.method.upper(),
                     url=redacted_url,
+                    request_params=_diagnostic_request_params(req.params),
                     api_version=api_version,
                     base_url=base_url,
                     request_id=request_id,

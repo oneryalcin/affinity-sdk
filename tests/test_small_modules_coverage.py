@@ -75,8 +75,11 @@ def test_exceptions_str_and_entity_not_found_initializers() -> None:
     assert "param: p" in str(err)
     other = error_from_response(418, {"errors": [{"message": "m"}]})
     assert str(other) == "[418] m"
+    assert str(error_from_response(422, {"message": "top"})) == "[422] top"
+    assert str(error_from_response(422, {"detail": "detail"})) == "[422] detail"
+    assert str(error_from_response(422, {"error": {"message": "nested"}})) == "[422] nested"
     assert str(error_from_response(418, "nope")) == "[418] Unknown error"
-    assert str(error_from_response(418, {"errors": ["x"]})) == "[418] Unknown error"
+    assert str(error_from_response(418, {"errors": ["x"]})) == "[418] x"
     assert str(error_from_response(418, {"errors": [{"message": "m"}, "x"]})) == "[418] m"
 
 

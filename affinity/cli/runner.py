@@ -10,7 +10,13 @@ from typing import Any
 from rich.console import Console
 
 from .click_compat import click
-from .context import CLIContext, build_result, error_info_for_exception, exit_code_for_exception
+from .context import (
+    CLIContext,
+    build_result,
+    error_info_for_exception,
+    exit_code_for_exception,
+    normalize_exception,
+)
 from .render import RenderSettings, render_result
 from .results import Artifact, CommandResult
 
@@ -121,7 +127,8 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
     except click.exceptions.Exit:
         raise
     except Exception as exc:
-        code = exit_code_for_exception(exc)
+        normalized = normalize_exception(exc, verbosity=ctx.verbosity)
+        code = exit_code_for_exception(normalized)
         rate_limit = None
         if ctx._client is not None:
             try:
@@ -138,7 +145,7 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
             warnings=warnings,
             profile=ctx.profile,
             rate_limit=rate_limit,
-            error=error_info_for_exception(exc),
+            error=error_info_for_exception(normalized, verbosity=ctx.verbosity),
         )
         emit_result(ctx, result)
         raise click.exceptions.Exit(code) from exc
