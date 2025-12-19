@@ -153,10 +153,33 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
         table.add_row("No results")
         return table
     columns = list(rows[0].keys())
+
+    def maybe_urlify_domain(value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        if "://" in value:
+            return value
+        return f"https://{value}"
+
+    def format_cell(*, column: str, value: Any) -> str:
+        if value is None:
+            return ""
+        column_lower = column.lower()
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            parts = [
+                maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
+                for v in value
+            ]
+            return ", ".join(parts)
+        if isinstance(value, str) and column_lower in {"domain", "domains"}:
+            return maybe_urlify_domain(value)
+        return str(value)
+
     for col in columns:
         table.add_column(col)
     for row in rows:
-        table.add_row(*[str(row.get(c, "")) for c in columns])
+        table.add_row(*[format_cell(column=c, value=row.get(c, "")) for c in columns])
     return table
 
 
