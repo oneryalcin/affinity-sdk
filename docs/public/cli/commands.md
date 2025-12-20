@@ -50,6 +50,42 @@ affinity person search "alice@example.com"
 affinity person search "Alice" --all --json
 ```
 
+### `affinity person get <personSelector>`
+
+Fetch a person by id, UI URL (including tenant hosts), or a resolver selector.
+
+Examples:
+
+```bash
+affinity person get 26229794
+affinity person get "https://mydomain.affinity.com/persons/26229794"
+affinity person get email:alice@example.com
+affinity person get 'name:"Alice Smith"'
+```
+
+Field selection:
+
+- `--all-fields`: include all supported (non-list-specific) fields.
+- `--field <id-or-exact-name>` (repeatable)
+- `--field-type <type>` (repeatable)
+- `--no-fields`: skip fields entirely.
+
+Expansions:
+
+- `--expand lists`: include lists the person is on (auto-paginates up to a safe cap; use `--max-results` / `--all` to adjust).
+- `--expand list-entries`: include list entries for the person (first page by default; use `--max-results` / `--all` to fetch more).
+- `--list <id-or-exact-name>`: filter list entries to a specific list (requires `--expand list-entries`).
+- `--list-entry-field <id-or-exact-name>` (repeatable): project list-entry fields into columns (requires `--expand list-entries`). Field names are only allowed with `--list`.
+- `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
+
+```bash
+affinity person get 26229794 --all-fields --expand lists
+affinity person get 26229794 --expand list-entries --list "Dealflow" --max-results 200
+affinity person get 26229794 --expand list-entries --list "Dealflow" --list-entry-field Stage --list-entry-field Amount
+affinity person get 26229794 --expand list-entries --max-results 1 --show-list-entry-fields
+affinity person get 26229794 --all-fields --expand lists --json | jq '.data.person.name'
+```
+
 ### `affinity person files dump <personId>`
 
 Downloads all files attached to a person into a folder bundle with a `manifest.json`.

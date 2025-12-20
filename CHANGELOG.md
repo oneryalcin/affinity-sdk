@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Inbound webhook parsing helpers: `parse_webhook(...)`, `dispatch_webhook(...)`, and `BodyRegistry`.
 - CLI: `affinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
+- CLI: `affinity person get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
 - CLI: `--max-results` and `--all` controls for pagination and expansions (where supported).
 - File downloads: `client.files.download_stream_with_info(...)` exposes headers/filename/size alongside streamed bytes.
 

@@ -69,7 +69,7 @@ def company_search(
                     stopped_mid_page = idx < (len(page.data) - 1)
                     if stopped_mid_page:
                         warnings.append(
-                            "Results truncated mid-page; resume token omitted "
+                            "Results truncated mid-page; resume cursor omitted "
                             "to avoid skipping items. Re-run with a higher "
                             "--max-results or without it to paginate safely."
                         )
