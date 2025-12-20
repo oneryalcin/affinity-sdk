@@ -77,11 +77,13 @@ def list_ls(
         pages = client.lists.pages(limit=page_size, cursor=cursor)
         page = next(pages)
         rows: list[dict[str, object]] = []
-        next_cursor = page.pagination.next_cursor
+        next_url = page.pagination.next_cursor
+        prev_url = page.pagination.prev_cursor
 
         def add_page_rows(page: PaginatedResponse[AffinityList]) -> bool:
-            nonlocal next_cursor
-            next_cursor = page.pagination.next_cursor
+            nonlocal next_url, prev_url
+            next_url = page.pagination.next_cursor
+            prev_url = page.pagination.prev_cursor
             for item in page.data:
                 if lt is not None and item.type != lt:
                     continue
@@ -101,16 +103,23 @@ def list_ls(
         ok_to_continue = add_page_rows(page)
         if not ok_to_continue:
             return CommandOutput(
-                data=rows[:max_results],
-                pagination={"nextCursor": next_cursor},
+                data={"lists": rows[:max_results]},
+                pagination=(
+                    {"lists": {"nextUrl": next_url, "prevUrl": prev_url}} if next_url else None
+                ),
                 api_called=True,
             )
 
         if not all_pages and max_results is None:
             return CommandOutput(
-                data=rows,
+                data={"lists": rows},
                 pagination=(
-                    {"nextCursor": page.pagination.next_cursor}
+                    {
+                        "lists": {
+                            "nextUrl": page.pagination.next_cursor,
+                            "prevUrl": page.pagination.prev_cursor,
+                        }
+                    }
                     if page.pagination.next_cursor
                     else None
                 ),
@@ -121,11 +130,13 @@ def list_ls(
             ok_to_continue = add_page_rows(page)
             if not ok_to_continue:
                 return CommandOutput(
-                    data=rows[:max_results],
-                    pagination={"nextCursor": next_cursor},
+                    data={"lists": rows[:max_results]},
+                    pagination=(
+                        {"lists": {"nextUrl": next_url, "prevUrl": prev_url}} if next_url else None
+                    ),
                     api_called=True,
                 )
-        return CommandOutput(data=rows, pagination=None, api_called=True)
+        return CommandOutput(data={"lists": rows}, pagination=None, api_called=True)
 
     run_command(ctx, command="list ls", fn=fn)
 
@@ -350,23 +361,25 @@ def list_export(
                     "rowsWritten": rows_written,
                     "csv": csv_ref,
                 }
-                return CommandOutput(
-                    data=data,
-                    artifacts=[
-                        Artifact(
-                            type="csv",
-                            path=csv_ref,
-                            path_is_relative=csv_is_relative,
-                            rows_written=write_result.rows_written,
-                            bytes_written=write_result.bytes_written,
-                            partial=False,
-                        )
-                    ],
-                    pagination={"nextCursor": next_cursor} if next_cursor else None,
-                    resolved=resolved,
-                    columns=columns,
-                    api_called=True,
-                )
+            return CommandOutput(
+                data=data,
+                artifacts=[
+                    Artifact(
+                        type="csv",
+                        path=csv_ref,
+                        path_is_relative=csv_is_relative,
+                        rows_written=write_result.rows_written,
+                        bytes_written=write_result.bytes_written,
+                        partial=False,
+                    )
+                ],
+                pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
+                if next_cursor
+                else None,
+                resolved=resolved,
+                columns=columns,
+                api_called=True,
+            )
 
             # JSON/table rows in-memory (small exports).
             rows: list[dict[str, Any]] = []
@@ -389,8 +402,10 @@ def list_export(
                     progress.update(task_id, completed=len(rows))
 
             return CommandOutput(
-                data=rows,
-                pagination={"nextCursor": next_cursor} if next_cursor else None,
+                data={"rows": rows},
+                pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
+                if next_cursor
+                else None,
                 resolved=resolved,
                 columns=columns,
                 api_called=True,

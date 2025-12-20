@@ -62,22 +62,31 @@ def person_search(
                 results.append(_person_row(person))
                 if max_results is not None and len(results) >= max_results:
                     return CommandOutput(
-                        data=results[:max_results],
-                        pagination={"nextPageToken": page.next_page_token},
+                        data={"persons": results[:max_results]},
+                        pagination={
+                            "persons": {
+                                "nextPageToken": page.next_page_token,
+                                "prevPageToken": None,
+                            }
+                        }
+                        if page.next_page_token
+                        else None,
                         api_called=True,
                     )
 
             if first_page and not all_pages and max_results is None:
                 return CommandOutput(
-                    data=results,
-                    pagination=(
-                        {"nextPageToken": page.next_page_token} if page.next_page_token else None
-                    ),
+                    data={"persons": results},
+                    pagination={
+                        "persons": {"nextPageToken": page.next_page_token, "prevPageToken": None}
+                    }
+                    if page.next_page_token
+                    else None,
                     api_called=True,
                 )
             first_page = False
 
-        return CommandOutput(data=results, pagination=None, api_called=True)
+        return CommandOutput(data={"persons": results}, pagination=None, api_called=True)
 
     run_command(ctx, command="person search", fn=fn)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 from affinity.models.entities import Company
@@ -66,22 +67,31 @@ def company_search(
                 results.append(_company_row(company))
                 if max_results is not None and len(results) >= max_results:
                     return CommandOutput(
-                        data=results[:max_results],
-                        pagination={"nextPageToken": page.next_page_token},
+                        data={"companies": results[:max_results]},
+                        pagination={
+                            "companies": {
+                                "nextPageToken": page.next_page_token,
+                                "prevPageToken": None,
+                            }
+                        }
+                        if page.next_page_token
+                        else None,
                         api_called=True,
                     )
 
             if first_page and not all_pages and max_results is None:
                 return CommandOutput(
-                    data=results,
-                    pagination=(
-                        {"nextPageToken": page.next_page_token} if page.next_page_token else None
-                    ),
+                    data={"companies": results},
+                    pagination={
+                        "companies": {"nextPageToken": page.next_page_token, "prevPageToken": None}
+                    }
+                    if page.next_page_token
+                    else None,
                     api_called=True,
                 )
             first_page = False
 
-        return CommandOutput(data=results, pagination=None, api_called=True)
+        return CommandOutput(data={"companies": results}, pagination=None, api_called=True)
 
     run_command(ctx, command="company search", fn=fn)
 
@@ -425,6 +435,18 @@ def company_files_dump(
         "(requires --expand list-entries)."
     ),
 )
+@click.option(
+    "--max-results",
+    type=int,
+    default=None,
+    help="Maximum items to fetch per expansion section (applies to --expand).",
+)
+@click.option(
+    "--all",
+    "all_pages",
+    is_flag=True,
+    help="Fetch all pages for expansions (still capped by --max-results if set).",
+)
 @output_options
 @click.pass_obj
 def company_get(
@@ -437,6 +459,8 @@ def company_get(
     no_fields: bool,
     expand: tuple[str, ...],
     list_selector: str | None,
+    max_results: int | None,
+    all_pages: bool,
 ) -> None:
     """
     Get a company by id, URL, or resolver selector.
@@ -500,41 +524,115 @@ def company_get(
         company_payload = client._http.get(f"/companies/{int(company_id)}", params=params or None)
 
         data: dict[str, Any] = {"company": company_payload}
+        pagination: dict[str, Any] = {}
+
+        def fetch_v2_collection(
+            *,
+            path: str,
+            section: str,
+            default_limit: int,
+            default_cap: int | None,
+            allow_unbounded: bool,
+            keep_item: Callable[[Any], bool] | None = None,
+        ) -> list[Any]:
+            effective_cap = max_results
+            if effective_cap is None and default_cap is not None and not all_pages:
+                effective_cap = default_cap
+            if effective_cap is not None and effective_cap <= 0:
+                return []
+
+            should_paginate = all_pages or allow_unbounded or effective_cap is not None
+            limit = default_limit
+            if effective_cap is not None:
+                limit = min(default_limit, effective_cap)
+
+            payload = client._http.get(path, params={"limit": limit} if limit else None)
+            rows = payload.get("data", [])
+            if not isinstance(rows, list):
+                rows = []
+            page_items = list(rows)
+            if keep_item is not None:
+                page_items = [r for r in page_items if keep_item(r)]
+            items: list[Any] = page_items
+
+            page_pagination = payload.get("pagination", {})
+            if not isinstance(page_pagination, dict):
+                page_pagination = {}
+            next_url = page_pagination.get("nextUrl")
+            prev_url = page_pagination.get("prevUrl")
+
+            while (
+                should_paginate
+                and isinstance(next_url, str)
+                and next_url
+                and (effective_cap is None or len(items) < effective_cap)
+            ):
+                payload = client._http.get_url(next_url)
+                rows = payload.get("data", [])
+                if isinstance(rows, list):
+                    page_items = list(rows)
+                    if keep_item is not None:
+                        page_items = [r for r in page_items if keep_item(r)]
+                    items.extend(page_items)
+                page_pagination = payload.get("pagination", {})
+                if not isinstance(page_pagination, dict):
+                    page_pagination = {}
+                next_url = page_pagination.get("nextUrl")
+                prev_url = page_pagination.get("prevUrl")
+
+            if effective_cap is not None and len(items) > effective_cap:
+                items = items[:effective_cap]
+
+            if isinstance(next_url, str) and next_url:
+                pagination[section] = {"nextUrl": next_url, "prevUrl": prev_url}
+
+            return items
+
         if "lists" in expand_set:
-            data["lists"] = client._http.get(f"/companies/{int(company_id)}/lists")
+            data["lists"] = fetch_v2_collection(
+                path=f"/companies/{int(company_id)}/lists",
+                section="lists",
+                default_limit=100,
+                default_cap=100,
+                allow_unbounded=True,
+            )
         if "list-entries" in expand_set:
-            entries_payload = client._http.get(f"/companies/{int(company_id)}/list-entries")
+            list_id: ListId | None = None
             if list_selector:
                 raw_list_selector = list_selector.strip()
                 if raw_list_selector.isdigit():
                     list_id = ListId(int(raw_list_selector))
-                    resolved_list = {
-                        "list": {"input": list_selector, "listId": int(list_id)},
-                    }
+                    resolved.update({"list": {"input": list_selector, "listId": int(list_id)}})
                 else:
                     resolved_list_obj = resolve_list_selector(client=client, selector=list_selector)
                     list_id = ListId(int(resolved_list_obj.list.id))
-                    resolved_list = resolved_list_obj.resolved
-                raw_entries = entries_payload.get("data", [])
-                if isinstance(raw_entries, list):
-                    filtered = [
-                        e
-                        for e in raw_entries
-                        if isinstance(e, dict) and e.get("listId") == int(list_id)
-                    ]
-                else:
-                    filtered = []
-                entries_payload = dict(entries_payload)
-                entries_payload["data"] = filtered
-                entries_payload["filteredByListId"] = int(list_id)
-                resolved.update(resolved_list)
-            data["listEntries"] = entries_payload
+                    resolved.update(resolved_list_obj.resolved)
+
+            def keep_entry(item: Any) -> bool:
+                if list_id is None:
+                    return True
+                return isinstance(item, dict) and item.get("listId") == int(list_id)
+
+            entries_items = fetch_v2_collection(
+                path=f"/companies/{int(company_id)}/list-entries",
+                section="listEntries",
+                default_limit=100,
+                default_cap=None,
+                allow_unbounded=False,
+                keep_item=keep_entry if list_id is not None else None,
+            )
+            data["listEntries"] = entries_items
 
         if selection_resolved:
             resolved["fieldSelection"] = selection_resolved
         if expand_set:
             resolved["expand"] = sorted(expand_set)
 
-        return CommandOutput(data=data, resolved=resolved, api_called=True)
+        return CommandOutput(
+            data=data,
+            pagination=pagination or None,
+            resolved=resolved,
+            api_called=True,
+        )
 
     run_command(ctx, command="company get", fn=fn)

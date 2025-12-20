@@ -155,7 +155,7 @@ def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.M
             json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
         )
     )
-    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries").mock(
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
         return_value=Response(
             200,
             json={
@@ -177,8 +177,8 @@ def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.M
     payload = json.loads(result.output.strip())
     assert payload["ok"] is True
     entries = payload["data"]["listEntries"]
-    assert entries["filteredByListId"] == 10
-    assert [e["id"] for e in entries["data"]] == [1]
+    assert [e["id"] for e in entries] == [1]
+    assert payload["meta"]["resolved"]["list"]["listId"] == 10
 
 
 def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -> None:
@@ -196,3 +196,33 @@ def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
     assert payload["error"]["type"] == "usage_error"
+
+
+def test_company_get_human_output_hides_envelope_pagination(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/lists?limit=100").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [{"id": 1, "name": "Dealflow", "isPublic": False}],
+                "pagination": {"prevUrl": None, "nextUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["company", "get", "123", "--expand", "lists"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    assert "Acme Corp" in result.output
+    assert "Dealflow" in result.output
+    assert "pagination" not in result.output
+    assert "nextUrl" not in result.output
