@@ -90,3 +90,21 @@ def test_table_from_rows_formats_year_without_thousands_separator() -> None:
     rendered = "\n".join(str(line) for line in console.render_lines(table, options=console.options))
     assert "2019" in rendered
     assert "2,019" not in rendered
+
+
+def test_table_from_rows_humanizes_dropdown_multi_from_dict_items() -> None:
+    table = _table_from_rows(
+        [
+            {
+                "name": "Reason for Passing",
+                "value": {
+                    "type": "dropdown-multi",
+                    "data": [{"dropdownOptionId": 1, "text": "Not a fit"}],
+                },
+            }
+        ]
+    )
+    console = Console(file=io.StringIO(), force_terminal=True, width=120)
+    rendered = "\n".join(str(line) for line in console.render_lines(table, options=console.options))
+    assert "Not a fit" in rendered
+    assert "object" not in rendered

@@ -378,6 +378,29 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
                 return format_number(data, allow_commas=not is_id_column(column))
             if isinstance(data, str):
                 return truncate(data)
+            if isinstance(data, list) and all(isinstance(x, dict) for x in data):
+                texts: list[str] = []
+                for item in cast(list[dict[str, Any]], data):
+                    text = item.get("text")
+                    if isinstance(text, str) and text.strip():
+                        texts.append(text.strip())
+                        continue
+                    name = item.get("name")
+                    if isinstance(name, str) and name.strip():
+                        texts.append(name.strip())
+                        continue
+                    first = item.get("firstName")
+                    last = item.get("lastName")
+                    if isinstance(first, str) or isinstance(last, str):
+                        display = " ".join(
+                            p.strip() for p in [first, last] if isinstance(p, str) and p.strip()
+                        ).strip()
+                        if display:
+                            texts.append(display)
+                            continue
+                if texts:
+                    return truncate(", ".join(texts))
+                return f"list ({len(data):,} items)"
             if isinstance(data, list) and all(isinstance(x, str) for x in data):
                 return truncate(", ".join(x.strip() for x in data if x.strip()))
             if isinstance(t, str) and t == "person" and isinstance(data, dict):
@@ -545,6 +568,9 @@ def _humanize_title(value: str) -> str:
     raw = (value or "").strip()
     if not raw:
         return ""
+    if any(ch.isspace() for ch in raw):
+        raw = raw.replace("_", " ").replace("-", " ").strip()
+        return " ".join(raw.split())
     raw = raw.replace("_", " ").replace("-", " ").strip()
     raw = _CAMEL_BREAK_RE.sub(" ", raw)
     raw = " ".join(raw.split())

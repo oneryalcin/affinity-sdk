@@ -355,6 +355,20 @@ def test_company_get_human_output_show_list_entry_fields_renders_fields_tables(
             json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
         )
     )
+    respx_mock.get("https://api.affinity.co/v2/lists/41780").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 41780,
+                "name": "Dealflow",
+                "type": "company",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 0,
+            },
+        )
+    )
     respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=1").mock(
         return_value=Response(
             200,

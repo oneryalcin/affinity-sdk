@@ -742,6 +742,21 @@ def company_get(
                         name = item.get("name")
                         if isinstance(lid, int) and isinstance(name, str) and name.strip():
                             list_name_by_id[lid] = name.strip()
+                if effective_show_list_entry_fields:
+                    needed_list_ids: set[int] = set()
+                    for entry in entries_items:
+                        if not isinstance(entry, dict):
+                            continue
+                        lid = entry.get("listId")
+                        if isinstance(lid, int) and lid not in list_name_by_id:
+                            needed_list_ids.add(lid)
+                    for lid in sorted(needed_list_ids):
+                        try:
+                            list_obj = client.lists.get(ListId(lid))
+                        except Exception:
+                            continue
+                        if getattr(list_obj, "name", None):
+                            list_name_by_id[lid] = str(list_obj.name)
 
                 resolved_list_entry_fields: list[tuple[str, str]] = []
                 if effective_list_entry_fields:
@@ -868,9 +883,18 @@ def company_get(
                             if isinstance(list_id_value, int)
                             else None
                         )
-                        list_hint = list_name or (
-                            str(list_id_value) if list_id_value is not None else "unknown"
-                        )
+                        if list_name:
+                            list_hint = (
+                                f"{list_name} (listId={list_id_value})"
+                                if list_id_value is not None
+                                else str(list_name)
+                            )
+                        else:
+                            list_hint = (
+                                f"listId={list_id_value}"
+                                if list_id_value is not None
+                                else "listId=unknown"
+                            )
                         title = f"List Entry {list_entry_id} ({list_hint}) Fields"
 
                         fields_payload = entry.get("fields", [])
