@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -226,3 +227,37 @@ def test_company_get_human_output_hides_envelope_pagination(respx_mock: respx.Mo
     assert "Dealflow" in result.output
     assert "pagination" not in result.output
     assert "nextUrl" not in result.output
+
+
+def test_company_get_human_output_shows_fields_when_requested(respx_mock: respx.MockRouter) -> None:
+    url_re = re.compile(r"https://api\.affinity\.co/v2/companies/123(\?.*)?$")
+    respx_mock.get(url_re).mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 123,
+                "name": "Acme Corp",
+                "domain": "acme.com",
+                "fields": [
+                    {
+                        "id": "dealroom-year-founded",
+                        "type": "enriched",
+                        "name": "Year Founded",
+                        "value": {"type": "number", "data": 2019.0},
+                    }
+                ],
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["company", "get", "123", "--all-fields"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    assert "Company" in result.output
+    assert "Fields" in result.output
+    assert "Year Founded" in result.output
+    assert "2019" in result.output

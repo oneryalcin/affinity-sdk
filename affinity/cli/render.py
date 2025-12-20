@@ -600,6 +600,7 @@ def _render_object_section(
     obj: dict[str, Any],
     verbosity: int,
     pagination: dict[str, Any] | None,
+    force_nested_keys: set[str] | None = None,
 ) -> Any:
     scalar_summary: dict[str, Any] = {}
     nested: list[tuple[str, Any]] = []
@@ -615,9 +616,22 @@ def _render_object_section(
     if title:
         renderables.append(Text(_humanize_title(title), style="bold"))
     renderables.append(_kv_table(scalar_summary))
+    kv_index = len(renderables) - 1
 
+    show_nested_keys = set(force_nested_keys or set())
     if verbosity >= 1:
+        show_nested_keys.update(k for k, _v in nested)
+
+    if show_nested_keys:
+        # Avoid duplicating "fields: list (N items)" style rows when we render a section.
+        for key in show_nested_keys:
+            if key in scalar_summary:
+                scalar_summary[key] = "see below"
+        renderables[kv_index] = _kv_table(scalar_summary)
+
         for k, v in nested:
+            if k not in show_nested_keys:
+                continue
             if isinstance(v, dict) and _is_collection_envelope(v):
                 envelope = cast(dict[str, Any], v)
                 renderables.append(
@@ -636,6 +650,7 @@ def _render_object_section(
                         obj=v,
                         verbosity=verbosity,
                         pagination=None,
+                        force_nested_keys=None,
                     )
                 )
             else:
@@ -670,6 +685,7 @@ def _render_human_data(
     *,
     data: Any,
     meta_pagination: dict[str, Any] | None,
+    meta_resolved: dict[str, Any] | None,
     verbosity: int,
 ) -> Any:
     if isinstance(data, list) and all(isinstance(x, dict) for x in data):
@@ -704,18 +720,28 @@ def _render_human_data(
             if isinstance(v, dict) and _is_collection_envelope(v):
                 envelope = cast(dict[str, Any], v)
                 return _render_collection_section(
-                    title=None,
+                    title=only_key,
                     rows=cast(list[Any], envelope.get("data", [])),
                     pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
                 )
             if isinstance(v, list) and all(isinstance(x, dict) for x in v):
-                return _render_collection_section(title=None, rows=v, pagination=section_pagination)
+                return _render_collection_section(
+                    title=only_key, rows=v, pagination=section_pagination
+                )
             if isinstance(v, dict):
+                company_force_nested: set[str] | None = None
+                if (
+                    only_key == "company"
+                    and isinstance(meta_resolved, dict)
+                    and "fieldSelection" in meta_resolved
+                ):
+                    company_force_nested = {"fields"}
                 return _render_object_section(
-                    title=None,
+                    title=only_key,
                     obj=v,
                     verbosity=verbosity,
                     pagination=section_pagination,
+                    force_nested_keys=company_force_nested,
                 )
 
         sections: list[Any] = []
@@ -740,12 +766,20 @@ def _render_human_data(
                     _render_collection_section(title=key, rows=v, pagination=section_pagination)
                 )
             elif isinstance(v, dict):
+                force_nested: set[str] | None = None
+                if (
+                    key == "company"
+                    and isinstance(meta_resolved, dict)
+                    and "fieldSelection" in meta_resolved
+                ):
+                    force_nested = {"fields"}
                 sections.append(
                     _render_object_section(
                         title=key,
                         obj=v,
                         verbosity=verbosity,
                         pagination=section_pagination,
+                        force_nested_keys=force_nested,
                     )
                 )
             else:
@@ -755,6 +789,7 @@ def _render_human_data(
                         obj={"value": v},
                         verbosity=verbosity,
                         pagination=section_pagination,
+                        force_nested_keys=None,
                     )
                 )
         return Group(*sections) if sections else Panel.fit(Text("OK"))
@@ -836,6 +871,7 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
         renderable = _render_human_data(
             data=result.data,
             meta_pagination=result.meta.pagination,
+            meta_resolved=result.meta.resolved,
             verbosity=settings.verbosity,
         )
 

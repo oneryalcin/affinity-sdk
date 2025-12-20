@@ -8,8 +8,7 @@ from typing import Any, Literal, cast
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
-from affinity.models.entities import AffinityList, FieldMetadata, ListEntryWithEntity
-from affinity.models.pagination import PaginatedResponse
+from affinity.models.entities import FieldMetadata, ListEntryWithEntity
 from affinity.models.types import ListType
 from affinity.types import ListId
 
@@ -75,16 +74,10 @@ def list_ls(
             )
 
         pages = client.lists.pages(limit=page_size, cursor=cursor)
-        page = next(pages)
         rows: list[dict[str, object]] = []
-        next_url = page.pagination.next_cursor
-        prev_url = page.pagination.prev_cursor
-
-        def add_page_rows(page: PaginatedResponse[AffinityList]) -> bool:
-            nonlocal next_url, prev_url
-            next_url = page.pagination.next_cursor
-            prev_url = page.pagination.prev_cursor
-            for item in page.data:
+        first_page = True
+        for page in pages:
+            for idx, item in enumerate(page.data):
                 if lt is not None and item.type != lt:
                     continue
                 rows.append(
@@ -97,45 +90,48 @@ def list_ls(
                     }
                 )
                 if max_results is not None and len(rows) >= max_results:
-                    return False
-            return True
-
-        ok_to_continue = add_page_rows(page)
-        if not ok_to_continue:
-            return CommandOutput(
-                data={"lists": rows[:max_results]},
-                pagination=(
-                    {"lists": {"nextUrl": next_url, "prevUrl": prev_url}} if next_url else None
-                ),
-                api_called=True,
-            )
-
-        if not all_pages and max_results is None:
-            return CommandOutput(
-                data={"lists": rows},
-                pagination=(
-                    {
-                        "lists": {
-                            "nextUrl": page.pagination.next_cursor,
-                            "prevUrl": page.pagination.prev_cursor,
+                    stopped_mid_page = idx < (len(page.data) - 1)
+                    if stopped_mid_page:
+                        warnings.append(
+                            "Results truncated mid-page; resume URL omitted "
+                            "to avoid skipping items. Re-run with a higher "
+                            "--max-results or without it to paginate safely."
+                        )
+                    pagination = None
+                    if (
+                        page.pagination.next_cursor
+                        and not stopped_mid_page
+                        and page.pagination.next_cursor != cursor
+                    ):
+                        pagination = {
+                            "lists": {
+                                "nextUrl": page.pagination.next_cursor,
+                                "prevUrl": page.pagination.prev_cursor,
+                            }
                         }
-                    }
-                    if page.pagination.next_cursor
-                    else None
-                ),
-                api_called=True,
-            )
+                    return CommandOutput(
+                        data={"lists": rows[:max_results]},
+                        pagination=pagination,
+                        api_called=True,
+                    )
 
-        for page in pages:
-            ok_to_continue = add_page_rows(page)
-            if not ok_to_continue:
+            if first_page and not all_pages and max_results is None:
                 return CommandOutput(
-                    data={"lists": rows[:max_results]},
+                    data={"lists": rows},
                     pagination=(
-                        {"lists": {"nextUrl": next_url, "prevUrl": prev_url}} if next_url else None
+                        {
+                            "lists": {
+                                "nextUrl": page.pagination.next_cursor,
+                                "prevUrl": page.pagination.prev_cursor,
+                            }
+                        }
+                        if page.pagination.next_cursor
+                        else None
                     ),
                     api_called=True,
                 )
+            first_page = False
+
         return CommandOutput(data={"lists": rows}, pagination=None, api_called=True)
 
     run_command(ctx, command="list ls", fn=fn)
@@ -325,6 +321,7 @@ def list_export(
                 ]
                 header = ["listEntryId", "entityType", "entityId", "entityName", *field_headers]
                 temp_path = csv_path_obj.with_suffix(csv_path_obj.suffix + ".tmp")
+                csv_iter_state: dict[str, Any] = {}
 
                 def iter_rows() -> Any:
                     nonlocal rows_written, next_cursor
@@ -340,6 +337,7 @@ def list_export(
                         all_pages=all_pages,
                         field_by_id=field_by_id,
                         key_mode=csv_header,
+                        state=csv_iter_state,
                     ):
                         next_cursor = page_next_cursor
                         rows_written += 1
@@ -361,28 +359,35 @@ def list_export(
                     "rowsWritten": rows_written,
                     "csv": csv_ref,
                 }
-            return CommandOutput(
-                data=data,
-                artifacts=[
-                    Artifact(
-                        type="csv",
-                        path=csv_ref,
-                        path_is_relative=csv_is_relative,
-                        rows_written=write_result.rows_written,
-                        bytes_written=write_result.bytes_written,
-                        partial=False,
+                if csv_iter_state.get("truncatedMidPage") is True:
+                    warnings.append(
+                        "Results truncated mid-page; resume URL omitted "
+                        "to avoid skipping items. Re-run with a higher "
+                        "--max-results or without it to paginate safely."
                     )
-                ],
-                pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
-                if next_cursor
-                else None,
-                resolved=resolved,
-                columns=columns,
-                api_called=True,
-            )
+                return CommandOutput(
+                    data=data,
+                    artifacts=[
+                        Artifact(
+                            type="csv",
+                            path=csv_ref,
+                            path_is_relative=csv_is_relative,
+                            rows_written=write_result.rows_written,
+                            bytes_written=write_result.bytes_written,
+                            partial=False,
+                        )
+                    ],
+                    pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
+                    if next_cursor
+                    else None,
+                    resolved=resolved,
+                    columns=columns,
+                    api_called=True,
+                )
 
             # JSON/table rows in-memory (small exports).
             rows: list[dict[str, Any]] = []
+            table_iter_state: dict[str, Any] = {}
             for row, page_next_cursor in _iterate_list_entries(
                 client=client,
                 list_id=list_id,
@@ -395,12 +400,19 @@ def list_export(
                 all_pages=all_pages,
                 field_by_id=field_by_id,
                 key_mode="names",
+                state=table_iter_state,
             ):
                 next_cursor = page_next_cursor
                 rows.append(row)
                 if progress is not None and task_id is not None:
                     progress.update(task_id, completed=len(rows))
 
+            if table_iter_state.get("truncatedMidPage") is True:
+                warnings.append(
+                    "Results truncated mid-page; resume URL omitted "
+                    "to avoid skipping items. Re-run with a higher "
+                    "--max-results or without it to paginate safely."
+                )
             return CommandOutput(
                 data={"rows": rows},
                 pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
@@ -491,6 +503,7 @@ def _iterate_list_entries(
     all_pages: bool,
     field_by_id: dict[str, FieldMetadata],
     key_mode: Literal["names", "ids"],
+    state: dict[str, Any] | None = None,
 ) -> Any:
     """
     Yield `(row_dict, next_cursor)` where `next_cursor` resumes at the next page (not per-row).
@@ -508,13 +521,17 @@ def _iterate_list_entries(
             page = entries.from_saved_view(view.id, limit=page_size)
 
         next_page_cursor = page.pagination.next_cursor
-        for entry in page.data:
+        for idx, entry in enumerate(page.data):
             fetched += 1
             yield (
                 _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
-                next_page_cursor,
+                None
+                if max_results is not None and fetched >= max_results and idx < (len(page.data) - 1)
+                else next_page_cursor,
             )
             if max_results is not None and fetched >= max_results:
+                if idx < (len(page.data) - 1) and state is not None:
+                    state["truncatedMidPage"] = True
                 return
 
         if not all_pages and max_results is None:
@@ -523,13 +540,19 @@ def _iterate_list_entries(
         while next_page_cursor:
             page = entries.list(cursor=next_page_cursor)
             next_page_cursor = page.pagination.next_cursor
-            for entry in page.data:
+            for idx, entry in enumerate(page.data):
                 fetched += 1
                 yield (
                     _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
-                    next_page_cursor,
+                    None
+                    if max_results is not None
+                    and fetched >= max_results
+                    and idx < (len(page.data) - 1)
+                    else next_page_cursor,
                 )
                 if max_results is not None and fetched >= max_results:
+                    if idx < (len(page.data) - 1) and state is not None:
+                        state["truncatedMidPage"] = True
                     return
         return
 
@@ -546,13 +569,17 @@ def _iterate_list_entries(
     first_page = True
     for page in pages:
         next_page_cursor = page.pagination.next_cursor
-        for entry in page.data:
+        for idx, entry in enumerate(page.data):
             fetched += 1
             yield (
                 _entry_to_row(entry, selected_field_ids, field_by_id, key_mode=key_mode),
-                next_page_cursor,
+                None
+                if max_results is not None and fetched >= max_results and idx < (len(page.data) - 1)
+                else next_page_cursor,
             )
             if max_results is not None and fetched >= max_results:
+                if idx < (len(page.data) - 1) and state is not None:
+                    state["truncatedMidPage"] = True
                 return
 
         if first_page and not all_pages and max_results is None:

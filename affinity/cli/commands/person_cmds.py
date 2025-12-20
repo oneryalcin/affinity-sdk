@@ -58,9 +58,16 @@ def person_search(
             page_size=page_size,
             page_token=page_token,
         ):
-            for person in page.data:
+            for idx, person in enumerate(page.data):
                 results.append(_person_row(person))
                 if max_results is not None and len(results) >= max_results:
+                    stopped_mid_page = idx < (len(page.data) - 1)
+                    if stopped_mid_page:
+                        warnings.append(
+                            "Results truncated mid-page; resume token omitted "
+                            "to avoid skipping items. Re-run with a higher "
+                            "--max-results or without it to paginate safely."
+                        )
                     return CommandOutput(
                         data={"persons": results[:max_results]},
                         pagination={
@@ -69,7 +76,7 @@ def person_search(
                                 "prevPageToken": None,
                             }
                         }
-                        if page.next_page_token
+                        if page.next_page_token and not stopped_mid_page
                         else None,
                         api_called=True,
                     )

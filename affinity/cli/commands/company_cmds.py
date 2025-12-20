@@ -63,9 +63,16 @@ def company_search(
             page_size=page_size,
             page_token=page_token,
         ):
-            for company in page.data:
+            for idx, company in enumerate(page.data):
                 results.append(_company_row(company))
                 if max_results is not None and len(results) >= max_results:
+                    stopped_mid_page = idx < (len(page.data) - 1)
+                    if stopped_mid_page:
+                        warnings.append(
+                            "Results truncated mid-page; resume token omitted "
+                            "to avoid skipping items. Re-run with a higher "
+                            "--max-results or without it to paginate safely."
+                        )
                     return CommandOutput(
                         data={"companies": results[:max_results]},
                         pagination={
@@ -74,7 +81,7 @@ def company_search(
                                 "prevPageToken": None,
                             }
                         }
-                        if page.next_page_token
+                        if page.next_page_token and not stopped_mid_page
                         else None,
                         api_called=True,
                     )
@@ -546,6 +553,7 @@ def company_get(
             if effective_cap is not None:
                 limit = min(default_limit, effective_cap)
 
+            truncated_mid_page = False
             payload = client._http.get(path, params={"limit": limit} if limit else None)
             rows = payload.get("data", [])
             if not isinstance(rows, list):
@@ -560,6 +568,11 @@ def company_get(
                 page_pagination = {}
             next_url = page_pagination.get("nextUrl")
             prev_url = page_pagination.get("prevUrl")
+
+            if effective_cap is not None and len(items) > effective_cap:
+                truncated_mid_page = True
+                items = items[:effective_cap]
+                next_url = None
 
             while (
                 should_paginate
@@ -580,10 +593,19 @@ def company_get(
                 next_url = page_pagination.get("nextUrl")
                 prev_url = page_pagination.get("prevUrl")
 
-            if effective_cap is not None and len(items) > effective_cap:
-                items = items[:effective_cap]
+                if effective_cap is not None and len(items) > effective_cap:
+                    truncated_mid_page = True
+                    items = items[:effective_cap]
+                    next_url = None
+                    break
 
-            if isinstance(next_url, str) and next_url:
+            if truncated_mid_page and effective_cap is not None:
+                warnings.append(
+                    f"{section} truncated at {effective_cap:,} items; resume URL omitted "
+                    "to avoid skipping items. Re-run with a higher --max-results "
+                    "or with --all."
+                )
+            elif isinstance(next_url, str) and next_url:
                 pagination[section] = {"nextUrl": next_url, "prevUrl": prev_url}
 
             return items
