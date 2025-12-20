@@ -54,6 +54,8 @@ dev = [
     "rich>=13",
     "rich-click>=1.8",
     "platformdirs>=4",
+    # mypy targets python_version=3.10, so TOML parsing must be importable during type-checking.
+    "tomli>=2",
 ]
 dotenv = [
     "python-dotenv>=1.0.0",
