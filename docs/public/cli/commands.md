@@ -32,11 +32,11 @@ affinity whoami --json | jq
 
 ### `affinity resolve-url <url>`
 
-Parses an Affinity UI URL (including tenant hosts like `https://<tenant>.affinity.co/...`) and validates it by fetching the referenced object.
+Parses an Affinity UI URL (including tenant hosts like `https://<tenant>.affinity.co/...` or `https://<tenant>.affinity.com/...`) and validates it by fetching the referenced object.
 
 ```bash
 affinity resolve-url "https://app.affinity.co/companies/263169568"
-affinity resolve-url "https://lool.affinity.co/companies/263169568" --json
+affinity resolve-url "https://mydomain.affinity.com/companies/263169568" --json
 ```
 
 ## People
@@ -67,6 +67,38 @@ affinity person files dump 12345 --out ./bundle
 ```bash
 affinity company search "example.com"
 affinity company search "Example" --json
+```
+
+### `affinity company get <companySelector>`
+
+Fetch a company by id, UI URL (including tenant hosts), or a resolver selector.
+
+Examples:
+
+```bash
+affinity company get 224925494
+affinity company get "https://mydomain.affinity.com/companies/224925494"
+affinity company get domain:wellybox.com
+affinity company get 'name:"WellyBox"'
+```
+
+Field selection:
+
+- `--all-fields`: include all supported (non-list-specific) fields.
+- `--field <id-or-exact-name>` (repeatable)
+- `--field-type <type>` (repeatable)
+- `--no-fields`: skip fields entirely.
+
+Expansions:
+
+- `--expand lists`: include lists the company is on (auto-paginates up to a safe cap; use `--max-results` / `--all` to adjust).
+- `--expand list-entries`: include list entries for the company (first page by default; use `--max-results` / `--all` to fetch more).
+- `--list <id-or-exact-name>`: filter list entries to a specific list (requires `--expand list-entries`).
+
+```bash
+affinity company get 224925494 --all-fields --expand lists
+affinity company get 224925494 --expand list-entries --list "Dealflow" --max-results 200
+affinity company get 224925494 --all-fields --expand lists --json | jq '.data.company.name'
 ```
 
 ### `affinity company files dump <companyId>`

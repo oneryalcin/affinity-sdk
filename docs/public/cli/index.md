@@ -40,6 +40,8 @@ affinity --dotenv --env-file ./dev.env whoami
 - In `--json` mode, JSON is written to **stdout**. Progress/logging go to **stderr**.
 - Human/table output goes to **stdout**; diagnostics go to **stderr**.
 - Commands build a single structured result and then render it as either JSON or table output (no “double implementations”).
+- In `--json` mode, `data` is an object keyed by section name (even for single-section commands), and pagination tokens/URLs live in `meta.pagination.<section>`.
+- If `--max-results` truncates results mid-page, the CLI may omit `meta.pagination.<section>` to avoid producing an unsafe resume token.
 
 ## Performance
 

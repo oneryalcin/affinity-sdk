@@ -474,7 +474,7 @@ def company_get(
 
     Examples:
     - `affinity company get 223384905`
-    - `affinity company get https://lool.affinity.com/companies/223384905`
+    - `affinity company get https://mydomain.affinity.com/companies/223384905`
     - `affinity company get domain:acme.com`
     - `affinity company get name:\"Acme Inc\"`
     """

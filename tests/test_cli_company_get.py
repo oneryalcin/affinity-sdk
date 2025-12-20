@@ -56,7 +56,7 @@ def test_company_get_accepts_affinity_dot_com_url(respx_mock: respx.MockRouter) 
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "company", "get", "https://lool.affinity.com/companies/123"],
+        ["--json", "company", "get", "https://mydomain.affinity.com/companies/123"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0
