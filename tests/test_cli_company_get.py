@@ -263,7 +263,7 @@ def test_company_get_human_output_shows_fields_when_requested(respx_mock: respx.
     assert "2019" in result.output
 
 
-def test_company_get_human_output_summarizes_list_entry_fields(
+def test_company_get_human_output_list_entries_default_is_count_only(
     respx_mock: respx.MockRouter,
 ) -> None:
     respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
@@ -322,6 +322,121 @@ def test_company_get_human_output_summarizes_list_entry_fields(
     )
     assert result.exit_code == 0
     assert "List Entries" in result.output
-    normalized = re.sub(r"[│┃\s]+", " ", result.output)
-    assert "Source of Introduction" in normalized
+    assert "fieldsCount" in result.output
+    assert "Source of Introduction" not in result.output
     assert "{'id':" not in result.output
+
+
+def test_company_get_human_output_show_list_entry_fields_requires_max_results(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
+        return_value=Response(200, json={"data": []})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["company", "get", "123", "--expand", "list-entries", "--show-list-entry-fields"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 2
+
+
+def test_company_get_human_output_show_list_entry_fields_renders_fields_tables(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=1").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 135563331,
+                        "listId": 41780,
+                        "creatorId": 116834779,
+                        "createdAt": "2023-08-06T11:39:40Z",
+                        "fields": [
+                            {
+                                "id": "source-of-introduction",
+                                "type": "relationship-intelligence",
+                                "enrichmentSource": None,
+                                "name": "Source of Introduction",
+                                "value": {
+                                    "type": "person",
+                                    "data": {
+                                        "id": 26229794,
+                                        "firstName": "Yaniv",
+                                        "lastName": "Golan",
+                                        "primaryEmailAddress": "yaniv@example.com",
+                                        "type": "internal",
+                                    },
+                                },
+                            }
+                        ],
+                        "pagination": {"prevUrl": None, "nextUrl": None},
+                    }
+                ],
+                "pagination": {"prevUrl": None, "nextUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "company",
+            "get",
+            "123",
+            "--expand",
+            "list-entries",
+            "--max-results",
+            "1",
+            "--show-list-entry-fields",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    assert "List Entries" in result.output
+    assert "fieldsCount" in result.output
+    normalized = re.sub(r"[│┃\s]+", " ", result.output)
+    assert "List Entry 135563331" in normalized
+    assert "Source of" in normalized
+    assert "Yaniv" in normalized
+
+
+def test_company_get_human_output_list_entry_field_requires_list_for_names(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
+        return_value=Response(200, json={"data": []})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "company",
+            "get",
+            "123",
+            "--expand",
+            "list-entries",
+            "--list-entry-field",
+            "Stage Name",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 2

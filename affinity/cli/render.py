@@ -547,6 +547,7 @@ def _humanize_title(value: str) -> str:
         return ""
     raw = raw.replace("_", " ").replace("-", " ").strip()
     raw = _CAMEL_BREAK_RE.sub(" ", raw)
+    raw = " ".join(raw.split())
     return raw[:1].upper() + raw[1:]
 
 
@@ -563,6 +564,21 @@ def _is_collection_envelope(obj: Any) -> bool:
         return False
     # V2 pagination uses nextUrl/prevUrl (SDK may refer to this as "cursor").
     return "nextUrl" in pagination or "prevUrl" in pagination
+
+
+def _is_text_marker(obj: Any) -> bool:
+    """
+    Allow commands to embed a simple human-only text section in dict-shaped data.
+
+    This is intentionally an internal convention (not part of the JSON contract).
+    """
+
+    return (
+        isinstance(obj, dict)
+        and set(obj.keys()) == {"_text"}
+        and isinstance(obj.get("_text"), str)
+        and bool(obj.get("_text"))
+    )
 
 
 def _pagination_has_more(pagination: dict[str, Any] | None) -> bool:
@@ -761,6 +777,11 @@ def _render_human_data(
             section_pagination = _extract_section_pagination(
                 meta_pagination=meta_pagination, section=only_key
             )
+            if _is_text_marker(v):
+                return Group(
+                    Text(_humanize_title(only_key), style="bold"),
+                    Text(cast(dict[str, Any], v)["_text"]),
+                )
             if isinstance(v, dict) and _is_collection_envelope(v):
                 envelope = cast(dict[str, Any], v)
                 return _render_collection_section(
@@ -795,6 +816,15 @@ def _render_human_data(
             section_pagination = _extract_section_pagination(
                 meta_pagination=meta_pagination, section=key
             )
+
+            if _is_text_marker(v):
+                sections.append(
+                    Group(
+                        Text(_humanize_title(key), style="bold"),
+                        Text(cast(dict[str, Any], v)["_text"]),
+                    )
+                )
+                continue
 
             if isinstance(v, dict) and _is_collection_envelope(v):
                 envelope = cast(dict[str, Any], v)

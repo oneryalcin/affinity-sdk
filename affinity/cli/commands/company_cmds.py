@@ -443,6 +443,24 @@ def company_files_dump(
     ),
 )
 @click.option(
+    "--list-entry-field",
+    "list_entry_fields",
+    multiple=True,
+    help=(
+        "Project a list-entry field into its own column (repeatable; requires --expand "
+        "list-entries)."
+    ),
+)
+@click.option(
+    "--show-list-entry-fields",
+    "show_list_entry_fields",
+    is_flag=True,
+    help=(
+        "Render per-list-entry Fields tables in human output (requires --expand list-entries "
+        "and --max-results <= 3)."
+    ),
+)
+@click.option(
     "--max-results",
     type=int,
     default=None,
@@ -466,6 +484,8 @@ def company_get(
     no_fields: bool,
     expand: tuple[str, ...],
     list_selector: str | None,
+    list_entry_fields: tuple[str, ...],
+    show_list_entry_fields: bool,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
@@ -484,6 +504,13 @@ def company_get(
         company_id, resolved = _resolve_company_selector(client=client, selector=company_selector)
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
+        effective_list_entry_fields = tuple(list_entry_fields)
+        effective_show_list_entry_fields = bool(show_list_entry_fields)
+        if ctx.output == "json":
+            # These flags are human/table presentation features; keep JSON stable and full-fidelity.
+            effective_list_entry_fields = ()
+            effective_show_list_entry_fields = False
+
         if list_selector and "list-entries" not in expand_set:
             raise CLIError(
                 "--list requires --expand list-entries.",
@@ -498,6 +525,66 @@ def company_get(
                 exit_code=2,
                 error_type="usage_error",
             )
+
+        if (
+            effective_list_entry_fields or effective_show_list_entry_fields
+        ) and "list-entries" not in expand_set:
+            raise CLIError(
+                "--list-entry-field/--show-list-entry-fields requires --expand list-entries.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        if effective_list_entry_fields and effective_show_list_entry_fields:
+            raise CLIError(
+                "--list-entry-field and --show-list-entry-fields are mutually exclusive.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        if effective_show_list_entry_fields:
+            if max_results is None:
+                raise CLIError(
+                    "--show-list-entry-fields requires --max-results N (N <= 3).",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint=(
+                        "Add --max-results 3 to limit output, or use --json / --list-entry-field "
+                        "for large outputs."
+                    ),
+                )
+            if max_results <= 0:
+                raise CLIError(
+                    "--max-results must be >= 1 when used with --show-list-entry-fields.",
+                    exit_code=2,
+                    error_type="usage_error",
+                )
+            if max_results > 3:
+                raise CLIError(
+                    f"--show-list-entry-fields is limited to --max-results 3 (got {max_results}).",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint=(
+                        "Options: set --max-results 3, use --json for full structured data, or "
+                        "use --list-entry-field <field> to project specific fields."
+                    ),
+                )
+
+        if effective_list_entry_fields and not list_selector:
+            for spec in effective_list_entry_fields:
+                if any(ch.isspace() for ch in spec):
+                    raise CLIError(
+                        (
+                            "Field names are only allowed with --list because names aren't "
+                            "unique across lists."
+                        ),
+                        exit_code=2,
+                        error_type="usage_error",
+                        hint=(
+                            "Tip: run `affinity list view <list>` to discover list-entry field IDs."
+                        ),
+                        details={"field": spec},
+                    )
 
         requested_types: list[str] = []
         if all_fields:
@@ -644,6 +731,168 @@ def company_get(
                 keep_item=keep_entry if list_id is not None else None,
             )
             data["listEntries"] = entries_items
+
+            if ctx.output != "json":
+                list_name_by_id: dict[int, str] = {}
+                if isinstance(data.get("lists"), list):
+                    for item in data.get("lists", []):
+                        if not isinstance(item, dict):
+                            continue
+                        lid = item.get("id")
+                        name = item.get("name")
+                        if isinstance(lid, int) and isinstance(name, str) and name.strip():
+                            list_name_by_id[lid] = name.strip()
+
+                resolved_list_entry_fields: list[tuple[str, str]] = []
+                if effective_list_entry_fields:
+                    if list_id is not None:
+                        fields_meta = client.lists.get_fields(list_id)
+                        by_id: dict[str, str] = {}
+                        by_name: dict[str, list[str]] = {}
+                        for f in fields_meta:
+                            fid = str(getattr(f, "id", "")).strip()
+                            name = str(getattr(f, "name", "")).strip()
+                            if fid:
+                                by_id[fid] = name or fid
+                            if name:
+                                by_name.setdefault(name.lower(), []).append(fid or name)
+
+                        for spec in effective_list_entry_fields:
+                            raw = spec.strip()
+                            if not raw:
+                                continue
+                            if raw in by_id:
+                                resolved_list_entry_fields.append((raw, by_id[raw]))
+                                continue
+                            matches = by_name.get(raw.lower(), [])
+                            if len(matches) == 1:
+                                fid = matches[0]
+                                resolved_list_entry_fields.append((fid, by_id.get(fid, raw)))
+                                continue
+                            if len(matches) > 1:
+                                raise CLIError(
+                                    (
+                                        f'Ambiguous list-entry field name "{raw}" '
+                                        f"({len(matches)} matches)"
+                                    ),
+                                    exit_code=2,
+                                    error_type="ambiguous_resolution",
+                                    details={"name": raw, "matches": matches[:20]},
+                                )
+                            raise CLIError(
+                                f'Unknown list-entry field: "{raw}"',
+                                exit_code=2,
+                                error_type="usage_error",
+                                hint=(
+                                    "Tip: run `affinity list view <list>` and inspect "
+                                    "`data.fields[*].id` / `data.fields[*].name`."
+                                ),
+                                details={"field": raw},
+                            )
+                    else:
+                        for spec in effective_list_entry_fields:
+                            raw = spec.strip()
+                            if raw:
+                                resolved_list_entry_fields.append((raw, raw))
+
+                def unique_label(label: str, *, used: set[str], fallback: str) -> str:
+                    base = (label or "").strip() or fallback
+                    if base not in used:
+                        used.add(base)
+                        return base
+                    idx = 2
+                    while f"{base} ({idx})" in used:
+                        idx += 1
+                    final = f"{base} ({idx})"
+                    used.add(final)
+                    return final
+
+                used_labels: set[str] = {
+                    "list",
+                    "listId",
+                    "listEntryId",
+                    "createdAt",
+                    "fieldsCount",
+                }
+                projected: list[tuple[str, str]] = []
+                for fid, label in resolved_list_entry_fields:
+                    projected.append((fid, unique_label(label, used=used_labels, fallback=fid)))
+
+                summary_rows: list[dict[str, Any]] = []
+                for entry in entries_items:
+                    if not isinstance(entry, dict):
+                        continue
+                    list_id_value = entry.get("listId")
+                    list_name = (
+                        list_name_by_id.get(list_id_value)
+                        if isinstance(list_id_value, int)
+                        else None
+                    )
+                    list_label = list_name or (
+                        str(list_id_value) if list_id_value is not None else ""
+                    )
+                    fields_payload = entry.get("fields", [])
+                    fields_list = fields_payload if isinstance(fields_payload, list) else []
+                    row: dict[str, Any] = {}
+                    row["list"] = list_label
+                    row["listId"] = list_id_value if isinstance(list_id_value, int) else None
+                    row["listEntryId"] = entry.get("id")
+                    row["createdAt"] = entry.get("createdAt")
+                    row["fieldsCount"] = len(fields_list)
+
+                    field_by_id: dict[str, dict[str, Any]] = {}
+                    for f in fields_list:
+                        if not isinstance(f, dict):
+                            continue
+                        fid = f.get("id")
+                        if isinstance(fid, str) and fid:
+                            field_by_id[fid] = f
+
+                    for fid, label in projected:
+                        field_obj = field_by_id.get(fid)
+                        value_obj = field_obj.get("value") if isinstance(field_obj, dict) else None
+                        row[label] = value_obj
+
+                    summary_rows.append(row)
+
+                data["listEntries"] = summary_rows
+
+                if effective_show_list_entry_fields:
+                    for entry in entries_items:
+                        if not isinstance(entry, dict):
+                            continue
+                        list_entry_id = entry.get("id")
+                        list_id_value = entry.get("listId")
+                        list_name = (
+                            list_name_by_id.get(list_id_value)
+                            if isinstance(list_id_value, int)
+                            else None
+                        )
+                        list_hint = list_name or (
+                            str(list_id_value) if list_id_value is not None else "unknown"
+                        )
+                        title = f"List Entry {list_entry_id} ({list_hint}) Fields"
+
+                        fields_payload = entry.get("fields", [])
+                        fields_list = fields_payload if isinstance(fields_payload, list) else []
+                        if not fields_list:
+                            data[title] = {"_text": "(no fields)"}
+                            continue
+
+                        field_rows: list[dict[str, Any]] = []
+                        for f in fields_list:
+                            if not isinstance(f, dict):
+                                continue
+                            field_rows.append(
+                                {
+                                    "fieldId": f.get("id"),
+                                    "name": f.get("name"),
+                                    "type": f.get("type"),
+                                    "enrichmentSource": f.get("enrichmentSource"),
+                                    "value": f.get("value"),
+                                }
+                            )
+                        data[title] = field_rows
 
         if selection_resolved:
             resolved["fieldSelection"] = selection_resolved
