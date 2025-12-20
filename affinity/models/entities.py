@@ -11,7 +11,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .types import (
     AnyFieldId,
@@ -90,6 +90,30 @@ def _normalize_null_lists(value: Any, keys: Sequence[str]) -> Any:
     return data
 
 
+def _normalize_person_type(value: Any) -> Any:
+    if value is None:
+        return value
+    if isinstance(value, PersonType):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            try:
+                value = int(text)
+            except ValueError:
+                return value
+        else:
+            return value
+    if isinstance(value, int):
+        mapping = {
+            0: PersonType.EXTERNAL,
+            1: PersonType.INTERNAL,
+            2: PersonType.COLLABORATOR,
+        }
+        return mapping.get(value, value)
+    return value
+
+
 # =============================================================================
 # Location Value
 # =============================================================================
@@ -133,6 +157,11 @@ class PersonSummary(AffinityModel):
     primary_email: str | None = Field(None, alias="primaryEmailAddress")
     type: PersonType
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _coerce_person_type(cls, value: Any) -> Any:
+        return _normalize_person_type(value)
+
 
 class Person(AffinityModel):
     """
@@ -148,6 +177,11 @@ class Person(AffinityModel):
     # V2 uses emailAddresses, V1 uses emails - accept both via alias
     emails: list[str] = Field(default_factory=list, alias="emailAddresses")
     type: PersonType = PersonType.EXTERNAL
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _coerce_person_type(cls, value: Any) -> Any:
+        return _normalize_person_type(value)
 
     # Associations (V1 uses organization_ids)
     organization_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")

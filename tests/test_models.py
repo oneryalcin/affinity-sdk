@@ -226,6 +226,14 @@ class TestPersonModel:
             person = Person.model_validate(data)
             assert person.type == PersonType(type_str)
 
+    def test_person_type_from_v1_numeric(self) -> None:
+        data = {"id": 1, "type": 0}
+        person = Person.model_validate(data)
+        assert person.type == PersonType.EXTERNAL
+        data = {"id": 1, "type": 1}
+        person = Person.model_validate(data)
+        assert person.type == PersonType.INTERNAL
+
     def test_person_accepts_v1_current_organization_ids_and_interactions(self) -> None:
         data = {
             "id": 1,

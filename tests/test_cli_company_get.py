@@ -182,6 +182,67 @@ def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.M
     assert payload["meta"]["resolved"]["list"]["listId"] == 10
 
 
+def test_company_get_expand_people_v1(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+    respx_mock.get("https://api.affinity.co/organizations/123").mock(
+        return_value=Response(200, json={"id": 123, "person_ids": [11, 22]})
+    )
+    respx_mock.get("https://api.affinity.co/persons/11").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 11,
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "primary_email": "ada@example.com",
+                "type": 0,
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/persons/22").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 22,
+                "first_name": "Alan",
+                "last_name": "Turing",
+                "primary_email": "alan@example.com",
+                "type": 1,
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "company", "get", "123", "--expand", "people"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is True
+    assert payload["data"]["people"] == [
+        {
+            "id": 11,
+            "name": "Ada Lovelace",
+            "primaryEmail": "ada@example.com",
+            "type": "external",
+        },
+        {
+            "id": 22,
+            "name": "Alan Turing",
+            "primaryEmail": "alan@example.com",
+            "type": "internal",
+        },
+    ]
+    assert "people" in payload["meta"]["resolved"]["expand"]
+
+
 def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -> None:
     respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Acme Corp"})

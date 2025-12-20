@@ -869,7 +869,7 @@ def test_company_service_get_associated_people_v1() -> None:
                     "firstName": "Ada",
                     "lastName": "Lovelace",
                     "primaryEmailAddress": "ada@example.com",
-                    "type": "external",
+                    "type": 0,
                 },
                 request=request,
             )
@@ -881,7 +881,7 @@ def test_company_service_get_associated_people_v1() -> None:
                     "firstName": "Alan",
                     "lastName": "Turing",
                     "primaryEmailAddress": "alan@example.com",
-                    "type": "internal",
+                    "type": 1,
                 },
                 request=request,
             )
@@ -893,7 +893,7 @@ def test_company_service_get_associated_people_v1() -> None:
                     "firstName": "Grace",
                     "lastName": "Hopper",
                     "primaryEmailAddress": "grace@example.com",
-                    "type": "external",
+                    "type": 0,
                 },
                 request=request,
             )
@@ -945,7 +945,7 @@ async def test_async_company_service_get_associated_people_v1() -> None:
                     "firstName": "Ada",
                     "lastName": "Lovelace",
                     "primaryEmailAddress": "ada@example.com",
-                    "type": "external",
+                    "type": 0,
                 },
                 request=request,
             )
@@ -957,7 +957,7 @@ async def test_async_company_service_get_associated_people_v1() -> None:
                     "firstName": "Alan",
                     "lastName": "Turing",
                     "primaryEmailAddress": "alan@example.com",
-                    "type": "internal",
+                    "type": 1,
                 },
                 request=request,
             )

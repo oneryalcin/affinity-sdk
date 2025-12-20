@@ -429,7 +429,7 @@ def company_files_dump(
     "--expand",
     "expand",
     multiple=True,
-    type=click.Choice(["lists", "list-entries"]),
+    type=click.Choice(["lists", "list-entries", "people"]),
     help="Include related data (repeatable).",
 )
 @click.option(
@@ -917,6 +917,41 @@ def company_get(
                                 }
                             )
                         data[title] = field_rows
+
+        if "people" in expand_set:
+            people_cap = max_results
+            if people_cap is None and not all_pages:
+                people_cap = 100
+            if people_cap is not None and people_cap <= 0:
+                data["people"] = []
+            else:
+                person_ids = client.companies.get_associated_person_ids(company_id)
+                total_people = len(person_ids)
+                if people_cap is not None and total_people > people_cap:
+                    warnings.append(
+                        f"People truncated at {people_cap:,} items; re-run with --all "
+                        "or a higher --max-results to fetch more."
+                    )
+
+                people = client.companies.get_associated_people(
+                    company_id,
+                    max_results=people_cap,
+                )
+                data["people"] = [
+                    {
+                        "id": int(person.id),
+                        "name": person.full_name,
+                        "primaryEmail": person.primary_email,
+                        "type": (
+                            person.type.value
+                            if hasattr(person.type, "value")
+                            else person.type
+                            if person.type
+                            else None
+                        ),
+                    }
+                    for person in people
+                ]
 
         if selection_resolved:
             resolved["fieldSelection"] = selection_resolved
