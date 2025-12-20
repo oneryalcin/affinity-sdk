@@ -477,12 +477,56 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
             if year is not None:
                 return year
             return format_number(value, allow_commas=not is_id_column(column))
-        if isinstance(value, list) and all(isinstance(v, str) for v in value):
-            parts = [
-                maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
-                for v in value
-            ]
-            return ", ".join(parts)
+        if isinstance(value, list):
+            if not value:
+                return ""
+            if all(isinstance(v, str) for v in value):
+                parts = [
+                    maybe_urlify_domain(v) if column_lower in {"domain", "domains"} else v
+                    for v in value
+                ]
+                return ", ".join(parts)
+
+            if all(isinstance(v, dict) for v in value):
+                dict_items = cast(list[dict[str, Any]], value)
+
+                def summarize_field_items(items: list[dict[str, Any]]) -> str:
+                    parts: list[str] = []
+                    for item in items:
+                        name = item.get("name") or item.get("id") or "field"
+                        if not isinstance(name, str) or not name.strip():
+                            name = "field"
+                        raw_value = item.get("value")
+                        value_text: str | None = None
+                        if isinstance(raw_value, dict):
+                            value_text = format_dict(raw_value, row=item)
+                        elif raw_value is None:
+                            value_text = None
+                        elif isinstance(raw_value, (int, float)) and not isinstance(
+                            raw_value, bool
+                        ):
+                            value_text = format_number(raw_value, allow_commas=True)
+                        else:
+                            value_text = str(raw_value)
+
+                        if value_text is None or not value_text.strip():
+                            continue
+                        parts.append(f"{name}={value_text}")
+                        if len(parts) >= 3:
+                            break
+
+                    if not parts:
+                        return f"fields ({len(items):,} items)"
+
+                    remaining = len(items) - len(parts)
+                    suffix = f" … (+{remaining} more)" if remaining > 0 else ""
+                    return truncate("; ".join(parts) + suffix, max_len=180)
+
+                if column_lower == "fields":
+                    return summarize_field_items(dict_items)
+                return f"list ({len(dict_items):,} items)"
+
+            return f"list ({len(value):,} items)"
         if isinstance(value, dict):
             return format_dict(value, row=row)
         if isinstance(value, str) and column_lower in {"domain", "domains"}:

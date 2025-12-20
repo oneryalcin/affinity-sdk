@@ -261,3 +261,67 @@ def test_company_get_human_output_shows_fields_when_requested(respx_mock: respx.
     assert "Fields" in result.output
     assert "Year Founded" in result.output
     assert "2019" in result.output
+
+
+def test_company_get_human_output_summarizes_list_entry_fields(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 135563331,
+                        "listId": 41780,
+                        "creatorId": 116834779,
+                        "createdAt": "2023-08-06T11:39:40Z",
+                        "fields": [
+                            {
+                                "id": "source-of-introduction",
+                                "type": "relationship-intelligence",
+                                "enrichmentSource": None,
+                                "name": "Source of Introduction",
+                                "value": {
+                                    "type": "person",
+                                    "data": {
+                                        "id": 26229794,
+                                        "firstName": "Yaniv",
+                                        "lastName": "Golan",
+                                        "primaryEmailAddress": "yaniv@example.com",
+                                        "type": "internal",
+                                    },
+                                },
+                            },
+                            {
+                                "id": "affinity-data-number-of-employees",
+                                "type": "enriched",
+                                "enrichmentSource": "affinity-data",
+                                "name": "Number of Employees",
+                                "value": {"type": "number", "data": 15.0},
+                            },
+                        ],
+                    }
+                ],
+                "pagination": {"prevUrl": None, "nextUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["company", "get", "123", "--expand", "list-entries"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    assert "List Entries" in result.output
+    normalized = re.sub(r"[│┃\s]+", " ", result.output)
+    assert "Source of Introduction" in normalized
+    assert "{'id':" not in result.output
