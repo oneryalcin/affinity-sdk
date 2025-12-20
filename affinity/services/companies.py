@@ -20,6 +20,7 @@ from ..models.entities import (
     FieldMetadata,
     ListEntry,
     ListSummary,
+    Person,
 )
 from ..models.pagination import (
     AsyncPageIterator,
@@ -29,7 +30,7 @@ from ..models.pagination import (
     V1PaginatedResponse,
 )
 from ..models.secondary import MergeTask
-from ..models.types import AnyFieldId, CompanyId, FieldType
+from ..models.types import AnyFieldId, CompanyId, FieldType, PersonId
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
@@ -168,6 +169,51 @@ class CompanyService:
             params=params or None,
         )
         return Company.model_validate(data)
+
+    def get_associated_person_ids(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[PersonId]:
+        """
+        Get associated person IDs for a company.
+
+        V1-only exception: V2 does not expose company -> people associations.
+        Uses GET `/organizations/{id}` and returns `person_ids` if present.
+        """
+        data = self._client.get(f"/organizations/{company_id}", v1=True)
+        organization = data.get("organization") if isinstance(data, dict) else None
+        source = organization if isinstance(organization, dict) else data
+        person_ids = None
+        if isinstance(source, dict):
+            person_ids = source.get("person_ids") or source.get("personIds")
+
+        if not isinstance(person_ids, list):
+            return []
+
+        ids = [PersonId(int(value)) for value in person_ids if value is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    def get_associated_people(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Get associated people for a company.
+
+        V1-only exception. Performs one request per person ID.
+        """
+        person_ids = self.get_associated_person_ids(company_id, max_results=max_results)
+        people: builtins.list[Person] = []
+        for person_id in person_ids:
+            data = self._client.get(f"/persons/{person_id}", v1=True)
+            people.append(Person.model_validate(data))
+        return people
 
     def get_list_entries(
         self,
@@ -595,3 +641,51 @@ class AsyncCompanyService:
 
         data = await self._client.get(f"/companies/{company_id}", params=params or None)
         return Company.model_validate(data)
+
+    async def get_associated_person_ids(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[PersonId]:
+        """
+        Get associated person IDs for a company.
+
+        V1-only exception: V2 does not expose company -> people associations.
+        Uses GET `/organizations/{id}` and returns `person_ids` if present.
+        """
+        data = await self._client.get(f"/organizations/{company_id}", v1=True)
+        organization = data.get("organization") if isinstance(data, dict) else None
+        source = organization if isinstance(organization, dict) else data
+        person_ids = None
+        if isinstance(source, dict):
+            person_ids = source.get("person_ids") or source.get("personIds")
+
+        if not isinstance(person_ids, list):
+            return []
+
+        ids = [PersonId(int(value)) for value in person_ids if value is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    async def get_associated_people(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Get associated people for a company.
+
+        V1-only exception. Performs one request per person ID.
+        """
+        person_ids = await self.get_associated_person_ids(
+            company_id,
+            max_results=max_results,
+        )
+        people: builtins.list[Person] = []
+        for person_id in person_ids:
+            data = await self._client.get(f"/persons/{person_id}", v1=True)
+            people.append(Person.model_validate(data))
+        return people

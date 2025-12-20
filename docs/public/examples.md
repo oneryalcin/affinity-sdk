@@ -31,3 +31,18 @@ python examples/basic_usage.py
 - [`examples/list_management.py`](https://github.com/yaniv-golan/affinity-sdk/blob/main/examples/list_management.py) — list CRUD and entry operations
 - [`examples/resolve_helpers.py`](https://github.com/yaniv-golan/affinity-sdk/blob/main/examples/resolve_helpers.py) — resolve helpers (IDs from external identifiers)
 - [`examples/task_polling.py`](https://github.com/yaniv-golan/affinity-sdk/blob/main/examples/task_polling.py) — polling long-running tasks
+
+## V1-only exception: company -> people associations
+
+V2 does not expose a company -> people association endpoint yet. These helpers use the v1
+organizations API and are documented as exceptions:
+
+```python
+from affinity import Affinity
+from affinity.types import CompanyId
+
+client = Affinity.from_env()
+
+person_ids = client.companies.get_associated_person_ids(CompanyId(224925494))
+people = client.companies.get_associated_people(CompanyId(224925494), max_results=5)
+```

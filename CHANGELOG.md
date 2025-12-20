@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `affinity person get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
 - CLI: `--max-results` and `--all` controls for pagination and expansions (where supported).
 - File downloads: `client.files.download_stream_with_info(...)` exposes headers/filename/size alongside streamed bytes.
+- SDK: v1-only company association helpers `get_associated_person_ids(...)` and `get_associated_people(...)`.
 
 ### Changed
 - `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`), and `affinity list view` shows readable `valueType` values.

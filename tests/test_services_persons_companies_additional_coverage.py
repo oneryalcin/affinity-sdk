@@ -852,6 +852,137 @@ def test_company_service_v2_params_pagination_and_related_endpoints() -> None:
         http.close()
 
 
+def test_company_service_get_associated_people_v1() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and url == httpx.URL("https://v1.example/organizations/2"):
+            return httpx.Response(
+                200,
+                json={"id": 2, "name": "Acme", "person_ids": [1, 2, 3]},
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "firstName": "Ada",
+                    "lastName": "Lovelace",
+                    "primaryEmailAddress": "ada@example.com",
+                    "type": "external",
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/2"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "firstName": "Alan",
+                    "lastName": "Turing",
+                    "primaryEmailAddress": "alan@example.com",
+                    "type": "internal",
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/3"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "firstName": "Grace",
+                    "lastName": "Hopper",
+                    "primaryEmailAddress": "grace@example.com",
+                    "type": "external",
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        assert svc.get_associated_person_ids(CompanyId(2)) == [
+            PersonId(1),
+            PersonId(2),
+            PersonId(3),
+        ]
+        assert svc.get_associated_person_ids(CompanyId(2), max_results=2) == [
+            PersonId(1),
+            PersonId(2),
+        ]
+        people = svc.get_associated_people(CompanyId(2), max_results=1)
+        assert len(people) == 1
+        assert people[0].id == PersonId(1)
+        assert people[0].full_name == "Ada Lovelace"
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_company_service_get_associated_people_v1() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and url == httpx.URL("https://v1.example/organizations/2"):
+            return httpx.Response(
+                200,
+                json={"id": 2, "name": "Acme", "person_ids": [1, 2]},
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "firstName": "Ada",
+                    "lastName": "Lovelace",
+                    "primaryEmailAddress": "ada@example.com",
+                    "type": "external",
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/2"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "firstName": "Alan",
+                    "lastName": "Turing",
+                    "primaryEmailAddress": "alan@example.com",
+                    "type": "internal",
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    async with client:
+        svc = AsyncCompanyService(client)
+        assert await svc.get_associated_person_ids(CompanyId(2)) == [
+            PersonId(1),
+            PersonId(2),
+        ]
+        people = await svc.get_associated_people(CompanyId(2), max_results=1)
+        assert len(people) == 1
+        assert people[0].id == PersonId(1)
+
+
 @pytest.mark.asyncio
 async def test_async_person_service_get_supports_field_ids_and_field_types() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
