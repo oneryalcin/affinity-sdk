@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+pytest.importorskip("rich_click")
+pytest.importorskip("rich")
+pytest.importorskip("platformdirs")
+
+try:
+    import respx
+except ModuleNotFoundError:  # pragma: no cover - optional dev dependency
+    respx = None  # type: ignore[assignment]
+
+from click.testing import CliRunner
+from httpx import Response
+
+from affinity.cli.main import cli
+
+if respx is None:  # pragma: no cover
+    pytest.skip("respx is not installed", allow_module_level=True)
+
+
+def test_company_get_by_id_minimal(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "company", "get", "123"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is True
+    assert payload["command"] == "company get"
+    assert payload["data"]["company"]["id"] == 123
+    assert payload["meta"]["resolved"]["company"]["source"] == "id"
+
+
+def test_company_get_accepts_affinity_dot_com_url(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "company", "get", "https://lool.affinity.com/companies/123"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is True
+    assert payload["meta"]["resolved"]["company"]["source"] == "url"
+    assert payload["meta"]["resolved"]["company"]["companyId"] == 123
+
+
+def test_company_get_field_union_uses_field_ids(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "dealroom-url",
+                        "name": "Dealroom.co URL",
+                        "type": "enriched",
+                        "valueType": "text",
+                        "allowsMultiple": False,
+                    },
+                    {
+                        "id": "field-1",
+                        "name": "Stage",
+                        "type": "global",
+                        "valueType": "dropdown",
+                        "allowsMultiple": False,
+                    },
+                ]
+            },
+        )
+    )
+
+    route = respx_mock.get(
+        "https://api.affinity.co/v2/companies/123?fieldIds=dealroom-url&fieldIds=field-1"
+    ).mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 123,
+                "name": "Acme Corp",
+                "domain": "acme.com",
+                "domains": ["acme.com"],
+                "fields": [
+                    {
+                        "id": "dealroom-url",
+                        "type": "enriched",
+                        "name": "Dealroom.co URL",
+                        "value": {"type": "text", "data": "https://dealroom.co/acme"},
+                    },
+                    {
+                        "id": "field-1",
+                        "type": "global",
+                        "name": "Stage",
+                        "value": {"type": "dropdown", "data": {"id": 1, "text": "Seed"}},
+                    },
+                ],
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "company",
+            "get",
+            "123",
+            "--field",
+            "Dealroom.co URL",
+            "--field-type",
+            "global",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is True
+    selection = payload["meta"]["resolved"]["fieldSelection"]
+    assert "fieldIds" in selection
+    assert selection["fieldTypes"] == ["global"]
+
+    assert route.called
+    req = route.calls[0].request
+    field_ids = req.url.params.get_list("fieldIds")
+    assert "dealroom-url" in field_ids
+    assert "field-1" in field_ids
+    assert req.url.params.get_list("fieldTypes") == []
+
+
+def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(
+            200,
+            json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {"id": 1, "listId": 10, "createdAt": "2020-01-01T00:00:00Z", "fields": {}},
+                    {"id": 2, "listId": 11, "createdAt": "2020-01-01T00:00:00Z", "fields": {}},
+                ]
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "company", "get", "123", "--expand", "list-entries", "--list", "10"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is True
+    entries = payload["data"]["listEntries"]
+    assert entries["filteredByListId"] == 10
+    assert [e["id"] for e in entries["data"]] == [1]
+
+
+def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "company", "get", "123", "--list", "10"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "usage_error"

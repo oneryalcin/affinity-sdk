@@ -38,9 +38,15 @@ def _parse_affinity_url(url: str) -> ResolvedUrl:
             "URL must start with http:// or https://", exit_code=2, error_type="usage_error"
         )
     host = (parsed.hostname or "").lower()
-    if host != "app.affinity.co" and not host.endswith(".affinity.co"):
+    if (
+        host not in {"app.affinity.co", "app.affinity.com"}
+        and not host.endswith(".affinity.co")
+        and not host.endswith(".affinity.com")
+    ):
         raise CLIError(
-            "Not an Affinity UI URL (expected *.affinity.co)", exit_code=2, error_type="usage_error"
+            "Not an Affinity UI URL (expected *.affinity.co or *.affinity.com)",
+            exit_code=2,
+            error_type="usage_error",
         )
 
     path = parsed.path.rstrip("/")

@@ -2295,7 +2295,7 @@ class AsyncHTTPClient:
                 try:
                     result = config.on_event(event)
                     if inspect.isawaitable(result):
-                        await cast(Awaitable[None], result)
+                        await result
                 except Exception:
                     if config.hook_error_policy == "raise":
                         raise
