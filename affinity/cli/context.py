@@ -568,6 +568,8 @@ def _sanitized_request_params_from_diagnostics(exc: AffinityError) -> dict[str, 
             elif isinstance(v, str) and v.isdigit():
                 sanitized_from_params[k] = int(v)
         if sanitized_from_params:
+            if "page_token" in sanitized_from_params:
+                sanitized_from_params["cursor"] = sanitized_from_params.pop("page_token")
             return sanitized_from_params
 
     if not getattr(diagnostics, "url", None):
@@ -589,6 +591,8 @@ def _sanitized_request_params_from_diagnostics(exc: AffinityError) -> dict[str, 
         else:
             # Avoid leaking free-text search terms or other potential PII.
             continue
+    if "page_token" in sanitized:
+        sanitized["cursor"] = sanitized.pop("page_token")
     return sanitized or None
 
 

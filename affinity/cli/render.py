@@ -588,7 +588,7 @@ def _is_collection_envelope(obj: Any) -> bool:
         return False
     if not isinstance(pagination, dict):
         return False
-    # V2 pagination uses nextUrl/prevUrl (SDK may refer to this as "cursor").
+    # Collection envelopes include pagination URLs.
     return "nextUrl" in pagination or "prevUrl" in pagination
 
 
@@ -610,7 +610,7 @@ def _is_text_marker(obj: Any) -> bool:
 def _pagination_has_more(pagination: dict[str, Any] | None) -> bool:
     if not pagination:
         return False
-    for key in ("nextUrl", "nextPageToken"):
+    for key in ("nextCursor", "nextUrl", "nextPageToken"):
         value = pagination.get(key)
         if isinstance(value, str) and value.strip():
             return True
@@ -762,7 +762,17 @@ def _extract_section_pagination(
     if isinstance(maybe, dict):
         return cast(dict[str, Any], maybe)
     # Legacy: unkeyed single-section pagination dict.
-    if any(k in meta_pagination for k in ("nextPageToken", "nextUrl", "prevUrl", "prevPageToken")):
+    if any(
+        k in meta_pagination
+        for k in (
+            "nextCursor",
+            "prevCursor",
+            "nextPageToken",
+            "nextUrl",
+            "prevUrl",
+            "prevPageToken",
+        )
+    ):
         return meta_pagination
     return None
 

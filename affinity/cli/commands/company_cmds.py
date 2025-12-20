@@ -24,8 +24,8 @@ def company_group() -> None:
 
 @company_group.command(name="search", cls=RichCommand)
 @click.argument("query")
-@click.option("--page-size", type=int, default=None, help="v1 page size (max 500).")
-@click.option("--page-token", type=str, default=None, help="v1 page token for resuming.")
+@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
+@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N results total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
@@ -35,7 +35,7 @@ def company_search(
     query: str,
     *,
     page_size: int | None,
-    page_token: str | None,
+    cursor: str | None,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
@@ -61,7 +61,7 @@ def company_search(
             query,
             with_interaction_dates=True,
             page_size=page_size,
-            page_token=page_token,
+            page_token=cursor,
         ):
             for idx, company in enumerate(page.data):
                 results.append(_company_row(company))
@@ -77,8 +77,8 @@ def company_search(
                         data={"companies": results[:max_results]},
                         pagination={
                             "companies": {
-                                "nextPageToken": page.next_page_token,
-                                "prevPageToken": None,
+                                "nextCursor": page.next_page_token,
+                                "prevCursor": None,
                             }
                         }
                         if page.next_page_token and not stopped_mid_page
@@ -90,7 +90,7 @@ def company_search(
                 return CommandOutput(
                     data={"companies": results},
                     pagination={
-                        "companies": {"nextPageToken": page.next_page_token, "prevPageToken": None}
+                        "companies": {"nextCursor": page.next_page_token, "prevCursor": None}
                     }
                     if page.next_page_token
                     else None,
@@ -688,12 +688,12 @@ def company_get(
 
             if truncated_mid_page and effective_cap is not None:
                 warnings.append(
-                    f"{section} truncated at {effective_cap:,} items; resume URL omitted "
+                    f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
                     "to avoid skipping items. Re-run with a higher --max-results "
                     "or with --all."
                 )
             elif isinstance(next_url, str) and next_url:
-                pagination[section] = {"nextUrl": next_url, "prevUrl": prev_url}
+                pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
 
             return items
 

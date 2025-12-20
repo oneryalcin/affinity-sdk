@@ -13,21 +13,21 @@ affinity whoami --json | jq
 Some commands include resume tokens in `meta.pagination`.
 
 - `meta.pagination` is keyed by section name.
-- v2 cursor pagination: `meta.pagination.<section>.nextUrl` (resume with `--cursor <nextUrl>` for commands that support it)
-- v1 token pagination: `meta.pagination.<section>.nextPageToken` (resume with `--page-token <token>`)
+- Resume cursor: `meta.pagination.<section>.nextCursor` (resume with `--cursor <cursor>`)
+- Treat cursors as opaque strings (some may look like URLs); don’t parse them.
 
-Example (v1 search):
+Example (search):
 
 ```bash
-affinity person search "alice" --json | jq -r '.meta.pagination.persons.nextPageToken'
-affinity person search "alice" --page-token "$TOKEN" --json
+affinity person search "alice" --json | jq -r '.meta.pagination.persons.nextCursor'
+affinity person search "alice" --cursor "$CURSOR" --json
 ```
 
-Example (v2 list inventory):
+Example (list inventory):
 
 ```bash
-affinity list ls --json | jq -r '.meta.pagination.lists.nextUrl'
-affinity list ls --cursor "$NEXT_URL" --json
+affinity list ls --json | jq -r '.meta.pagination.lists.nextCursor'
+affinity list ls --cursor "$CURSOR" --json
 ```
 
 Note: if you use `--max-results` and it truncates results mid-page, the CLI may omit pagination to avoid producing an unsafe resume token.

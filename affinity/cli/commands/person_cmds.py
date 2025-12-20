@@ -19,8 +19,8 @@ def person_group() -> None:
 
 @person_group.command(name="search", cls=RichCommand)
 @click.argument("query")
-@click.option("--page-size", type=int, default=None, help="v1 page size (max 500).")
-@click.option("--page-token", type=str, default=None, help="v1 page token for resuming.")
+@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
+@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N results total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
@@ -30,7 +30,7 @@ def person_search(
     query: str,
     *,
     page_size: int | None,
-    page_token: str | None,
+    cursor: str | None,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
@@ -56,7 +56,7 @@ def person_search(
             query,
             with_interaction_dates=True,
             page_size=page_size,
-            page_token=page_token,
+            page_token=cursor,
         ):
             for idx, person in enumerate(page.data):
                 results.append(_person_row(person))
@@ -72,8 +72,8 @@ def person_search(
                         data={"persons": results[:max_results]},
                         pagination={
                             "persons": {
-                                "nextPageToken": page.next_page_token,
-                                "prevPageToken": None,
+                                "nextCursor": page.next_page_token,
+                                "prevCursor": None,
                             }
                         }
                         if page.next_page_token and not stopped_mid_page
@@ -84,9 +84,7 @@ def person_search(
             if first_page and not all_pages and max_results is None:
                 return CommandOutput(
                     data={"persons": results},
-                    pagination={
-                        "persons": {"nextPageToken": page.next_page_token, "prevPageToken": None}
-                    }
+                    pagination={"persons": {"nextCursor": page.next_page_token, "prevCursor": None}}
                     if page.next_page_token
                     else None,
                     api_called=True,

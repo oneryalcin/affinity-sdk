@@ -47,7 +47,7 @@ def _parse_list_type(value: str | None) -> ListType | None:
 
 @list_group.command(name="ls", cls=RichCommand)
 @click.option("--type", "list_type", type=str, default=None, help="Filter by list type.")
-@click.option("--page-size", type=int, default=None, help="v2 page size (limit).")
+@click.option("--page-size", type=int, default=None, help="Page size (limit).")
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N items total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
@@ -93,7 +93,7 @@ def list_ls(
                     stopped_mid_page = idx < (len(page.data) - 1)
                     if stopped_mid_page:
                         warnings.append(
-                            "Results truncated mid-page; resume URL omitted "
+                            "Results truncated mid-page; resume cursor omitted "
                             "to avoid skipping items. Re-run with a higher "
                             "--max-results or without it to paginate safely."
                         )
@@ -105,8 +105,8 @@ def list_ls(
                     ):
                         pagination = {
                             "lists": {
-                                "nextUrl": page.pagination.next_cursor,
-                                "prevUrl": page.pagination.prev_cursor,
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
                             }
                         }
                     return CommandOutput(
@@ -121,8 +121,8 @@ def list_ls(
                     pagination=(
                         {
                             "lists": {
-                                "nextUrl": page.pagination.next_cursor,
-                                "prevUrl": page.pagination.prev_cursor,
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
                             }
                         }
                         if page.pagination.next_cursor
@@ -172,9 +172,9 @@ CsvHeaderMode = Literal["names", "ids"]
     "filter_expr",
     type=str,
     default=None,
-    help="V2 filter string (mutually exclusive with --saved-view).",
+    help="Filter expression (mutually exclusive with --saved-view).",
 )
-@click.option("--page-size", type=int, default=200, show_default=True, help="v2 page size (limit).")
+@click.option("--page-size", type=int, default=200, show_default=True, help="Page size (limit).")
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N rows total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all rows.")
@@ -361,7 +361,7 @@ def list_export(
                 }
                 if csv_iter_state.get("truncatedMidPage") is True:
                     warnings.append(
-                        "Results truncated mid-page; resume URL omitted "
+                        "Results truncated mid-page; resume cursor omitted "
                         "to avoid skipping items. Re-run with a higher "
                         "--max-results or without it to paginate safely."
                     )
@@ -377,7 +377,7 @@ def list_export(
                             partial=False,
                         )
                     ],
-                    pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
+                    pagination={"rows": {"nextCursor": next_cursor, "prevCursor": None}}
                     if next_cursor
                     else None,
                     resolved=resolved,
@@ -409,13 +409,13 @@ def list_export(
 
             if table_iter_state.get("truncatedMidPage") is True:
                 warnings.append(
-                    "Results truncated mid-page; resume URL omitted "
+                    "Results truncated mid-page; resume cursor omitted "
                     "to avoid skipping items. Re-run with a higher "
                     "--max-results or without it to paginate safely."
                 )
             return CommandOutput(
                 data={"rows": rows},
-                pagination={"rows": {"nextUrl": next_cursor, "prevUrl": None}}
+                pagination={"rows": {"nextCursor": next_cursor, "prevCursor": None}}
                 if next_cursor
                 else None,
                 resolved=resolved,
