@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TypedDict
 
 from affinity import AsyncAffinity
@@ -60,6 +60,7 @@ async def dump_entity_files_bundle(
     task_lock = asyncio.Lock()
     skipped_existing = 0
     downloaded = 0
+    used_filenames: set[str] = set()
 
     async with AsyncAffinity(
         api_key=settings.api_key,
@@ -108,8 +109,28 @@ async def dump_entity_files_bundle(
                     if f is None:
                         return
 
-                    safe_name = sanitize_filename(f.name)
-                    dest = files_dir / f"{int(f.id)}__{safe_name}"
+                    def choose_filename(name: str, file_id: int) -> str:
+                        candidate = sanitize_filename(name) or str(file_id)
+                        if candidate not in used_filenames:
+                            return candidate
+
+                        base = PurePosixPath(candidate)
+                        stem = base.stem or "file"
+                        suffix = base.suffix
+                        disambiguated = f"{stem}__{file_id}{suffix}"
+                        if disambiguated not in used_filenames:
+                            return disambiguated
+
+                        i = 2
+                        while True:
+                            alt = f"{stem}__{file_id}__{i}{suffix}"
+                            if alt not in used_filenames:
+                                return alt
+                            i += 1
+
+                    filename = choose_filename(f.name, int(f.id))
+                    used_filenames.add(filename)
+                    dest = files_dir / filename
                     if dest.exists() and not overwrite:
                         existing_size = dest.stat().st_size
                         if f.size and existing_size != int(f.size):

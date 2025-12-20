@@ -33,6 +33,11 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from ..downloads import (
+    AsyncDownloadedFile,
+    DownloadedFile,
+    _download_info_from_headers,
+)
 from ..exceptions import (
     AffinityError,
     ConfigurationError,
@@ -2187,6 +2192,70 @@ class HTTPClient:
 
         return _iter()
 
+    def stream_download_with_info(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
+    ) -> DownloadedFile:
+        """
+        Stream-download file content and return response metadata (headers/filename/size).
+
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - External signed URLs are protected via ExternalHookPolicy (redaction by default).
+        """
+        if deadline_seconds is not None and deadline_seconds <= 0:
+            raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+
+        url = self._build_url(path, v1=v1)
+        context: RequestContext = {"streaming": True}
+        if timeout is not None:
+            context["timeout"] = timeout
+        if deadline_seconds is not None:
+            context["deadline_seconds"] = float(deadline_seconds)
+        if on_progress is not None:
+            context["on_progress"] = on_progress
+
+        req = SDKRequest(
+            method="GET",
+            url=url,
+            headers=[("Accept", "*/*")],
+            api_version="v1" if v1 else "v2",
+            write_intent=False,
+            context=context,
+        )
+        resp = self._raw_stream_pipeline(req)
+        if not isinstance(resp, SDKRawStreamResponse):
+            info = _download_info_from_headers([])
+            return DownloadedFile(
+                headers=info["headers"],
+                raw_headers=[],
+                content_type=info["content_type"],
+                filename=info["filename"],
+                size=info["size"],
+                iter_bytes=iter(()),
+            )
+
+        info = _download_info_from_headers(resp.headers)
+
+        def _iter() -> Iterator[bytes]:
+            yield from resp.stream.iter_bytes(chunk_size=chunk_size)
+
+        return DownloadedFile(
+            headers=info["headers"],
+            raw_headers=list(resp.headers),
+            content_type=info["content_type"],
+            filename=info["filename"],
+            size=info["size"],
+            iter_bytes=_iter(),
+        )
+
     def wrap_validation_error(
         self,
         error: Exception,
@@ -3420,6 +3489,76 @@ class AsyncHTTPClient:
 
         async for chunk in resp.stream.aiter_bytes(chunk_size=chunk_size):
             yield chunk
+
+    async def stream_download_with_info(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
+    ) -> AsyncDownloadedFile:
+        """
+        Stream-download file content and return response metadata (headers/filename/size).
+
+        Notes:
+        - The initial Affinity API response may redirect to an external signed URL.
+          Redirects are followed without forwarding credentials.
+        - External signed URLs are protected via ExternalHookPolicy (redaction by default).
+        """
+        if deadline_seconds is not None and deadline_seconds <= 0:
+            raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+
+        url = self._build_url(path, v1=v1)
+        context: RequestContext = {"streaming": True}
+        if timeout is not None:
+            context["timeout"] = timeout
+        if deadline_seconds is not None:
+            context["deadline_seconds"] = float(deadline_seconds)
+        if on_progress is not None:
+            context["on_progress"] = on_progress
+
+        req = SDKRequest(
+            method="GET",
+            url=url,
+            headers=[("Accept", "*/*")],
+            api_version="v1" if v1 else "v2",
+            write_intent=False,
+            context=context,
+        )
+        resp = await self._raw_stream_pipeline(req)
+        if not isinstance(resp, SDKRawStreamResponse):
+            info = _download_info_from_headers([])
+
+            async def _empty_iter_bytes() -> AsyncIterator[bytes]:
+                if False:
+                    yield b""
+
+            return AsyncDownloadedFile(
+                headers=info["headers"],
+                raw_headers=[],
+                content_type=info["content_type"],
+                filename=info["filename"],
+                size=info["size"],
+                iter_bytes=_empty_iter_bytes(),
+            )
+
+        info = _download_info_from_headers(resp.headers)
+
+        async def _iter_bytes() -> AsyncIterator[bytes]:
+            async for chunk in resp.stream.aiter_bytes(chunk_size=chunk_size):
+                yield chunk
+
+        return AsyncDownloadedFile(
+            headers=info["headers"],
+            raw_headers=list(resp.headers),
+            content_type=info["content_type"],
+            filename=info["filename"],
+            size=info["size"],
+            iter_bytes=_iter_bytes(),
+        )
 
     def wrap_validation_error(
         self,

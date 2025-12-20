@@ -111,6 +111,9 @@ affinity company get 224925494 --all-fields --expand lists --json | jq '.data.co
 affinity company files dump 9876 --out ./bundle
 ```
 
+Notes:
+- Saved files use the original filename when possible; if multiple files share the same name, the CLI disambiguates by appending the file id.
+
 ## Lists
 
 ### `affinity list ls`

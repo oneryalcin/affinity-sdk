@@ -59,7 +59,7 @@ class _FakeAsyncAffinity:
 
 
 def test_dump_entity_files_bundle_skips_existing_files(monkeypatch: object, tmp_path: Path) -> None:
-    existing = tmp_path / "bundle" / "files" / "1__a.txt"
+    existing = tmp_path / "bundle" / "files" / "a.txt"
     existing.parent.mkdir(parents=True, exist_ok=True)
     existing.write_bytes(b"abc")
 
@@ -125,4 +125,4 @@ def test_dump_entity_files_bundle_skips_existing_files(monkeypatch: object, tmp_
 
     manifest_path = tmp_path / "bundle" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["files"][0]["path"] == "files/1__a.txt"
+    assert manifest["files"][0]["path"] == "files/a.txt"

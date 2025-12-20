@@ -41,6 +41,19 @@ with Affinity(api_key="your-key") as client:
         ...
 ```
 
+To preserve server-provided file metadata (like filename and size), use `download_stream_with_info(...)`:
+
+```python
+from affinity import Affinity
+from affinity.types import FileId
+
+with Affinity(api_key="your-key") as client:
+    downloaded = client.files.download_stream_with_info(FileId(123), timeout=60.0, deadline_seconds=300)
+    filename = downloaded.filename or client.files.get(FileId(123)).name
+    for chunk in downloaded.iter_bytes:
+        ...
+```
+
 ## Retries
 
 - Retries apply to safe/idempotent methods (by default `GET`/`HEAD`).

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ..downloads import AsyncDownloadedFile, DownloadedFile
 from ..models.entities import FieldCreate, FieldMetadata, FieldValue, FieldValueCreate
 from ..models.pagination import V1PaginatedResponse
 from ..models.secondary import (
@@ -792,6 +793,32 @@ class EntityFileService:
     ) -> Iterator[bytes]:
         """Stream-download file content in chunks."""
         return self._client.stream_download(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            chunk_size=chunk_size,
+            on_progress=on_progress,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
+        )
+
+    def download_stream_with_info(
+        self,
+        file_id: FileId,
+        *,
+        chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
+    ) -> DownloadedFile:
+        """
+        Stream-download a file and return response metadata (headers/filename/size).
+
+        Notes:
+        - `filename` is derived from `Content-Disposition` when present.
+        - If the server does not provide a filename, callers can fall back to
+          `files.get(file_id).name`.
+        """
+        return self._client.stream_download_with_info(
             f"/entity-files/download/{file_id}",
             v1=True,
             chunk_size=chunk_size,
@@ -1629,6 +1656,32 @@ class AsyncEntityFileService:
         deadline_seconds: float | None = None,
     ) -> AsyncIterator[bytes]:
         return self._client.stream_download(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            chunk_size=chunk_size,
+            on_progress=on_progress,
+            timeout=timeout,
+            deadline_seconds=deadline_seconds,
+        )
+
+    async def download_stream_with_info(
+        self,
+        file_id: FileId,
+        *,
+        chunk_size: int = 65_536,
+        on_progress: ProgressCallback | None = None,
+        timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
+    ) -> AsyncDownloadedFile:
+        """
+        Stream-download a file and return response metadata (headers/filename/size).
+
+        Notes:
+        - `filename` is derived from `Content-Disposition` when present.
+        - If the server does not provide a filename, callers can fall back to
+          `await files.get(file_id)` and use `.name`.
+        """
+        return await self._client.stream_download_with_info(
             f"/entity-files/download/{file_id}",
             v1=True,
             chunk_size=chunk_size,

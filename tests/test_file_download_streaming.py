@@ -200,6 +200,92 @@ def test_entity_file_download_stream_forwards_timeout_to_httpx_stream() -> None:
         http.close()
 
 
+def test_entity_file_download_stream_with_info_exposes_headers_filename_and_size() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://v1.example/entity-files/download/5"
+        ):
+            return httpx.Response(
+                302,
+                headers={"Location": "https://files.example/content.bin?token=secret"},
+                request=request,
+            )
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://files.example/content.bin?token=secret"
+        ):
+            return httpx.Response(
+                200,
+                content=b"hello",
+                headers={
+                    "Content-Length": "5",
+                    "Content-Type": "application/octet-stream",
+                    "Content-Disposition": 'attachment; filename="report.pdf"',
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        files = EntityFileService(http)
+        downloaded = files.download_stream_with_info(FileId(5), chunk_size=2)
+        assert downloaded.filename == "report.pdf"
+        assert downloaded.size == 5
+        assert downloaded.content_type == "application/octet-stream"
+        assert b"".join(downloaded.iter_bytes) == b"hello"
+    finally:
+        http.close()
+
+
+def test_entity_file_download_stream_with_info_parses_rfc5987_filename_star() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://v1.example/entity-files/download/5"
+        ):
+            return httpx.Response(
+                302,
+                headers={"Location": "https://files.example/content.bin"},
+                request=request,
+            )
+        if request.method == "GET" and request.url == httpx.URL(
+            "https://files.example/content.bin"
+        ):
+            return httpx.Response(
+                200,
+                content=b"ok",
+                headers={
+                    "Content-Disposition": "attachment; filename*=UTF-8''hello%20world.txt",
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        files = EntityFileService(http)
+        downloaded = files.download_stream_with_info(FileId(5))
+        assert downloaded.filename == "hello world.txt"
+        assert b"".join(downloaded.iter_bytes) == b"ok"
+    finally:
+        http.close()
+
+
 def test_entity_file_download_stream_deadline_seconds_enforced(monkeypatch: Any) -> None:
     t = {"now": 0.0}
     monkeypatch.setattr("affinity.clients.http.time.monotonic", lambda: t["now"])
