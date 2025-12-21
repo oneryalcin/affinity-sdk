@@ -45,6 +45,7 @@ async def main() -> None:
 | files | ✅ | ✅ |
 | relationships | ✅ | ✅ |
 | auth | ✅ | ✅ |
+| rate_limits | ✅ | ✅ |
 
 ## Next steps
 
