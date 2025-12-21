@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+pytest.importorskip("rich_click")
+pytest.importorskip("rich")
+pytest.importorskip("platformdirs")
+
+try:
+    import respx
+except ModuleNotFoundError:  # pragma: no cover - optional dev dependency
+    respx = None  # type: ignore[assignment]
+
+from click.testing import CliRunner
+from httpx import Response
+
+from affinity.cli.main import cli
+
+if respx is None:  # pragma: no cover
+    pytest.skip("respx is not installed", allow_module_level=True)
+
+
+def test_note_ls_minimal(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/notes").mock(
+        return_value=Response(
+            200,
+            json={
+                "notes": [
+                    {
+                        "id": 1,
+                        "creator_id": 2,
+                        "content": "Hello",
+                        "type": 0,
+                        "person_ids": [3],
+                        "organization_ids": [4],
+                        "opportunity_ids": [5],
+                        "created_at": "2024-01-01T00:00:00Z",
+                    }
+                ],
+                "next_page_token": "next",
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "note", "ls"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["notes"][0]["id"] == 1
+    assert payload["data"]["notes"][0]["companyIds"] == [4]
+    assert payload["meta"]["pagination"]["notes"]["nextCursor"] == "next"
+
+
+def test_note_create_update_delete(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post("https://api.affinity.co/notes").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 10,
+                "creator_id": 2,
+                "content": "Created",
+                "type": 0,
+                "person_ids": [3],
+                "organization_ids": [4],
+                "opportunity_ids": [],
+                "created_at": "2024-01-01T00:00:00Z",
+            },
+        )
+    )
+    respx_mock.put("https://api.affinity.co/notes/10").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 10,
+                "creator_id": 2,
+                "content": "Updated",
+                "type": 0,
+                "person_ids": [3],
+                "organization_ids": [4],
+                "opportunity_ids": [],
+                "created_at": "2024-01-01T00:00:00Z",
+            },
+        )
+    )
+    respx_mock.delete("https://api.affinity.co/notes/10").mock(
+        return_value=Response(200, json={"success": True})
+    )
+
+    runner = CliRunner()
+
+    created = runner.invoke(
+        cli,
+        [
+            "--json",
+            "note",
+            "create",
+            "--content",
+            "Created",
+            "--person-id",
+            "3",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert created.exit_code == 0
+    created_payload = json.loads(created.output.strip())
+    assert created_payload["data"]["note"]["id"] == 10
+
+    updated = runner.invoke(
+        cli,
+        ["--json", "note", "update", "10", "--content", "Updated"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert updated.exit_code == 0
+    updated_payload = json.loads(updated.output.strip())
+    assert updated_payload["data"]["note"]["content"] == "Updated"
+
+    deleted = runner.invoke(
+        cli,
+        ["--json", "note", "delete", "10"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert deleted.exit_code == 0
+    deleted_payload = json.loads(deleted.output.strip())
+    assert deleted_payload["data"]["success"] is True
+
+
+def test_reminder_ls_minimal(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/reminders").mock(
+        return_value=Response(
+            200,
+            json={
+                "reminders": [
+                    {
+                        "id": 22,
+                        "type": 0,
+                        "status": 1,
+                        "content": "Follow up",
+                        "due_date": "2024-02-01T00:00:00Z",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "owner": {
+                            "id": 2,
+                            "firstName": "A",
+                            "lastName": "B",
+                            "primaryEmailAddress": "a@example.com",
+                            "type": "internal",
+                        },
+                        "person": {
+                            "id": 3,
+                            "firstName": "C",
+                            "lastName": "D",
+                            "primaryEmailAddress": "c@example.com",
+                            "type": "external",
+                        },
+                    }
+                ],
+                "next_page_token": "next",
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "reminder", "ls"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["reminders"][0]["id"] == 22
+    assert payload["data"]["reminders"][0]["ownerId"] == 2
+    assert payload["meta"]["pagination"]["reminders"]["nextCursor"] == "next"
+
+
+def test_reminder_create_update_delete(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post("https://api.affinity.co/reminders").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 99,
+                "type": 0,
+                "status": 1,
+                "content": "Created",
+                "due_date": "2024-02-01T00:00:00Z",
+                "created_at": "2024-01-01T00:00:00Z",
+                "owner": {"id": 2, "type": "internal"},
+            },
+        )
+    )
+    respx_mock.put("https://api.affinity.co/reminders/99").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 99,
+                "type": 0,
+                "status": 1,
+                "content": "Updated",
+                "due_date": "2024-02-01T00:00:00Z",
+                "created_at": "2024-01-01T00:00:00Z",
+                "owner": {"id": 2, "type": "internal"},
+            },
+        )
+    )
+    respx_mock.delete("https://api.affinity.co/reminders/99").mock(
+        return_value=Response(200, json={"success": True})
+    )
+
+    runner = CliRunner()
+
+    created = runner.invoke(
+        cli,
+        [
+            "--json",
+            "reminder",
+            "create",
+            "--owner-id",
+            "2",
+            "--type",
+            "one-time",
+            "--due-date",
+            "2024-02-01T00:00:00Z",
+            "--person-id",
+            "3",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert created.exit_code == 0
+    created_payload = json.loads(created.output.strip())
+    assert created_payload["data"]["reminder"]["id"] == 99
+
+    updated = runner.invoke(
+        cli,
+        ["--json", "reminder", "update", "99", "--content", "Updated"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert updated.exit_code == 0
+    updated_payload = json.loads(updated.output.strip())
+    assert updated_payload["data"]["reminder"]["content"] == "Updated"
+
+    deleted = runner.invoke(
+        cli,
+        ["--json", "reminder", "delete", "99"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert deleted.exit_code == 0
+    deleted_payload = json.loads(deleted.output.strip())
+    assert deleted_payload["data"]["success"] is True
+
+
+def test_interaction_ls_minimal(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get("https://api.affinity.co/interactions").mock(
+        return_value=Response(
+            200,
+            json={
+                "interactions": [
+                    {
+                        "id": 5,
+                        "type": 3,
+                        "date": "2024-01-01T00:00:00Z",
+                        "subject": "Hello",
+                        "persons": [{"id": 1, "type": "external"}],
+                    }
+                ],
+                "next_page_token": "next",
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "interaction", "ls"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["interactions"][0]["id"] == 5
+    assert payload["meta"]["pagination"]["interactions"]["nextCursor"] == "next"
+
+
+def test_interaction_create_update_delete(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post("https://api.affinity.co/interactions").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 10,
+                "type": 3,
+                "date": "2024-01-01T00:00:00Z",
+                "subject": "Hello",
+                "persons": [{"id": 1, "type": "external"}],
+            },
+        )
+    )
+    respx_mock.put("https://api.affinity.co/interactions/10").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 10,
+                "type": 3,
+                "date": "2024-01-01T00:00:00Z",
+                "subject": "Updated",
+                "persons": [{"id": 1, "type": "external"}],
+            },
+        )
+    )
+    respx_mock.delete("https://api.affinity.co/interactions/10?type=3").mock(
+        return_value=Response(200, json={"success": True})
+    )
+
+    runner = CliRunner()
+
+    created = runner.invoke(
+        cli,
+        [
+            "--json",
+            "interaction",
+            "create",
+            "--type",
+            "email",
+            "--person-id",
+            "1",
+            "--content",
+            "Hello",
+            "--date",
+            "2024-01-01T00:00:00Z",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert created.exit_code == 0
+    created_payload = json.loads(created.output.strip())
+    assert created_payload["data"]["interaction"]["id"] == 10
+
+    updated = runner.invoke(
+        cli,
+        [
+            "--json",
+            "interaction",
+            "update",
+            "10",
+            "--type",
+            "email",
+            "--content",
+            "Updated",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert updated.exit_code == 0
+    updated_payload = json.loads(updated.output.strip())
+    assert updated_payload["data"]["interaction"]["subject"] == "Updated"
+
+    deleted = runner.invoke(
+        cli,
+        ["--json", "interaction", "delete", "10", "--type", "email"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert deleted.exit_code == 0
+    deleted_payload = json.loads(deleted.output.strip())
+    assert deleted_payload["data"]["success"] is True

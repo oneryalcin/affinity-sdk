@@ -233,3 +233,106 @@ affinity list export 123 --csv out.csv
 affinity list export "My Pipeline" --saved-view "Board" --csv out.csv
 affinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv out.csv
 ```
+
+## Notes
+
+### `affinity note ls`
+
+```bash
+affinity note ls
+affinity note ls --person-id 123 --json
+```
+
+### `affinity note get <noteId>`
+
+```bash
+affinity note get 9876
+```
+
+### `affinity note create`
+
+```bash
+affinity note create --content "Met with the team" --person-id 123
+affinity note create --content "<p>Meeting notes</p>" --type html --company-id 456
+```
+
+### `affinity note update <noteId>`
+
+```bash
+affinity note update 9876 --content "Updated note content"
+```
+
+### `affinity note delete <noteId>`
+
+```bash
+affinity note delete 9876
+```
+
+## Reminders
+
+### `affinity reminder ls`
+
+```bash
+affinity reminder ls
+affinity reminder ls --owner-id 42 --status active --json
+```
+
+### `affinity reminder get <reminderId>`
+
+```bash
+affinity reminder get 12345
+```
+
+### `affinity reminder create`
+
+```bash
+affinity reminder create --owner-id 42 --type one-time --due-date 2025-01-15T09:00:00Z --person-id 123
+affinity reminder create --owner-id 42 --type recurring --reset-type interaction --reminder-days 3 --company-id 456
+```
+
+### `affinity reminder update <reminderId>`
+
+```bash
+affinity reminder update 12345 --content "Follow up after demo"
+affinity reminder update 12345 --completed
+```
+
+### `affinity reminder delete <reminderId>`
+
+```bash
+affinity reminder delete 12345
+```
+
+## Interactions
+
+### `affinity interaction ls`
+
+```bash
+affinity interaction ls --type email
+affinity interaction ls --person-id 123 --start-time 2025-01-01T00:00:00Z --end-time 2025-02-01T00:00:00Z
+```
+
+### `affinity interaction get <interactionId>`
+
+```bash
+affinity interaction get 2468 --type meeting
+```
+
+### `affinity interaction create`
+
+```bash
+affinity interaction create --type meeting --person-id 123 --content "Met to discuss roadmap" --date 2025-01-10T14:00:00Z
+affinity interaction create --type email --person-id 123 --content "Intro email" --date 2025-01-05T09:15:00Z --direction outgoing
+```
+
+### `affinity interaction update <interactionId>`
+
+```bash
+affinity interaction update 2468 --type meeting --content "Updated meeting notes"
+```
+
+### `affinity interaction delete <interactionId>`
+
+```bash
+affinity interaction delete 2468 --type meeting
+```
