@@ -1039,9 +1039,69 @@ class AsyncListService:
             matches.append(item)
         return matches
 
+    # =========================================================================
+    # Write Operations (V1 API)
+    # =========================================================================
+
+    async def create(self, data: ListCreate) -> AffinityList:
+        """
+        Create a new list.
+
+        Uses V1 API.
+        """
+        payload = {
+            "name": data.name,
+            "type": int(data.type),
+            "is_public": data.is_public,
+        }
+        if data.owner_id:
+            payload["owner_id"] = int(data.owner_id)
+        if data.additional_permissions:
+            payload["additional_permissions"] = [
+                {"internal_person_id": int(p.internal_person_id), "role_id": int(p.role_id)}
+                for p in data.additional_permissions
+            ]
+
+        result = await self._client.post("/lists", json=payload, v1=True)
+
+        if self._client.cache:
+            self._client.cache.invalidate_prefix("list")
+        self._resolve_cache.clear()
+
+        return AffinityList.model_validate(result)
+
+    # =========================================================================
+    # Field Operations
+    # =========================================================================
+
+    async def get_fields(
+        self,
+        list_id: ListId,
+        *,
+        field_types: Sequence[FieldType] | None = None,
+    ) -> builtins.list[FieldMetadata]:
+        """
+        Get fields (columns) for a list.
+
+        Includes list-specific, global, enriched, and relationship intelligence fields.
+        Cached for performance.
+        """
+        params: dict[str, Any] = {}
+        if field_types:
+            params["fieldTypes"] = [field_type.value for field_type in field_types]
+
+        data = await self._client.get(
+            f"/lists/{list_id}/fields",
+            params=params or None,
+            cache_key=f"list_{list_id}_fields:{','.join(field_types or [])}",
+            cache_ttl=300,
+        )
+
+        return [FieldMetadata.model_validate(f) for f in data.get("data", [])]
+
 
 class AsyncListEntryService:
-    """Async list entry operations (V2 read paths only) (TR-009)."""
+    """Async list entry operations (TR-009)."""
 
     def __init__(self, client: AsyncHTTPClient, list_id: ListId):
         self._client = client
@@ -1233,3 +1293,179 @@ class AsyncListEntryService:
             f"/companies/{company_id}/list-entries"
         )
         return [entry for entry in all_entries if entry.list_id == self._list_id]
+
+    async def ensure_person(
+        self,
+        person_id: PersonId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """
+        Ensure a person is on this list (idempotent by default).
+
+        Returns:
+            The first existing list entry if present; otherwise creates a new one.
+
+        Notes:
+        - This method performs an existence check to avoid accidental duplicates.
+          To intentionally create duplicates, call `add_person()` directly.
+        """
+        existing = await self.find_person(person_id)
+        if existing is not None:
+            return existing
+        return await self.add_person(person_id, creator_id=creator_id)
+
+    async def ensure_company(
+        self,
+        company_id: CompanyId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """
+        Ensure a company is on this list (idempotent by default).
+
+        Returns:
+            The first existing list entry if present; otherwise creates a new one.
+
+        Notes:
+        - This method performs an existence check to avoid accidental duplicates.
+          To intentionally create duplicates, call `add_company()` directly.
+        """
+        existing = await self.find_company(company_id)
+        if existing is not None:
+            return existing
+        return await self.add_company(company_id, creator_id=creator_id)
+
+    async def add_person(
+        self,
+        person_id: PersonId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """Add a person to this list."""
+        return await self._create_entry(int(person_id), creator_id)
+
+    async def add_company(
+        self,
+        company_id: CompanyId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """Add a company to this list."""
+        return await self._create_entry(int(company_id), creator_id)
+
+    async def add_opportunity(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """Add an opportunity to this list."""
+        return await self._create_entry(int(opportunity_id), creator_id)
+
+    async def _create_entry(
+        self,
+        entity_id: int,
+        creator_id: int | None = None,
+    ) -> ListEntry:
+        """Internal method to create a list entry."""
+        payload: dict[str, Any] = {"entity_id": entity_id}
+        if creator_id:
+            payload["creator_id"] = creator_id
+
+        result = await self._client.post(
+            f"/lists/{self._list_id}/list-entries",
+            json=payload,
+            v1=True,
+        )
+
+        return ListEntry.model_validate(result)
+
+    async def delete(self, entry_id: ListEntryId) -> bool:
+        """
+        Remove a list entry (row) from the list.
+
+        Note: This only removes the entry from the list, not the entity itself.
+        """
+        result = await self._client.delete(
+            f"/lists/{self._list_id}/list-entries/{entry_id}",
+            v1=True,
+        )
+        return bool(result.get("success", False))
+
+    # =========================================================================
+    # Field Value Operations (V2 API)
+    # =========================================================================
+
+    async def get_field_values(
+        self,
+        entry_id: ListEntryId,
+    ) -> FieldValues:
+        """Get all field values for a list entry."""
+        data = await self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}/fields")
+        values = data.get("data", {})
+        if isinstance(values, dict):
+            return FieldValues.model_validate(values)
+        return FieldValues.model_validate({})
+
+    async def get_field_value(
+        self,
+        entry_id: ListEntryId,
+        field_id: AnyFieldId,
+    ) -> Any:
+        """Get a single field value."""
+        data = await self._client.get(
+            f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}"
+        )
+        return data.get("value")
+
+    async def update_field_value(
+        self,
+        entry_id: ListEntryId,
+        field_id: AnyFieldId,
+        value: Any,
+    ) -> FieldValues:
+        """
+        Update a single field value on a list entry.
+
+        Args:
+            entry_id: The list entry
+            field_id: The field to update
+            value: New value (type depends on field type)
+
+        Returns:
+            Updated field value data
+        """
+        result = await self._client.post(
+            f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}",
+            json={"value": value},
+        )
+        return FieldValues.model_validate(result)
+
+    async def batch_update_fields(
+        self,
+        entry_id: ListEntryId,
+        updates: dict[AnyFieldId, Any],
+    ) -> BatchOperationResponse:
+        """
+        Update multiple field values at once.
+
+        More efficient than individual updates for multiple fields.
+
+        Args:
+            entry_id: The list entry
+            updates: Dict mapping field IDs to new values
+
+        Returns:
+            Batch operation response with success/failure per field
+        """
+        operations = [
+            {"fieldId": str(field_id), "value": value} for field_id, value in updates.items()
+        ]
+
+        result = await self._client.patch(
+            f"/lists/{self._list_id}/list-entries/{entry_id}/fields",
+            json={"operations": operations},
+        )
+
+        return BatchOperationResponse.model_validate(result)

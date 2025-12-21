@@ -9,11 +9,13 @@ import pytest
 from affinity.clients.http import AsyncHTTPClient, ClientConfig, HTTPClient
 from affinity.models.entities import ListCreate, ListPermission
 from affinity.models.types import (
+    CompanyId,
     FieldType,
     ListEntryId,
     ListId,
     ListRole,
     ListType,
+    OpportunityId,
     PersonId,
     UserId,
 )
@@ -793,5 +795,195 @@ async def test_async_list_service_and_entry_list_all_iter_with_pagination() -> N
             )
         ] == [ListEntryId(1)]
         assert (await entries.find_person(PersonId(1))) is not None
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_list_service_create_fields_and_entry_write_ops() -> None:
+    created_at = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
+    invalidated_prefixes: list[str] = []
+    calls: dict[str, int] = {"fields": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        if request.method == "POST" and url == httpx.URL("https://v1.example/lists"):
+            payload = json.loads(request.content.decode("utf-8"))
+            assert payload == {
+                "name": "New List",
+                "type": 0,
+                "is_public": True,
+                "owner_id": 1,
+                "additional_permissions": [{"internal_person_id": 2, "role_id": 1}],
+            }
+            return httpx.Response(
+                200,
+                json={
+                    "id": 11,
+                    "name": "New List",
+                    "type": 0,
+                    "public": True,
+                    "ownerId": 1,
+                    "creatorId": 1,
+                    "listSize": 0,
+                    "fields": [],
+                },
+                request=request,
+            )
+
+        if request.method == "GET" and url.copy_with(query=None) == httpx.URL(
+            "https://v2.example/v2/lists/11/fields"
+        ):
+            assert url.params.get_list("fieldTypes") == ["global"]
+            calls["fields"] += 1
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "field-1", "name": "F", "valueType": 2}]},
+                request=request,
+            )
+
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/persons/1/list-entries"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": 5, "listId": 11, "createdAt": created_at, "fields": {}}],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/companies/2/list-entries"
+        ):
+            return httpx.Response(
+                200,
+                json={"data": [], "pagination": {"nextUrl": None}},
+                request=request,
+            )
+
+        if request.method == "POST" and url == httpx.URL(
+            "https://v1.example/lists/11/list-entries"
+        ):
+            payload = json.loads(request.content.decode("utf-8"))
+            if payload["entity_id"] == 2:
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 99,
+                        "listId": 11,
+                        "createdAt": created_at,
+                        "entityId": 2,
+                        "fields": {},
+                    },
+                    request=request,
+                )
+            if payload["entity_id"] == 3:
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 100,
+                        "listId": 11,
+                        "createdAt": created_at,
+                        "entityId": 3,
+                        "fields": {},
+                    },
+                    request=request,
+                )
+            return httpx.Response(400, json={"message": "unexpected"}, request=request)
+
+        if request.method == "DELETE" and url == httpx.URL(
+            "https://v1.example/lists/11/list-entries/99"
+        ):
+            return httpx.Response(200, json={"success": True}, request=request)
+
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/lists/11/list-entries/99/fields"
+        ):
+            return httpx.Response(200, json={"data": {"field-1": "x"}}, request=request)
+
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/lists/11/list-entries/99/fields/field-1"
+        ):
+            return httpx.Response(200, json={"value": "x"}, request=request)
+
+        if request.method == "POST" and url == httpx.URL(
+            "https://v2.example/v2/lists/11/list-entries/99/fields/field-1"
+        ):
+            payload = json.loads(request.content.decode("utf-8"))
+            assert payload == {"value": "y"}
+            return httpx.Response(200, json={"field-1": "y"}, request=request)
+
+        if request.method == "PATCH" and url == httpx.URL(
+            "https://v2.example/v2/lists/11/list-entries/99/fields"
+        ):
+            payload = json.loads(request.content.decode("utf-8"))
+            assert payload == {"operations": [{"fieldId": "field-1", "value": "y"}]}
+            return httpx.Response(
+                200,
+                json={"results": [{"fieldId": "field-1", "success": True}]},
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            enable_cache=True,
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        assert client.cache is not None
+        original_invalidate = client.cache.invalidate_prefix
+
+        def recording_invalidate(prefix: str) -> None:
+            invalidated_prefixes.append(prefix)
+            original_invalidate(prefix)
+
+        client.cache.invalidate_prefix = recording_invalidate  # type: ignore[method-assign]
+
+        svc = AsyncListService(client)
+        created = await svc.create(
+            ListCreate(
+                name="New List",
+                type=ListType.PERSON,
+                is_public=True,
+                owner_id=UserId(1),
+                additional_permissions=[
+                    ListPermission(internal_person_id=UserId(2), role_id=ListRole.BASIC)
+                ],
+            )
+        )
+        assert created.id == ListId(11)
+        assert invalidated_prefixes == ["list"]
+
+        _ = await svc.get_fields(ListId(11), field_types=[FieldType.GLOBAL])
+        _ = await svc.get_fields(ListId(11), field_types=[FieldType.GLOBAL])
+        assert calls["fields"] == 1
+
+        entries = svc.entries(ListId(11))
+        ensured = await entries.ensure_person(PersonId(1))
+        assert ensured.id == ListEntryId(5)
+
+        created_entry = await entries.ensure_company(CompanyId(2))
+        assert created_entry.id == ListEntryId(99)
+
+        created_opportunity = await entries.add_opportunity(OpportunityId(3))
+        assert created_opportunity.id == ListEntryId(100)
+
+        assert await entries.delete(ListEntryId(99)) is True
+        assert (await entries.get_field_values(ListEntryId(99))).requested is True
+        assert await entries.get_field_value(ListEntryId(99), "field-1") == "x"
+        assert (await entries.update_field_value(ListEntryId(99), "field-1", "y")).requested is True
+        assert (
+            await entries.batch_update_fields(ListEntryId(99), {"field-1": "y"})
+        ).all_successful is True
     finally:
         await client.close()
