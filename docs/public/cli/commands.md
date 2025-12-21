@@ -77,12 +77,14 @@ Expansions:
 - `--list <id-or-exact-name>`: filter list entries to a specific list (requires `--expand list-entries`).
 - `--list-entry-field <id-or-exact-name>` (repeatable): project list-entry fields into columns (requires `--expand list-entries`). Field names are only allowed with `--list`.
 - `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
+- `--list-entry-fields-scope list-only|all`: control which fields appear in list-entry tables (human output only).
 
 ```bash
 affinity person get 26229794 --all-fields --expand lists
 affinity person get 26229794 --expand list-entries --list "Dealflow" --max-results 200
 affinity person get 26229794 --expand list-entries --list "Dealflow" --list-entry-field Stage --list-entry-field Amount
 affinity person get 26229794 --expand list-entries --max-results 1 --show-list-entry-fields
+affinity person get 26229794 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
 affinity person get 26229794 --all-fields --expand lists --json | jq '.data.person.name'
 ```
 
@@ -133,12 +135,14 @@ Expansions:
 - `--list <id-or-exact-name>`: filter list entries to a specific list (requires `--expand list-entries`).
 - `--list-entry-field <id-or-exact-name>` (repeatable): project list-entry fields into columns (requires `--expand list-entries`). Field names are only allowed with `--list`.
 - `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
+- `--list-entry-fields-scope list-only|all`: control which fields appear in list-entry tables (human output only).
 
 ```bash
 affinity company get 224925494 --all-fields --expand lists
 affinity company get 224925494 --expand list-entries --list "Dealflow" --max-results 200
 affinity company get 224925494 --expand list-entries --list "Dealflow" --list-entry-field Stage --list-entry-field Amount
 affinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields
+affinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
 affinity company get 224925494 --expand people --max-results 50
 affinity company get 224925494 --all-fields --expand lists --json | jq '.data.company.name'
 ```

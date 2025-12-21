@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from affinity.models.entities import Person
 from affinity.types import FieldType, ListId, PersonId
@@ -14,6 +14,11 @@ from ..options import output_options
 from ..resolve import resolve_list_selector
 from ..runner import CommandOutput, run_command
 from ._entity_files_dump import dump_entity_files_bundle
+from ._list_entry_fields import (
+    ListEntryFieldsScope,
+    build_list_entry_field_rows,
+    filter_list_entry_fields,
+)
 from .resolve_url_cmd import _parse_affinity_url
 
 
@@ -418,6 +423,14 @@ def _resolve_person_field_ids(
     ),
 )
 @click.option(
+    "--list-entry-fields-scope",
+    "list_entry_fields_scope",
+    type=click.Choice(["list-only", "all"]),
+    default="list-only",
+    show_default=True,
+    help="Control which fields appear in list entry tables (human output only).",
+)
+@click.option(
     "--max-results",
     type=int,
     default=None,
@@ -443,6 +456,7 @@ def person_get(
     list_selector: str | None,
     list_entry_fields: tuple[str, ...],
     show_list_entry_fields: bool,
+    list_entry_fields_scope: ListEntryFieldsScope,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
@@ -463,9 +477,32 @@ def person_get(
         expand_set = {e.strip() for e in expand if e and e.strip()}
         effective_list_entry_fields = tuple(list_entry_fields)
         effective_show_list_entry_fields = bool(show_list_entry_fields)
+        effective_list_entry_fields_scope: ListEntryFieldsScope = list_entry_fields_scope
         if ctx.output == "json":
             effective_list_entry_fields = ()
             effective_show_list_entry_fields = False
+            effective_list_entry_fields_scope = "all"
+
+        scope_source = None
+        click_ctx = click.get_current_context(silent=True)
+        if click_ctx is not None:
+            get_source = getattr(cast(Any, click_ctx), "get_parameter_source", None)
+            if callable(get_source):
+                scope_source = get_source("list_entry_fields_scope")
+        source_enum = getattr(cast(Any, click.core), "ParameterSource", None)
+        default_source = getattr(source_enum, "DEFAULT", None) if source_enum else None
+        if (
+            ctx.output != "json"
+            and scope_source is not None
+            and default_source is not None
+            and scope_source != default_source
+            and not show_list_entry_fields
+        ):
+            raise CLIError(
+                "--list-entry-fields-scope requires --show-list-entry-fields.",
+                exit_code=2,
+                error_type="usage_error",
+            )
 
         if list_selector and "list-entries" not in expand_set:
             raise CLIError(
@@ -809,7 +846,17 @@ def person_get(
                     row["listId"] = list_id_value if isinstance(list_id_value, int) else None
                     row["listEntryId"] = entry.get("id")
                     row["createdAt"] = entry.get("createdAt")
-                    row["fieldsCount"] = len(fields_list)
+                    fields_count = len(fields_list)
+                    if effective_show_list_entry_fields:
+                        _filtered, list_only_count, total_count = filter_list_entry_fields(
+                            fields_list,
+                            scope=effective_list_entry_fields_scope,
+                        )
+                        if effective_list_entry_fields_scope == "list-only":
+                            fields_count = list_only_count
+                        else:
+                            fields_count = total_count
+                    row["fieldsCount"] = fields_count
 
                     field_by_id: dict[str, dict[str, Any]] = {}
                     for f in fields_list:
@@ -855,24 +902,39 @@ def person_get(
 
                         fields_payload = entry.get("fields", [])
                         fields_list = fields_payload if isinstance(fields_payload, list) else []
-                        if not fields_list:
+                        filtered_fields, list_only_count, total_count = filter_list_entry_fields(
+                            fields_list,
+                            scope=effective_list_entry_fields_scope,
+                        )
+                        if total_count == 0:
                             data[title] = {"_text": "(no fields)"}
                             continue
+                        if (
+                            effective_list_entry_fields_scope == "list-only"
+                            and list_only_count == 0
+                        ):
+                            data[title] = {
+                                "_text": (
+                                    f"(no list-specific fields; {total_count} non-list fields "
+                                    "available with --list-entry-fields-scope all)"
+                                )
+                            }
+                            continue
 
-                        field_rows: list[dict[str, Any]] = []
-                        for f in fields_list:
-                            if not isinstance(f, dict):
-                                continue
-                            field_rows.append(
-                                {
-                                    "fieldId": f.get("id"),
-                                    "name": f.get("name"),
-                                    "type": f.get("type"),
-                                    "enrichmentSource": f.get("enrichmentSource"),
-                                    "value": f.get("value"),
-                                }
-                            )
-                        data[title] = field_rows
+                        field_rows = build_list_entry_field_rows(filtered_fields)
+                        if (
+                            effective_list_entry_fields_scope == "list-only"
+                            and list_only_count < total_count
+                        ):
+                            data[title] = {
+                                "_rows": field_rows,
+                                "_hint": (
+                                    "Some non-list fields hidden — use "
+                                    "--list-entry-fields-scope all to include them"
+                                ),
+                            }
+                        else:
+                            data[title] = field_rows
 
         if selection_resolved:
             resolved["fieldSelection"] = selection_resolved

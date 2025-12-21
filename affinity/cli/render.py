@@ -403,6 +403,13 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
                 return f"list ({len(data):,} items)"
             if isinstance(data, list) and all(isinstance(x, str) for x in data):
                 return truncate(", ".join(x.strip() for x in data if x.strip()))
+            if isinstance(data, dict):
+                text = data.get("text")
+                if isinstance(text, str) and text.strip():
+                    return truncate(text)
+                name = data.get("name")
+                if isinstance(name, str) and name.strip():
+                    return truncate(name)
             if isinstance(t, str) and t == "person" and isinstance(data, dict):
                 first = data.get("firstName")
                 last = data.get("lastName")
@@ -592,6 +599,18 @@ def _is_collection_envelope(obj: Any) -> bool:
     return "nextUrl" in pagination or "prevUrl" in pagination
 
 
+def _is_collection_with_hint(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    if set(obj.keys()) != {"_rows", "_hint"}:
+        return False
+    if not isinstance(obj.get("_rows"), list):
+        return False
+    if not isinstance(obj.get("_hint"), str):
+        return False
+    return bool(obj.get("_hint"))
+
+
 def _is_text_marker(obj: Any) -> bool:
     """
     Allow commands to embed a simple human-only text section in dict-shaped data.
@@ -680,6 +699,21 @@ def _render_collection_section(
     return Group(*renderables) if len(renderables) > 1 else renderables[0]
 
 
+def _render_collection_with_hint(
+    *,
+    title: str | None,
+    rows: list[Any],
+    hint: str,
+) -> Any:
+    dict_rows = [r for r in rows if isinstance(r, dict)]
+    renderables: list[Any] = []
+    if title:
+        renderables.append(Text(_humanize_title(title), style="bold"))
+    renderables.append(_table_from_rows(cast(list[dict[str, Any]], dict_rows)))
+    renderables.append(Text(hint))
+    return Group(*renderables) if len(renderables) > 1 else renderables[0]
+
+
 def _render_object_section(
     *,
     title: str | None,
@@ -725,6 +759,14 @@ def _render_object_section(
                         title=k,
                         rows=cast(list[Any], envelope.get("data", [])),
                         pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                    )
+                )
+            elif isinstance(v, dict) and _is_collection_with_hint(v):
+                renderables.append(
+                    _render_collection_with_hint(
+                        title=k,
+                        rows=cast(list[Any], v.get("_rows", [])),
+                        hint=cast(str, v.get("_hint")),
                     )
                 )
             elif isinstance(v, list) and all(isinstance(x, dict) for x in v):
@@ -825,6 +867,12 @@ def _render_human_data(
                     rows=cast(list[Any], envelope.get("data", [])),
                     pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
                 )
+            if isinstance(v, dict) and _is_collection_with_hint(v):
+                return _render_collection_with_hint(
+                    title=only_key,
+                    rows=cast(list[Any], v.get("_rows", [])),
+                    hint=cast(str, v.get("_hint")),
+                )
             if isinstance(v, list) and all(isinstance(x, dict) for x in v):
                 return _render_collection_section(
                     title=only_key, rows=v, pagination=section_pagination
@@ -869,6 +917,14 @@ def _render_human_data(
                         title=key,
                         rows=cast(list[Any], envelope.get("data", [])),
                         pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                    )
+                )
+            elif isinstance(v, dict) and _is_collection_with_hint(v):
+                sections.append(
+                    _render_collection_with_hint(
+                        title=key,
+                        rows=cast(list[Any], v.get("_rows", [])),
+                        hint=cast(str, v.get("_hint")),
                     )
                 )
             elif isinstance(v, list) and all(isinstance(x, dict) for x in v):

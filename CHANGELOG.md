@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`), and `affinity list view` shows readable `valueType` values.
 - CLI: human/table output renders dict-shaped results as sections/tables (no JSON-looking panels) and hides pagination mechanics in expanded sections.
 - CLI: `--json` output now uses section-keyed `data` and `meta.pagination` (e.g. `data.lists`, `meta.pagination.lists.nextCursor`); pagination may be omitted when `--max-results` truncates mid-page to avoid unsafe resume tokens.
+- CLI: list-entry fields tables default to list-only fields; use `--list-entry-fields-scope all` for full payloads.
 
 ## 0.2.0 - 2025-12-17
 

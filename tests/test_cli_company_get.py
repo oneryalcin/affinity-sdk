@@ -442,6 +442,21 @@ def test_company_get_human_output_show_list_entry_fields_renders_fields_tables(
                         "createdAt": "2023-08-06T11:39:40Z",
                         "fields": [
                             {
+                                "id": "field-1",
+                                "type": "list",
+                                "enrichmentSource": None,
+                                "name": "Status",
+                                "value": {
+                                    "type": "ranked-dropdown",
+                                    "data": {
+                                        "dropdownOptionId": 1,
+                                        "text": "Intro Meeting",
+                                        "rank": 2,
+                                        "color": "orange",
+                                    },
+                                },
+                            },
+                            {
                                 "id": "source-of-introduction",
                                 "type": "relationship-intelligence",
                                 "enrichmentSource": None,
@@ -456,7 +471,7 @@ def test_company_get_human_output_show_list_entry_fields_renders_fields_tables(
                                         "type": "internal",
                                     },
                                 },
-                            }
+                            },
                         ],
                         "pagination": {"prevUrl": None, "nextUrl": None},
                     }
@@ -486,8 +501,101 @@ def test_company_get_human_output_show_list_entry_fields_renders_fields_tables(
     assert "fieldsCount" in result.output
     normalized = re.sub(r"[│┃\s]+", " ", result.output)
     assert "List Entry 135563331" in normalized
-    assert "Source of" in normalized
-    assert "Yaniv" in normalized
+    assert "Status" in normalized
+    assert "Intro Meeting" in normalized
+    assert "Some non-list fields hidden" in result.output
+
+
+def test_company_get_show_list_entry_fields_scope_hint_suppressed_when_all_list(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+    respx_mock.get("https://api.affinity.co/v2/lists/41780").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 41780,
+                "name": "Dealflow",
+                "type": "company",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 0,
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=1").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 135563331,
+                        "listId": 41780,
+                        "creatorId": 116834779,
+                        "createdAt": "2023-08-06T11:39:40Z",
+                        "fields": [
+                            {
+                                "id": "field-1",
+                                "type": "list",
+                                "enrichmentSource": None,
+                                "name": "Status",
+                                "value": {"type": "text", "data": "Active"},
+                            }
+                        ],
+                    }
+                ],
+                "pagination": {"prevUrl": None, "nextUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "company",
+            "get",
+            "123",
+            "--expand",
+            "list-entries",
+            "--max-results",
+            "1",
+            "--show-list-entry-fields",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0
+    assert "Some non-list fields hidden" not in result.output
+
+
+def test_company_get_list_entry_fields_scope_requires_show(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
+        return_value=Response(200, json={"data": []})
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "company",
+            "get",
+            "123",
+            "--expand",
+            "list-entries",
+            "--list-entry-fields-scope",
+            "all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 2
 
 
 def test_company_get_human_output_list_entry_field_requires_list_for_names(
