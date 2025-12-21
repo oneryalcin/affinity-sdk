@@ -40,8 +40,8 @@ def main() -> None:
             print(f"  {company.name}")
             if company.domain:
                 print(f"    Domain: {company.domain}")
-            if company.fields:
-                print(f"    Fields: {len(company.fields)} values")
+            if company.fields.requested and company.fields.data:
+                print(f"    Fields: {len(company.fields.data)} values")
         print()
 
         # Iterate through all internal team members

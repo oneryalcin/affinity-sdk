@@ -65,8 +65,8 @@ def main() -> None:
                 entity_name = f"{entry.entity.first_name} {entry.entity.last_name}"  # type: ignore
 
             print(f"  {entity_name}")
-            if entry.fields:
-                for field_id, value in list(entry.fields.items())[:3]:
+            if entry.fields.requested and entry.fields.data:
+                for field_id, value in list(entry.fields.data.items())[:3]:
                     print(f"    {field_id}: {value}")
         print()
 
@@ -76,8 +76,8 @@ def main() -> None:
         views = client.lists.get_saved_views(opportunity_list)
         for view in views.data:
             print(f"  {view.name} (type: {view.type})")
-            if view.filter_text:
-                print(f"    Filter: {view.filter_text}")
+            if view.field_ids:
+                print(f"    Field IDs: {len(view.field_ids)}")
         print()
 
         # Example: Getting entries from a saved view

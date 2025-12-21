@@ -76,7 +76,7 @@ def analyze_portfolio_companies(client: Affinity) -> None:
         for entry in entries.all(field_types=[FieldType.ENRICHED, FieldType.LIST]):
             if hasattr(entry.entity, "name"):
                 company_name = entry.entity.name
-                enriched_data = entry.fields
+                enriched_data = entry.fields.data
 
                 print(f"  - {company_name}")
 
@@ -133,7 +133,7 @@ def generate_pipeline_dashboard(client: Affinity, list_id: ListId) -> dict:
 
     for entry in entries_service.all():
         total_count += 1
-        stage = entry.fields.get("Stage", "Unknown")
+        stage = entry.fields.data.get("Stage", "Unknown")
         stage_counts[stage] = stage_counts.get(stage, 0) + 1
 
     print("\nEntries by stage:")
@@ -367,7 +367,7 @@ def export_list_to_dict(client: Affinity, list_id: ListId) -> list[dict]:
             record["entity_email"] = entry.entity.primary_email
 
         # Add field values with human-readable names
-        for field_id, value in entry.fields.items():
+        for field_id, value in entry.fields.data.items():
             field_name = field_names.get(str(field_id), field_id)
             record[field_name] = value
 
