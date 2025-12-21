@@ -156,6 +156,54 @@ affinity company files dump 9876 --out ./bundle
 Notes:
 - Saved files use the original filename when possible; if multiple files share the same name, the CLI disambiguates by appending the file id.
 
+## Opportunities
+
+### `affinity opportunity ls`
+
+List opportunities (basic v2 representation).
+
+```bash
+affinity opportunity ls
+affinity opportunity ls --page-size 200 --all --json
+```
+
+### `affinity opportunity get <opportunitySelector>`
+
+Fetch an opportunity by id or UI URL (including tenant hosts).
+
+```bash
+affinity opportunity get 123
+affinity opportunity get "https://mydomain.affinity.com/opportunities/123"
+affinity opportunity get 123 --details
+```
+
+Notes:
+- `--details` fetches a fuller payload with associations and list entries.
+
+### `affinity opportunity create`
+
+Create a new opportunity (V1 write path).
+
+```bash
+affinity opportunity create --name "Series A" --list "Dealflow"
+affinity opportunity create --name "Series A" --list 123 --person-id 1 --company-id 2
+```
+
+### `affinity opportunity update <opportunityId>`
+
+Update an opportunity (replaces association arrays when provided).
+
+```bash
+affinity opportunity update 123 --name "Series A (Closed)"
+affinity opportunity update 123 --person-id 1 --person-id 2
+```
+
+### `affinity opportunity delete <opportunityId>`
+
+```bash
+affinity opportunity delete 123
+```
+
 ## Lists
 
 ### `affinity list ls`

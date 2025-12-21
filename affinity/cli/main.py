@@ -148,6 +148,7 @@ from .commands.company_cmds import company_group as _company_group  # noqa: E402
 from .commands.completion_cmd import completion_cmd as _completion_cmd  # noqa: E402
 from .commands.config_cmds import config_group as _config_group  # noqa: E402
 from .commands.list_cmds import list_group as _list_group  # noqa: E402
+from .commands.opportunity_cmds import opportunity_group as _opportunity_group  # noqa: E402
 from .commands.person_cmds import person_group as _person_group  # noqa: E402
 from .commands.resolve_url_cmd import resolve_url_cmd as _resolve_url_cmd  # noqa: E402
 from .commands.version_cmd import version_cmd as _version_cmd  # noqa: E402
@@ -160,4 +161,5 @@ cli.add_command(_whoami_cmd)
 cli.add_command(_resolve_url_cmd)
 cli.add_command(_person_group)
 cli.add_command(_company_group)
+cli.add_command(_opportunity_group)
 cli.add_command(_list_group)
