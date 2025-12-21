@@ -163,9 +163,17 @@ def _freeze_v1_query_signature(
 
 def _compute_backoff_seconds(attempt: int, *, base: float) -> float:
     # "Full jitter": random(0, min(cap, base * 2^attempt))
-    max_delay = min(_MAX_RETRY_DELAY_SECONDS, base * (2**attempt))
-    jitter = (time.time_ns() % 1_000_000) / 1_000_000.0
-    return cast(float, jitter * max_delay)
+    max_delay = float(min(_MAX_RETRY_DELAY_SECONDS, base * (2**attempt)))
+    jitter = float((time.time_ns() % 1_000_000) / 1_000_000.0)
+    return jitter * max_delay
+
+
+def _throttle_jitter(delay: float) -> float:
+    if delay <= 0:
+        return 0.0
+    cap = float(min(1.0, delay * 0.1))
+    jitter = float((time.time_ns() % 1_000_000) / 1_000_000.0)
+    return jitter * cap
 
 
 @dataclass(frozen=True, slots=True)
@@ -871,6 +879,42 @@ class RateLimitState:
             }
 
 
+class _RateLimitGateSync:
+    def __init__(self) -> None:
+        self._blocked_until: float = 0.0
+        self._lock = threading.Lock()
+
+    def note(self, wait_seconds: float) -> None:
+        if wait_seconds <= 0:
+            return
+        now = time.monotonic()
+        with self._lock:
+            self._blocked_until = max(self._blocked_until, now + wait_seconds)
+
+    def delay(self) -> float:
+        now = time.monotonic()
+        with self._lock:
+            return max(0.0, self._blocked_until - now)
+
+
+class _RateLimitGateAsync:
+    def __init__(self) -> None:
+        self._blocked_until: float = 0.0
+        self._lock = asyncio.Lock()
+
+    async def note(self, wait_seconds: float) -> None:
+        if wait_seconds <= 0:
+            return
+        now = time.monotonic()
+        async with self._lock:
+            self._blocked_until = max(self._blocked_until, now + wait_seconds)
+
+    async def delay(self) -> float:
+        now = time.monotonic()
+        async with self._lock:
+            return max(0.0, self._blocked_until - now)
+
+
 # =============================================================================
 # Simple TTL Cache
 # =============================================================================
@@ -1000,6 +1044,7 @@ class HTTPClient:
     def __init__(self, config: ClientConfig):
         self._config = config
         self._rate_limit = RateLimitState()
+        self._rate_limit_gate = _RateLimitGateSync()
         self._cache = SimpleCache(config.cache_ttl) if config.enable_cache else None
         self._cache_suffix = _cache_key_suffix(
             self._config.v1_base_url,
@@ -1187,6 +1232,10 @@ class HTTPClient:
         ) -> SDKBaseResponse:
             last_error: Exception | None = None
             for attempt in range(config.max_retries + 1):
+                if attempt == 0:
+                    throttle_delay = self._rate_limit_gate.delay()
+                    if throttle_delay > 0:
+                        time.sleep(throttle_delay + _throttle_jitter(throttle_delay))
                 try:
                     resp = next(req)
                     resp.context["retry_count"] = attempt
@@ -1204,6 +1253,12 @@ class HTTPClient:
                         retry_delay=config.retry_delay,
                         error=e,
                     )
+                    if isinstance(e, RateLimitError):
+                        rate_limit_wait = (
+                            float(e.retry_after) if e.retry_after is not None else outcome.wait_time
+                        )
+                        if rate_limit_wait is not None:
+                            self._rate_limit_gate.note(rate_limit_wait)
                     if outcome.action == "raise":
                         raise
                     if outcome.action == "raise_wrapped":
@@ -2303,6 +2358,7 @@ class AsyncHTTPClient:
     def __init__(self, config: ClientConfig):
         self._config = config
         self._rate_limit = RateLimitState()
+        self._rate_limit_gate = _RateLimitGateAsync()
         self._cache = SimpleCache(config.cache_ttl) if config.enable_cache else None
         self._cache_suffix = _cache_key_suffix(
             self._config.v1_base_url,
@@ -2494,6 +2550,10 @@ class AsyncHTTPClient:
         ) -> SDKBaseResponse:
             last_error: Exception | None = None
             for attempt in range(config.max_retries + 1):
+                if attempt == 0:
+                    throttle_delay = await self._rate_limit_gate.delay()
+                    if throttle_delay > 0:
+                        await asyncio.sleep(throttle_delay + _throttle_jitter(throttle_delay))
                 try:
                     resp = await next(req)
                     resp.context["retry_count"] = attempt
@@ -2511,6 +2571,12 @@ class AsyncHTTPClient:
                         retry_delay=config.retry_delay,
                         error=e,
                     )
+                    if isinstance(e, RateLimitError):
+                        rate_limit_wait = (
+                            float(e.retry_after) if e.retry_after is not None else outcome.wait_time
+                        )
+                        if rate_limit_wait is not None:
+                            await self._rate_limit_gate.note(rate_limit_wait)
                     if outcome.action == "raise":
                         raise
                     if outcome.action == "raise_wrapped":
