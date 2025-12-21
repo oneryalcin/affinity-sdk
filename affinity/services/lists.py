@@ -9,9 +9,13 @@ from __future__ import annotations
 import builtins
 import re
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import urlsplit
 
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
+
+from ..exceptions import AffinityError
 from ..filters import FilterExpression
 from ..models.entities import (
     AffinityList,
@@ -46,6 +50,19 @@ if TYPE_CHECKING:
 
 
 _LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\\d+)/saved-views(?:/|$)")
+
+T = TypeVar("T", bound=BaseModel)
+
+
+def _safe_model_validate(model: type[T], payload: Any, *, context: str | None = None) -> T:
+    label = context or getattr(model, "__name__", "response")
+    try:
+        return model.model_validate(payload)
+    except PydanticValidationError as exc:
+        raise AffinityError(
+            f"Invalid API response while parsing {label}.",
+            response_body=payload,
+        ) from exc
 
 
 def _saved_views_list_id_from_cursor(cursor: str) -> int | None:
@@ -118,8 +135,10 @@ class ListService:
             data = self._client.get("/lists", params=params or None)
 
         return PaginatedResponse[AffinityList](
-            data=[AffinityList.model_validate(list_item) for list_item in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[
+                _safe_model_validate(AffinityList, list_item) for list_item in data.get("data", [])
+            ],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     def pages(
@@ -158,9 +177,10 @@ class ListService:
                 data = self._client.get_url(next_url)
                 return PaginatedResponse[AffinityList](
                     data=[
-                        AffinityList.model_validate(list_item) for list_item in data.get("data", [])
+                        _safe_model_validate(AffinityList, list_item)
+                        for list_item in data.get("data", [])
                     ],
-                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+                    pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
             return self.list()
 
@@ -181,7 +201,7 @@ class ListService:
         Includes field metadata for the list.
         """
         data = self._client.get(f"/lists/{list_id}")
-        return AffinityList.model_validate(data)
+        return _safe_model_validate(AffinityList, data)
 
     def resolve(
         self,
@@ -260,7 +280,7 @@ class ListService:
             self._client.cache.invalidate_prefix("list")
         self._resolve_cache.clear()
 
-        return AffinityList.model_validate(result)
+        return _safe_model_validate(AffinityList, result)
 
     # =========================================================================
     # Field Operations
@@ -289,7 +309,7 @@ class ListService:
             cache_ttl=300,
         )
 
-        return [FieldMetadata.model_validate(f) for f in data.get("data", [])]
+        return [_safe_model_validate(FieldMetadata, f) for f in data.get("data", [])]
 
     # =========================================================================
     # Saved View Operations
@@ -333,8 +353,8 @@ class ListService:
             data = self._client.get(f"/lists/{list_id}/saved-views", params=params or None)
 
         return PaginatedResponse[SavedView](
-            data=[SavedView.model_validate(v) for v in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[_safe_model_validate(SavedView, v) for v in data.get("data", [])],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     def saved_views_pages(
@@ -374,7 +394,7 @@ class ListService:
     def get_saved_view(self, list_id: ListId, view_id: SavedViewId) -> SavedView:
         """Get a single saved view."""
         data = self._client.get(f"/lists/{list_id}/saved-views/{view_id}")
-        return SavedView.model_validate(data)
+        return _safe_model_validate(SavedView, data)
 
 
 class ListEntryService:
@@ -399,8 +419,8 @@ class ListEntryService:
         data = self._client.get(path)
 
         while True:
-            entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
-            pagination = PaginationInfo.model_validate(data.get("pagination", {}))
+            entries.extend(_safe_model_validate(ListEntry, item) for item in data.get("data", []))
+            pagination = _safe_model_validate(PaginationInfo, data.get("pagination", {}))
             if not pagination.next_cursor:
                 break
             data = self._client.get_url(pagination.next_cursor)
@@ -462,8 +482,8 @@ class ListEntryService:
             )
 
         return PaginatedResponse[ListEntryWithEntity](
-            data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     def pages(
@@ -512,8 +532,10 @@ class ListEntryService:
             if next_url:
                 data = self._client.get_url(next_url)
                 return PaginatedResponse[ListEntryWithEntity](
-                    data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
-                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+                    data=[
+                        _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
+                    ],
+                    pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
             return self.list(
                 field_ids=field_ids,
@@ -540,7 +562,7 @@ class ListEntryService:
     def get(self, entry_id: ListEntryId) -> ListEntryWithEntity:
         """Get a single list entry by ID."""
         data = self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}")
-        return ListEntryWithEntity.model_validate(data)
+        return _safe_model_validate(ListEntryWithEntity, data)
 
     def from_saved_view(
         self,
@@ -563,8 +585,8 @@ class ListEntryService:
         )
 
         return PaginatedResponse[ListEntryWithEntity](
-            data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     # =========================================================================
@@ -700,7 +722,7 @@ class ListEntryService:
             v1=True,
         )
 
-        return ListEntry.model_validate(result)
+        return _safe_model_validate(ListEntry, result)
 
     def delete(self, entry_id: ListEntryId) -> bool:
         """
@@ -726,8 +748,8 @@ class ListEntryService:
         data = self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}/fields")
         values = data.get("data", {})
         if isinstance(values, dict):
-            return FieldValues.model_validate(values)
-        return FieldValues.model_validate({})
+            return _safe_model_validate(FieldValues, values)
+        return _safe_model_validate(FieldValues, {})
 
     def get_field_value(
         self,
@@ -759,7 +781,7 @@ class ListEntryService:
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}",
             json={"value": value},
         )
-        return FieldValues.model_validate(result)
+        return _safe_model_validate(FieldValues, result)
 
     def batch_update_fields(
         self,
@@ -787,7 +809,7 @@ class ListEntryService:
             json={"operations": operations},
         )
 
-        return BatchOperationResponse.model_validate(result)
+        return _safe_model_validate(BatchOperationResponse, result)
 
 
 class AsyncListService:
@@ -837,8 +859,10 @@ class AsyncListService:
                 params["limit"] = limit
             data = await self._client.get("/lists", params=params or None)
         return PaginatedResponse[AffinityList](
-            data=[AffinityList.model_validate(list_item) for list_item in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[
+                _safe_model_validate(AffinityList, list_item) for list_item in data.get("data", [])
+            ],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     async def pages(
@@ -877,9 +901,10 @@ class AsyncListService:
                 data = await self._client.get_url(next_url)
                 return PaginatedResponse[AffinityList](
                     data=[
-                        AffinityList.model_validate(list_item) for list_item in data.get("data", [])
+                        _safe_model_validate(AffinityList, list_item)
+                        for list_item in data.get("data", [])
                     ],
-                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+                    pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
             return await self.list()
 
@@ -935,8 +960,8 @@ class AsyncListService:
             data = await self._client.get(f"/lists/{list_id}/saved-views", params=params or None)
 
         return PaginatedResponse[SavedView](
-            data=[SavedView.model_validate(v) for v in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[_safe_model_validate(SavedView, v) for v in data.get("data", [])],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     async def saved_views_pages(
@@ -977,7 +1002,7 @@ class AsyncListService:
     async def get_saved_view(self, list_id: ListId, view_id: SavedViewId) -> SavedView:
         """Get a single saved view."""
         data = await self._client.get(f"/lists/{list_id}/saved-views/{view_id}")
-        return SavedView.model_validate(data)
+        return _safe_model_validate(SavedView, data)
 
     async def get(self, list_id: ListId) -> AffinityList:
         """
@@ -986,7 +1011,7 @@ class AsyncListService:
         Includes field metadata for the list.
         """
         data = await self._client.get(f"/lists/{list_id}")
-        return AffinityList.model_validate(data)
+        return _safe_model_validate(AffinityList, data)
 
     async def resolve(
         self,
@@ -1068,7 +1093,7 @@ class AsyncListService:
             self._client.cache.invalidate_prefix("list")
         self._resolve_cache.clear()
 
-        return AffinityList.model_validate(result)
+        return _safe_model_validate(AffinityList, result)
 
     # =========================================================================
     # Field Operations
@@ -1097,7 +1122,7 @@ class AsyncListService:
             cache_ttl=300,
         )
 
-        return [FieldMetadata.model_validate(f) for f in data.get("data", [])]
+        return [_safe_model_validate(FieldMetadata, f) for f in data.get("data", [])]
 
 
 class AsyncListEntryService:
@@ -1117,8 +1142,8 @@ class AsyncListEntryService:
         data = await self._client.get(path)
 
         while True:
-            entries.extend(ListEntry.model_validate(item) for item in data.get("data", []))
-            pagination = PaginationInfo.model_validate(data.get("pagination", {}))
+            entries.extend(_safe_model_validate(ListEntry, item) for item in data.get("data", []))
+            pagination = _safe_model_validate(PaginationInfo, data.get("pagination", {}))
             if not pagination.next_cursor:
                 break
             data = await self._client.get_url(pagination.next_cursor)
@@ -1175,8 +1200,8 @@ class AsyncListEntryService:
                 params=params or None,
             )
         return PaginatedResponse[ListEntryWithEntity](
-            data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
-            pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+            data=[_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])],
+            pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
     async def pages(
@@ -1227,8 +1252,10 @@ class AsyncListEntryService:
             if next_url:
                 data = await self._client.get_url(next_url)
                 return PaginatedResponse[ListEntryWithEntity](
-                    data=[ListEntryWithEntity.model_validate(e) for e in data.get("data", [])],
-                    pagination=PaginationInfo.model_validate(data.get("pagination", {})),
+                    data=[
+                        _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
+                    ],
+                    pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
             return await self.list(field_ids=field_ids, field_types=field_types, filter=filter)
 
@@ -1379,7 +1406,7 @@ class AsyncListEntryService:
             v1=True,
         )
 
-        return ListEntry.model_validate(result)
+        return _safe_model_validate(ListEntry, result)
 
     async def delete(self, entry_id: ListEntryId) -> bool:
         """
@@ -1405,8 +1432,8 @@ class AsyncListEntryService:
         data = await self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}/fields")
         values = data.get("data", {})
         if isinstance(values, dict):
-            return FieldValues.model_validate(values)
-        return FieldValues.model_validate({})
+            return _safe_model_validate(FieldValues, values)
+        return _safe_model_validate(FieldValues, {})
 
     async def get_field_value(
         self,
@@ -1440,7 +1467,7 @@ class AsyncListEntryService:
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}",
             json={"value": value},
         )
-        return FieldValues.model_validate(result)
+        return _safe_model_validate(FieldValues, result)
 
     async def batch_update_fields(
         self,
@@ -1468,4 +1495,4 @@ class AsyncListEntryService:
             json={"operations": operations},
         )
 
-        return BatchOperationResponse.model_validate(result)
+        return _safe_model_validate(BatchOperationResponse, result)
