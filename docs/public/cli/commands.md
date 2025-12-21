@@ -16,6 +16,7 @@ These options can be used with any command:
 
 - `--json` / `--output json`: emit machine-readable `CommandResult` JSON to stdout.
 - `--trace`: emit request/response/error trace lines to stderr (safe redaction). Recommended with `--no-progress` for long-running commands.
+- `--beta`: enable beta endpoints (required for merge commands).
 
 ## Identity
 
@@ -88,6 +89,32 @@ affinity person get 26229794 --expand list-entries --max-results 1 --show-list-e
 affinity person get 26229794 --all-fields --expand lists --json | jq '.data.person.name'
 ```
 
+### `affinity person create`
+
+```bash
+affinity person create --first-name Ada --last-name Lovelace --email ada@example.com
+affinity person create --first-name Ada --last-name Lovelace --company-id 224925494
+```
+
+### `affinity person update <personId>`
+
+```bash
+affinity person update 26229794 --email ada@example.com --email ada@work.com
+affinity person update 26229794 --first-name Ada --last-name Byron
+```
+
+### `affinity person delete <personId>`
+
+```bash
+affinity person delete 26229794
+```
+
+### `affinity person merge <primaryId> <duplicateId>`
+
+```bash
+affinity --beta person merge 111 222
+```
+
 ### `affinity person files dump <personId>`
 
 Downloads all files attached to a person into a folder bundle with a `manifest.json`.
@@ -145,6 +172,32 @@ affinity company get 224925494 --expand list-entries --max-results 1 --show-list
 affinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
 affinity company get 224925494 --expand people --max-results 50
 affinity company get 224925494 --all-fields --expand lists --json | jq '.data.company.name'
+```
+
+### `affinity company create`
+
+```bash
+affinity company create --name "Acme Corp" --domain acme.com
+affinity company create --name "Acme Corp" --person-id 26229794
+```
+
+### `affinity company update <companyId>`
+
+```bash
+affinity company update 224925494 --domain acme.com
+affinity company update 224925494 --person-id 26229794 --person-id 26229795
+```
+
+### `affinity company delete <companyId>`
+
+```bash
+affinity company delete 224925494
+```
+
+### `affinity company merge <primaryId> <duplicateId>`
+
+```bash
+affinity --beta company merge 111 222
 ```
 
 ### `affinity company files dump <companyId>`
@@ -213,6 +266,13 @@ affinity list ls
 affinity list ls --all --json
 ```
 
+### `affinity list create`
+
+```bash
+affinity list create --name "Dealflow" --type opportunity --private
+affinity list create --name "People" --type person --public --owner-id 42
+```
+
 ### `affinity list view <list>`
 
 Accepts a list ID or an exact list name.
@@ -232,6 +292,31 @@ Exports list entries with selected fields.
 affinity list export 123 --csv out.csv
 affinity list export "My Pipeline" --saved-view "Board" --csv out.csv
 affinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv out.csv
+```
+
+### `affinity list entry add <list>`
+
+```bash
+affinity list entry add 123 --person-id 26229794
+affinity list entry add "Dealflow" --company-id 224925494
+```
+
+### `affinity list entry delete <list> <entryId>`
+
+```bash
+affinity list entry delete 123 98765
+```
+
+### `affinity list entry update-field <list> <entryId>`
+
+```bash
+affinity list entry update-field 123 98765 --field-id field-123 --value-json '"Active"'
+```
+
+### `affinity list entry batch-update <list> <entryId>`
+
+```bash
+affinity list entry batch-update 123 98765 --updates-json '{"field-1": "Active", "field-2": 10}'
 ```
 
 ## Notes
@@ -335,4 +420,75 @@ affinity interaction update 2468 --type meeting --content "Updated meeting notes
 
 ```bash
 affinity interaction delete 2468 --type meeting
+```
+
+## Fields
+
+### `affinity field ls`
+
+```bash
+affinity field ls --entity-type company
+affinity field ls --list-id 123 --json
+```
+
+### `affinity field create`
+
+```bash
+affinity field create --name "Stage" --entity-type opportunity --value-type dropdown --list-specific
+```
+
+### `affinity field delete <fieldId>`
+
+```bash
+affinity field delete field-123
+```
+
+## Field Values
+
+### `affinity field-value ls`
+
+```bash
+affinity field-value ls --person-id 26229794
+affinity field-value ls --list-entry-id 98765 --json
+```
+
+### `affinity field-value create`
+
+```bash
+affinity field-value create --field-id field-123 --entity-id 26229794 --value \"Investor\"
+```
+
+### `affinity field-value update <fieldValueId>`
+
+```bash
+affinity field-value update 555 --value-json '\"Active\"'
+```
+
+### `affinity field-value delete <fieldValueId>`
+
+```bash
+affinity field-value delete 555
+```
+
+## Relationship Strengths
+
+### `affinity relationship-strength get`
+
+```bash
+affinity relationship-strength get --external-id 26229794
+affinity relationship-strength get --external-id 26229794 --internal-id 42
+```
+
+## Tasks
+
+### `affinity task get <taskUrl>`
+
+```bash
+affinity task get https://api.affinity.co/tasks/person-merges/123
+```
+
+### `affinity task wait <taskUrl>`
+
+```bash
+affinity task wait https://api.affinity.co/tasks/person-merges/123 --timeout 120
 ```

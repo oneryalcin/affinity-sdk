@@ -54,6 +54,11 @@ from .paths import get_paths
     help="Maximum retries for rate-limited requests.",
 )
 @click.option(
+    "--beta",
+    is_flag=True,
+    help="Enable beta endpoints (required for merge commands).",
+)
+@click.option(
     "--readonly",
     is_flag=True,
     help="Disallow write operations (safety guard; affects all SDK calls).",
@@ -85,6 +90,7 @@ def cli(
     api_key_stdin: bool,
     timeout: float | None,
     max_retries: int,
+    beta: bool,
     readonly: bool,
     trace: bool,
     log_file: str | None,
@@ -123,6 +129,7 @@ def cli(
         api_key_stdin=api_key_stdin,
         timeout=timeout,
         max_retries=max_retries,
+        enable_beta_endpoints=beta,
         readonly=readonly,
         trace=trace,
         log_file=effective_log_file,
@@ -147,13 +154,19 @@ def cli(
 from .commands.company_cmds import company_group as _company_group  # noqa: E402
 from .commands.completion_cmd import completion_cmd as _completion_cmd  # noqa: E402
 from .commands.config_cmds import config_group as _config_group  # noqa: E402
+from .commands.field_cmds import field_group as _field_group  # noqa: E402
+from .commands.field_value_cmds import field_value_group as _field_value_group  # noqa: E402
 from .commands.interaction_cmds import interaction_group as _interaction_group  # noqa: E402
 from .commands.list_cmds import list_group as _list_group  # noqa: E402
 from .commands.note_cmds import note_group as _note_group  # noqa: E402
 from .commands.opportunity_cmds import opportunity_group as _opportunity_group  # noqa: E402
 from .commands.person_cmds import person_group as _person_group  # noqa: E402
+from .commands.relationship_strength_cmds import (  # noqa: E402
+    relationship_strength_group as _relationship_strength_group,
+)
 from .commands.reminder_cmds import reminder_group as _reminder_group  # noqa: E402
 from .commands.resolve_url_cmd import resolve_url_cmd as _resolve_url_cmd  # noqa: E402
+from .commands.task_cmds import task_group as _task_group  # noqa: E402
 from .commands.version_cmd import version_cmd as _version_cmd  # noqa: E402
 from .commands.whoami_cmd import whoami_cmd as _whoami_cmd  # noqa: E402
 
@@ -169,3 +182,7 @@ cli.add_command(_list_group)
 cli.add_command(_note_group)
 cli.add_command(_reminder_group)
 cli.add_command(_interaction_group)
+cli.add_command(_field_group)
+cli.add_command(_field_value_group)
+cli.add_command(_relationship_strength_group)
+cli.add_command(_task_group)

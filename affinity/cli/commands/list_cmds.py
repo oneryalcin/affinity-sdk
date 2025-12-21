@@ -8,9 +8,18 @@ from typing import Any, Literal, cast
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
-from affinity.models.entities import FieldMetadata, ListEntryWithEntity
+from affinity.models.entities import FieldMetadata, ListCreate, ListEntryWithEntity
 from affinity.models.types import ListType
-from affinity.types import ListId
+from affinity.types import (
+    AnyFieldId,
+    CompanyId,
+    EnrichedFieldId,
+    FieldId,
+    ListEntryId,
+    ListId,
+    OpportunityId,
+    PersonId,
+)
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
@@ -25,6 +34,7 @@ from ..resolve import (
 )
 from ..results import Artifact
 from ..runner import CommandOutput, run_command
+from ._v1_parsing import parse_json_value
 
 
 @click.group(name="list", cls=RichGroup)
@@ -135,6 +145,53 @@ def list_ls(
         return CommandOutput(data={"lists": rows}, pagination=None, api_called=True)
 
     run_command(ctx, command="list ls", fn=fn)
+
+
+@list_group.command(name="create", cls=RichCommand)
+@click.option("--name", required=True, help="List name.")
+@click.option("--type", "list_type", required=True, help="List type (person/company/opportunity).")
+@click.option(
+    "--public/--private",
+    "is_public",
+    default=False,
+    help="Whether the list is public (default: private).",
+)
+@click.option("--owner-id", type=int, default=None, help="Owner id.")
+@output_options
+@click.pass_obj
+def list_create(
+    ctx: CLIContext,
+    *,
+    name: str,
+    list_type: str,
+    is_public: bool,
+    owner_id: int | None,
+) -> None:
+    """Create a list (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        _ = warnings
+        lt = _parse_list_type(list_type)
+        if lt is None:
+            raise CLIError(
+                "Missing list type.",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use --type person|company|opportunity.",
+            )
+        client = ctx.get_client(warnings=warnings)
+        created = client.lists.create(
+            ListCreate(
+                name=name,
+                type=lt,
+                is_public=is_public,
+                owner_id=owner_id,
+            )
+        )
+        payload = created.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(data={"list": payload}, api_called=True)
+
+    run_command(ctx, command="list create", fn=fn)
 
 
 @list_group.command(name="view", cls=RichCommand)
@@ -611,3 +668,181 @@ def _entry_to_row(
         key = fid if key_mode == "ids" else field_by_id[fid].name if fid in field_by_id else fid
         row[key] = entry.fields.data.get(str(fid))
     return row
+
+
+@list_group.group(name="entry", cls=RichGroup)
+def list_entry_group() -> None:
+    """List entry commands."""
+
+
+def _validate_entry_target(
+    person_id: int | None,
+    company_id: int | None,
+    opportunity_id: int | None,
+) -> None:
+    count = sum(1 for value in (person_id, company_id, opportunity_id) if value is not None)
+    if count == 1:
+        return
+    raise CLIError(
+        "Provide exactly one of --person-id, --company-id, or --opportunity-id.",
+        error_type="usage_error",
+        exit_code=2,
+    )
+
+
+@list_entry_group.command(name="add", cls=RichCommand)
+@click.argument("list_selector")
+@click.option("--person-id", type=int, default=None, help="Person id to add.")
+@click.option("--company-id", type=int, default=None, help="Company id to add.")
+@click.option("--opportunity-id", type=int, default=None, help="Opportunity id to add.")
+@click.option("--creator-id", type=int, default=None, help="Creator id override.")
+@output_options
+@click.pass_obj
+def list_entry_add(
+    ctx: CLIContext,
+    list_selector: str,
+    *,
+    person_id: int | None,
+    company_id: int | None,
+    opportunity_id: int | None,
+    creator_id: int | None,
+) -> None:
+    """Add a list entry (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        _validate_entry_target(person_id, company_id, opportunity_id)
+        client = ctx.get_client(warnings=warnings)
+        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        entries = client.lists.entries(resolved_list.list.id)
+
+        created = None
+        if person_id is not None:
+            created = entries.add_person(PersonId(person_id), creator_id=creator_id)
+        elif company_id is not None:
+            created = entries.add_company(CompanyId(company_id), creator_id=creator_id)
+        else:
+            assert opportunity_id is not None
+            created = entries.add_opportunity(OpportunityId(opportunity_id), creator_id=creator_id)
+
+        payload = created.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(
+            data={"listEntry": payload},
+            resolved=resolved_list.resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="list entry add", fn=fn)
+
+
+@list_entry_group.command(name="delete", cls=RichCommand)
+@click.argument("list_selector")
+@click.argument("entry_id", type=int)
+@output_options
+@click.pass_obj
+def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> None:
+    """Delete a list entry (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        entries = client.lists.entries(resolved_list.list.id)
+        success = entries.delete(ListEntryId(entry_id))
+        return CommandOutput(
+            data={"success": success},
+            resolved=resolved_list.resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="list entry delete", fn=fn)
+
+
+@list_entry_group.command(name="update-field", cls=RichCommand)
+@click.argument("list_selector")
+@click.argument("entry_id", type=int)
+@click.option("--field-id", required=True, help="Field id to update.")
+@click.option("--value", default=None, help="New value (string).")
+@click.option("--value-json", default=None, help="New value (JSON literal).")
+@output_options
+@click.pass_obj
+def list_entry_update_field(
+    ctx: CLIContext,
+    list_selector: str,
+    entry_id: int,
+    *,
+    field_id: str,
+    value: str | None,
+    value_json: str | None,
+) -> None:
+    """Update a list entry field (V2 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        if value is None and value_json is None:
+            raise CLIError(
+                "Provide --value or --value-json.",
+                error_type="usage_error",
+                exit_code=2,
+            )
+        if value is not None and value_json is not None:
+            raise CLIError(
+                "Use only one of --value or --value-json.",
+                error_type="usage_error",
+                exit_code=2,
+            )
+        client = ctx.get_client(warnings=warnings)
+        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        entries = client.lists.entries(resolved_list.list.id)
+        parsed_value = value if value_json is None else parse_json_value(value_json, label="value")
+        try:
+            parsed_field_id: AnyFieldId = FieldId(field_id)
+        except ValueError:
+            parsed_field_id = EnrichedFieldId(field_id)
+        result = entries.update_field_value(ListEntryId(entry_id), parsed_field_id, parsed_value)
+        payload = result.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(
+            data={"fieldValues": payload},
+            resolved=resolved_list.resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="list entry update-field", fn=fn)
+
+
+@list_entry_group.command(name="batch-update", cls=RichCommand)
+@click.argument("list_selector")
+@click.argument("entry_id", type=int)
+@click.option(
+    "--updates-json",
+    required=True,
+    help="JSON object of fieldId -> value pairs.",
+)
+@output_options
+@click.pass_obj
+def list_entry_batch_update(
+    ctx: CLIContext,
+    list_selector: str,
+    entry_id: int,
+    *,
+    updates_json: str,
+) -> None:
+    """Batch update list entry fields (V2 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        entries = client.lists.entries(resolved_list.list.id)
+        parsed = parse_json_value(updates_json, label="updates-json")
+        if not isinstance(parsed, dict):
+            raise CLIError(
+                "--updates-json must be a JSON object.",
+                error_type="usage_error",
+                exit_code=2,
+            )
+        result = entries.batch_update_fields(ListEntryId(entry_id), parsed)
+        payload = result.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(
+            data={"fieldUpdates": payload},
+            resolved=resolved_list.resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="list entry batch-update", fn=fn)

@@ -4,8 +4,8 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, cast
 
-from affinity.models.entities import Company
-from affinity.types import CompanyId, FieldType, ListId
+from affinity.models.entities import Company, CompanyCreate, CompanyUpdate
+from affinity.types import CompanyId, FieldType, ListId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
@@ -1028,3 +1028,123 @@ def company_get(
         )
 
     run_command(ctx, command="company get", fn=fn)
+
+
+@company_group.command(name="create", cls=RichCommand)
+@click.option("--name", required=True, help="Company name.")
+@click.option("--domain", default=None, help="Primary domain.")
+@click.option(
+    "--person-id",
+    "person_ids",
+    multiple=True,
+    type=int,
+    help="Associated person id (repeatable).",
+)
+@output_options
+@click.pass_obj
+def company_create(
+    ctx: CLIContext,
+    *,
+    name: str,
+    domain: str | None,
+    person_ids: tuple[int, ...],
+) -> None:
+    """Create a company (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        created = client.companies.create(
+            CompanyCreate(
+                name=name,
+                domain=domain,
+                person_ids=[PersonId(pid) for pid in person_ids],
+            )
+        )
+        payload = created.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(data={"company": payload}, api_called=True)
+
+    run_command(ctx, command="company create", fn=fn)
+
+
+@company_group.command(name="update", cls=RichCommand)
+@click.argument("company_id", type=int)
+@click.option("--name", default=None, help="Updated company name.")
+@click.option("--domain", default=None, help="Updated primary domain.")
+@click.option(
+    "--person-id",
+    "person_ids",
+    multiple=True,
+    type=int,
+    help="Replace associated person ids (repeatable).",
+)
+@output_options
+@click.pass_obj
+def company_update(
+    ctx: CLIContext,
+    company_id: int,
+    *,
+    name: str | None,
+    domain: str | None,
+    person_ids: tuple[int, ...],
+) -> None:
+    """Update a company (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        if not (name or domain or person_ids):
+            raise CLIError(
+                "Provide at least one field to update.",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use --name, --domain, or --person-id.",
+            )
+        client = ctx.get_client(warnings=warnings)
+        updated = client.companies.update(
+            CompanyId(company_id),
+            CompanyUpdate(
+                name=name,
+                domain=domain,
+                person_ids=[PersonId(pid) for pid in person_ids] if person_ids else None,
+            ),
+        )
+        payload = updated.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(data={"company": payload}, api_called=True)
+
+    run_command(ctx, command="company update", fn=fn)
+
+
+@company_group.command(name="delete", cls=RichCommand)
+@click.argument("company_id", type=int)
+@output_options
+@click.pass_obj
+def company_delete(ctx: CLIContext, company_id: int) -> None:
+    """Delete a company (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        success = client.companies.delete(CompanyId(company_id))
+        return CommandOutput(data={"success": success}, api_called=True)
+
+    run_command(ctx, command="company delete", fn=fn)
+
+
+@company_group.command(name="merge", cls=RichCommand)
+@click.argument("primary_id", type=int)
+@click.argument("duplicate_id", type=int)
+@output_options
+@click.pass_obj
+def company_merge(
+    ctx: CLIContext,
+    primary_id: int,
+    duplicate_id: int,
+) -> None:
+    """Merge a duplicate company into a primary company (beta)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        task_url = client.companies.merge(
+            CompanyId(primary_id),
+            CompanyId(duplicate_id),
+        )
+        return CommandOutput(data={"taskUrl": task_url}, api_called=True)
+
+    run_command(ctx, command="company merge", fn=fn)

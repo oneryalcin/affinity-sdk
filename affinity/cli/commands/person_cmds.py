@@ -4,8 +4,8 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, cast
 
-from affinity.models.entities import Person
-from affinity.types import FieldType, ListId, PersonId
+from affinity.models.entities import Person, PersonCreate, PersonUpdate
+from affinity.types import CompanyId, FieldType, ListId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
@@ -992,3 +992,136 @@ def person_files_dump(
         )
 
     run_command(ctx, command="person files dump", fn=fn)
+
+
+@person_group.command(name="create", cls=RichCommand)
+@click.option("--first-name", required=True, help="First name.")
+@click.option("--last-name", required=True, help="Last name.")
+@click.option(
+    "--email",
+    "emails",
+    multiple=True,
+    help="Email address (repeatable).",
+)
+@click.option(
+    "--company-id",
+    "company_ids",
+    multiple=True,
+    type=int,
+    help="Associated company id (repeatable).",
+)
+@output_options
+@click.pass_obj
+def person_create(
+    ctx: CLIContext,
+    *,
+    first_name: str,
+    last_name: str,
+    emails: tuple[str, ...],
+    company_ids: tuple[int, ...],
+) -> None:
+    """Create a person (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        created = client.persons.create(
+            PersonCreate(
+                first_name=first_name,
+                last_name=last_name,
+                emails=list(emails),
+                organization_ids=[CompanyId(cid) for cid in company_ids],
+            )
+        )
+        payload = created.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(data={"person": payload}, api_called=True)
+
+    run_command(ctx, command="person create", fn=fn)
+
+
+@person_group.command(name="update", cls=RichCommand)
+@click.argument("person_id", type=int)
+@click.option("--first-name", default=None, help="Updated first name.")
+@click.option("--last-name", default=None, help="Updated last name.")
+@click.option(
+    "--email",
+    "emails",
+    multiple=True,
+    help="Replace emails (repeatable).",
+)
+@click.option(
+    "--company-id",
+    "company_ids",
+    multiple=True,
+    type=int,
+    help="Replace associated company ids (repeatable).",
+)
+@output_options
+@click.pass_obj
+def person_update(
+    ctx: CLIContext,
+    person_id: int,
+    *,
+    first_name: str | None,
+    last_name: str | None,
+    emails: tuple[str, ...],
+    company_ids: tuple[int, ...],
+) -> None:
+    """Update a person (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        if not (first_name or last_name or emails or company_ids):
+            raise CLIError(
+                "Provide at least one field to update.",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use --first-name, --last-name, --email, or --company-id.",
+            )
+        client = ctx.get_client(warnings=warnings)
+        updated = client.persons.update(
+            PersonId(person_id),
+            PersonUpdate(
+                first_name=first_name,
+                last_name=last_name,
+                emails=list(emails) if emails else None,
+                organization_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
+            ),
+        )
+        payload = updated.model_dump(by_alias=True, exclude_none=True)
+        return CommandOutput(data={"person": payload}, api_called=True)
+
+    run_command(ctx, command="person update", fn=fn)
+
+
+@person_group.command(name="delete", cls=RichCommand)
+@click.argument("person_id", type=int)
+@output_options
+@click.pass_obj
+def person_delete(ctx: CLIContext, person_id: int) -> None:
+    """Delete a person (V1 write path)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        success = client.persons.delete(PersonId(person_id))
+        return CommandOutput(data={"success": success}, api_called=True)
+
+    run_command(ctx, command="person delete", fn=fn)
+
+
+@person_group.command(name="merge", cls=RichCommand)
+@click.argument("primary_id", type=int)
+@click.argument("duplicate_id", type=int)
+@output_options
+@click.pass_obj
+def person_merge(
+    ctx: CLIContext,
+    primary_id: int,
+    duplicate_id: int,
+) -> None:
+    """Merge a duplicate person into a primary person (beta)."""
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+        task_url = client.persons.merge(PersonId(primary_id), PersonId(duplicate_id))
+        return CommandOutput(data={"taskUrl": task_url}, api_called=True)
+
+    run_command(ctx, command="person merge", fn=fn)

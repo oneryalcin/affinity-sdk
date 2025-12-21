@@ -71,6 +71,7 @@ class ClientSettings:
     timeout: float
     v1_base_url: str
     v2_base_url: str
+    enable_beta_endpoints: bool
     log_requests: bool
     max_retries: int
     policies: Policies
@@ -99,6 +100,7 @@ class CLIContext:
     enable_log_file: bool
     v1_base_url: str | None
     v2_base_url: str | None
+    enable_beta_endpoints: bool
 
     _paths: CliPaths = field(default_factory=get_paths)
     _loaded_config: LoadedConfig | None = None
@@ -242,6 +244,7 @@ class CLIContext:
             timeout=timeout,
             v1_base_url=v1_base_url,
             v2_base_url=v2_base_url,
+            enable_beta_endpoints=self.enable_beta_endpoints,
             log_requests=self.verbosity >= 2,
             max_retries=self.max_retries,
             policies=policies,
@@ -263,6 +266,7 @@ class CLIContext:
             timeout=settings.timeout,
             log_requests=settings.log_requests,
             max_retries=settings.max_retries,
+            enable_beta_endpoints=settings.enable_beta_endpoints,
             enable_cache=_CLI_CACHE_ENABLED,
             cache_ttl=_CLI_CACHE_TTL_SECONDS,
             on_request=settings.on_request,

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import datetime
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from ..errors import CLIError
 
@@ -36,4 +37,16 @@ def parse_iso_datetime(value: str, *, label: str) -> datetime:
             error_type="usage_error",
             exit_code=2,
             hint="Use ISO-8601, e.g. 2024-01-01T13:00:00Z or 2024-01-01T13:00:00+00:00.",
+        ) from exc
+
+
+def parse_json_value(value: str, *, label: str) -> Any:
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise CLIError(
+            f"Invalid JSON for {label}.",
+            error_type="usage_error",
+            exit_code=2,
+            hint='Provide a valid JSON literal (e.g. "\\"text\\"", 123, true, {"k": 1}).',
         ) from exc
