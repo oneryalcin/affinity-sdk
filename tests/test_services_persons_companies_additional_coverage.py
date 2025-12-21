@@ -11,7 +11,15 @@ from affinity.clients.http import AsyncHTTPClient, ClientConfig, HTTPClient
 from affinity.exceptions import BetaEndpointDisabledError
 from affinity.models import CompanyCreate, CompanyUpdate, PersonCreate, PersonUpdate
 from affinity.models.secondary import MergeTask
-from affinity.models.types import CompanyId, FieldType, ListId, ListType, PersonId, PersonType
+from affinity.models.types import (
+    CompanyId,
+    FieldType,
+    ListEntryId,
+    ListId,
+    ListType,
+    PersonId,
+    PersonType,
+)
 from affinity.services.companies import AsyncCompanyService, CompanyService
 from affinity.services.persons import AsyncPersonService, PersonService
 
@@ -454,6 +462,7 @@ async def test_async_person_and_company_services_cover_list_all_get() -> None:
             api_key="k",
             v1_base_url="https://v1.example",
             v2_base_url="https://v2.example/v2",
+            enable_beta_endpoints=True,
             max_retries=0,
             async_transport=httpx.MockTransport(handler),
         )
@@ -968,6 +977,7 @@ async def test_async_company_service_get_associated_people_v1() -> None:
             api_key="k",
             v1_base_url="https://v1.example",
             v2_base_url="https://v2.example/v2",
+            enable_beta_endpoints=True,
             max_retries=0,
             async_transport=httpx.MockTransport(handler),
         )
@@ -1010,6 +1020,7 @@ async def test_async_person_service_get_supports_field_ids_and_field_types() -> 
             api_key="k",
             v1_base_url="https://v1.example",
             v2_base_url="https://v2.example/v2",
+            enable_beta_endpoints=True,
             max_retries=0,
             async_transport=httpx.MockTransport(handler),
         )
@@ -1020,6 +1031,145 @@ async def test_async_person_service_get_supports_field_ids_and_field_types() -> 
             PersonId(1), field_ids=["field-1"], field_types=[FieldType.GLOBAL]
         )
         assert person.id == PersonId(1)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_v1_write_search_resolve_merge_and_helpers() -> None:
+    calls: dict[str, int] = {"fields": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and url.copy_with(query=None) == httpx.URL(
+            "https://v2.example/v2/persons/fields"
+        ):
+            assert url.params.get_list("fieldTypes") == ["global"]
+            calls["fields"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": "field-1", "name": "F", "valueType": 2, "allowsMultiple": False}
+                    ]
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/persons/1/list-entries"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": 10, "listId": 99, "createdAt": "2024-01-01T00:00:00Z"}],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL("https://v2.example/v2/persons/1/lists"):
+            return httpx.Response(
+                200,
+                json={"data": [{"id": 99, "name": "People", "type": "person"}], "pagination": {}},
+                request=request,
+            )
+        if request.method == "GET" and url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/persons"
+        ):
+            assert request.url.params.get("term") in {"Alice", "alice@example.com"}
+            return httpx.Response(
+                200,
+                json={
+                    "persons": [
+                        {
+                            "id": 1,
+                            "firstName": "Alice",
+                            "lastName": "Smith",
+                            "primaryEmailAddress": "alice@example.com",
+                            "emails": ["alice@example.com"],
+                            "type": "external",
+                        }
+                    ],
+                    "next_page_token": None,
+                },
+                request=request,
+            )
+        if request.method == "POST" and url == httpx.URL("https://v1.example/persons"):
+            payload = json.loads(request.content.decode())
+            assert payload["first_name"] == "Alice"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "firstName": "Alice",
+                    "lastName": "Smith",
+                    "primaryEmailAddress": "alice@example.com",
+                    "emails": ["alice@example.com"],
+                    "type": "external",
+                },
+                request=request,
+            )
+        if request.method == "PUT" and url == httpx.URL("https://v1.example/persons/2"):
+            payload = json.loads(request.content.decode())
+            assert payload["first_name"] == "Alicia"
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "firstName": "Alicia",
+                    "lastName": "Smith",
+                    "primaryEmailAddress": "alice@example.com",
+                    "emails": ["alice@example.com"],
+                    "type": "external",
+                },
+                request=request,
+            )
+        if request.method == "DELETE" and url == httpx.URL("https://v1.example/persons/2"):
+            return httpx.Response(200, json={"success": True}, request=request)
+        if request.method == "POST" and url == httpx.URL("https://v2.example/v2/person-merges"):
+            return httpx.Response(200, json={"taskUrl": "tasks/person-merges/abc"}, request=request)
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/tasks/person-merges/abc"
+        ):
+            return httpx.Response(200, json={"id": "abc", "status": "success"}, request=request)
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            enable_beta_endpoints=True,
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncPersonService(client)
+        _ = await service.get_fields(field_types=[FieldType.GLOBAL])
+        entries = await service.get_list_entries(PersonId(1))
+        assert entries.data[0].id == ListEntryId(10)
+        lists = await service.get_lists(PersonId(1))
+        assert lists.data[0].id == ListId(99)
+
+        page = await service.search("Alice")
+        assert page.data[0].primary_email == "alice@example.com"
+        resolved = await service.resolve(email="alice@example.com")
+        assert resolved is not None
+
+        created = await service.create(
+            PersonCreate(first_name="Alice", last_name="Smith", emails=["alice@example.com"])
+        )
+        assert created.id == PersonId(2)
+        updated = await service.update(PersonId(2), PersonUpdate(first_name="Alicia"))
+        assert updated.first_name == "Alicia"
+        deleted = await service.delete(PersonId(2))
+        assert deleted is True
+
+        task_url = await service.merge(PersonId(1), PersonId(2))
+        assert task_url == "tasks/person-merges/abc"
+        status = await service.get_merge_status("abc")
+        assert status.status == "success"
     finally:
         await client.close()
 
