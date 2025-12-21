@@ -7,6 +7,7 @@ is available via list entries.
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -16,9 +17,8 @@ from ..models.entities import (
     OpportunityUpdate,
 )
 from ..models.pagination import AsyncPageIterator, PageIterator, PaginatedResponse, PaginationInfo
-from ..models.types import (
-    OpportunityId,
-)
+from ..models.types import ListId, OpportunityId
+from .lists import AsyncListEntryService, ListEntryService
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
@@ -110,6 +110,62 @@ class OpportunityService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all()
+
+    def resolve(
+        self,
+        *,
+        name: str,
+        list_id: ListId,
+        limit: int | None = None,
+    ) -> Opportunity | None:
+        """
+        Find a single opportunity by exact name within a specific list.
+
+        Notes:
+        - Opportunities are list-scoped; a list id is required.
+        - This iterates list-entry pages client-side (no dedicated search endpoint).
+        - If multiple matches exist, returns the first match in server-provided order.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("Name cannot be empty")
+        name_lower = name.lower()
+
+        entries = ListEntryService(self._client, list_id)
+        for page in entries.pages(limit=limit):
+            for entry in page.data:
+                entity = entry.entity
+                if isinstance(entity, Opportunity) and entity.name.lower() == name_lower:
+                    return entity
+        return None
+
+    def resolve_all(
+        self,
+        *,
+        name: str,
+        list_id: ListId,
+        limit: int | None = None,
+    ) -> builtins.list[Opportunity]:
+        """
+        Find all opportunities matching a name within a specific list.
+
+        Notes:
+        - Opportunities are list-scoped; a list id is required.
+        - This iterates list-entry pages client-side (no dedicated search endpoint).
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("Name cannot be empty")
+        name_lower = name.lower()
+        matches: builtins.list[Opportunity] = []
+
+        entries = ListEntryService(self._client, list_id)
+        for page in entries.pages(limit=limit):
+            for entry in page.data:
+                entity = entry.entity
+                if isinstance(entity, Opportunity) and entity.name.lower() == name_lower:
+                    matches.append(entity)
+        return matches
 
     # =========================================================================
     # Write Operations (V1 API)
@@ -242,6 +298,62 @@ class AsyncOpportunityService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all()
+
+    async def resolve(
+        self,
+        *,
+        name: str,
+        list_id: ListId,
+        limit: int | None = None,
+    ) -> Opportunity | None:
+        """
+        Find a single opportunity by exact name within a specific list.
+
+        Notes:
+        - Opportunities are list-scoped; a list id is required.
+        - This iterates list-entry pages client-side (no dedicated search endpoint).
+        - If multiple matches exist, returns the first match in server-provided order.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("Name cannot be empty")
+        name_lower = name.lower()
+
+        entries = AsyncListEntryService(self._client, list_id)
+        async for page in entries.pages(limit=limit):
+            for entry in page.data:
+                entity = entry.entity
+                if isinstance(entity, Opportunity) and entity.name.lower() == name_lower:
+                    return entity
+        return None
+
+    async def resolve_all(
+        self,
+        *,
+        name: str,
+        list_id: ListId,
+        limit: int | None = None,
+    ) -> builtins.list[Opportunity]:
+        """
+        Find all opportunities matching a name within a specific list.
+
+        Notes:
+        - Opportunities are list-scoped; a list id is required.
+        - This iterates list-entry pages client-side (no dedicated search endpoint).
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("Name cannot be empty")
+        name_lower = name.lower()
+        matches: builtins.list[Opportunity] = []
+
+        entries = AsyncListEntryService(self._client, list_id)
+        async for page in entries.pages(limit=limit):
+            for entry in page.data:
+                entity = entry.entity
+                if isinstance(entity, Opportunity) and entity.name.lower() == name_lower:
+                    matches.append(entity)
+        return matches
 
     # =========================================================================
     # Write Operations (V1 API)
