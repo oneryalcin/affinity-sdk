@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -32,9 +32,24 @@ def _load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
 
+def _parse_with_now(payload: dict | str | bytes):
+    if isinstance(payload, (bytes, str)):
+        raw = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+        data = json.loads(raw)
+    else:
+        data = payload
+    sent_at_epoch = data.get("sent_at")
+    now = (
+        datetime.fromtimestamp(int(sent_at_epoch), tz=timezone.utc)
+        if sent_at_epoch is not None
+        else None
+    )
+    return parse_webhook(payload, now=now)
+
+
 def test_parse_webhook_envelope_timezone_is_utc_aware() -> None:
     payload = _load_fixture("organization_created.json")
-    env = parse_webhook(payload)
+    env = _parse_with_now(payload)
     assert env.type == WebhookEvent.ORGANIZATION_CREATED
     assert env.sent_at.tzinfo == timezone.utc
     assert env.sent_at_epoch == payload["sent_at"]
@@ -43,42 +58,42 @@ def test_parse_webhook_envelope_timezone_is_utc_aware() -> None:
 def test_parse_webhook_accepts_bytes_and_str() -> None:
     payload = _load_fixture("person_created.json")
     raw = json.dumps(payload)
-    assert parse_webhook(raw).type == WebhookEvent.PERSON_CREATED
-    assert parse_webhook(raw.encode("utf-8")).type == WebhookEvent.PERSON_CREATED
+    assert _parse_with_now(raw).type == WebhookEvent.PERSON_CREATED
+    assert _parse_with_now(raw.encode("utf-8")).type == WebhookEvent.PERSON_CREATED
 
 
 def test_parse_webhook_unknown_event_type_is_tolerated() -> None:
     payload = _load_fixture("unknown_event.json")
-    env = parse_webhook(payload)
+    env = _parse_with_now(payload)
     assert env.type.value == "made.up"
     assert env.type.name.startswith("UNKNOWN_")
 
 
 def test_dispatch_webhook_uses_default_registry_where_available() -> None:
-    merged = parse_webhook(_load_fixture("organization_merged.json"))
+    merged = _parse_with_now(_load_fixture("organization_merged.json"))
     parsed = dispatch_webhook(merged)
     assert parsed.type == WebhookEvent.ORGANIZATION_MERGED
     assert isinstance(parsed.body, OrganizationMergedBody)
 
-    entry = parse_webhook(_load_fixture("list_entry_created.json"))
+    entry = _parse_with_now(_load_fixture("list_entry_created.json"))
     parsed_entry = dispatch_webhook(entry)
     assert isinstance(parsed_entry.body, ListEntryCreatedBody)
 
-    fv = parse_webhook(_load_fixture("field_value_updated.json"))
+    fv = _parse_with_now(_load_fixture("field_value_updated.json"))
     parsed_fv = dispatch_webhook(fv)
     assert isinstance(parsed_fv.body, FieldValueUpdatedBody)
 
-    person = parse_webhook(_load_fixture("person_created.json"))
+    person = _parse_with_now(_load_fixture("person_created.json"))
     parsed_person = dispatch_webhook(person)
     assert isinstance(parsed_person.body, WebhookPerson)
 
-    org = parse_webhook(_load_fixture("organization_created.json"))
+    org = _parse_with_now(_load_fixture("organization_created.json"))
     parsed_org = dispatch_webhook(org)
     assert isinstance(parsed_org.body, WebhookOrganization)
 
 
 def test_dispatch_webhook_falls_back_to_dict_for_unknown_event() -> None:
-    env = parse_webhook(_load_fixture("unknown_event.json"))
+    env = _parse_with_now(_load_fixture("unknown_event.json"))
     parsed = dispatch_webhook(env)
     assert isinstance(parsed.body, dict)
     assert parsed.body["hello"] == "world"
@@ -92,7 +107,7 @@ def test_dispatch_webhook_registry_can_be_extended() -> None:
     reg = BodyRegistry()
     reg.register("made.up", HelloBody)
 
-    env = parse_webhook(_load_fixture("unknown_event.json"))
+    env = _parse_with_now(_load_fixture("unknown_event.json"))
     parsed = dispatch_webhook(env, registry=reg)
     assert isinstance(parsed.body, HelloBody)
     assert parsed.body.hello == "world"
@@ -113,3 +128,17 @@ def test_parse_webhook_errors() -> None:
 
     with pytest.raises(WebhookInvalidSentAtError):
         _ = parse_webhook({"type": "person.created", "body": {}, "sent_at": "nope"})
+
+
+def test_parse_webhook_rejects_stale_sent_at() -> None:
+    payload = _load_fixture("person_created.json")
+    now = datetime.fromtimestamp(payload["sent_at"] + 1000, tz=timezone.utc)
+    with pytest.raises(WebhookInvalidSentAtError):
+        _ = parse_webhook(payload, now=now, max_age_seconds=60)
+
+
+def test_parse_webhook_rejects_future_sent_at() -> None:
+    payload = _load_fixture("person_created.json")
+    now = datetime.fromtimestamp(payload["sent_at"] - 1000, tz=timezone.utc)
+    with pytest.raises(WebhookInvalidSentAtError):
+        _ = parse_webhook(payload, now=now, max_future_skew_seconds=60)

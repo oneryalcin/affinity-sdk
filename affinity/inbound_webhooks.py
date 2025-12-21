@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -142,18 +142,64 @@ def _parse_sent_at_epoch(value: Any) -> int:
     raise WebhookInvalidSentAtError("Webhook 'sent_at' must be an epoch seconds integer")
 
 
-def parse_webhook(payload: bytes | str | Mapping[str, Any]) -> WebhookEnvelope:
+_DEFAULT_WEBHOOK_MAX_AGE_SECONDS = 300
+_DEFAULT_WEBHOOK_FUTURE_SKEW_SECONDS = 120
+
+
+def _normalize_now(now: datetime | None) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        return current.replace(tzinfo=timezone.utc)
+    return current.astimezone(timezone.utc)
+
+
+def _validate_sent_at(
+    sent_at: datetime,
+    *,
+    now: datetime | None,
+    max_age_seconds: int | None,
+    max_future_skew_seconds: int | None,
+) -> None:
+    current = _normalize_now(now)
+    if max_age_seconds is not None:
+        if max_age_seconds < 0:
+            raise ValueError("max_age_seconds must be >= 0")
+        oldest = current - timedelta(seconds=max_age_seconds)
+        if sent_at < oldest:
+            raise WebhookInvalidSentAtError(
+                "Webhook 'sent_at' is too old for the allowed replay window."
+            )
+    if max_future_skew_seconds is not None:
+        if max_future_skew_seconds < 0:
+            raise ValueError("max_future_skew_seconds must be >= 0")
+        latest = current + timedelta(seconds=max_future_skew_seconds)
+        if sent_at > latest:
+            raise WebhookInvalidSentAtError(
+                "Webhook 'sent_at' is too far in the future for the allowed clock skew."
+            )
+
+
+def parse_webhook(
+    payload: bytes | str | Mapping[str, Any],
+    *,
+    max_age_seconds: int | None = _DEFAULT_WEBHOOK_MAX_AGE_SECONDS,
+    max_future_skew_seconds: int | None = _DEFAULT_WEBHOOK_FUTURE_SKEW_SECONDS,
+    now: datetime | None = None,
+) -> WebhookEnvelope:
     """
     Parse an inbound webhook payload into a `WebhookEnvelope`.
 
     Args:
         payload: Raw request body as bytes/str, or an already-decoded dict.
+        max_age_seconds: Reject payloads older than this many seconds (None disables).
+        max_future_skew_seconds: Reject payloads too far in the future (None disables).
+        now: Override the current time (UTC) for testing.
 
     Raises:
         WebhookInvalidJsonError: If payload is not valid JSON (bytes/str inputs).
         WebhookMissingKeyError: If required keys are missing.
         WebhookInvalidPayloadError: If the decoded payload isn't a JSON object.
-        WebhookInvalidSentAtError: If `sent_at` isn't an epoch seconds integer.
+        WebhookInvalidSentAtError: If `sent_at` is invalid or outside the allowed window.
     """
 
     data: Any = _parse_json_payload(payload) if isinstance(payload, (bytes, str)) else payload
@@ -170,6 +216,12 @@ def parse_webhook(payload: bytes | str | Mapping[str, Any]) -> WebhookEnvelope:
 
     sent_at_epoch = _parse_sent_at_epoch(sent_at_raw)
     sent_at = datetime.fromtimestamp(sent_at_epoch, tz=timezone.utc)
+    _validate_sent_at(
+        sent_at,
+        now=now,
+        max_age_seconds=max_age_seconds,
+        max_future_skew_seconds=max_future_skew_seconds,
+    )
 
     return WebhookEnvelope.model_validate(
         {
