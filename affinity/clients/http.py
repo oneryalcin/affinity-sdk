@@ -2175,6 +2175,7 @@ class HTTPClient:
         *,
         v1: bool = False,
         timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> bytes:
         """
         Download file content.
@@ -2184,10 +2185,15 @@ class HTTPClient:
           Redirects are followed without forwarding credentials.
         - Uses the standard retry/diagnostics policy for GET requests.
         """
+        if deadline_seconds is not None and deadline_seconds <= 0:
+            raise TimeoutError(f"Download deadline exceeded: {deadline_seconds}s")
+
         url = self._build_url(path, v1=v1)
         context: RequestContext = {}
         if timeout is not None:
             context["timeout"] = timeout
+        if deadline_seconds is not None:
+            context["deadline_seconds"] = float(deadline_seconds)
 
         req = SDKRequest(
             method="GET",

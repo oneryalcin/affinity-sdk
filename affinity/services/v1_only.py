@@ -774,12 +774,14 @@ class EntityFileService:
         file_id: FileId,
         *,
         timeout: httpx.Timeout | float | None = None,
+        deadline_seconds: float | None = None,
     ) -> bytes:
         """Download file content."""
         return self._client.download_file(
             f"/entity-files/download/{file_id}",
             v1=True,
             timeout=timeout,
+            deadline_seconds=deadline_seconds,
         )
 
     def download_stream(
