@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ..downloads import AsyncDownloadedFile, DownloadedFile
-from ..models.entities import FieldCreate, FieldMetadata, FieldValue, FieldValueCreate
+from ..models.entities import (
+    FieldCreate,
+    FieldMetadata,
+    FieldValue,
+    FieldValueChange,
+    FieldValueCreate,
+)
 from ..models.pagination import V1PaginatedResponse
 from ..models.secondary import (
     EntityFile,
@@ -36,9 +42,11 @@ from ..models.secondary import (
     WhoAmI,
 )
 from ..models.types import (
+    AnyFieldId,
     CompanyId,
     EntityType,
     FieldId,
+    FieldValueChangeAction,
     FieldValueId,
     FileId,
     InteractionId,
@@ -82,7 +90,7 @@ class NoteService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         creator_id: UserId | None = None,
         page_size: int | None = None,
@@ -96,8 +104,8 @@ class NoteService:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if creator_id:
@@ -134,8 +142,8 @@ class NoteService:
         }
         if data.person_ids:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
         if data.opportunity_ids:
             payload["opportunity_ids"] = [int(o) for o in data.opportunity_ids]
         if data.parent_id:
@@ -182,7 +190,7 @@ class ReminderService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         creator_id: UserId | None = None,
         owner_id: UserId | None = None,
@@ -203,8 +211,8 @@ class ReminderService:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if creator_id:
@@ -258,8 +266,8 @@ class ReminderService:
             payload["reminder_days"] = data.reminder_days
         if data.person_id:
             payload["person_id"] = int(data.person_id)
-        if data.organization_id:
-            payload["organization_id"] = int(data.organization_id)
+        if data.company_id:
+            payload["organization_id"] = int(data.company_id)
         if data.opportunity_id:
             payload["opportunity_id"] = int(data.opportunity_id)
 
@@ -583,14 +591,15 @@ class FieldValueService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         list_entry_id: ListEntryId | None = None,
     ) -> list[FieldValue]:
         """
         Get field values for an entity.
 
-        Exactly one of the ID parameters must be provided.
+        Exactly one of person_id, company_id, opportunity_id, or list_entry_id
+        must be provided.
 
         Raises:
             ValueError: If zero or multiple IDs are provided.
@@ -599,7 +608,7 @@ class FieldValueService:
             name
             for name, value in (
                 ("person_id", person_id),
-                ("organization_id", organization_id),
+                ("company_id", company_id),
                 ("opportunity_id", opportunity_id),
                 ("list_entry_id", list_entry_id),
             )
@@ -608,15 +617,16 @@ class FieldValueService:
         if len(provided) != 1:
             joined = ", ".join(provided) if provided else "(none)"
             raise ValueError(
-                "FieldValueService.list() requires exactly one ID parameter; "
+                "FieldValueService.list() requires exactly one of: person_id, "
+                "company_id, opportunity_id, or list_entry_id; "
                 f"got {len(provided)}: {joined}"
             )
 
         params: dict[str, Any] = {}
         if person_id is not None:
             params["person_id"] = int(person_id)
-        if organization_id is not None:
-            params["organization_id"] = int(organization_id)
+        if company_id is not None:
+            params["organization_id"] = int(company_id)
         if opportunity_id is not None:
             params["opportunity_id"] = int(opportunity_id)
         if list_entry_id is not None:
@@ -654,6 +664,106 @@ class FieldValueService:
         """Delete a field value."""
         result = self._client.delete(f"/field-values/{field_value_id}", v1=True)
         return bool(result.get("success", False))
+
+
+# =============================================================================
+# Field Value Changes Service (V1 API)
+# =============================================================================
+
+
+class FieldValueChangesService:
+    """Service for querying field value change history (V1 API)."""
+
+    def __init__(self, client: HTTPClient):
+        self._client = client
+
+    @staticmethod
+    def _validate_selector(
+        *,
+        person_id: PersonId | None,
+        company_id: CompanyId | None,
+        opportunity_id: OpportunityId | None,
+        list_entry_id: ListEntryId | None,
+    ) -> None:
+        provided = [
+            name
+            for name, value in (
+                ("person_id", person_id),
+                ("company_id", company_id),
+                ("opportunity_id", opportunity_id),
+                ("list_entry_id", list_entry_id),
+            )
+            if value is not None
+        ]
+        if len(provided) != 1:
+            joined = ", ".join(provided) if provided else "(none)"
+            raise ValueError(
+                "FieldValueChangesService.list() requires exactly one of: "
+                "person_id, company_id, opportunity_id, or list_entry_id; "
+                f"got {len(provided)}: {joined}"
+            )
+
+    def list(
+        self,
+        field_id: AnyFieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        action_type: FieldValueChangeAction | None = None,
+    ) -> list[FieldValueChange]:
+        """
+        Get field value changes for a specific field and entity.
+
+        This endpoint is not paginated. For large histories, use narrow filters.
+        """
+        self._validate_selector(
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+        )
+
+        params: dict[str, Any] = {
+            "field_id": field_id_to_v1_numeric(field_id),
+        }
+        if person_id is not None:
+            params["person_id"] = int(person_id)
+        if company_id is not None:
+            params["organization_id"] = int(company_id)
+        if opportunity_id is not None:
+            params["opportunity_id"] = int(opportunity_id)
+        if list_entry_id is not None:
+            params["list_entry_id"] = int(list_entry_id)
+        if action_type is not None:
+            params["action_type"] = int(action_type)
+
+        data = self._client.get("/field-value-changes", params=params, v1=True)
+        items = data.get("data", [])
+        if not isinstance(items, list):
+            items = []
+        return [FieldValueChange.model_validate(item) for item in items]
+
+    def iter(
+        self,
+        field_id: AnyFieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        action_type: FieldValueChangeAction | None = None,
+    ) -> Iterator[FieldValueChange]:
+        """Iterate field value changes (convenience wrapper for list())."""
+        yield from self.list(
+            field_id,
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+            action_type=action_type,
+        )
 
 
 # =============================================================================
@@ -708,26 +818,22 @@ class EntityFileService:
         self,
         *,
         person_id: PersonId | None,
-        organization_id: CompanyId | None,
+        company_id: CompanyId | None,
         opportunity_id: OpportunityId | None,
     ) -> None:
-        targets = [person_id, organization_id, opportunity_id]
+        targets = [person_id, company_id, opportunity_id]
         count = sum(1 for t in targets if t is not None)
         if count == 1:
             return
         if count == 0:
-            raise ValueError(
-                "Exactly one of person_id, organization_id, or opportunity_id is required"
-            )
-        raise ValueError(
-            "Only one of person_id, organization_id, or opportunity_id may be provided"
-        )
+            raise ValueError("Exactly one of person_id, company_id, or opportunity_id is required")
+        raise ValueError("Only one of person_id, company_id, or opportunity_id may be provided")
 
     def list(
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
@@ -735,14 +841,14 @@ class EntityFileService:
         """Get files attached to an entity."""
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if page_size:
@@ -873,7 +979,7 @@ class EntityFileService:
         files: dict[str, Any],
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> bool:
         """
@@ -882,7 +988,7 @@ class EntityFileService:
         Args:
             files: Dict of filename to file-like object
             person_id: Person to attach to
-            organization_id: Company to attach to
+            company_id: Company to attach to
             opportunity_id: Opportunity to attach to
 
         Returns:
@@ -890,14 +996,14 @@ class EntityFileService:
         """
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
         data: dict[str, Any] = {}
         if person_id:
             data["person_id"] = int(person_id)
-        if organization_id:
-            data["organization_id"] = int(organization_id)
+        if company_id:
+            data["organization_id"] = int(company_id)
         if opportunity_id:
             data["opportunity_id"] = int(opportunity_id)
 
@@ -918,7 +1024,7 @@ class EntityFileService:
         path: str | Path,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         filename: str | None = None,
         content_type: str | None = None,
@@ -933,7 +1039,7 @@ class EntityFileService:
         """
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -950,7 +1056,7 @@ class EntityFileService:
             ok = self.upload(
                 files={"file": (upload_filename, f, final_content_type)},
                 person_id=person_id,
-                organization_id=organization_id,
+                company_id=company_id,
                 opportunity_id=opportunity_id,
             )
 
@@ -965,7 +1071,7 @@ class EntityFileService:
         filename: str,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         content_type: str | None = None,
         on_progress: ProgressCallback | None = None,
@@ -979,7 +1085,7 @@ class EntityFileService:
         """
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -993,7 +1099,7 @@ class EntityFileService:
         ok = self.upload(
             files={"file": (filename, data, final_content_type)},
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1006,13 +1112,13 @@ class EntityFileService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> Iterator[EntityFile]:
         """Iterate through all files for an entity with automatic pagination."""
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1020,7 +1126,7 @@ class EntityFileService:
         while True:
             page = self.list(
                 person_id=person_id,
-                organization_id=organization_id,
+                company_id=company_id,
                 opportunity_id=opportunity_id,
                 page_token=page_token,
             )
@@ -1033,13 +1139,13 @@ class EntityFileService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> Iterator[EntityFile]:
         """Auto-paginate all files (alias for `all()`)."""
         return self.all(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1083,7 +1189,7 @@ class AsyncNoteService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         creator_id: UserId | None = None,
         page_size: int | None = None,
@@ -1092,8 +1198,8 @@ class AsyncNoteService:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if creator_id:
@@ -1123,8 +1229,8 @@ class AsyncNoteService:
         }
         if data.person_ids:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
         if data.opportunity_ids:
             payload["opportunity_ids"] = [int(o) for o in data.opportunity_ids]
         if data.parent_id:
@@ -1160,7 +1266,7 @@ class AsyncReminderService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         creator_id: UserId | None = None,
         owner_id: UserId | None = None,
@@ -1176,8 +1282,8 @@ class AsyncReminderService:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if creator_id:
@@ -1229,8 +1335,8 @@ class AsyncReminderService:
             payload["reminder_days"] = data.reminder_days
         if data.person_id:
             payload["person_id"] = int(data.person_id)
-        if data.organization_id:
-            payload["organization_id"] = int(data.organization_id)
+        if data.company_id:
+            payload["organization_id"] = int(data.company_id)
         if data.opportunity_id:
             payload["opportunity_id"] = int(data.opportunity_id)
 
@@ -1481,7 +1587,7 @@ class AsyncFieldValueService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         list_entry_id: ListEntryId | None = None,
     ) -> builtins.list[FieldValue]:
@@ -1489,7 +1595,7 @@ class AsyncFieldValueService:
             name
             for name, value in (
                 ("person_id", person_id),
-                ("organization_id", organization_id),
+                ("company_id", company_id),
                 ("opportunity_id", opportunity_id),
                 ("list_entry_id", list_entry_id),
             )
@@ -1498,19 +1604,20 @@ class AsyncFieldValueService:
         if len(provided) != 1:
             joined = ", ".join(provided) if provided else "(none)"
             raise ValueError(
-                "FieldValueService.list() requires exactly one ID parameter; "
+                "FieldValueService.list() requires exactly one of: person_id, "
+                "company_id, opportunity_id, or list_entry_id; "
                 f"got {len(provided)}: {joined}"
             )
 
         params: dict[str, Any] = {}
         if person_id is not None:
             params["person_id"] = int(person_id)
-        if organization_id is not None:
-            params["organization_id"] = int(organization_id)
+        if company_id is not None:
+            params["organization_id"] = int(company_id)
         if opportunity_id is not None:
             params["opportunity_id"] = int(opportunity_id)
         if list_entry_id is not None:
-            params["list_entry_id"] = list_entry_id
+            params["list_entry_id"] = int(list_entry_id)
 
         data = await self._client.get("/field-values", params=params or None, v1=True)
         items = data.get("data", [])
@@ -1541,6 +1648,102 @@ class AsyncFieldValueService:
     async def delete(self, field_value_id: FieldValueId) -> bool:
         result = await self._client.delete(f"/field-values/{field_value_id}", v1=True)
         return bool(result.get("success", False))
+
+
+class AsyncFieldValueChangesService:
+    """Async service for querying field value change history (V1 API)."""
+
+    def __init__(self, client: AsyncHTTPClient):
+        self._client = client
+
+    @staticmethod
+    def _validate_selector(
+        *,
+        person_id: PersonId | None,
+        company_id: CompanyId | None,
+        opportunity_id: OpportunityId | None,
+        list_entry_id: ListEntryId | None,
+    ) -> None:
+        provided = [
+            name
+            for name, value in (
+                ("person_id", person_id),
+                ("company_id", company_id),
+                ("opportunity_id", opportunity_id),
+                ("list_entry_id", list_entry_id),
+            )
+            if value is not None
+        ]
+        if len(provided) != 1:
+            joined = ", ".join(provided) if provided else "(none)"
+            raise ValueError(
+                "FieldValueChangesService.list() requires exactly one of: "
+                "person_id, company_id, opportunity_id, or list_entry_id; "
+                f"got {len(provided)}: {joined}"
+            )
+
+    async def list(
+        self,
+        field_id: AnyFieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        action_type: FieldValueChangeAction | None = None,
+    ) -> builtins.list[FieldValueChange]:
+        """
+        Get field value changes for a specific field and entity.
+
+        This endpoint is not paginated. For large histories, use narrow filters.
+        """
+        self._validate_selector(
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+        )
+
+        params: dict[str, Any] = {
+            "field_id": field_id_to_v1_numeric(field_id),
+        }
+        if person_id is not None:
+            params["person_id"] = int(person_id)
+        if company_id is not None:
+            params["organization_id"] = int(company_id)
+        if opportunity_id is not None:
+            params["opportunity_id"] = int(opportunity_id)
+        if list_entry_id is not None:
+            params["list_entry_id"] = int(list_entry_id)
+        if action_type is not None:
+            params["action_type"] = int(action_type)
+
+        data = await self._client.get("/field-value-changes", params=params, v1=True)
+        items = data.get("data", [])
+        if not isinstance(items, list):
+            items = []
+        return [FieldValueChange.model_validate(item) for item in items]
+
+    async def iter(
+        self,
+        field_id: AnyFieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        action_type: FieldValueChangeAction | None = None,
+    ) -> AsyncIterator[FieldValueChange]:
+        """Iterate field value changes (convenience wrapper for list())."""
+        for item in await self.list(
+            field_id,
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+            action_type=action_type,
+        ):
+            yield item
 
 
 class AsyncRelationshipStrengthService:
@@ -1575,40 +1778,36 @@ class AsyncEntityFileService:
         self,
         *,
         person_id: PersonId | None,
-        organization_id: CompanyId | None,
+        company_id: CompanyId | None,
         opportunity_id: OpportunityId | None,
     ) -> None:
-        targets = [person_id, organization_id, opportunity_id]
+        targets = [person_id, company_id, opportunity_id]
         count = sum(1 for t in targets if t is not None)
         if count == 1:
             return
         if count == 0:
-            raise ValueError(
-                "Exactly one of person_id, organization_id, or opportunity_id is required"
-            )
-        raise ValueError(
-            "Only one of person_id, organization_id, or opportunity_id may be provided"
-        )
+            raise ValueError("Exactly one of person_id, company_id, or opportunity_id is required")
+        raise ValueError("Only one of person_id, company_id, or opportunity_id may be provided")
 
     async def list(
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> V1PaginatedResponse[EntityFile]:
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
-        if organization_id:
-            params["organization_id"] = int(organization_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
         if opportunity_id:
             params["opportunity_id"] = int(opportunity_id)
         if page_size:
@@ -1724,19 +1923,19 @@ class AsyncEntityFileService:
         files: dict[str, Any],
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> bool:
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
         data: dict[str, Any] = {}
         if person_id:
             data["person_id"] = int(person_id)
-        if organization_id:
-            data["organization_id"] = int(organization_id)
+        if company_id:
+            data["organization_id"] = int(company_id)
         if opportunity_id:
             data["opportunity_id"] = int(opportunity_id)
 
@@ -1755,7 +1954,7 @@ class AsyncEntityFileService:
         path: str | Path,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         filename: str | None = None,
         content_type: str | None = None,
@@ -1763,7 +1962,7 @@ class AsyncEntityFileService:
     ) -> bool:
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1780,7 +1979,7 @@ class AsyncEntityFileService:
             ok = await self.upload(
                 files={"file": (upload_filename, f, final_content_type)},
                 person_id=person_id,
-                organization_id=organization_id,
+                company_id=company_id,
                 opportunity_id=opportunity_id,
             )
 
@@ -1795,14 +1994,14 @@ class AsyncEntityFileService:
         filename: str,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
         content_type: str | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> bool:
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1816,7 +2015,7 @@ class AsyncEntityFileService:
         ok = await self.upload(
             files={"file": (filename, data, final_content_type)},
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1829,12 +2028,12 @@ class AsyncEntityFileService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> AsyncIterator[EntityFile]:
         self._validate_exactly_one_target(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 
@@ -1842,7 +2041,7 @@ class AsyncEntityFileService:
         while True:
             page = await self.list(
                 person_id=person_id,
-                organization_id=organization_id,
+                company_id=company_id,
                 opportunity_id=opportunity_id,
                 page_token=page_token,
             )
@@ -1856,12 +2055,12 @@ class AsyncEntityFileService:
         self,
         *,
         person_id: PersonId | None = None,
-        organization_id: CompanyId | None = None,
+        company_id: CompanyId | None = None,
         opportunity_id: OpportunityId | None = None,
     ) -> AsyncIterator[EntityFile]:
         return self.all(
             person_id=person_id,
-            organization_id=organization_id,
+            company_id=company_id,
             opportunity_id=opportunity_id,
         )
 

@@ -110,7 +110,7 @@ def test_dump_entity_files_bundle_skips_existing_files(monkeypatch: object, tmp_
             max_files=None,
             default_dirname="unused",
             manifest_entity={"type": "company", "companyId": 1},
-            files_list_kwargs={"organization_id": 1},
+            files_list_kwargs={"company_id": 1},
         )
     )
 

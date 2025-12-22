@@ -1296,7 +1296,7 @@ def person_create(
                 first_name=first_name,
                 last_name=last_name,
                 emails=list(emails),
-                organization_ids=[CompanyId(cid) for cid in company_ids],
+                company_ids=[CompanyId(cid) for cid in company_ids],
             )
         )
         payload = created.model_dump(by_alias=True, exclude_none=True)
@@ -1350,7 +1350,7 @@ def person_update(
                 first_name=first_name,
                 last_name=last_name,
                 emails=list(emails) if emails else None,
-                organization_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
+                company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
             ),
         )
         payload = updated.model_dump(by_alias=True, exclude_none=True)

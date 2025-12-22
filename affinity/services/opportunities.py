@@ -231,8 +231,8 @@ class OpportunityService:
         }
         if data.person_ids:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = self._client.post("/opportunities", json=payload, v1=True)
         return Opportunity.model_validate(result)
@@ -241,7 +241,7 @@ class OpportunityService:
         """
         Update an existing opportunity.
 
-        Note: When provided, `person_ids` and `organization_ids` replace the existing
+        Note: When provided, `person_ids` and `company_ids` replace the existing
         values. To add or remove associations safely, pass the full desired arrays.
         """
         payload: dict[str, Any] = {}
@@ -249,8 +249,8 @@ class OpportunityService:
             payload["name"] = data.name
         if data.person_ids is not None:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         # Uses the v1 endpoint; its PUT semantics replace association arrays.
         result = self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)
@@ -468,8 +468,8 @@ class AsyncOpportunityService:
         }
         if data.person_ids:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = await self._client.post("/opportunities", json=payload, v1=True)
         return Opportunity.model_validate(result)
@@ -478,7 +478,7 @@ class AsyncOpportunityService:
         """
         Update an existing opportunity.
 
-        Note: When provided, `person_ids` and `organization_ids` replace the existing
+        Note: When provided, `person_ids` and `company_ids` replace the existing
         values. To add or remove associations safely, pass the full desired arrays.
         """
         payload: dict[str, Any] = {}
@@ -486,8 +486,8 @@ class AsyncOpportunityService:
             payload["name"] = data.name
         if data.person_ids is not None:
             payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.organization_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         # Uses the v1 endpoint; its PUT semantics replace association arrays.
         result = await self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)

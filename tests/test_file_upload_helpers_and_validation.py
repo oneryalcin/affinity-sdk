@@ -30,7 +30,7 @@ def test_entity_files_list_requires_exactly_one_target() -> None:
         with pytest.raises(ValueError, match="Exactly one of person_id"):
             service.list()
         with pytest.raises(ValueError, match="Only one of person_id"):
-            service.list(person_id=PersonId(1), organization_id=2)  # type: ignore[arg-type]
+            service.list(person_id=PersonId(1), company_id=2)  # type: ignore[arg-type]
     finally:
         http.close()
 

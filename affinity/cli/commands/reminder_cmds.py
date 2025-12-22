@@ -82,7 +82,7 @@ def _reminder_payload(reminder: Reminder) -> dict[str, object]:
         "creatorId": _extract_id(reminder.creator),
         "completerId": _extract_id(reminder.completer),
         "personId": _extract_id(reminder.person),
-        "companyId": _extract_id(reminder.organization),
+        "companyId": _extract_id(reminder.company),
         "opportunityId": _extract_id(reminder.opportunity),
         "createdAt": reminder.created_at,
         "completedAt": reminder.completed_at,
@@ -182,7 +182,7 @@ def reminder_ls(
         while True:
             page = client.reminders.list(
                 person_id=person_id_value,
-                organization_id=company_id_value,
+                company_id=company_id_value,
                 opportunity_id=opportunity_id_value,
                 creator_id=creator_id_value,
                 owner_id=owner_id_value,
@@ -310,7 +310,7 @@ def reminder_create(
                 reset_type=parsed_reset,
                 reminder_days=reminder_days,
                 person_id=PersonId(person_id) if person_id is not None else None,
-                organization_id=CompanyId(company_id) if company_id is not None else None,
+                company_id=CompanyId(company_id) if company_id is not None else None,
                 opportunity_id=OpportunityId(opportunity_id)
                 if opportunity_id is not None
                 else None,

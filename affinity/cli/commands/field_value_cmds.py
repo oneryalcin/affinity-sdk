@@ -60,7 +60,7 @@ def field_value_ls(
         client = ctx.get_client(warnings=warnings)
         values = client.field_values.list(
             person_id=PersonId(person_id) if person_id is not None else None,
-            organization_id=CompanyId(company_id) if company_id is not None else None,
+            company_id=CompanyId(company_id) if company_id is not None else None,
             opportunity_id=OpportunityId(opportunity_id) if opportunity_id is not None else None,
             list_entry_id=ListEntryId(list_entry_id) if list_entry_id is not None else None,
         )

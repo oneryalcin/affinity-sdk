@@ -32,6 +32,35 @@ python examples/basic_usage.py
 - [`examples/resolve_helpers.py`](https://github.com/yaniv-golan/affinity-sdk/blob/main/examples/resolve_helpers.py) — resolve helpers (IDs from external identifiers)
 - [`examples/task_polling.py`](https://github.com/yaniv-golan/affinity-sdk/blob/main/examples/task_polling.py) — polling long-running tasks
 
+## Field Value Changes (audit history)
+
+Query the change history for a specific field on an entity:
+
+```python
+from affinity import Affinity
+from affinity.types import CompanyId, FieldId, FieldValueChangeAction
+
+client = Affinity.from_env()
+
+# Get all changes to field "field-123" for company 456
+changes = client.field_value_changes.list(
+    FieldId("field-123"),
+    company_id=CompanyId(456),
+)
+
+for change in changes:
+    print(f"{change.changed_at}: {change.value} (action={change.action_type})")
+
+# Filter by action type (e.g., only updates)
+updates = client.field_value_changes.list(
+    FieldId("field-123"),
+    company_id=CompanyId(456),
+    action_type=FieldValueChangeAction.UPDATE,
+)
+```
+
+Note: This endpoint is not paginated. For large histories, use narrow filters.
+
 ## V1-only exception: company -> people associations
 
 V2 does not expose a company -> people association endpoint yet. These helpers use the v1

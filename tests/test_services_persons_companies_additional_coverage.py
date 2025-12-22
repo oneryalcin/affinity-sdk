@@ -290,7 +290,7 @@ def test_person_service_v2_read_v1_write_resolve_merge_and_cache_invalidation() 
                 first_name="A",
                 last_name="B",
                 emails=["a@example.com"],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             )
         )
         assert created.id == PersonId(1)
@@ -303,7 +303,7 @@ def test_person_service_v2_read_v1_write_resolve_merge_and_cache_invalidation() 
                 first_name="A2",
                 last_name="B2",
                 emails=["a@example.com"],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             ),
         )
         assert updated.first_name == "A2"

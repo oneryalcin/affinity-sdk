@@ -430,8 +430,8 @@ class PersonService:
             "last_name": data.last_name,
             "emails": data.emails,
         }
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = self._client.post("/persons", json=payload, v1=True)
 
@@ -457,8 +457,8 @@ class PersonService:
             payload["last_name"] = data.last_name
         if data.emails is not None:
             payload["emails"] = data.emails
-        if data.organization_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = self._client.put(
             f"/persons/{person_id}",
@@ -870,8 +870,8 @@ class AsyncPersonService:
             "last_name": data.last_name,
             "emails": data.emails,
         }
-        if data.organization_ids:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = await self._client.post("/persons", json=payload, v1=True)
 
@@ -897,8 +897,8 @@ class AsyncPersonService:
             payload["last_name"] = data.last_name
         if data.emails is not None:
             payload["emails"] = data.emails
-        if data.organization_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.organization_ids]
+        if data.company_ids is not None:
+            payload["organization_ids"] = [int(o) for o in data.company_ids]
 
         result = await self._client.put(
             f"/persons/{person_id}",

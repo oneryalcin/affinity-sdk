@@ -116,7 +116,7 @@ def test_entities_field_values_coercion_and_null_list_normalization() -> None:
         }
     )
     assert person.emails == []
-    assert person.organization_ids == []
+    assert person.company_ids == []
     assert person.opportunity_ids == []
 
     entry = ListEntryWithEntity.model_validate(

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .exceptions import (
     WebhookInvalidJsonError,
@@ -56,7 +56,10 @@ class WebhookPerson(_WebhookModel):
     last_name: str | None = None
     primary_email: str | None = None
     emails: list[str] = Field(default_factory=list)
-    organization_ids: list[int] | None = None
+    company_ids: list[int] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("organization_ids", "organizationIds"),
+    )
 
 
 class WebhookOrganization(_WebhookModel):

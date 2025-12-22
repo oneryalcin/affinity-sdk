@@ -204,7 +204,7 @@ class TestPersonModel:
         assert person.primary_email == "john@example.com"
         assert len(person.emails) == 2
         assert person.type == PersonType.EXTERNAL
-        assert len(person.organization_ids) == 2
+        assert len(person.company_ids) == 2
 
     def test_person_with_minimal_data(self) -> None:
         """Test Person model with minimal required fields."""
@@ -235,16 +235,17 @@ class TestPersonModel:
         assert person.type == PersonType.INTERNAL
 
     def test_person_accepts_v1_current_organization_ids_and_interactions(self) -> None:
+        # V1 API returns camelCase field names
         data = {
             "id": 1,
             "type": "external",
-            "current_organization_ids": [123],
+            "currentOrganizationIds": [123],
             "interactions": {
                 "last_interaction": {"date": "2025-01-01T12:00:00Z", "person_ids": [999]}
             },
         }
         person = Person.model_validate(data)
-        assert person.current_organization_ids == [CompanyId(123)]
+        assert person.current_company_ids == [CompanyId(123)]
         assert person.interactions is not None
         assert "last_interaction" in person.interactions
 
@@ -382,7 +383,7 @@ class TestNullVsEmptyNormalization:
             }
         )
         assert person.emails == []
-        assert person.organization_ids == []
+        assert person.company_ids == []
 
     def test_company_null_arrays_normalize_to_empty_lists(self) -> None:
         company = Company.model_validate(
@@ -557,7 +558,7 @@ def test_field_value_service_list_requires_exactly_one_id() -> None:
         with pytest.raises(ValueError, match="exactly one"):
             service.list()
         with pytest.raises(ValueError, match="exactly one"):
-            service.list(person_id=PersonId(1), organization_id=CompanyId(2))
+            service.list(person_id=PersonId(1), company_id=CompanyId(2))
     finally:
         http.close()
 

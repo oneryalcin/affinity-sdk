@@ -346,7 +346,7 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         notes = NoteService(http)
         assert notes.list(
             person_id=PersonId(1),
-            organization_id=CompanyId(2),
+            company_id=CompanyId(2),
             opportunity_id=OpportunityId(3),
             creator_id=UserId(4),
             page_size=5,
@@ -357,23 +357,21 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
             NoteCreate(
                 content="n",
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
                 opportunity_ids=[OpportunityId(3)],
                 parent_id=NoteId(1),
                 creator_id=UserId(4),
                 created_at=now,
             )
         )
-        _ = notes.create(
-            NoteCreate(content="n", organization_ids=[CompanyId(2)], creator_id=UserId(4))
-        )
+        _ = notes.create(NoteCreate(content="n", company_ids=[CompanyId(2)], creator_id=UserId(4)))
         assert seen["note_create"][0]["parent_id"] == 1
         assert "person_ids" not in seen["note_create"][1]
 
         reminders = ReminderService(http)
         assert reminders.list(
             person_id=PersonId(1),
-            organization_id=CompanyId(2),
+            company_id=CompanyId(2),
             opportunity_id=OpportunityId(3),
             creator_id=UserId(4),
             owner_id=UserId(5),
@@ -393,7 +391,7 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
                 type=ReminderType.ONE_TIME,
                 reset_type=ReminderResetType.EMAIL,
                 reminder_days=7,
-                organization_id=CompanyId(2),
+                company_id=CompanyId(2),
                 opportunity_id=OpportunityId(3),
             )
         )
@@ -463,7 +461,7 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
 
         values = FieldValueService(http)
         assert values.list(person_id=PersonId(1))[0].id == 1
-        assert values.list(organization_id=CompanyId(2)) == []
+        assert values.list(company_id=CompanyId(2)) == []
         assert values.list(opportunity_id=OpportunityId(3))[0].id == 1
         assert values.list(list_entry_id=4)[0].id == 1
         _ = values.create(FieldValueCreate(field_id="1", entity_id=1, value="y", list_entry_id=4))
@@ -474,13 +472,13 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         assert rel.get(PersonId(1)) == []
 
         files = EntityFileService(http)
-        all_items = list(files.all(organization_id=CompanyId(2)))
+        all_items = list(files.all(company_id=CompanyId(2)))
         assert [f.id for f in all_items] == [1]
-        assert list(files.iter(organization_id=CompanyId(2))) != []
-        page = files.list(organization_id=CompanyId(2), page_size=1, page_token="p1")
+        assert list(files.iter(company_id=CompanyId(2))) != []
+        page = files.list(company_id=CompanyId(2), page_size=1, page_token="p1")
         assert page.data[0].id == 1
         assert files.list(opportunity_id=OpportunityId(3)).data == []
-        page_missing = files.list(organization_id=CompanyId(999))
+        page_missing = files.list(company_id=CompanyId(999))
         assert page_missing.data[0].content_type is None
 
         progress: list[tuple[int, int | None, str]] = []
@@ -488,7 +486,7 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         p.write_bytes(b"hello")
         assert files.upload_path(
             p,
-            organization_id=CompanyId(2),
+            company_id=CompanyId(2),
             filename="override.bin",
             content_type="application/octet-stream",
             on_progress=lambda done, total, *, phase: progress.append((done, total, phase)),

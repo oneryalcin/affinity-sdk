@@ -193,7 +193,7 @@ def test_opportunity_update_and_get_details_use_v1_endpoints() -> None:
             OpportunityUpdate(
                 name="Updated",
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             ),
         )
         assert updated.id == 5

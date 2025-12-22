@@ -32,6 +32,7 @@ from .services.v1_only import (
     AsyncAuthService,
     AsyncEntityFileService,
     AsyncFieldService,
+    AsyncFieldValueChangesService,
     AsyncFieldValueService,
     AsyncInteractionService,
     AsyncNoteService,
@@ -41,6 +42,7 @@ from .services.v1_only import (
     AuthService,
     EntityFileService,
     FieldService,
+    FieldValueChangesService,
     FieldValueService,
     InteractionService,
     NoteService,
@@ -152,6 +154,7 @@ class Affinity:
         interactions: Interaction (email, meeting, etc.) operations
         fields: Custom field operations
         field_values: Field value operations
+        field_value_changes: Field value change history operations
         files: Entity file operations
         relationships: Relationship strength queries
         auth: Authentication and rate limit info
@@ -246,6 +249,7 @@ class Affinity:
         self._interactions: InteractionService | None = None
         self._fields: FieldService | None = None
         self._field_values: FieldValueService | None = None
+        self._field_value_changes: FieldValueChangesService | None = None
         self._files: EntityFileService | None = None
         self._relationships: RelationshipStrengthService | None = None
         self._auth: AuthService | None = None
@@ -378,6 +382,13 @@ class Affinity:
         if self._field_values is None:
             self._field_values = FieldValueService(self._http)
         return self._field_values
+
+    @property
+    def field_value_changes(self) -> FieldValueChangesService:
+        """Field value change history queries."""
+        if self._field_value_changes is None:
+            self._field_value_changes = FieldValueChangesService(self._http)
+        return self._field_value_changes
 
     @property
     def files(self) -> EntityFileService:
@@ -530,6 +541,7 @@ class AsyncAffinity:
         self._interactions: AsyncInteractionService | None = None
         self._fields: AsyncFieldService | None = None
         self._field_values: AsyncFieldValueService | None = None
+        self._field_value_changes: AsyncFieldValueChangesService | None = None
         self._files: AsyncEntityFileService | None = None
         self._relationships: AsyncRelationshipStrengthService | None = None
         self._auth: AsyncAuthService | None = None
@@ -648,6 +660,13 @@ class AsyncAffinity:
         if self._field_values is None:
             self._field_values = AsyncFieldValueService(self._http)
         return self._field_values
+
+    @property
+    def field_value_changes(self) -> AsyncFieldValueChangesService:
+        """Field value change history queries."""
+        if self._field_value_changes is None:
+            self._field_value_changes = AsyncFieldValueChangesService(self._http)
+        return self._field_value_changes
 
     @property
     def files(self) -> AsyncEntityFileService:

@@ -22,8 +22,10 @@ from affinity.models.secondary import (
 )
 from affinity.models.types import (
     CompanyId,
+    EnrichedFieldId,
     EntityType,
     FieldId,
+    FieldValueChangeAction,
     FieldValueId,
     FieldValueType,
     FileId,
@@ -43,6 +45,7 @@ from affinity.services.v1_only import (
     AuthService,
     EntityFileService,
     FieldService,
+    FieldValueChangesService,
     FieldValueService,
     InteractionService,
     NoteService,
@@ -461,7 +464,7 @@ def test_v1_only_services_end_to_end_smoke_and_branch_coverage(tmp_path: Path) -
         with pytest.raises(ValueError):
             field_values.list()
         with pytest.raises(ValueError):
-            field_values.list(person_id=PersonId(1), organization_id=CompanyId(2))
+            field_values.list(person_id=PersonId(1), company_id=CompanyId(2))
         assert field_values.list(person_id=PersonId(1))[0].id == 1
         created_v = field_values.create(FieldValueCreate(field_id="1", entity_id=1, value="y"))
         assert created_v.id == 2
@@ -477,7 +480,7 @@ def test_v1_only_services_end_to_end_smoke_and_branch_coverage(tmp_path: Path) -
         with pytest.raises(ValueError):
             files.list()
         with pytest.raises(ValueError):
-            files.list(person_id=PersonId(1), organization_id=CompanyId(2))
+            files.list(person_id=PersonId(1), company_id=CompanyId(2))
         assert files.list(person_id=PersonId(1)).data[0].id == FileId(1)
         assert files.get(FileId(1)).name == "a"
         assert files.upload_bytes(b"x", "a.txt", person_id=PersonId(1)) is True
@@ -491,5 +494,61 @@ def test_v1_only_services_end_to_end_smoke_and_branch_coverage(tmp_path: Path) -
         refreshed = rate_limits.refresh()
         assert refreshed.source == "endpoint"
         assert refreshed.org_monthly.limit == 1
+    finally:
+        http.close()
+
+
+def test_field_value_changes_service_validation_and_request_building() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-value-changes":
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "fieldId": "field-100",
+                        "entityId": 123,
+                        "actionType": 0,
+                        "value": "new",
+                        "changedAt": "2025-01-01T00:00:00Z",
+                    }
+                ],
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport))
+    try:
+        svc = FieldValueChangesService(http)
+
+        with pytest.raises(ValueError, match="requires exactly one of"):
+            svc.list(FieldId("field-100"))
+
+        with pytest.raises(ValueError, match="got 2"):
+            svc.list(
+                FieldId("field-100"),
+                person_id=PersonId(1),
+                company_id=CompanyId(2),
+            )
+
+        with pytest.raises(ValueError, match="Enriched field IDs cannot be converted"):
+            svc.list(
+                EnrichedFieldId("affinity-data-location"),
+                person_id=PersonId(1),
+            )
+
+        result = svc.list(FieldId("field-100"), company_id=CompanyId(123))
+        assert seen["params"]["field_id"] == "100"
+        assert seen["params"]["organization_id"] == "123"
+        assert len(result) == 1
+        assert result[0].id == 1
+        assert result[0].action_type == int(FieldValueChangeAction.CREATE)
+
+        items = list(svc.iter(FieldId("field-100"), person_id=PersonId(1)))
+        assert len(items) == 1
     finally:
         http.close()

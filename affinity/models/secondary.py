@@ -56,7 +56,7 @@ class Note(AffinityModel):
         default_factory=list, alias="interactionPersonIds"
     )
     mentioned_person_ids: list[PersonId] = Field(default_factory=list, alias="mentionedPersonIds")
-    organization_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
     opportunity_ids: list[OpportunityId] = Field(default_factory=list, alias="opportunityIds")
 
     # Interaction association
@@ -78,7 +78,7 @@ class NoteCreate(AffinityModel):
     content: str
     type: NoteType = NoteType.PLAIN_TEXT
     person_ids: list[PersonId] = Field(default_factory=list)
-    organization_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list)
     opportunity_ids: list[OpportunityId] = Field(default_factory=list)
     parent_id: NoteId | None = None  # For reply notes
     creator_id: UserId | None = None
@@ -198,7 +198,7 @@ class Reminder(AffinityModel):
 
     # Associated entity (one of these)
     person: PersonSummary | None = None
-    organization: dict[str, Any] | None = None
+    company: dict[str, Any] | None = Field(None, alias="organization")
     opportunity: dict[str, Any] | None = None
 
     # Timestamps
@@ -218,7 +218,7 @@ class ReminderCreate(AffinityModel):
 
     # Associate with one entity
     person_id: PersonId | None = None
-    organization_id: CompanyId | None = None
+    company_id: CompanyId | None = None
     opportunity_id: OpportunityId | None = None
 
 
@@ -280,7 +280,7 @@ class EntityFile(AffinityModel):
 
     # Associated entity
     person_id: PersonId | None = Field(None, alias="personId")
-    organization_id: CompanyId | None = Field(None, alias="organizationId")
+    company_id: CompanyId | None = Field(None, alias="organizationId")
     opportunity_id: OpportunityId | None = Field(None, alias="opportunityId")
 
     # Uploader

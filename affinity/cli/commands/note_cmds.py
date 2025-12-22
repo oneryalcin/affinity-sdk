@@ -36,7 +36,7 @@ def _note_payload(note: Note) -> dict[str, object]:
         "associatedPersonIds": [int(p) for p in note.associated_person_ids],
         "interactionPersonIds": [int(p) for p in note.interaction_person_ids],
         "mentionedPersonIds": [int(p) for p in note.mentioned_person_ids],
-        "companyIds": [int(o) for o in note.organization_ids],
+        "companyIds": [int(o) for o in note.company_ids],
         "opportunityIds": [int(o) for o in note.opportunity_ids],
         "interactionId": note.interaction_id,
         "interactionType": int(note.interaction_type) if note.interaction_type else None,
@@ -84,7 +84,7 @@ def note_ls(
         while True:
             page = client.notes.list(
                 person_id=person_id_value,
-                organization_id=company_id_value,
+                company_id=company_id_value,
                 opportunity_id=opportunity_id_value,
                 creator_id=creator_id_value,
                 page_size=page_size,
@@ -216,7 +216,7 @@ def note_create(
                 content=content,
                 type=parsed_type or NoteType.PLAIN_TEXT,
                 person_ids=[PersonId(pid) for pid in person_ids],
-                organization_ids=[CompanyId(cid) for cid in company_ids],
+                company_ids=[CompanyId(cid) for cid in company_ids],
                 opportunity_ids=[OpportunityId(oid) for oid in opportunity_ids],
                 parent_id=NoteId(parent_id) if parent_id else None,
                 creator_id=UserId(creator_id) if creator_id is not None else None,

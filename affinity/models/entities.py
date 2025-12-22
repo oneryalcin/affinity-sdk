@@ -183,12 +183,12 @@ class Person(AffinityModel):
     def _coerce_person_type(cls, value: Any) -> Any:
         return _normalize_person_type(value)
 
-    # Associations (V1 uses organization_ids)
-    organization_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
+    # Associations (V1 uses organizationIds)
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
     opportunity_ids: list[OpportunityId] = Field(default_factory=list, alias="opportunityIds")
 
     # V1: only returned when `with_current_organizations=true`
-    current_organization_ids: list[CompanyId] = Field(
+    current_company_ids: list[CompanyId] = Field(
         default_factory=list, alias="currentOrganizationIds"
     )
 
@@ -203,8 +203,12 @@ class Person(AffinityModel):
             (
                 "emails",
                 "emailAddresses",
+                "companyIds",
+                "company_ids",
                 "organizationIds",
                 "organization_ids",
+                "currentCompanyIds",
+                "current_company_ids",
                 "currentOrganizationIds",
                 "current_organization_ids",
                 "opportunityIds",
@@ -237,7 +241,7 @@ class PersonCreate(AffinityModel):
     first_name: str
     last_name: str
     emails: list[str] = Field(default_factory=list)
-    organization_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list)
 
 
 class PersonUpdate(AffinityModel):
@@ -246,7 +250,7 @@ class PersonUpdate(AffinityModel):
     first_name: str | None = None
     last_name: str | None = None
     emails: list[str] | None = None
-    organization_ids: list[CompanyId] | None = None
+    company_ids: list[CompanyId] | None = None
 
 
 # =============================================================================
@@ -339,7 +343,7 @@ class Opportunity(AffinityModel):
 
     # Associations
     person_ids: list[PersonId] = Field(default_factory=list, alias="personIds")
-    organization_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
 
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
@@ -360,7 +364,7 @@ class OpportunityCreate(AffinityModel):
     name: str
     list_id: ListId
     person_ids: list[PersonId] = Field(default_factory=list)
-    organization_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list)
 
 
 class OpportunityUpdate(AffinityModel):
@@ -368,7 +372,7 @@ class OpportunityUpdate(AffinityModel):
 
     name: str | None = None
     person_ids: list[PersonId] | None = None
-    organization_ids: list[CompanyId] | None = None
+    company_ids: list[CompanyId] | None = None
 
 
 # =============================================================================

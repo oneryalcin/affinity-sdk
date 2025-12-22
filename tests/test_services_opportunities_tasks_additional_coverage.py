@@ -123,7 +123,7 @@ def test_opportunity_service_v2_reads_v1_writes_and_pagination() -> None:
                 name="New",
                 list_id=ListId(10),
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             )
         )
         assert created.id == OpportunityId(9)
@@ -136,7 +136,7 @@ def test_opportunity_service_v2_reads_v1_writes_and_pagination() -> None:
             OpportunityId(9),
             OpportunityUpdate(
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             ),
         )
         assert updated2.id == OpportunityId(9)
@@ -222,7 +222,7 @@ async def test_async_opportunity_service_cover_writes_and_all() -> None:
                 name="New",
                 list_id=ListId(10),
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             )
         )
         _ = await svc.create(OpportunityCreate(name="Bare", list_id=ListId(10)))
@@ -231,7 +231,7 @@ async def test_async_opportunity_service_cover_writes_and_all() -> None:
             OpportunityUpdate(
                 name="Updated",
                 person_ids=[PersonId(1)],
-                organization_ids=[CompanyId(2)],
+                company_ids=[CompanyId(2)],
             ),
         )
         _ = await svc.update(OpportunityId(9), OpportunityUpdate())

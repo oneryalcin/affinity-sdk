@@ -269,7 +269,7 @@ def opportunity_create(
             name=name,
             list_id=ListId(int(resolved_list.list.id)),
             person_ids=[PersonId(pid) for pid in person_ids],
-            organization_ids=[CompanyId(cid) for cid in company_ids],
+            company_ids=[CompanyId(cid) for cid in company_ids],
         )
         created = client.opportunities.create(data)
         payload = created.model_dump(by_alias=True, exclude_none=True)
@@ -332,7 +332,7 @@ def opportunity_update(
         data = OpportunityUpdate(
             name=name,
             person_ids=[PersonId(pid) for pid in person_ids] if person_ids else None,
-            organization_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
+            company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
         )
         updated = client.opportunities.update(OpportunityId(opportunity_id), data)
         payload = updated.model_dump(by_alias=True, exclude_none=True)

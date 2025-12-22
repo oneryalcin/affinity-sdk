@@ -585,7 +585,7 @@ def company_files_dump(
                 max_files=max_files,
                 default_dirname=f"affinity-company-{company_id}-files",
                 manifest_entity={"type": "company", "companyId": company_id},
-                files_list_kwargs={"organization_id": CompanyId(company_id)},
+                files_list_kwargs={"company_id": CompanyId(company_id)},
             )
         )
 
@@ -654,7 +654,7 @@ def company_files_upload(
                 )
                 success = client.files.upload_path(
                     p,
-                    organization_id=CompanyId(company_id),
+                    company_id=CompanyId(company_id),
                     on_progress=cb,
                 )
                 results.append(
