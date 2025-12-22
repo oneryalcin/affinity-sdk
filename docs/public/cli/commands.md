@@ -46,9 +46,35 @@ affinity resolve-url "https://mydomain.affinity.com/companies/263169568" --json
 
 `<query>` is a free-text term (typically a name or email address) passed to Affinity's person search.
 
+Options:
+
+- `--with-interaction-dates`: include interaction date data
+- `--with-interaction-persons`: include persons for interactions
+- `--with-opportunities`: include associated opportunity IDs
+- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+
 ```bash
 affinity person search "alice@example.com"
 affinity person search "Alice" --all --json
+affinity person search "Alice" --with-interaction-dates
+```
+
+### `affinity person ls`
+
+List persons with V2 pagination. Supports field selection and V2 filter expressions.
+
+Options:
+
+- `--field <id-or-name>` (repeatable): field ID or name to include
+- `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
+- `--filter <expression>`: V2 filter expression
+- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+
+```bash
+affinity person ls
+affinity person ls --page-size 50
+affinity person ls --field-type enriched --all
+affinity person ls --filter 'field("Email").contains("@acme.com")'
 ```
 
 ### `affinity person get <personSelector>`
@@ -123,15 +149,50 @@ Downloads all files attached to a person into a folder bundle with a `manifest.j
 affinity person files dump 12345 --out ./bundle
 ```
 
+### `affinity person files upload <personId>`
+
+Uploads one or more files to a person.
+
+```bash
+affinity person files upload 12345 --file doc.pdf
+affinity person files upload 12345 --file a.pdf --file b.pdf
+```
+
 ## Companies
 
 ### `affinity company search <query>`
 
 `<query>` is a free-text term (typically a company name or domain) passed to Affinity's company search.
 
+Options:
+
+- `--with-interaction-dates`: include interaction date data
+- `--with-interaction-persons`: include persons for interactions
+- `--with-opportunities`: include associated opportunity IDs
+- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+
 ```bash
 affinity company search "example.com"
 affinity company search "Example" --json
+affinity company search "Example" --with-interaction-dates
+```
+
+### `affinity company ls`
+
+List companies with V2 pagination. Supports field selection and V2 filter expressions.
+
+Options:
+
+- `--field <id-or-name>` (repeatable): field ID or name to include
+- `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
+- `--filter <expression>`: V2 filter expression
+- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+
+```bash
+affinity company ls
+affinity company ls --page-size 50
+affinity company ls --field-type enriched --all
+affinity company ls --filter 'field("Industry").equals("Software")'
 ```
 
 ### `affinity company get <companySelector>`
@@ -209,6 +270,15 @@ affinity company files dump 9876 --out ./bundle
 Notes:
 - Saved files use the original filename when possible; if multiple files share the same name, the CLI disambiguates by appending the file id.
 
+### `affinity company files upload <companyId>`
+
+Uploads one or more files to a company.
+
+```bash
+affinity company files upload 9876 --file doc.pdf
+affinity company files upload 9876 --file a.pdf --file b.pdf
+```
+
 ## Opportunities
 
 ### `affinity opportunity ls`
@@ -255,6 +325,15 @@ affinity opportunity update 123 --person-id 1 --person-id 2
 
 ```bash
 affinity opportunity delete 123
+```
+
+### `affinity opportunity files upload <opportunityId>`
+
+Uploads one or more files to an opportunity.
+
+```bash
+affinity opportunity files upload 123 --file doc.pdf
+affinity opportunity files upload 123 --file a.pdf --file b.pdf
 ```
 
 ## Lists

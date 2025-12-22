@@ -57,6 +57,7 @@ class PersonService:
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
         limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[Person]:
         """
         Get a page of persons.
@@ -66,28 +67,73 @@ class PersonService:
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum number of results
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses)
 
         Returns:
             Paginated response with persons
         """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter is not None:
-            filter_text = str(filter).strip()
-            if filter_text:
-                params["filter"] = filter_text
-        if limit:
-            params["limit"] = limit
-
-        data = self._client.get("/persons", params=params or None)
+        if cursor is not None:
+            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if field_ids:
+                params["fieldIds"] = [str(field_id) for field_id in field_ids]
+            if field_types:
+                params["fieldTypes"] = [field_type.value for field_type in field_types]
+            if filter is not None:
+                filter_text = str(filter).strip()
+                if filter_text:
+                    params["filter"] = filter_text
+            if limit:
+                params["limit"] = limit
+            data = self._client.get("/persons", params=params or None)
 
         return PaginatedResponse[Person](
             data=[Person.model_validate(p) for p in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    def pages(
+        self,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        filter: str | FilterExpression | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Iterator[PaginatedResponse[Person]]:
+        """
+        Iterate person pages (not items), yielding `PaginatedResponse[Person]`.
+
+        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        """
+        other_params = (field_ids, field_types, filter, limit)
+        if cursor is not None and any(p is not None for p in other_params):
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        page = (
+            self.list(cursor=cursor)
+            if cursor is not None
+            else self.list(field_ids=field_ids, field_types=field_types, filter=filter, limit=limit)
+        )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = self.list(cursor=next_cursor)
 
     def all(
         self,
@@ -480,6 +526,7 @@ class AsyncPersonService:
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
         limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[Person]:
         """
         Get a page of persons.
@@ -489,27 +536,77 @@ class AsyncPersonService:
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
             limit: Maximum number of results
+            cursor: Cursor to resume pagination (opaque; obtained from prior responses)
 
         Returns:
             Paginated response with persons
         """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
-        if filter is not None:
-            filter_text = str(filter).strip()
-            if filter_text:
-                params["filter"] = filter_text
-        if limit:
-            params["limit"] = limit
+        if cursor is not None:
+            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if field_ids:
+                params["fieldIds"] = [str(field_id) for field_id in field_ids]
+            if field_types:
+                params["fieldTypes"] = [field_type.value for field_type in field_types]
+            if filter is not None:
+                filter_text = str(filter).strip()
+                if filter_text:
+                    params["filter"] = filter_text
+            if limit:
+                params["limit"] = limit
+            data = await self._client.get("/persons", params=params or None)
 
-        data = await self._client.get("/persons", params=params or None)
         return PaginatedResponse[Person](
             data=[Person.model_validate(p) for p in data.get("data", [])],
             pagination=PaginationInfo.model_validate(data.get("pagination", {})),
         )
+
+    async def pages(
+        self,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        filter: str | FilterExpression | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AsyncIterator[PaginatedResponse[Person]]:
+        """
+        Iterate person pages (not items), yielding `PaginatedResponse[Person]`.
+
+        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        """
+        other_params = (field_ids, field_types, filter, limit)
+        if cursor is not None and any(p is not None for p in other_params):
+            raise ValueError(
+                "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
+                "Start a new pagination sequence without a cursor to change parameters."
+            )
+        requested_cursor = cursor
+        if cursor is not None:
+            page = await self.list(cursor=cursor)
+        else:
+            page = await self.list(
+                field_ids=field_ids,
+                field_types=field_types,
+                filter=filter,
+                limit=limit,
+            )
+        while True:
+            yield page
+            if not page.has_next:
+                return
+            next_cursor = page.next_cursor
+            if next_cursor is None or next_cursor == requested_cursor:
+                return
+            requested_cursor = next_cursor
+            page = await self.list(cursor=next_cursor)
 
     def all(
         self,

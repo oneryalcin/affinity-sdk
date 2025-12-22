@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, cast
 
 from affinity.models.entities import Person, PersonCreate, PersonUpdate
+from affinity.models.types import FieldId
 from affinity.types import CompanyId, FieldType, ListId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..runner import CommandOutput, run_command
 from ._entity_files_dump import dump_entity_files_bundle
@@ -33,6 +36,24 @@ def person_group() -> None:
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N results total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option(
+    "--with-interaction-dates",
+    is_flag=True,
+    default=False,
+    help="Include interaction date data.",
+)
+@click.option(
+    "--with-interaction-persons",
+    is_flag=True,
+    default=False,
+    help="Include persons for interactions.",
+)
+@click.option(
+    "--with-opportunities",
+    is_flag=True,
+    default=False,
+    help="Include associated opportunity IDs.",
+)
 @output_options
 @click.pass_obj
 def person_search(
@@ -43,6 +64,9 @@ def person_search(
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
+    with_interaction_dates: bool,
+    with_interaction_persons: bool,
+    with_opportunities: bool,
 ) -> None:
     """
     Search people by name or email.
@@ -56,6 +80,7 @@ def person_search(
 
     - `affinity person search alice@example.com`
     - `affinity person search \"Alice\" --all`
+    - `affinity person search \"Alice\" --with-interaction-dates`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -64,7 +89,9 @@ def person_search(
         first_page = True
         for page in client.persons.search_pages(
             query,
-            with_interaction_dates=True,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
+            with_opportunities=with_opportunities,
             page_size=page_size,
             page_token=cursor,
         ):
@@ -104,6 +131,164 @@ def person_search(
         return CommandOutput(data={"persons": results}, pagination=None, api_called=True)
 
     run_command(ctx, command="person search", fn=fn)
+
+
+def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
+    """Parse --field-type option values to FieldType enums."""
+    if not values:
+        return None
+    result: list[FieldType] = []
+    valid_types = {ft.value.lower(): ft for ft in FieldType}
+    for v in values:
+        lower = v.lower()
+        if lower not in valid_types:
+            raise CLIError(
+                f"Unknown field type: {v}",
+                exit_code=2,
+                error_type="usage_error",
+                hint=f"Valid types: {', '.join(sorted(valid_types.keys()))}",
+            )
+        result.append(valid_types[lower])
+    return result
+
+
+@person_group.command(name="ls", cls=RichCommand)
+@click.option("--page-size", type=int, default=None, help="Page size (limit).")
+@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
+@click.option("--max-results", type=int, default=None, help="Stop after N items total.")
+@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option(
+    "--field",
+    "field_ids",
+    type=str,
+    multiple=True,
+    help="Field ID or name to include (repeatable).",
+)
+@click.option(
+    "--field-type",
+    "field_types",
+    type=str,
+    multiple=True,
+    help="Field type to include (repeatable). Values: global, enriched, relationship-intelligence.",
+)
+@click.option(
+    "--filter",
+    "filter_expr",
+    type=str,
+    default=None,
+    help='V2 filter expression (e.g., \'field("Email").contains("@acme.com")\').',
+)
+@output_options
+@click.pass_obj
+def person_ls(
+    ctx: CLIContext,
+    *,
+    page_size: int | None,
+    cursor: str | None,
+    max_results: int | None,
+    all_pages: bool,
+    field_ids: tuple[str, ...],
+    field_types: tuple[str, ...],
+    filter_expr: str | None,
+) -> None:
+    """
+    List persons with V2 pagination.
+
+    Supports field selection, field types, and V2 filter expressions.
+
+    Examples:
+
+    - `affinity person ls`
+    - `affinity person ls --page-size 50`
+    - `affinity person ls --field-type enriched --all`
+    - `affinity person ls --filter 'field("Email").contains("@acme.com")'`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+
+        if cursor is not None and page_size is not None:
+            raise CLIError(
+                "--cursor cannot be combined with --page-size.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        parsed_field_types = _parse_field_types(field_types)
+        parsed_field_ids: list[FieldId] | None = (
+            [FieldId(fid) for fid in field_ids] if field_ids else None
+        )
+
+        rows: list[dict[str, object]] = []
+        first_page = True
+
+        pages_iter = client.persons.pages(
+            field_ids=parsed_field_ids,
+            field_types=parsed_field_types,
+            filter=filter_expr,
+            limit=page_size,
+            cursor=cursor,
+        )
+
+        for page in pages_iter:
+            for idx, person in enumerate(page.data):
+                rows.append(_person_ls_row(person))
+                if max_results is not None and len(rows) >= max_results:
+                    stopped_mid_page = idx < (len(page.data) - 1)
+                    if stopped_mid_page:
+                        warnings.append(
+                            "Results truncated mid-page; resume cursor omitted "
+                            "to avoid skipping items. Re-run with a higher "
+                            "--max-results or without it to paginate safely."
+                        )
+                    pagination = None
+                    if (
+                        page.pagination.next_cursor
+                        and not stopped_mid_page
+                        and page.pagination.next_cursor != cursor
+                    ):
+                        pagination = {
+                            "persons": {
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
+                            }
+                        }
+                    return CommandOutput(
+                        data={"persons": rows[:max_results]},
+                        pagination=pagination,
+                        api_called=True,
+                    )
+
+            if first_page and not all_pages and max_results is None:
+                return CommandOutput(
+                    data={"persons": rows},
+                    pagination=(
+                        {
+                            "persons": {
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
+                            }
+                        }
+                        if page.pagination.next_cursor
+                        else None
+                    ),
+                    api_called=True,
+                )
+            first_page = False
+
+        return CommandOutput(data={"persons": rows}, pagination=None, api_called=True)
+
+    run_command(ctx, command="person ls", fn=fn)
+
+
+def _person_ls_row(person: Person) -> dict[str, object]:
+    """Build a row for person ls output."""
+    return {
+        "id": int(person.id),
+        "name": person.full_name,
+        "primaryEmail": person.primary_email,
+        "emails": person.emails,
+    }
 
 
 def _person_row(person: Person) -> dict[str, object]:
@@ -992,6 +1177,88 @@ def person_files_dump(
         )
 
     run_command(ctx, command="person files dump", fn=fn)
+
+
+@person_files_group.command(name="upload", cls=RichCommand)
+@click.argument("person_id", type=int)
+@click.option(
+    "--file",
+    "file_paths",
+    type=click.Path(exists=False),
+    multiple=True,
+    required=True,
+    help="File path to upload (repeatable).",
+)
+@output_options
+@click.pass_obj
+def person_files_upload(
+    ctx: CLIContext,
+    person_id: int,
+    *,
+    file_paths: tuple[str, ...],
+) -> None:
+    """
+    Upload files to a person.
+
+    Examples:
+
+    - `affinity person files upload 123 --file doc.pdf`
+    - `affinity person files upload 123 --file a.pdf --file b.pdf`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+
+        # Validate all file paths first
+        paths: list[Path] = []
+        for fp in file_paths:
+            p = Path(fp)
+            if not p.exists():
+                raise CLIError(
+                    f"File not found: {fp}",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint="Check the file path and try again.",
+                )
+            if not p.is_file():
+                raise CLIError(
+                    f"Not a regular file: {fp}",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint="Only regular files can be uploaded, not directories.",
+                )
+            paths.append(p)
+
+        results: list[dict[str, object]] = []
+        settings = ProgressSettings(mode=ctx.progress, quiet=ctx.quiet)
+
+        with ProgressManager(settings=settings) as pm:
+            for p in paths:
+                file_size = p.stat().st_size
+                _task_id, cb = pm.task(
+                    description=f"upload {p.name}",
+                    total_bytes=file_size,
+                )
+                success = client.files.upload_path(
+                    p,
+                    person_id=PersonId(person_id),
+                    on_progress=cb,
+                )
+                results.append(
+                    {
+                        "file": str(p),
+                        "filename": p.name,
+                        "size": file_size,
+                        "success": success,
+                    }
+                )
+
+        return CommandOutput(
+            data={"uploads": results, "personId": person_id},
+            api_called=True,
+        )
+
+    run_command(ctx, command="person files upload", fn=fn)
 
 
 @person_group.command(name="create", cls=RichCommand)

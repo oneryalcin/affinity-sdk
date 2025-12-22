@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from affinity.models.entities import Opportunity, OpportunityCreate, OpportunityUpdate
-from affinity.models.pagination import PaginationInfo
 from affinity.models.types import ListType
 from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 
@@ -11,6 +11,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..runner import CommandOutput, run_command
 from .resolve_url_cmd import _parse_affinity_url
@@ -19,26 +20,6 @@ from .resolve_url_cmd import _parse_affinity_url
 @click.group(name="opportunity", cls=RichGroup)
 def opportunity_group() -> None:
     """Opportunity commands."""
-
-
-def _opportunity_row(item: dict[str, Any]) -> dict[str, object]:
-    raw_id = item.get("id")
-    raw_list_id = item.get("listId")
-    ident = raw_id
-    if (isinstance(raw_id, (int, float)) and not isinstance(raw_id, bool)) or (
-        isinstance(raw_id, str) and raw_id.isdigit()
-    ):
-        ident = int(raw_id)
-    list_id = raw_list_id
-    if (isinstance(raw_list_id, (int, float)) and not isinstance(raw_list_id, bool)) or (
-        isinstance(raw_list_id, str) and raw_list_id.isdigit()
-    ):
-        list_id = int(raw_list_id)
-    return {
-        "id": ident,
-        "name": item.get("name"),
-        "listId": list_id,
-    }
 
 
 def _resolve_opportunity_selector(
@@ -120,22 +101,14 @@ def opportunity_ls(
 
         rows: list[dict[str, object]] = []
         first_page = True
-        next_url = cursor
-        while True:
-            if next_url:
-                payload = client._http.get_url(next_url)
-            else:
-                params = {"limit": page_size} if page_size else None
-                payload = client._http.get("/opportunities", params=params)
 
-            items = payload.get("data", [])
-            if not isinstance(items, list):
-                items = []
-            for idx, item in enumerate(items):
-                if isinstance(item, dict):
-                    rows.append(_opportunity_row(item))
+        pages_iter = client.opportunities.pages(limit=page_size, cursor=cursor)
+
+        for page in pages_iter:
+            for idx, opportunity in enumerate(page.data):
+                rows.append(_opportunity_ls_row(opportunity))
                 if max_results is not None and len(rows) >= max_results:
-                    stopped_mid_page = idx < (len(items) - 1)
+                    stopped_mid_page = idx < (len(page.data) - 1)
                     if stopped_mid_page:
                         warnings.append(
                             "Results truncated mid-page; resume cursor omitted "
@@ -143,51 +116,52 @@ def opportunity_ls(
                             "--max-results or without it to paginate safely."
                         )
                     pagination = None
-                    if not stopped_mid_page:
-                        page_pagination = payload.get("pagination", {})
-                        if isinstance(page_pagination, dict):
-                            page_info = PaginationInfo.model_validate(page_pagination)
-                            if page_info.next_cursor:
-                                pagination = {
-                                    "opportunities": {
-                                        "nextCursor": page_info.next_cursor,
-                                        "prevCursor": page_info.prev_cursor,
-                                    }
-                                }
+                    if (
+                        page.pagination.next_cursor
+                        and not stopped_mid_page
+                        and page.pagination.next_cursor != cursor
+                    ):
+                        pagination = {
+                            "opportunities": {
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
+                            }
+                        }
                     return CommandOutput(
                         data={"opportunities": rows[:max_results]},
                         pagination=pagination,
                         api_called=True,
                     )
 
-            page_pagination = payload.get("pagination", {})
-            if not isinstance(page_pagination, dict):
-                page_pagination = {}
-            page_info = PaginationInfo.model_validate(page_pagination)
-            next_url = page_info.next_cursor
-
             if first_page and not all_pages and max_results is None:
-                pagination = None
-                if page_info.next_cursor:
-                    pagination = {
-                        "opportunities": {
-                            "nextCursor": page_info.next_cursor,
-                            "prevCursor": page_info.prev_cursor,
-                        }
-                    }
                 return CommandOutput(
                     data={"opportunities": rows},
-                    pagination=pagination,
+                    pagination=(
+                        {
+                            "opportunities": {
+                                "nextCursor": page.pagination.next_cursor,
+                                "prevCursor": page.pagination.prev_cursor,
+                            }
+                        }
+                        if page.pagination.next_cursor
+                        else None
+                    ),
                     api_called=True,
                 )
             first_page = False
 
-            if not next_url:
-                break
-
         return CommandOutput(data={"opportunities": rows}, pagination=None, api_called=True)
 
     run_command(ctx, command="opportunity ls", fn=fn)
+
+
+def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
+    """Build a row for opportunity ls output."""
+    return {
+        "id": int(opportunity.id),
+        "name": opportunity.name,
+        "listId": int(opportunity.list_id) if opportunity.list_id else None,
+    }
 
 
 @opportunity_group.command(name="get", cls=RichCommand)
@@ -397,3 +371,90 @@ def opportunity_delete(
         )
 
     run_command(ctx, command="opportunity delete", fn=fn)
+
+
+@opportunity_group.group(name="files", cls=RichGroup)
+def opportunity_files_group() -> None:
+    """Opportunity files."""
+
+
+@opportunity_files_group.command(name="upload", cls=RichCommand)
+@click.argument("opportunity_id", type=int)
+@click.option(
+    "--file",
+    "file_paths",
+    type=click.Path(exists=False),
+    multiple=True,
+    required=True,
+    help="File path to upload (repeatable).",
+)
+@output_options
+@click.pass_obj
+def opportunity_files_upload(
+    ctx: CLIContext,
+    opportunity_id: int,
+    *,
+    file_paths: tuple[str, ...],
+) -> None:
+    """
+    Upload files to an opportunity.
+
+    Examples:
+
+    - `affinity opportunity files upload 123 --file doc.pdf`
+    - `affinity opportunity files upload 123 --file a.pdf --file b.pdf`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+
+        # Validate all file paths first
+        paths: list[Path] = []
+        for fp in file_paths:
+            p = Path(fp)
+            if not p.exists():
+                raise CLIError(
+                    f"File not found: {fp}",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint="Check the file path and try again.",
+                )
+            if not p.is_file():
+                raise CLIError(
+                    f"Not a regular file: {fp}",
+                    exit_code=2,
+                    error_type="usage_error",
+                    hint="Only regular files can be uploaded, not directories.",
+                )
+            paths.append(p)
+
+        results: list[dict[str, object]] = []
+        settings = ProgressSettings(mode=ctx.progress, quiet=ctx.quiet)
+
+        with ProgressManager(settings=settings) as pm:
+            for p in paths:
+                file_size = p.stat().st_size
+                _task_id, cb = pm.task(
+                    description=f"upload {p.name}",
+                    total_bytes=file_size,
+                )
+                success = client.files.upload_path(
+                    p,
+                    opportunity_id=OpportunityId(opportunity_id),
+                    on_progress=cb,
+                )
+                results.append(
+                    {
+                        "file": str(p),
+                        "filename": p.name,
+                        "size": file_size,
+                        "success": success,
+                    }
+                )
+
+        return CommandOutput(
+            data={"uploads": results, "opportunityId": opportunity_id},
+            api_called=True,
+        )
+
+    run_command(ctx, command="opportunity files upload", fn=fn)
