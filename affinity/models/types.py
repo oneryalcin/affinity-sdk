@@ -152,11 +152,19 @@ def field_id_to_v1_numeric(field_id: AnyFieldId) -> int:
     - EnrichedFieldId(...) (cannot be represented as v1 numeric id)
     """
     if isinstance(field_id, EnrichedFieldId):
-        raise ValueError("Enriched field IDs cannot be converted to v1 numeric field_id")
+        raise ValueError(
+            "Field IDs must be 'field-<digits>' for v1 conversion; "
+            "enriched/relationship-intelligence IDs (e.g., 'affinity-data-*', "
+            "'source-of-introduction') are not supported."
+        )
 
     match = _FIELD_ID_RE.match(str(field_id))
     if match is None:
-        raise ValueError("FieldId must match 'field-<digits>' for v1 conversion")
+        raise ValueError(
+            "Field IDs must be 'field-<digits>' for v1 conversion; "
+            "enriched/relationship-intelligence IDs (e.g., 'affinity-data-*', "
+            "'source-of-introduction') are not supported."
+        )
     return int(match.group(1))
 
 

@@ -557,7 +557,13 @@ class FieldService:
         return FieldMetadata.model_validate(result)
 
     def delete(self, field_id: FieldId) -> bool:
-        """Delete a custom field."""
+        """
+        Delete a custom field (V1 API).
+
+        Note: V1 deletes require numeric field IDs. The SDK accepts V2-style
+        `field-<digits>` IDs and converts them; enriched/relationship-intelligence
+        IDs are not supported.
+        """
         numeric_id = field_id_to_v1_numeric(field_id)
         result = self._client.delete(f"/fields/{numeric_id}", v1=True)
 
@@ -639,7 +645,13 @@ class FieldValueService:
         return [FieldValue.model_validate(v) for v in items]
 
     def create(self, data: FieldValueCreate) -> FieldValue:
-        """Create a field value."""
+        """
+        Create a field value (V1 API).
+
+        Note: V1 writes require numeric field IDs. The SDK accepts V2-style
+        `field-<digits>` IDs and converts them; enriched/relationship-intelligence
+        IDs are not supported.
+        """
         payload: dict[str, Any] = {
             "field_id": field_id_to_v1_numeric(data.field_id),
             "entity_id": data.entity_id,
@@ -717,6 +729,7 @@ class FieldValueChangesService:
         Get field value changes for a specific field and entity.
 
         This endpoint is not paginated. For large histories, use narrow filters.
+        V1 requires numeric field IDs; only `field-<digits>` values are convertible.
         """
         self._validate_selector(
             person_id=person_id,
@@ -1565,6 +1578,13 @@ class AsyncFieldService:
         return FieldMetadata.model_validate(result)
 
     async def delete(self, field_id: FieldId) -> bool:
+        """
+        Delete a custom field (V1 API).
+
+        Note: V1 deletes require numeric field IDs. The SDK accepts V2-style
+        `field-<digits>` IDs and converts them; enriched/relationship-intelligence
+        IDs are not supported.
+        """
         numeric_id = field_id_to_v1_numeric(field_id)
         result = await self._client.delete(f"/fields/{numeric_id}", v1=True)
 
@@ -1626,6 +1646,13 @@ class AsyncFieldValueService:
         return [FieldValue.model_validate(v) for v in items]
 
     async def create(self, data: FieldValueCreate) -> FieldValue:
+        """
+        Create a field value (V1 API).
+
+        Note: V1 writes require numeric field IDs. The SDK accepts V2-style
+        `field-<digits>` IDs and converts them; enriched/relationship-intelligence
+        IDs are not supported.
+        """
         payload: dict[str, Any] = {
             "field_id": field_id_to_v1_numeric(data.field_id),
             "entity_id": data.entity_id,
@@ -1696,6 +1723,7 @@ class AsyncFieldValueChangesService:
         Get field value changes for a specific field and entity.
 
         This endpoint is not paginated. For large histories, use narrow filters.
+        V1 requires numeric field IDs; only `field-<digits>` values are convertible.
         """
         self._validate_selector(
             person_id=person_id,

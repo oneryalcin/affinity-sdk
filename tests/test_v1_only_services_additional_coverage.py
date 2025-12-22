@@ -535,7 +535,7 @@ def test_field_value_changes_service_validation_and_request_building() -> None:
                 company_id=CompanyId(2),
             )
 
-        with pytest.raises(ValueError, match="Enriched field IDs cannot be converted"):
+        with pytest.raises(ValueError, match="Field IDs must be 'field-<digits>'"):
             svc.list(
                 EnrichedFieldId("affinity-data-location"),
                 person_id=PersonId(1),

@@ -43,6 +43,19 @@ with Affinity(api_key="your-key") as client:
             print(company.fields.data.get("101"))
 ```
 
+### V1-only writes and numeric field IDs
+
+The SDK uses V2 field metadata endpoints for reads. Some write operations still use V1
+endpoints under the hood (for example, field value writes and field deletes). Those V1
+endpoints require numeric field IDs.
+
+Rules:
+
+- IDs of the form `field-<digits>` are convertible to V1 numeric IDs.
+- Enriched and relationship-intelligence IDs (for example, `affinity-data-*` or
+  `source-of-introduction`) have no V1 numeric equivalent and will raise an error
+  if used in V1-only write paths.
+
 ## Requested vs not requested
 
 Entities expose a `fields` container that preserves whether the API returned field data:

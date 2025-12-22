@@ -26,53 +26,94 @@ with Affinity.from_env() as client:
     - Affinity limits webhook subscriptions (see `WebhookService` docs).
     - Affinity may attempt to contact your `webhook_url` during creation/updates; ensure your endpoint is reachable and responds quickly.
 
-## Verify inbound requests (recommended)
+## Securing your webhook endpoint
 
-Affinity’s public V1 docs do not describe a standard signature scheme. If your account includes a signature header/mechanism, validate it per Affinity’s documentation.
+!!! warning "No signature verification available"
+    Affinity's V1 API does not provide cryptographic signature verification for webhook requests. There is no HMAC header, signing secret, or other mechanism to verify that requests originate from Affinity. You must rely on defense-in-depth practices to secure your endpoint.
 
-If you do not have a signature mechanism, treat the webhook endpoint like a public entry point and add your own verification controls:
+Since webhook authenticity cannot be cryptographically verified, treat your webhook endpoint as a semi-public entry point and apply multiple layers of protection:
 
-- **Use HTTPS only** (terminate TLS at a load balancer/reverse proxy if needed).
-- **Use an unguessable URL** (include a random secret in the path) and reject requests missing it.
-- **Validate method/content-type** and parse JSON defensively.
-- **Optionally enforce a replay window** using `sent_at` (e.g., reject events older than N seconds).
-- **Respond fast** (2xx) and enqueue work; assume retries can happen.
-- **Avoid logging raw payloads** unless you have a PII-safe pipeline.
+### Required: Secret URL path
 
-## Defense in depth (recommended)
+Include a long, random, unguessable secret in your webhook URL path:
 
-Even with a secret URL path, you should assume the endpoint can become discoverable (logs, referrers, misconfiguration, shared links). Add additional layers:
-
-### IP allowlisting (when possible)
-
-- If Affinity provides stable egress IP ranges for webhook delivery, enforce them at your load balancer / WAF.
-- If Affinity does not publish IP ranges for your account, you can still:
-  - restrict by geography/ASN where appropriate,
-  - alert on unexpected source IPs,
-  - rate-limit and apply bot protections at the edge.
-
-### Signature verification (when available)
-
-If your Affinity account includes a signature header, validate it before parsing the body.
-
-The exact header names and signing scheme are account/tenant-specific; follow Affinity’s documentation. A common pattern is HMAC over `(timestamp + "." + raw_body)`:
-
-```python
-import hmac
-import hashlib
-
-def verify_hmac_signature(*, secret: bytes, timestamp: str, raw_body: bytes, signature: str) -> bool:
-    signed = timestamp.encode("utf-8") + b"." + raw_body
-    expected = hmac.new(secret, signed, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+```
+https://example.com/webhooks/affinity/a1b2c3d4e5f6g7h8i9j0...
 ```
 
-### Replay protection
+- Generate at least 32 characters of cryptographically random data
+- Reject any request where the path secret doesn't match
+- Rotate the secret periodically and after any suspected exposure
+- Never log the full URL or share it in plain text
 
-Even with signatures, protect against replay:
+### Required: HTTPS only
 
-- Enforce a timestamp window (e.g., reject events where `sent_at` is older than N seconds).
-- Optionally store a short-lived dedupe key (e.g., `(type, sent_at, sha256(body))`) for a few minutes and reject repeats.
+- Always use HTTPS for your webhook URL
+- Terminate TLS at your load balancer or reverse proxy
+- Reject HTTP requests at the application level as a fallback
+
+### Required: Request validation
+
+- **Method**: Only accept `POST` requests
+- **Content-Type**: Require `application/json`
+- **Body size**: Enforce a reasonable limit (e.g., 1MB)
+- **JSON parsing**: Use strict parsing; reject malformed payloads
+
+### Recommended: Replay protection
+
+Use the `sent_at` field in the webhook payload to reject stale events:
+
+```python
+from affinity import parse_webhook
+from affinity.exceptions import WebhookInvalidSentAtError
+
+try:
+    # Reject events older than 5 minutes (300 seconds)
+    envelope = parse_webhook(raw_body, max_age_seconds=300)
+except WebhookInvalidSentAtError:
+    # Event is too old or too far in the future
+    return Response(status=400)
+```
+
+For stronger replay protection, store a short-lived dedupe key:
+
+```python
+import hashlib
+
+# Generate a dedupe key from event properties
+dedupe_key = f"{envelope.type}:{envelope.sent_at_epoch}:{hashlib.sha256(raw_body).hexdigest()[:16]}"
+
+# Check against a cache (Redis, memcached, etc.) with 5-10 minute TTL
+if cache.exists(dedupe_key):
+    return Response(status=200)  # Already processed, acknowledge silently
+cache.set(dedupe_key, "1", ttl=600)
+```
+
+### Recommended: IP allowlisting
+
+If Affinity provides stable egress IP ranges for your account:
+
+- Configure your load balancer or WAF to only accept webhook traffic from those IPs
+- Contact Affinity support to request their webhook delivery IP ranges
+
+If IP ranges are not available:
+
+- Restrict by geography or ASN where appropriate
+- Alert on unexpected source IPs for investigation
+- Apply rate limiting and bot protection at the edge
+
+### Recommended: Fast response with async processing
+
+- Respond with `2xx` immediately after basic validation
+- Enqueue the actual processing for async handling
+- Assume retries can happen (Affinity retries with exponential backoff for up to 10 hours)
+- Make your processing idempotent using the dedupe key pattern above
+
+### Recommended: Logging considerations
+
+- Avoid logging raw webhook payloads (may contain PII)
+- If logging is required, redact sensitive fields or use a PII-safe pipeline
+- Log the event type, timestamp, and dedupe key for debugging
 
 ## Parse inbound payloads (optional)
 
@@ -93,22 +134,54 @@ if event.type == WebhookEvent.LIST_ENTRY_CREATED:
 ## Minimal receiver example (FastAPI)
 
 ```python
-from fastapi import FastAPI, HTTPException, Request
+import hashlib
+import secrets
+
+from fastapi import FastAPI, HTTPException, Header, Request
+
 from affinity import dispatch_webhook, parse_webhook
+from affinity.exceptions import WebhookInvalidSentAtError, WebhookParseError
 
 app = FastAPI()
 
-WEBHOOK_SECRET = "replace-with-a-long-random-string"
+# Generate with: secrets.token_urlsafe(32)
+WEBHOOK_SECRET = "replace-with-a-long-random-string-at-least-32-chars"
 
 
 @app.post("/webhooks/affinity/{secret}")
-async def affinity_webhook(secret: str, request: Request) -> dict[str, str]:
-    if secret != WEBHOOK_SECRET:
-        raise HTTPException(status_code=401, detail="invalid secret")
+async def affinity_webhook(
+    secret: str,
+    request: Request,
+    content_type: str = Header(default=""),
+) -> dict[str, str]:
+    # 1. Validate secret path
+    if not secrets.compare_digest(secret, WEBHOOK_SECRET):
+        raise HTTPException(status_code=404)  # 404 to avoid confirming endpoint exists
 
+    # 2. Validate content type
+    if not content_type.startswith("application/json"):
+        raise HTTPException(status_code=415, detail="unsupported media type")
+
+    # 3. Read and validate body size
     raw = await request.body()
-    envelope = parse_webhook(raw)
+    if len(raw) > 1_000_000:  # 1MB limit
+        raise HTTPException(status_code=413, detail="payload too large")
+
+    # 4. Parse with replay protection (rejects events older than 5 minutes)
+    try:
+        envelope = parse_webhook(raw, max_age_seconds=300)
+    except WebhookInvalidSentAtError:
+        raise HTTPException(status_code=400, detail="stale event")
+    except WebhookParseError:
+        raise HTTPException(status_code=400, detail="invalid payload")
+
+    # 5. Optional: Check dedupe key against cache here
+
+    # 6. Dispatch to typed body (if registered) and process
     event = dispatch_webhook(envelope)
-    # Process `event` (shape is defined by Affinity)
+
+    # TODO: Enqueue for async processing instead of processing inline
+    # process_webhook_event.delay(event)
+
     return {"ok": "true"}
 ```
