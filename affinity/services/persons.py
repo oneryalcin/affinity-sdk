@@ -35,6 +35,23 @@ if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
 
 
+def _person_matches(person: Person, *, email: str | None, name: str | None) -> bool:
+    if email:
+        email_lower = email.lower()
+        if person.primary_email and person.primary_email.lower() == email_lower:
+            return True
+        if person.emails:
+            for addr in person.emails:
+                if addr.lower() == email_lower:
+                    return True
+    if name:
+        name_lower = name.lower()
+        full_name = f"{person.first_name or ''} {person.last_name or ''}".strip()
+        if full_name.lower() == name_lower:
+            return True
+    return False
+
+
 class PersonService:
     """
     Service for managing persons (contacts).
@@ -388,31 +405,44 @@ class PersonService:
             ValueError: If neither email nor name is provided
 
         Note:
-            If multiple matches are found, returns the first one.
-            For disambiguation, use search() directly.
+            This auto-paginates V1 search results until a match is found.
+            If multiple matches are found, returns the first one. For full
+            disambiguation, use resolve_all() or search() directly.
         """
         if not email and not name:
             raise ValueError("Must provide either email or name")
 
         term = email or name or ""
-        result = self.search(term, page_size=10)
-
-        for person in result.data:
-            if email:
-                # Check primary email and all emails
-                if person.primary_email and person.primary_email.lower() == email.lower():
-                    return person
-                if person.emails:
-                    for e in person.emails:
-                        if e.lower() == email.lower():
-                            return person
-            if name:
-                # Check full name
-                full_name = f"{person.first_name or ''} {person.last_name or ''}".strip()
-                if full_name.lower() == name.lower():
+        for page in self.search_pages(term, page_size=10):
+            for person in page.data:
+                if _person_matches(person, email=email, name=name):
                     return person
 
         return None
+
+    def resolve_all(
+        self,
+        *,
+        email: str | None = None,
+        name: str | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Find all persons matching an email or name.
+
+        Notes:
+        - This auto-paginates V1 search results to collect exact matches.
+        - Unlike resolve(), this returns every match in server-provided order.
+        """
+        if not email and not name:
+            raise ValueError("Must provide either email or name")
+
+        term = email or name or ""
+        matches: builtins.list[Person] = []
+        for page in self.search_pages(term, page_size=10):
+            for person in page.data:
+                if _person_matches(person, email=email, name=name):
+                    matches.append(person)
+        return matches
 
     # =========================================================================
     # Write Operations (V1 API)
@@ -837,22 +867,36 @@ class AsyncPersonService:
             raise ValueError("Must provide either email or name")
 
         term = email or name or ""
-        result = await self.search(term, page_size=10)
-
-        for person in result.data:
-            if email:
-                if person.primary_email and person.primary_email.lower() == email.lower():
-                    return person
-                if person.emails:
-                    for e in person.emails:
-                        if e.lower() == email.lower():
-                            return person
-            if name:
-                full_name = f"{person.first_name or ''} {person.last_name or ''}".strip()
-                if full_name.lower() == name.lower():
+        async for page in self.search_pages(term, page_size=10):
+            for person in page.data:
+                if _person_matches(person, email=email, name=name):
                     return person
 
         return None
+
+    async def resolve_all(
+        self,
+        *,
+        email: str | None = None,
+        name: str | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Find all persons matching an email or name.
+
+        Notes:
+        - This auto-paginates V1 search results to collect exact matches.
+        - Unlike resolve(), this returns every match in server-provided order.
+        """
+        if not email and not name:
+            raise ValueError("Must provide either email or name")
+
+        term = email or name or ""
+        matches: builtins.list[Person] = []
+        async for page in self.search_pages(term, page_size=10):
+            for person in page.data:
+                if _person_matches(person, email=email, name=name):
+                    matches.append(person)
+        return matches
 
     # =========================================================================
     # Write Operations (V1 API)

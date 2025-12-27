@@ -355,6 +355,145 @@ def test_person_service_v2_read_v1_write_resolve_merge_and_cache_invalidation() 
         http.close()
 
 
+def test_person_service_resolve_paginates_and_resolve_all_collects() -> None:
+    tokens: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/persons"
+        ):
+            token = request.url.params.get("page_token")
+            tokens.append(token)
+            if token is None:
+                return httpx.Response(
+                    200,
+                    json={
+                        "persons": [
+                            {
+                                "id": 1,
+                                "firstName": "A",
+                                "lastName": "B",
+                                "primaryEmailAddress": "a@example.com",
+                                "emails": ["a@example.com"],
+                                "type": "external",
+                            }
+                        ],
+                        "next_page_token": "page-2",
+                    },
+                    request=request,
+                )
+            if token == "page-2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "persons": [
+                            {
+                                "id": 2,
+                                "firstName": "C",
+                                "lastName": "D",
+                                "primaryEmailAddress": "target@example.com",
+                                "emails": ["target@example.com"],
+                                "type": "external",
+                            }
+                        ],
+                        "next_page_token": None,
+                    },
+                    request=request,
+                )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = PersonService(http)
+        resolved = service.resolve(email="target@example.com")
+        assert resolved is not None
+        assert resolved.id == PersonId(2)
+
+        matches = service.resolve_all(email="target@example.com")
+        assert [person.id for person in matches] == [PersonId(2)]
+        assert "page-2" in tokens
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_resolve_paginates_and_resolve_all_collects() -> None:
+    tokens: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/persons"
+        ):
+            token = request.url.params.get("page_token")
+            tokens.append(token)
+            if token is None:
+                return httpx.Response(
+                    200,
+                    json={
+                        "persons": [
+                            {
+                                "id": 1,
+                                "firstName": "A",
+                                "lastName": "B",
+                                "primaryEmailAddress": "a@example.com",
+                                "emails": ["a@example.com"],
+                                "type": "external",
+                            }
+                        ],
+                        "next_page_token": "page-2",
+                    },
+                    request=request,
+                )
+            if token == "page-2":
+                return httpx.Response(
+                    200,
+                    json={
+                        "persons": [
+                            {
+                                "id": 2,
+                                "firstName": "C",
+                                "lastName": "D",
+                                "primaryEmailAddress": "target@example.com",
+                                "emails": ["target@example.com"],
+                                "type": "external",
+                            }
+                        ],
+                        "next_page_token": None,
+                    },
+                    request=request,
+                )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncPersonService(client)
+        resolved = await service.resolve(email="target@example.com")
+        assert resolved is not None
+        assert resolved.id == PersonId(2)
+
+        matches = await service.resolve_all(email="target@example.com")
+        assert [person.id for person in matches] == [PersonId(2)]
+        assert "page-2" in tokens
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_async_person_and_company_services_cover_list_all_get() -> None:
     created_at = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
