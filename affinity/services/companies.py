@@ -264,13 +264,31 @@ class CompanyService:
     def get_list_entries(
         self,
         company_id: CompanyId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListEntry]:
         """
         Get all list entries for a company across all lists.
 
         Returns comprehensive field data for each list entry.
         """
-        data = self._client.get(f"/companies/{company_id}/list-entries")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if limit:
+                params["limit"] = limit
+            data = self._client.get(
+                f"/companies/{company_id}/list-entries",
+                params=params or None,
+            )
 
         return PaginatedResponse[ListEntry](
             data=[ListEntry.model_validate(e) for e in data.get("data", [])],
@@ -280,9 +298,27 @@ class CompanyService:
     def get_lists(
         self,
         company_id: CompanyId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListSummary]:
         """Get all lists that contain this company."""
-        data = self._client.get(f"/companies/{company_id}/lists")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if limit:
+                params["limit"] = limit
+            data = self._client.get(
+                f"/companies/{company_id}/lists",
+                params=params or None,
+            )
 
         return PaginatedResponse[ListSummary](
             data=[ListSummary.model_validate(item) for item in data.get("data", [])],
@@ -739,13 +775,31 @@ class AsyncCompanyService:
     async def get_list_entries(
         self,
         company_id: CompanyId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListEntry]:
         """
         Get all list entries for a company across all lists.
 
         Returns comprehensive field data for each list entry.
         """
-        data = await self._client.get(f"/companies/{company_id}/list-entries")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if limit:
+                params["limit"] = limit
+            data = await self._client.get(
+                f"/companies/{company_id}/list-entries",
+                params=params or None,
+            )
 
         return PaginatedResponse[ListEntry](
             data=[ListEntry.model_validate(e) for e in data.get("data", [])],
@@ -755,9 +809,27 @@ class AsyncCompanyService:
     async def get_lists(
         self,
         company_id: CompanyId,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> PaginatedResponse[ListSummary]:
         """Get all lists that contain this company."""
-        data = await self._client.get(f"/companies/{company_id}/lists")
+        if cursor is not None:
+            if limit is not None:
+                raise ValueError(
+                    "Cannot combine 'cursor' with other parameters; cursor encodes all query "
+                    "context. Start a new pagination sequence without a cursor to change "
+                    "parameters."
+                )
+            data = await self._client.get_url(cursor)
+        else:
+            params: dict[str, Any] = {}
+            if limit:
+                params["limit"] = limit
+            data = await self._client.get(
+                f"/companies/{company_id}/lists",
+                params=params or None,
+            )
 
         return PaginatedResponse[ListSummary](
             data=[ListSummary.model_validate(item) for item in data.get("data", [])],

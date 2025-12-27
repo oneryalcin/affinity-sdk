@@ -90,6 +90,17 @@ def _normalize_null_lists(value: Any, keys: Sequence[str]) -> Any:
     return data
 
 
+def _preserve_fields_raw(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+
+    data: dict[str, Any] = dict(value)
+    fields = data.get("fields")
+    if isinstance(fields, list):
+        data["fields_raw"] = fields
+    return data
+
+
 def _normalize_person_type(value: Any) -> Any:
     if value is None:
         return value
@@ -194,11 +205,12 @@ class Person(AffinityModel):
 
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+    fields_raw: list[dict[str, Any]] | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_null_lists_before(cls, value: Any) -> Any:
-        return _normalize_null_lists(
+        value = _normalize_null_lists(
             value,
             (
                 "emails",
@@ -215,6 +227,7 @@ class Person(AffinityModel):
                 "opportunity_ids",
             ),
         )
+        return _preserve_fields_raw(value)
 
     @model_validator(mode="after")
     def _mark_fields_not_requested_when_omitted(self) -> Person:
@@ -285,11 +298,12 @@ class Company(AffinityModel):
 
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+    fields_raw: list[dict[str, Any]] | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_null_lists_before(cls, value: Any) -> Any:
-        return _normalize_null_lists(
+        value = _normalize_null_lists(
             value,
             (
                 "domains",
@@ -299,6 +313,7 @@ class Company(AffinityModel):
                 "opportunity_ids",
             ),
         )
+        return _preserve_fields_raw(value)
 
     @model_validator(mode="after")
     def _mark_fields_not_requested_when_omitted(self) -> Company:
@@ -347,6 +362,12 @@ class Opportunity(AffinityModel):
 
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+    fields_raw: list[dict[str, Any]] | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _preserve_fields_raw_before(cls, value: Any) -> Any:
+        return _preserve_fields_raw(value)
 
     @model_validator(mode="after")
     def _mark_fields_not_requested_when_omitted(self) -> Opportunity:
@@ -487,6 +508,7 @@ class ListEntry(AffinityModel):
 
     # Field values on this list entry (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+    fields_raw: list[dict[str, Any]] | None = Field(default=None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
@@ -501,6 +523,10 @@ class ListEntry(AffinityModel):
             return value
 
         data: dict[str, Any] = dict(value)
+        fields = data.get("fields")
+        if isinstance(fields, list):
+            data["fields_raw"] = fields
+
         entity = data.get("entity")
         if not isinstance(entity, Mapping):
             return data
@@ -555,6 +581,12 @@ class ListEntryWithEntity(AffinityModel):
 
     # Field values (requested-vs-not-requested preserved)
     fields: FieldValues = Field(default_factory=FieldValues, alias="fields")
+    fields_raw: list[dict[str, Any]] | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _preserve_fields_raw_before(cls, value: Any) -> Any:
+        return _preserve_fields_raw(value)
 
     @model_validator(mode="after")
     def _mark_fields_not_requested_when_omitted(self) -> ListEntryWithEntity:

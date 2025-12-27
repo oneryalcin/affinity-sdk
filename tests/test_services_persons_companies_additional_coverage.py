@@ -494,6 +494,203 @@ async def test_async_person_service_resolve_paginates_and_resolve_all_collects()
         await client.close()
 
 
+def test_company_service_expansion_pagination_supports_limit_and_cursor() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if (
+            request.method == "GET"
+            and url.copy_with(query=None) == httpx.URL("https://v2.example/v2/companies/2/lists")
+            and url.params.get("cursor") is None
+        ):
+            assert url.params.get("limit") == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": 1, "name": "List A"}],
+                    "pagination": {"nextUrl": "https://v2.example/v2/companies/2/lists?cursor=abc"},
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/companies/2/lists?cursor=abc"
+        ):
+            return httpx.Response(
+                200,
+                json={"data": [{"id": 2, "name": "List B"}], "pagination": {"nextUrl": None}},
+                request=request,
+            )
+        if (
+            request.method == "GET"
+            and url.copy_with(query=None)
+            == httpx.URL("https://v2.example/v2/companies/2/list-entries")
+            and url.params.get("cursor") is None
+        ):
+            assert url.params.get("limit") == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 10,
+                            "listId": 1,
+                            "createdAt": "2024-01-01T00:00:00Z",
+                            "fields": {},
+                        }
+                    ],
+                    "pagination": {
+                        "nextUrl": "https://v2.example/v2/companies/2/list-entries?cursor=def"
+                    },
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/companies/2/list-entries?cursor=def"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 11,
+                            "listId": 1,
+                            "createdAt": "2024-01-02T00:00:00Z",
+                            "fields": {},
+                        }
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = CompanyService(http)
+        lists_page = service.get_lists(CompanyId(2), limit=2)
+        assert [lst.id for lst in lists_page.data] == [ListId(1)]
+        lists_next = service.get_lists(CompanyId(2), cursor=lists_page.next_cursor)
+        assert [lst.id for lst in lists_next.data] == [ListId(2)]
+
+        entries_page = service.get_list_entries(CompanyId(2), limit=2)
+        assert [entry.id for entry in entries_page.data] == [ListEntryId(10)]
+        entries_next = service.get_list_entries(CompanyId(2), cursor=entries_page.next_cursor)
+        assert [entry.id for entry in entries_next.data] == [ListEntryId(11)]
+
+        with pytest.raises(ValueError):
+            service.get_lists(CompanyId(2), limit=1, cursor="x")
+        with pytest.raises(ValueError):
+            service.get_list_entries(CompanyId(2), limit=1, cursor="x")
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_company_service_expansion_pagination_supports_limit_and_cursor() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if (
+            request.method == "GET"
+            and url.copy_with(query=None) == httpx.URL("https://v2.example/v2/companies/2/lists")
+            and url.params.get("cursor") is None
+        ):
+            assert url.params.get("limit") == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": 1, "name": "List A"}],
+                    "pagination": {"nextUrl": "https://v2.example/v2/companies/2/lists?cursor=abc"},
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/companies/2/lists?cursor=abc"
+        ):
+            return httpx.Response(
+                200,
+                json={"data": [{"id": 2, "name": "List B"}], "pagination": {"nextUrl": None}},
+                request=request,
+            )
+        if (
+            request.method == "GET"
+            and url.copy_with(query=None)
+            == httpx.URL("https://v2.example/v2/companies/2/list-entries")
+            and url.params.get("cursor") is None
+        ):
+            assert url.params.get("limit") == "2"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 10,
+                            "listId": 1,
+                            "createdAt": "2024-01-01T00:00:00Z",
+                            "fields": {},
+                        }
+                    ],
+                    "pagination": {
+                        "nextUrl": "https://v2.example/v2/companies/2/list-entries?cursor=def"
+                    },
+                },
+                request=request,
+            )
+        if request.method == "GET" and url == httpx.URL(
+            "https://v2.example/v2/companies/2/list-entries?cursor=def"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 11,
+                            "listId": 1,
+                            "createdAt": "2024-01-02T00:00:00Z",
+                            "fields": {},
+                        }
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncCompanyService(client)
+        lists_page = await service.get_lists(CompanyId(2), limit=2)
+        assert [lst.id for lst in lists_page.data] == [ListId(1)]
+        lists_next = await service.get_lists(CompanyId(2), cursor=lists_page.next_cursor)
+        assert [lst.id for lst in lists_next.data] == [ListId(2)]
+
+        entries_page = await service.get_list_entries(CompanyId(2), limit=2)
+        assert [entry.id for entry in entries_page.data] == [ListEntryId(10)]
+        entries_next = await service.get_list_entries(CompanyId(2), cursor=entries_page.next_cursor)
+        assert [entry.id for entry in entries_next.data] == [ListEntryId(11)]
+
+        with pytest.raises(ValueError):
+            await service.get_lists(CompanyId(2), limit=1, cursor="x")
+        with pytest.raises(ValueError):
+            await service.get_list_entries(CompanyId(2), limit=1, cursor="x")
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_async_person_and_company_services_cover_list_all_get() -> None:
     created_at = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()

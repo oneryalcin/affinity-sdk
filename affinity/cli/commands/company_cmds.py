@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from affinity.models.entities import Company, CompanyCreate, CompanyUpdate
-from affinity.models.types import FieldId
+from affinity.models.types import EnrichedFieldId, FieldId
 from affinity.types import CompanyId, FieldType, ListId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
@@ -904,7 +904,7 @@ def company_get(
             seen_types.add(t)
         requested_types = deduped_types
 
-        params: dict[str, Any] = {}
+        selected_field_ids: list[str] = []
         selection_resolved: dict[str, Any] = {}
         if not no_fields and (fields or requested_types):
             if fields:
@@ -913,20 +913,52 @@ def company_get(
                     fields=fields,
                     field_types=requested_types,
                 )
-                if selected_field_ids:
-                    params["fieldIds"] = selected_field_ids
             else:
-                params["fieldTypes"] = requested_types
                 selection_resolved = {"fieldTypes": requested_types}
 
-        company_payload = client._http.get(f"/companies/{int(company_id)}", params=params or None)
+        field_ids: list[FieldId | EnrichedFieldId] | None = None
+        if selected_field_ids:
+            coerced_field_ids: list[FieldId | EnrichedFieldId] = []
+            for field_id in selected_field_ids:
+                text = field_id.strip()
+                if not text:
+                    continue
+                try:
+                    coerced_field_ids.append(FieldId(text))
+                except Exception:
+                    coerced_field_ids.append(EnrichedFieldId(text))
+            field_ids = coerced_field_ids or None
+        field_types_param = (
+            [FieldType(t) for t in requested_types] if not fields and requested_types else None
+        )
+        company = client.companies.get(
+            company_id,
+            field_ids=field_ids,
+            field_types=field_types_param,
+        )
+        company_payload = company.model_dump(by_alias=True, mode="json")
+        fields_raw = getattr(company, "fields_raw", None)
+        if isinstance(fields_raw, list):
+            company_payload["fields"] = fields_raw
 
         data: dict[str, Any] = {"company": company_payload}
         pagination: dict[str, Any] = {}
 
+        def normalize_item(item: Any) -> Any:
+            if isinstance(item, dict):
+                return item
+            dump = getattr(item, "model_dump", None)
+            if callable(dump):
+                payload = dump(by_alias=True, mode="json")
+                fields_raw = getattr(item, "fields_raw", None)
+                if isinstance(fields_raw, list):
+                    payload["fields"] = fields_raw
+                return payload
+            return item
+
         def fetch_v2_collection(
             *,
-            path: str,
+            fetch_page: Callable[[int | None, str | None], Any],
             section: str,
             default_limit: int,
             default_cap: int | None,
@@ -945,20 +977,16 @@ def company_get(
                 limit = min(default_limit, effective_cap)
 
             truncated_mid_page = False
-            payload = client._http.get(path, params={"limit": limit} if limit else None)
-            rows = payload.get("data", [])
-            if not isinstance(rows, list):
-                rows = []
-            page_items = list(rows)
+            page = fetch_page(limit, None)
+            rows = page.data if isinstance(page.data, list) else []
+            page_items = [normalize_item(r) for r in rows]
             if keep_item is not None:
                 page_items = [r for r in page_items if keep_item(r)]
-            items: list[Any] = page_items
+            items: list[Any] = list(page_items)
 
-            page_pagination = payload.get("pagination", {})
-            if not isinstance(page_pagination, dict):
-                page_pagination = {}
-            next_url = page_pagination.get("nextUrl")
-            prev_url = page_pagination.get("prevUrl")
+            page_pagination = getattr(page, "pagination", None)
+            next_url = getattr(page_pagination, "next_cursor", None) if page_pagination else None
+            prev_url = getattr(page_pagination, "prev_cursor", None) if page_pagination else None
 
             if effective_cap is not None and len(items) > effective_cap:
                 truncated_mid_page = True
@@ -971,18 +999,20 @@ def company_get(
                 and next_url
                 and (effective_cap is None or len(items) < effective_cap)
             ):
-                payload = client._http.get_url(next_url)
-                rows = payload.get("data", [])
-                if isinstance(rows, list):
-                    page_items = list(rows)
+                page = fetch_page(None, next_url)
+                rows = page.data if isinstance(page.data, list) else []
+                if rows:
+                    page_items = [normalize_item(r) for r in rows]
                     if keep_item is not None:
                         page_items = [r for r in page_items if keep_item(r)]
                     items.extend(page_items)
-                page_pagination = payload.get("pagination", {})
-                if not isinstance(page_pagination, dict):
-                    page_pagination = {}
-                next_url = page_pagination.get("nextUrl")
-                prev_url = page_pagination.get("prevUrl")
+                page_pagination = getattr(page, "pagination", None)
+                next_url = (
+                    getattr(page_pagination, "next_cursor", None) if page_pagination else None
+                )
+                prev_url = (
+                    getattr(page_pagination, "prev_cursor", None) if page_pagination else None
+                )
 
                 if effective_cap is not None and len(items) > effective_cap:
                     truncated_mid_page = True
@@ -1002,8 +1032,16 @@ def company_get(
             return items
 
         if "lists" in expand_set:
+
+            def fetch_lists_page(limit: int | None, cursor: str | None) -> Any:
+                return client.companies.get_lists(
+                    company_id,
+                    limit=limit,
+                    cursor=cursor,
+                )
+
             data["lists"] = fetch_v2_collection(
-                path=f"/companies/{int(company_id)}/lists",
+                fetch_page=fetch_lists_page,
                 section="lists",
                 default_limit=100,
                 default_cap=100,
@@ -1026,8 +1064,15 @@ def company_get(
                     return True
                 return isinstance(item, dict) and item.get("listId") == int(list_id)
 
+            def fetch_list_entries_page(limit: int | None, cursor: str | None) -> Any:
+                return client.companies.get_list_entries(
+                    company_id,
+                    limit=limit,
+                    cursor=cursor,
+                )
+
             entries_items = fetch_v2_collection(
-                path=f"/companies/{int(company_id)}/list-entries",
+                fetch_page=fetch_list_entries_page,
                 section="listEntries",
                 default_limit=100,
                 default_cap=None,
