@@ -480,11 +480,9 @@ class CompanyService:
         Returns:
             Created company
         """
-        payload: dict[str, Any] = {"name": data.name}
-        if data.domain:
-            payload["domain"] = data.domain
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
+        payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
+        if not data.person_ids:
+            payload.pop("person_ids", None)
 
         result = self._client.post("/organizations", json=payload, v1=True)
 
@@ -503,13 +501,12 @@ class CompanyService:
 
         Note: Cannot update name/domain of global companies.
         """
-        payload: dict[str, Any] = {}
-        if data.name is not None:
-            payload["name"] = data.name
-        if data.domain is not None:
-            payload["domain"] = data.domain
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         result = self._client.put(
             f"/organizations/{company_id}",
@@ -978,11 +975,9 @@ class AsyncCompanyService:
 
         Uses V1 API.
         """
-        payload: dict[str, Any] = {"name": data.name}
-        if data.domain is not None:
-            payload["domain"] = data.domain
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
+        payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
+        if not data.person_ids:
+            payload.pop("person_ids", None)
         result = await self._client.post("/organizations", json=payload, v1=True)
         return Company.model_validate(result)
 
@@ -992,14 +987,17 @@ class AsyncCompanyService:
 
         Uses V1 API.
         """
-        payload: dict[str, Any] = {}
-        if data.name is not None:
-            payload["name"] = data.name
-        if data.domain is not None:
-            payload["domain"] = data.domain
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        result = await self._client.put(f"/organizations/{company_id}", json=payload, v1=True)
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        result = await self._client.put(
+            f"/organizations/{company_id}",
+            json=payload,
+            v1=True,
+        )
         return Company.model_validate(result)
 
     async def delete(self, company_id: CompanyId) -> bool:

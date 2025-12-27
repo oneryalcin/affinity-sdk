@@ -225,14 +225,11 @@ class OpportunityService:
         Returns:
             The created opportunity
         """
-        payload: dict[str, Any] = {
-            "name": data.name,
-            "list_id": int(data.list_id),
-        }
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
+        if not data.person_ids:
+            payload.pop("person_ids", None)
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
 
         result = self._client.post("/opportunities", json=payload, v1=True)
         return Opportunity.model_validate(result)
@@ -244,13 +241,12 @@ class OpportunityService:
         Note: When provided, `person_ids` and `company_ids` replace the existing
         values. To add or remove associations safely, pass the full desired arrays.
         """
-        payload: dict[str, Any] = {}
-        if data.name is not None:
-            payload["name"] = data.name
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         # Uses the v1 endpoint; its PUT semantics replace association arrays.
         result = self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)
@@ -462,14 +458,11 @@ class AsyncOpportunityService:
         Returns:
             The created opportunity
         """
-        payload: dict[str, Any] = {
-            "name": data.name,
-            "list_id": int(data.list_id),
-        }
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
+        if not data.person_ids:
+            payload.pop("person_ids", None)
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
 
         result = await self._client.post("/opportunities", json=payload, v1=True)
         return Opportunity.model_validate(result)
@@ -481,13 +474,12 @@ class AsyncOpportunityService:
         Note: When provided, `person_ids` and `company_ids` replace the existing
         values. To add or remove associations safely, pass the full desired arrays.
         """
-        payload: dict[str, Any] = {}
-        if data.name is not None:
-            payload["name"] = data.name
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         # Uses the v1 endpoint; its PUT semantics replace association arrays.
         result = await self._client.put(f"/opportunities/{opportunity_id}", json=payload, v1=True)

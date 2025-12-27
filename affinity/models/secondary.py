@@ -78,7 +78,7 @@ class NoteCreate(AffinityModel):
     content: str
     type: NoteType = NoteType.PLAIN_TEXT
     person_ids: list[PersonId] = Field(default_factory=list)
-    company_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organization_ids")
     opportunity_ids: list[OpportunityId] = Field(default_factory=list)
     parent_id: NoteId | None = None  # For reply notes
     creator_id: UserId | None = None
@@ -218,7 +218,7 @@ class ReminderCreate(AffinityModel):
 
     # Associate with one entity
     person_id: PersonId | None = None
-    company_id: CompanyId | None = None
+    company_id: CompanyId | None = Field(None, alias="organization_id")
     opportunity_id: OpportunityId | None = None
 
 

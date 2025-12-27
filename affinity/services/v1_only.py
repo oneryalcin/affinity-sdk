@@ -71,6 +71,13 @@ if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
 
 
+def _coerce_isoformat(payload: dict[str, Any], keys: tuple[str, ...]) -> None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, datetime):
+            payload[key] = value.isoformat()
+
+
 # =============================================================================
 # Notes Service (V1 API)
 # =============================================================================
@@ -136,31 +143,24 @@ class NoteService:
         Must be associated with at least one person, organization,
         opportunity, or parent note (for replies).
         """
-        payload: dict[str, Any] = {
-            "content": data.content,
-            "type": int(data.type),
-        }
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
-        if data.opportunity_ids:
-            payload["opportunity_ids"] = [int(o) for o in data.opportunity_ids]
-        if data.parent_id:
-            payload["parent_id"] = int(data.parent_id)
-        if data.creator_id:
-            payload["creator_id"] = int(data.creator_id)
-        if data.created_at:
-            payload["created_at"] = data.created_at.isoformat()
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("created_at",))
+        if not data.person_ids:
+            payload.pop("person_ids", None)
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
+        if not data.opportunity_ids:
+            payload.pop("opportunity_ids", None)
 
         result = self._client.post("/notes", json=payload, v1=True)
         return Note.model_validate(result)
 
     def update(self, note_id: NoteId, data: NoteUpdate) -> Note:
         """Update a note's content."""
+        payload = data.model_dump(mode="json", exclude_unset=True, exclude_none=True)
         result = self._client.put(
             f"/notes/{note_id}",
-            json={"content": data.content},
+            json=payload,
             v1=True,
         )
         return Note.model_validate(result)
@@ -252,45 +252,21 @@ class ReminderService:
 
     def create(self, data: ReminderCreate) -> Reminder:
         """Create a new reminder."""
-        payload: dict[str, Any] = {
-            "owner_id": int(data.owner_id),
-            "type": int(data.type),
-        }
-        if data.content:
-            payload["content"] = data.content
-        if data.due_date:
-            payload["due_date"] = data.due_date.isoformat()
-        if data.reset_type is not None:
-            payload["reset_type"] = int(data.reset_type)
-        if data.reminder_days is not None:
-            payload["reminder_days"] = data.reminder_days
-        if data.person_id:
-            payload["person_id"] = int(data.person_id)
-        if data.company_id:
-            payload["organization_id"] = int(data.company_id)
-        if data.opportunity_id:
-            payload["opportunity_id"] = int(data.opportunity_id)
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("due_date",))
 
         result = self._client.post("/reminders", json=payload, v1=True)
         return Reminder.model_validate(result)
 
     def update(self, reminder_id: ReminderIdType, data: ReminderUpdate) -> Reminder:
         """Update a reminder."""
-        payload: dict[str, Any] = {}
-        if data.owner_id is not None:
-            payload["owner_id"] = int(data.owner_id)
-        if data.type is not None:
-            payload["type"] = int(data.type)
-        if data.content is not None:
-            payload["content"] = data.content
-        if data.due_date is not None:
-            payload["due_date"] = data.due_date.isoformat()
-        if data.reset_type is not None:
-            payload["reset_type"] = int(data.reset_type)
-        if data.reminder_days is not None:
-            payload["reminder_days"] = data.reminder_days
-        if data.is_completed is not None:
-            payload["is_completed"] = data.is_completed
+        payload = data.model_dump(
+            by_alias=True,
+            mode="python",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        _coerce_isoformat(payload, ("due_date",))
 
         result = self._client.put(f"/reminders/{reminder_id}", json=payload, v1=True)
         return Reminder.model_validate(result)
@@ -332,24 +308,22 @@ class WebhookService:
 
         The webhook URL will receive a validation request.
         """
-        payload: dict[str, Any] = {
-            "webhook_url": data.webhook_url,
-        }
-        if data.subscriptions:
-            payload["subscriptions"] = [str(s) for s in data.subscriptions]
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("date",))
+        if not data.subscriptions:
+            payload.pop("subscriptions", None)
 
         result = self._client.post("/webhook/subscribe", json=payload, v1=True)
         return WebhookSubscription.model_validate(result)
 
     def update(self, webhook_id: WebhookId, data: WebhookUpdate) -> WebhookSubscription:
         """Update a webhook subscription."""
-        payload: dict[str, Any] = {}
-        if data.webhook_url is not None:
-            payload["webhook_url"] = data.webhook_url
-        if data.subscriptions is not None:
-            payload["subscriptions"] = [str(s) for s in data.subscriptions]
-        if data.disabled is not None:
-            payload["disabled"] = data.disabled
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         result = self._client.put(f"/webhook/{webhook_id}", json=payload, v1=True)
         return WebhookSubscription.model_validate(result)
@@ -440,14 +414,8 @@ class InteractionService:
 
     def create(self, data: InteractionCreate) -> Interaction:
         """Create a new interaction (manually logged)."""
-        payload: dict[str, Any] = {
-            "type": int(data.type),
-            "person_ids": [int(p) for p in data.person_ids],
-            "content": data.content,
-            "date": data.date.isoformat(),
-        }
-        if data.direction is not None:
-            payload["direction"] = int(data.direction)
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("date",))
 
         result = self._client.post("/interactions", json=payload, v1=True)
         return Interaction.model_validate(result)
@@ -459,15 +427,14 @@ class InteractionService:
         data: InteractionUpdate,
     ) -> Interaction:
         """Update an interaction."""
-        payload: dict[str, Any] = {"type": int(type)}
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.content is not None:
-            payload["content"] = data.content
-        if data.date is not None:
-            payload["date"] = data.date.isoformat()
-        if data.direction is not None:
-            payload["direction"] = int(data.direction)
+        payload = data.model_dump(
+            by_alias=True,
+            mode="python",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        payload["type"] = int(type)
+        _coerce_isoformat(payload, ("date",))
 
         result = self._client.put(
             f"/interactions/{int(interaction_id)}",
@@ -531,19 +498,12 @@ class FieldService:
         value_type_code = to_v1_value_type_code(value_type=data.value_type, raw=None)
         if value_type_code is None:
             raise ValueError(f"Field value_type has no V1 numeric mapping: {data.value_type!s}")
-        payload: dict[str, Any] = {
-            "name": data.name,
-            "entity_type": int(data.entity_type),
-            "value_type": value_type_code,
-        }
-        if data.list_id:
-            payload["list_id"] = int(data.list_id)
-        if data.allows_multiple:
-            payload["allows_multiple"] = True
-        if data.is_list_specific:
-            payload["is_list_specific"] = True
-        if data.is_required:
-            payload["is_required"] = True
+        payload = data.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
+        payload["entity_type"] = int(data.entity_type)
+        payload["value_type"] = value_type_code
+        for key in ("allows_multiple", "is_list_specific", "is_required"):
+            if not payload.get(key):
+                payload.pop(key, None)
 
         result = self._client.post("/fields", json=payload, v1=True)
 
@@ -652,13 +612,8 @@ class FieldValueService:
         `field-<digits>` IDs and converts them; enriched/relationship-intelligence
         IDs are not supported.
         """
-        payload: dict[str, Any] = {
-            "field_id": field_id_to_v1_numeric(data.field_id),
-            "entity_id": data.entity_id,
-            "value": data.value,
-        }
-        if data.list_entry_id:
-            payload["list_entry_id"] = int(data.list_entry_id)
+        payload = data.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
+        payload["field_id"] = field_id_to_v1_numeric(data.field_id)
 
         result = self._client.post("/field-values", json=payload, v1=True)
         return FieldValue.model_validate(result)
@@ -1236,30 +1191,23 @@ class AsyncNoteService:
         return Note.model_validate(data)
 
     async def create(self, data: NoteCreate) -> Note:
-        payload: dict[str, Any] = {
-            "content": data.content,
-            "type": int(data.type),
-        }
-        if data.person_ids:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
-        if data.opportunity_ids:
-            payload["opportunity_ids"] = [int(o) for o in data.opportunity_ids]
-        if data.parent_id:
-            payload["parent_id"] = int(data.parent_id)
-        if data.creator_id:
-            payload["creator_id"] = int(data.creator_id)
-        if data.created_at:
-            payload["created_at"] = data.created_at.isoformat()
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("created_at",))
+        if not data.person_ids:
+            payload.pop("person_ids", None)
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
+        if not data.opportunity_ids:
+            payload.pop("opportunity_ids", None)
 
         result = await self._client.post("/notes", json=payload, v1=True)
         return Note.model_validate(result)
 
     async def update(self, note_id: NoteId, data: NoteUpdate) -> Note:
+        payload = data.model_dump(mode="json", exclude_unset=True, exclude_none=True)
         result = await self._client.put(
             f"/notes/{note_id}",
-            json={"content": data.content},
+            json=payload,
             v1=True,
         )
         return Note.model_validate(result)
@@ -1334,44 +1282,20 @@ class AsyncReminderService:
         return Reminder.model_validate(data)
 
     async def create(self, data: ReminderCreate) -> Reminder:
-        payload: dict[str, Any] = {
-            "owner_id": int(data.owner_id),
-            "type": int(data.type),
-        }
-        if data.content:
-            payload["content"] = data.content
-        if data.due_date:
-            payload["due_date"] = data.due_date.isoformat()
-        if data.reset_type is not None:
-            payload["reset_type"] = int(data.reset_type)
-        if data.reminder_days is not None:
-            payload["reminder_days"] = data.reminder_days
-        if data.person_id:
-            payload["person_id"] = int(data.person_id)
-        if data.company_id:
-            payload["organization_id"] = int(data.company_id)
-        if data.opportunity_id:
-            payload["opportunity_id"] = int(data.opportunity_id)
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("due_date",))
 
         result = await self._client.post("/reminders", json=payload, v1=True)
         return Reminder.model_validate(result)
 
     async def update(self, reminder_id: ReminderIdType, data: ReminderUpdate) -> Reminder:
-        payload: dict[str, Any] = {}
-        if data.owner_id is not None:
-            payload["owner_id"] = int(data.owner_id)
-        if data.type is not None:
-            payload["type"] = int(data.type)
-        if data.content is not None:
-            payload["content"] = data.content
-        if data.due_date is not None:
-            payload["due_date"] = data.due_date.isoformat()
-        if data.reset_type is not None:
-            payload["reset_type"] = int(data.reset_type)
-        if data.reminder_days is not None:
-            payload["reminder_days"] = data.reminder_days
-        if data.is_completed is not None:
-            payload["is_completed"] = data.is_completed
+        payload = data.model_dump(
+            by_alias=True,
+            mode="python",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        _coerce_isoformat(payload, ("due_date",))
 
         result = await self._client.put(f"/reminders/{reminder_id}", json=payload, v1=True)
         return Reminder.model_validate(result)
@@ -1399,20 +1323,19 @@ class AsyncWebhookService:
         return WebhookSubscription.model_validate(data)
 
     async def create(self, data: WebhookCreate) -> WebhookSubscription:
-        payload: dict[str, Any] = {"webhook_url": data.webhook_url}
-        if data.subscriptions:
-            payload["subscriptions"] = [str(s) for s in data.subscriptions]
+        payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
+        if not data.subscriptions:
+            payload.pop("subscriptions", None)
         result = await self._client.post("/webhook/subscribe", json=payload, v1=True)
         return WebhookSubscription.model_validate(result)
 
     async def update(self, webhook_id: WebhookId, data: WebhookUpdate) -> WebhookSubscription:
-        payload: dict[str, Any] = {}
-        if data.webhook_url is not None:
-            payload["webhook_url"] = data.webhook_url
-        if data.subscriptions is not None:
-            payload["subscriptions"] = [str(s) for s in data.subscriptions]
-        if data.disabled is not None:
-            payload["disabled"] = data.disabled
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
         result = await self._client.put(f"/webhook/{webhook_id}", json=payload, v1=True)
         return WebhookSubscription.model_validate(result)
 
@@ -1485,14 +1408,8 @@ class AsyncInteractionService:
         return Interaction.model_validate(data)
 
     async def create(self, data: InteractionCreate) -> Interaction:
-        payload: dict[str, Any] = {
-            "type": int(data.type),
-            "person_ids": [int(p) for p in data.person_ids],
-            "content": data.content,
-            "date": data.date.isoformat(),
-        }
-        if data.direction is not None:
-            payload["direction"] = int(data.direction)
+        payload = data.model_dump(by_alias=True, mode="python", exclude_none=True)
+        _coerce_isoformat(payload, ("date",))
 
         result = await self._client.post("/interactions", json=payload, v1=True)
         return Interaction.model_validate(result)
@@ -1503,15 +1420,14 @@ class AsyncInteractionService:
         type: InteractionType,
         data: InteractionUpdate,
     ) -> Interaction:
-        payload: dict[str, Any] = {"type": int(type)}
-        if data.person_ids is not None:
-            payload["person_ids"] = [int(p) for p in data.person_ids]
-        if data.content is not None:
-            payload["content"] = data.content
-        if data.date is not None:
-            payload["date"] = data.date.isoformat()
-        if data.direction is not None:
-            payload["direction"] = int(data.direction)
+        payload = data.model_dump(
+            by_alias=True,
+            mode="python",
+            exclude_unset=True,
+            exclude_none=True,
+        )
+        payload["type"] = int(type)
+        _coerce_isoformat(payload, ("date",))
 
         result = await self._client.put(f"/interactions/{interaction_id}", json=payload, v1=True)
         return Interaction.model_validate(result)
@@ -1553,19 +1469,12 @@ class AsyncFieldService:
         value_type_code = to_v1_value_type_code(value_type=data.value_type, raw=None)
         if value_type_code is None:
             raise ValueError(f"Field value_type has no V1 numeric mapping: {data.value_type!s}")
-        payload: dict[str, Any] = {
-            "name": data.name,
-            "entity_type": int(data.entity_type),
-            "value_type": value_type_code,
-        }
-        if data.list_id:
-            payload["list_id"] = int(data.list_id)
-        if data.allows_multiple:
-            payload["allows_multiple"] = True
-        if data.is_list_specific:
-            payload["is_list_specific"] = True
-        if data.is_required:
-            payload["is_required"] = True
+        payload = data.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
+        payload["entity_type"] = int(data.entity_type)
+        payload["value_type"] = value_type_code
+        for key in ("allows_multiple", "is_list_specific", "is_required"):
+            if not payload.get(key):
+                payload.pop(key, None)
 
         result = await self._client.post("/fields", json=payload, v1=True)
 
@@ -1653,13 +1562,8 @@ class AsyncFieldValueService:
         `field-<digits>` IDs and converts them; enriched/relationship-intelligence
         IDs are not supported.
         """
-        payload: dict[str, Any] = {
-            "field_id": field_id_to_v1_numeric(data.field_id),
-            "entity_id": data.entity_id,
-            "value": data.value,
-        }
-        if data.list_entry_id:
-            payload["list_entry_id"] = int(data.list_entry_id)
+        payload = data.model_dump(by_alias=True, mode="json", exclude_unset=True, exclude_none=True)
+        payload["field_id"] = field_id_to_v1_numeric(data.field_id)
 
         result = await self._client.post("/field-values", json=payload, v1=True)
         return FieldValue.model_validate(result)

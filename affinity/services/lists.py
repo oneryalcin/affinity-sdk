@@ -260,18 +260,9 @@ class ListService:
 
         Uses V1 API.
         """
-        payload = {
-            "name": data.name,
-            "type": int(data.type),
-            "is_public": data.is_public,
-        }
-        if data.owner_id:
-            payload["owner_id"] = int(data.owner_id)
-        if data.additional_permissions:
-            payload["additional_permissions"] = [
-                {"internal_person_id": int(p.internal_person_id), "role_id": int(p.role_id)}
-                for p in data.additional_permissions
-            ]
+        payload = data.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+        if not data.additional_permissions:
+            payload.pop("additional_permissions", None)
 
         result = self._client.post("/lists", json=payload, v1=True)
 
@@ -1074,18 +1065,9 @@ class AsyncListService:
 
         Uses V1 API.
         """
-        payload = {
-            "name": data.name,
-            "type": int(data.type),
-            "is_public": data.is_public,
-        }
-        if data.owner_id:
-            payload["owner_id"] = int(data.owner_id)
-        if data.additional_permissions:
-            payload["additional_permissions"] = [
-                {"internal_person_id": int(p.internal_person_id), "role_id": int(p.role_id)}
-                for p in data.additional_permissions
-            ]
+        payload = data.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+        if not data.additional_permissions:
+            payload.pop("additional_permissions", None)
 
         result = await self._client.post("/lists", json=payload, v1=True)
 

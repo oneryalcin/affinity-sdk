@@ -455,13 +455,9 @@ class PersonService:
         Raises:
             ValidationError: If email conflicts with existing person
         """
-        payload: dict[str, Any] = {
-            "first_name": data.first_name,
-            "last_name": data.last_name,
-            "emails": data.emails,
-        }
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(by_alias=True, mode="json")
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
 
         result = self._client.post("/persons", json=payload, v1=True)
 
@@ -480,15 +476,12 @@ class PersonService:
 
         Note: To add emails/organizations, include existing values plus new ones.
         """
-        payload: dict[str, Any] = {}
-        if data.first_name is not None:
-            payload["first_name"] = data.first_name
-        if data.last_name is not None:
-            payload["last_name"] = data.last_name
-        if data.emails is not None:
-            payload["emails"] = data.emails
-        if data.company_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         result = self._client.put(
             f"/persons/{person_id}",
@@ -909,13 +902,9 @@ class AsyncPersonService:
         Raises:
             ValidationError: If email conflicts with existing person
         """
-        payload: dict[str, Any] = {
-            "first_name": data.first_name,
-            "last_name": data.last_name,
-            "emails": data.emails,
-        }
-        if data.company_ids:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(by_alias=True, mode="json")
+        if not data.company_ids:
+            payload.pop("organization_ids", None)
 
         result = await self._client.post("/persons", json=payload, v1=True)
 
@@ -934,15 +923,12 @@ class AsyncPersonService:
 
         Note: To add emails/organizations, include existing values plus new ones.
         """
-        payload: dict[str, Any] = {}
-        if data.first_name is not None:
-            payload["first_name"] = data.first_name
-        if data.last_name is not None:
-            payload["last_name"] = data.last_name
-        if data.emails is not None:
-            payload["emails"] = data.emails
-        if data.company_ids is not None:
-            payload["organization_ids"] = [int(o) for o in data.company_ids]
+        payload = data.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_unset=True,
+            exclude_none=True,
+        )
 
         result = await self._client.put(
             f"/persons/{person_id}",

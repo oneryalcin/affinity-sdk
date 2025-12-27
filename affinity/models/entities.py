@@ -241,7 +241,7 @@ class PersonCreate(AffinityModel):
     first_name: str
     last_name: str
     emails: list[str] = Field(default_factory=list)
-    company_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organization_ids")
 
 
 class PersonUpdate(AffinityModel):
@@ -250,7 +250,7 @@ class PersonUpdate(AffinityModel):
     first_name: str | None = None
     last_name: str | None = None
     emails: list[str] | None = None
-    company_ids: list[CompanyId] | None = None
+    company_ids: list[CompanyId] | None = Field(None, alias="organization_ids")
 
 
 # =============================================================================
@@ -364,7 +364,7 @@ class OpportunityCreate(AffinityModel):
     name: str
     list_id: ListId
     person_ids: list[PersonId] = Field(default_factory=list)
-    company_ids: list[CompanyId] = Field(default_factory=list)
+    company_ids: list[CompanyId] = Field(default_factory=list, alias="organization_ids")
 
 
 class OpportunityUpdate(AffinityModel):
@@ -372,7 +372,7 @@ class OpportunityUpdate(AffinityModel):
 
     name: str | None = None
     person_ids: list[PersonId] | None = None
-    company_ids: list[CompanyId] | None = None
+    company_ids: list[CompanyId] | None = Field(None, alias="organization_ids")
 
 
 # =============================================================================
