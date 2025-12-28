@@ -19,10 +19,13 @@ from affinity.exceptions import (
     AuthenticationError,
     AuthorizationError,
     ConfigurationError,
+    ConflictError,
     NetworkError,
     NotFoundError,
     RateLimitError,
     ServerError,
+    UnsafeUrlError,
+    UnsupportedOperationError,
     ValidationError,
     WriteNotAllowedError,
 )
@@ -461,6 +464,36 @@ def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
             str(exc),
             error_type="not_found",
             exit_code=4,
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, ConflictError):
+        return CLIError(
+            str(exc),
+            error_type="conflict",
+            exit_code=1,
+            hint="The resource already exists or was modified. Check for duplicates.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, UnsafeUrlError):
+        return CLIError(
+            str(exc),
+            error_type="unsafe_url",
+            exit_code=1,
+            hint="The server returned a URL that failed security validation.",
+            details=_details_for_affinity_error(exc, verbosity=verbosity),
+            cause=exc,
+        )
+
+    if isinstance(exc, UnsupportedOperationError):
+        return CLIError(
+            str(exc),
+            error_type="unsupported_operation",
+            exit_code=1,
+            hint="This operation is not available for the current API version or configuration.",
             details=_details_for_affinity_error(exc, verbosity=verbosity),
             cause=exc,
         )
