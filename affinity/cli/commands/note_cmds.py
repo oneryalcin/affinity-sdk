@@ -70,7 +70,15 @@ def note_ls(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
-    """List notes (v1)."""
+    """
+    List notes.
+
+    Examples:
+
+    - `affinity note ls --person-id 12345`
+    - `affinity note ls --company-id 67890 --all`
+    - `affinity note ls --creator-id 111 --max-results 50`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -137,7 +145,11 @@ def note_ls(
 @output_options
 @click.pass_obj
 def note_get(ctx: CLIContext, note_id: int) -> None:
-    """Get a note by id (v1)."""
+    """
+    Get a note by id.
+
+    Example: `affinity note get 12345`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -193,7 +205,14 @@ def note_create(
     creator_id: int | None,
     created_at: str | None,
 ) -> None:
-    """Create a note (v1)."""
+    """
+    Create a note attached to an entity.
+
+    Examples:
+
+    - `affinity note create --content "Meeting notes" --person-id 12345`
+    - `affinity note create --content "<b>Summary</b>" --type html --company-id 67890`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _ = warnings

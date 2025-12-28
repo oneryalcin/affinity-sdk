@@ -72,6 +72,16 @@ def list_ls(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
+    """
+    List all lists in the workspace.
+
+    Examples:
+
+    - `affinity list ls`
+    - `affinity list ls --type person`
+    - `affinity list ls --type company --all`
+    """
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         lt = _parse_list_type(list_type)
@@ -167,7 +177,14 @@ def list_create(
     is_public: bool,
     owner_id: int | None,
 ) -> None:
-    """Create a list (V1 write path)."""
+    """
+    Create a new list.
+
+    Examples:
+
+    - `affinity list create --name "Prospects" --type company`
+    - `affinity list create --name "Candidates" --type person --public`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _ = warnings
@@ -199,6 +216,17 @@ def list_create(
 @output_options
 @click.pass_obj
 def list_view(ctx: CLIContext, list_selector: str) -> None:
+    """
+    View list details, fields, and saved views.
+
+    LIST_SELECTOR can be a list id or exact list name.
+
+    Examples:
+
+    - `affinity list view 12345`
+    - `affinity list view "Pipeline"`
+    """
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         resolved = resolve_list_selector(client=client, selector=list_selector)
@@ -262,6 +290,19 @@ def list_export(
     csv_bom: bool,
     dry_run: bool,
 ) -> None:
+    """
+    Export list entries to JSON or CSV.
+
+    LIST_SELECTOR can be a list id or exact list name.
+
+    Examples:
+
+    - `affinity list export "Pipeline" --all`
+    - `affinity list export 12345 --csv pipeline.csv --all`
+    - `affinity list export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
+    - `affinity list export "Pipeline" --field Status --field "Deal Size" --all`
+    """
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         if saved_view and filter_expr:
             raise CLIError(

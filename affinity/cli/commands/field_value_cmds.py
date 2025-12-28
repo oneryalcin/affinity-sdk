@@ -53,7 +53,16 @@ def field_value_ls(
     opportunity_id: int | None,
     list_entry_id: int | None,
 ) -> None:
-    """List field values for a single entity (V1)."""
+    """
+    List field values for a single entity.
+
+    Provide exactly one of --person-id, --company-id, --opportunity-id, or --list-entry-id.
+
+    Examples:
+
+    - `affinity field-value ls --person-id 12345`
+    - `affinity field-value ls --company-id 67890`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _validate_exactly_one_target(person_id, company_id, opportunity_id, list_entry_id)
@@ -87,7 +96,14 @@ def field_value_create(
     value_json: str | None,
     list_entry_id: int | None,
 ) -> None:
-    """Create a field value (V1 write path)."""
+    """
+    Create a field value on an entity.
+
+    Examples:
+
+    - `affinity field-value create --field-id field-123 --entity-id 456 --value "Active"`
+    - `affinity field-value create --field-id field-789 --entity-id 456 --value-json '[1,2,3]'`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         if value is None and value_json is None:
