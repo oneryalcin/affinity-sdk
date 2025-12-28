@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
+- CLI: `affinity field-value-changes ls` for viewing field value change history.
 - Inbound webhook parsing helpers: `parse_webhook(...)`, `dispatch_webhook(...)`, and `BodyRegistry`.
 - CLI: `affinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
 - CLI: `affinity company get --expand people` for associated people (v1-backed exception).

@@ -549,6 +549,29 @@ affinity field-value update 555 --value-json '\"Active\"'
 affinity field-value delete 555
 ```
 
+## Field Value Changes
+
+### `affinity field-value-changes ls`
+
+List field value change history for a specific field on an entity (V1).
+
+Options:
+
+- `--field-id <id>` (required): Field ID (e.g. `field-123`)
+- `--person-id <id>`: Filter by person
+- `--company-id <id>`: Filter by company
+- `--opportunity-id <id>`: Filter by opportunity
+- `--list-entry-id <id>`: Filter by list entry
+- `--action-type <type>`: Filter by action (`create`, `update`, `delete`)
+
+Exactly one entity selector (`--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id`) is required.
+
+```bash
+affinity field-value-changes ls --field-id field-123 --person-id 456
+affinity field-value-changes ls --field-id field-123 --company-id 789 --action-type update
+affinity --json field-value-changes ls --field-id field-123 --list-entry-id 101
+```
+
 ## Relationship Strengths
 
 ### `affinity relationship-strength get`

@@ -155,6 +155,9 @@ from .commands.company_cmds import company_group as _company_group  # noqa: E402
 from .commands.completion_cmd import completion_cmd as _completion_cmd  # noqa: E402
 from .commands.config_cmds import config_group as _config_group  # noqa: E402
 from .commands.field_cmds import field_group as _field_group  # noqa: E402
+from .commands.field_value_changes_cmds import (  # noqa: E402
+    field_value_changes_group as _field_value_changes_group,
+)
 from .commands.field_value_cmds import field_value_group as _field_value_group  # noqa: E402
 from .commands.interaction_cmds import interaction_group as _interaction_group  # noqa: E402
 from .commands.list_cmds import list_group as _list_group  # noqa: E402
@@ -184,5 +187,6 @@ cli.add_command(_reminder_group)
 cli.add_command(_interaction_group)
 cli.add_command(_field_group)
 cli.add_command(_field_value_group)
+cli.add_command(_field_value_changes_group)
 cli.add_command(_relationship_strength_group)
 cli.add_command(_task_group)
