@@ -15,6 +15,12 @@ with Affinity(api_key="your-key") as client:
         print(company.name)
 ```
 
+## Memory considerations
+
+For very large datasets (thousands of pages), prefer `iter()` or `all()` over manually calling `page.next_page()` in a loop. The iterator pattern processes items one at a time without accumulating page objects in memory.
+
+If you need to hold `Page` objects (e.g., for batch processing), process and release them promptly to allow garbage collection.
+
 ## Next steps
 
 - [Filtering](filtering.md)
