@@ -44,10 +44,14 @@ class AffinityError(Exception):
         base = self.message
         if self.status_code:
             base = f"[{self.status_code}] {base}"
-        if self.diagnostics and self.diagnostics.method and self.diagnostics.url:
-            base = f"{base} ({self.diagnostics.method} {self.diagnostics.url})"
-        if self.diagnostics and self.diagnostics.request_id:
-            base = f"{base} [request_id={self.diagnostics.request_id}]"
+        if self.diagnostics:
+            # Include method + url if both present, or just url if only url present
+            if self.diagnostics.method and self.diagnostics.url:
+                base = f"{base} ({self.diagnostics.method} {self.diagnostics.url})"
+            elif self.diagnostics.url:
+                base = f"{base} (url={self.diagnostics.url})"
+            if self.diagnostics.request_id:
+                base = f"{base} [request_id={self.diagnostics.request_id}]"
         return base
 
 
@@ -206,7 +210,13 @@ class TimeoutError(AffinityError):
     - Server overload
     """
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: ErrorDiagnostics | None = None,
+    ):
+        super().__init__(message, diagnostics=diagnostics)
 
 
 class NetworkError(AffinityError):
@@ -217,7 +227,13 @@ class NetworkError(AffinityError):
     Check your internet connection and firewall settings.
     """
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: ErrorDiagnostics | None = None,
+    ):
+        super().__init__(message, diagnostics=diagnostics)
 
 
 class PolicyError(AffinityError):
@@ -248,7 +264,10 @@ class UnsafeUrlError(AffinityError):
     """
 
     def __init__(self, message: str, *, url: str | None = None):
-        super().__init__(message)
+        super().__init__(
+            message,
+            diagnostics=ErrorDiagnostics(url=url) if url else None,
+        )
         self.url = url
 
 
