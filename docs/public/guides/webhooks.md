@@ -2,6 +2,45 @@
 
 The SDK supports managing webhook subscriptions via the V1 API (`client.webhooks`). Receiving webhooks is handled by **your** web server/app.
 
+## Supported Webhook Events
+
+The SDK defines all webhook events in `WebhookEvent`. You can subscribe to any combination of these events:
+
+| Event | Value | Description |
+|-------|-------|-------------|
+| `LIST_CREATED` | `list.created` | A new list was created |
+| `LIST_UPDATED` | `list.updated` | A list's properties were modified |
+| `LIST_DELETED` | `list.deleted` | A list was deleted |
+| `LIST_ENTRY_CREATED` | `list_entry.created` | An entity was added to a list |
+| `LIST_ENTRY_DELETED` | `list_entry.deleted` | An entity was removed from a list |
+| `NOTE_CREATED` | `note.created` | A note was created on an entity |
+| `NOTE_UPDATED` | `note.updated` | A note's content was modified |
+| `NOTE_DELETED` | `note.deleted` | A note was deleted |
+| `FIELD_CREATED` | `field.created` | A new field was created |
+| `FIELD_UPDATED` | `field.updated` | A field's properties were modified |
+| `FIELD_DELETED` | `field.deleted` | A field was deleted |
+| `FIELD_VALUE_CREATED` | `field_value.created` | A field value was set on an entity |
+| `FIELD_VALUE_UPDATED` | `field_value.updated` | A field value was modified |
+| `FIELD_VALUE_DELETED` | `field_value.deleted` | A field value was removed |
+| `PERSON_CREATED` | `person.created` | A new person was created |
+| `PERSON_UPDATED` | `person.updated` | A person's properties were modified |
+| `PERSON_DELETED` | `person.deleted` | A person was deleted |
+| `ORGANIZATION_CREATED` | `organization.created` | A new company/organization was created |
+| `ORGANIZATION_UPDATED` | `organization.updated` | A company's properties were modified |
+| `ORGANIZATION_DELETED` | `organization.deleted` | A company was deleted |
+| `ORGANIZATION_MERGED` | `organization.merged` | Two companies were merged |
+| `OPPORTUNITY_CREATED` | `opportunity.created` | A new opportunity was created |
+| `OPPORTUNITY_UPDATED` | `opportunity.updated` | An opportunity's properties were modified |
+| `OPPORTUNITY_DELETED` | `opportunity.deleted` | An opportunity was deleted |
+| `FILE_CREATED` | `file.created` | A file was uploaded to an entity |
+| `FILE_DELETED` | `file.deleted` | A file was deleted |
+| `REMINDER_CREATED` | `reminder.created` | A reminder was created |
+| `REMINDER_UPDATED` | `reminder.updated` | A reminder's properties were modified |
+| `REMINDER_DELETED` | `reminder.deleted` | A reminder was deleted |
+
+!!! tip "Forward Compatibility"
+    `WebhookEvent` extends `OpenStrEnum`, meaning unknown event types from Affinity are preserved as strings rather than causing errors. This ensures the SDK gracefully handles any new events Affinity may add in the future.
+
 ## Create a subscription
 
 ```python
