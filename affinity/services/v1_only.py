@@ -106,7 +106,16 @@ class NoteService:
         """
         Get notes filtered by entity or creator.
 
-        Returns V1 paginated response with 'notes' and 'next_page_token'.
+        Args:
+            person_id: Filter notes associated with this person
+            company_id: Filter notes associated with this company
+            opportunity_id: Filter notes associated with this opportunity
+            creator_id: Filter notes created by this user
+            page_size: Number of results per page
+            page_token: Pagination token from previous response
+
+        Returns:
+            V1PaginatedResponse with notes and next_page_token
         """
         params: dict[str, Any] = {}
         if person_id:
@@ -206,7 +215,23 @@ class ReminderService:
         """
         Get reminders with optional filtering.
 
-        Returns V1 paginated response with `data` and `next_page_token`.
+        Args:
+            person_id: Filter reminders for this person
+            company_id: Filter reminders for this company
+            opportunity_id: Filter reminders for this opportunity
+            creator_id: Filter by reminder creator
+            owner_id: Filter by reminder owner (assignee)
+            completer_id: Filter by who completed the reminder
+            type: Filter by reminder type (ONE_TIME or RECURRING)
+            reset_type: Filter by reset type (FIXED_DATE, DATE_ADDED, or INTERACTION)
+            status: Filter by status (ACTIVE, SNOOZED, or COMPLETE)
+            due_before: Filter reminders due before this datetime
+            due_after: Filter reminders due after this datetime
+            page_size: Number of results per page
+            page_token: Pagination token from previous response
+
+        Returns:
+            V1PaginatedResponse with reminders and next_page_token
         """
         params: dict[str, Any] = {}
         if person_id:

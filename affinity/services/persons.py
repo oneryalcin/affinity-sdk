@@ -128,7 +128,17 @@ class PersonService:
         """
         Iterate person pages (not items), yielding `PaginatedResponse[Person]`.
 
-        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
+
+        Args:
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include
+            filter: V2 filter expression string or FilterExpression
+            limit: Maximum results per page
+            cursor: Cursor to resume pagination
+
+        Yields:
+            PaginatedResponse[Person] for each page
         """
         other_params = (field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
@@ -161,6 +171,11 @@ class PersonService:
     ) -> Iterator[Person]:
         """
         Iterate through all persons with automatic pagination.
+
+        Args:
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+            filter: V2 filter expression
 
         Yields:
             Person objects
@@ -334,8 +349,18 @@ class PersonService:
         """
         Iterate V1 person-search result pages.
 
-        This is useful for scripts that want to checkpoint/resume with a
-        `next_page_token`.
+        Useful for scripts that need checkpoint/resume via `next_page_token`.
+
+        Args:
+            term: Search term (name or email)
+            with_interaction_dates: Include interaction date data
+            with_interaction_persons: Include persons for interactions
+            with_opportunities: Include associated opportunity IDs
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            V1PaginatedResponse[Person] for each page
         """
         requested_token = page_token
         page = self.search(
@@ -371,7 +396,20 @@ class PersonService:
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> Iterator[Person]:
-        """Iterate all V1 person-search results with automatic pagination."""
+        """
+        Iterate all V1 person-search results with automatic pagination.
+
+        Args:
+            term: Search term (name or email)
+            with_interaction_dates: Include interaction date data
+            with_interaction_persons: Include persons for interactions
+            with_opportunities: Include associated opportunity IDs
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            Person objects matching the search term
+        """
         for page in self.search_pages(
             term,
             with_interaction_dates=with_interaction_dates,
@@ -603,7 +641,17 @@ class AsyncPersonService:
         """
         Iterate person pages (not items), yielding `PaginatedResponse[Person]`.
 
-        This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+        Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
+
+        Args:
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include
+            filter: V2 filter expression string or FilterExpression
+            limit: Maximum results per page
+            cursor: Cursor to resume pagination
+
+        Yields:
+            PaginatedResponse[Person] for each page
         """
         other_params = (field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
@@ -640,6 +688,11 @@ class AsyncPersonService:
     ) -> AsyncIterator[Person]:
         """
         Iterate through all persons with automatic pagination.
+
+        Args:
+            field_ids: Specific field IDs to include
+            field_types: Field types to include
+            filter: V2 filter expression
 
         Yields:
             Person objects
@@ -795,8 +848,18 @@ class AsyncPersonService:
         """
         Iterate V1 person-search result pages.
 
-        This is useful for scripts that want to checkpoint/resume with a
-        `next_page_token`.
+        Useful for scripts that need checkpoint/resume via `next_page_token`.
+
+        Args:
+            term: Search term (name or email)
+            with_interaction_dates: Include interaction date data
+            with_interaction_persons: Include persons for interactions
+            with_opportunities: Include associated opportunity IDs
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            V1PaginatedResponse[Person] for each page
         """
         requested_token = page_token
         page = await self.search(
@@ -832,7 +895,20 @@ class AsyncPersonService:
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> AsyncIterator[Person]:
-        """Iterate all V1 person-search results with automatic pagination."""
+        """
+        Iterate all V1 person-search results with automatic pagination.
+
+        Args:
+            term: Search term (name or email)
+            with_interaction_dates: Include interaction date data
+            with_interaction_persons: Include persons for interactions
+            with_opportunities: Include associated opportunity IDs
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            Person objects matching the search term
+        """
         async for page in self.search_pages(
             term,
             with_interaction_dates=with_interaction_dates,
