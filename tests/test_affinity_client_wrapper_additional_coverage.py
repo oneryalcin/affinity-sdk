@@ -139,6 +139,27 @@ async def test_async_affinity_context_manager_and_lazy_properties() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_affinity_clear_cache() -> None:
+    client = AsyncAffinity(api_key="k", enable_cache=True, max_retries=0)
+    try:
+        assert client._http.cache is not None
+        client._http.cache.set("k", {"x": 1})
+        client.clear_cache()
+        assert client._http.cache.get("k") is None
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_affinity_clear_cache_is_noop_when_cache_disabled() -> None:
+    client = AsyncAffinity(api_key="k", enable_cache=False, max_retries=0)
+    try:
+        client.clear_cache()
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_async_affinity_whoami_convenience_method() -> None:
     now = datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat()
 

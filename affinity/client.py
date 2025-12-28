@@ -708,6 +708,11 @@ class AsyncAffinity:
         """Close the HTTP client."""
         await self._http.close()
 
+    def clear_cache(self) -> None:
+        """Clear the response cache."""
+        if self._http.cache:
+            self._http.cache.clear()
+
     async def whoami(self) -> WhoAmI:
         """Convenience wrapper for `client.auth.whoami()`."""
         return await self.auth.whoami()

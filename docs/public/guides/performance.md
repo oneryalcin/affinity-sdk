@@ -45,7 +45,50 @@ with Affinity(api_key="your-key", timeout=30.0) as client:
 
 ## Caching
 
-Caching is optional and currently targets metadata-style responses (for example, field metadata). If you enable it:
+The SDK provides optional in-memory caching for metadata-style responses (field definitions, list configurations). This reduces API calls for frequently-accessed, slowly-changing data.
 
-- Choose a TTL that matches how often you expect metadata to change.
-- Consider clearing cache after known metadata changes (e.g., list/field configuration changes).
+### Enabling cache
+
+```python
+from affinity import Affinity
+
+# Enable with default 5-minute TTL
+client = Affinity(api_key="your-key", enable_cache=True)
+
+# Custom TTL (in seconds)
+client = Affinity(api_key="your-key", enable_cache=True, cache_ttl=600.0)
+```
+
+### Long-running applications
+
+For long-running processes (web servers, background workers), be aware that cached data may become stale:
+
+- **Field definitions** may change if admins add/modify fields
+- **List configurations** may change if lists are reconfigured
+- **Default TTL is 5 minutes** (300 seconds)
+
+Recommendations:
+
+1. **Choose appropriate TTL**: Match your TTL to how often metadata changes in your organization
+2. **Invalidate on known changes**: Clear cache after operations that modify metadata
+3. **Periodic refresh**: For very long processes, consider periodic cache clears
+
+### Manual cache invalidation
+
+```python
+# Clear all cached entries
+client.clear_cache()
+```
+
+### When to use caching
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Short-lived scripts | Caching optional (few repeated calls) |
+| CLI tools | Enable caching (reduces latency for field lookups) |
+| Web servers | Enable with appropriate TTL |
+| Background workers | Enable, consider periodic cache refresh |
+
+### Cache isolation
+
+Cache is isolated per API key and base URL combination, so multiple clients with different credentials won't share cached data.
