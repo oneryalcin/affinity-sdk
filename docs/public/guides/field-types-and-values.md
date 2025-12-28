@@ -43,6 +43,19 @@ with Affinity(api_key="your-key") as client:
             print(company.fields.data.get("101"))
 ```
 
+### Accepted FieldId formats
+
+`FieldId` accepts several input formats and normalizes them to `field-<digits>`:
+
+| Input | Normalized to | Valid |
+|-------|---------------|-------|
+| `FieldId(123)` | `"field-123"` | Yes |
+| `FieldId("456")` | `"field-456"` | Yes |
+| `FieldId("field-789")` | `"field-789"` | Yes |
+| `FieldId("invalid")` | — | No, raises `ValueError` |
+
+Invalid formats raise `ValueError` immediately at construction time.
+
 ### V1-only writes and numeric field IDs
 
 The SDK uses V2 field metadata endpoints for reads. Some write operations still use V1
