@@ -13,27 +13,26 @@ pip install "affinity-sdk[dotenv]"
 
 ## Client Initialization
 
+**IMPORTANT: Use read-only mode by default** to prevent accidental data modification.
+
 ```python
 from affinity import Affinity, AsyncAffinity
+from affinity.policies import Policies, WritePolicy
 
-# From environment variable (AFFINITY_API_KEY)
+# RECOMMENDED: Read-only mode (default for scripts)
+with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
+    ...  # Write operations will raise WriteNotAllowedError
+
+# Only use without read-only when user explicitly approves writes:
 with Affinity.from_env() as client:
     ...
 
 # With .env file loading (requires dotenv extra)
-with Affinity.from_env(load_dotenv=True) as client:
+with Affinity.from_env(load_dotenv=True, policies=Policies(write=WritePolicy.DENY)) as client:
     ...
 
-# Explicit API key
-with Affinity(api_key="your-key") as client:
-    ...
-
-# Read-only mode (prevents accidental writes)
-from affinity.policies import Policies, WritePolicy
-client = Affinity.from_env(policies=Policies(write=WritePolicy.DENY))
-
-# Async client
-async with AsyncAffinity.from_env() as client:
+# Async client (also supports read-only)
+async with AsyncAffinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
     companies = await client.companies.all()
 ```
 

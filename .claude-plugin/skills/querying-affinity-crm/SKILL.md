@@ -9,6 +9,30 @@ The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide acces
 
 ## Critical Patterns (Must Follow)
 
+### Read-Only by Default - IMPORTANT
+
+**Always use read-only mode unless the user explicitly requests data modification.**
+
+CRM data is sensitive. Scripts should default to read-only to prevent accidental changes.
+
+**SDK - Use read-only policy:**
+```python
+from affinity import Affinity
+from affinity.policies import Policies, WritePolicy
+
+# Default for scripts - prevents accidental writes
+with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
+    ...  # Write operations will raise WriteNotAllowedError
+```
+
+**CLI - Use --readonly flag:**
+```bash
+xaffinity --readonly person ls --all
+xaffinity --readonly company get 123
+```
+
+Only remove the read-only restriction when the user explicitly confirms they want to create, update, or delete data.
+
 ### Typed IDs (SDK) - Required
 
 ```python

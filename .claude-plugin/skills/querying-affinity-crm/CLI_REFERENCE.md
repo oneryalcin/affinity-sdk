@@ -9,14 +9,28 @@ pip install affinity-sdk
 export AFFINITY_API_KEY="your-api-key"
 ```
 
+## Read-Only Mode (IMPORTANT)
+
+**Always use `--readonly` by default** to prevent accidental data modification:
+
+```bash
+# RECOMMENDED: Use --readonly for all read operations
+xaffinity --readonly person ls --all
+xaffinity --readonly company get 123
+xaffinity --readonly list export 12345 --all --csv entries.csv
+
+# Only omit --readonly when user explicitly approves writes
+xaffinity person create --first-name Ada --last-name Lovelace
+```
+
 ## Global Options
 
 | Option | Description |
 |--------|-------------|
+| `--readonly` | **Recommended** - Prevent write operations |
 | `--json` | Output machine-readable JSON |
 | `--quiet` / `-q` | Suppress non-essential output |
 | `--trace` | Show request/response traces |
-| `--readonly` | Prevent write operations |
 | `--beta` | Enable beta endpoints |
 | `--all` | Fetch all pages |
 | `--csv <path>` | Export to CSV (requires `--all`) |
