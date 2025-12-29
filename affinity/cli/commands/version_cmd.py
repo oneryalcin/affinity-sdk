@@ -14,6 +14,8 @@ from ..runner import CommandOutput, run_command
 @output_options
 @click.pass_obj
 def version_cmd(ctx: CLIContext) -> None:
+    """Show version, Python, and platform information."""
+
     def fn(_: CLIContext, _warnings: list[str]) -> CommandOutput:
         data = {
             "version": affinity.__version__,

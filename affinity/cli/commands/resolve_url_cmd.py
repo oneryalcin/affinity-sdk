@@ -75,6 +75,8 @@ def _parse_affinity_url(url: str) -> ResolvedUrl:
 @output_options
 @click.pass_obj
 def resolve_url_cmd(ctx: CLIContext, url: str) -> None:
+    """Resolve an Affinity UI URL to entity type and IDs."""
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         resolved = _parse_affinity_url(url)
         client = ctx.get_client(warnings=warnings)

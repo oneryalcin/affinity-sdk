@@ -1231,6 +1231,8 @@ def person_files_dump(
     page_size: int,
     max_files: int | None,
 ) -> None:
+    """Download all files attached to a person."""
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         return asyncio.run(
             dump_entity_files_bundle(

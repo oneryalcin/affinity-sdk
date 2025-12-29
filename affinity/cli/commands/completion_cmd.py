@@ -13,6 +13,7 @@ from ..runner import CommandOutput, run_command
 @output_options
 @click.pass_obj
 def completion_cmd(ctx: CLIContext, shell: str) -> None:
+    """Output shell completion script for bash, zsh, or fish."""
     if shell == "bash":
         script = 'eval "$(_XAFFINITY_COMPLETE=bash_source xaffinity)"\n'
     elif shell == "zsh":

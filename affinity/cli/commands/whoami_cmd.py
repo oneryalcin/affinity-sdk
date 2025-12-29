@@ -11,6 +11,8 @@ from ..serialization import serialize_model_for_cli
 @output_options
 @click.pass_obj
 def whoami_cmd(ctx: CLIContext) -> None:
+    """Show current authenticated user information."""
+
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         who = client.whoami()

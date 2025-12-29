@@ -20,6 +20,8 @@ def config_group() -> None:
 @output_options
 @click.pass_obj
 def config_path(ctx: CLIContext) -> None:
+    """Show the path to the configuration file."""
+
     def fn(_: CLIContext, _warnings: list[str]) -> CommandOutput:
         path = ctx.paths.config_path
         return CommandOutput(data={"path": str(path), "exists": path.exists()}, api_called=False)
@@ -32,6 +34,8 @@ def config_path(ctx: CLIContext) -> None:
 @output_options
 @click.pass_obj
 def config_init(ctx: CLIContext, *, force: bool) -> None:
+    """Create a new configuration file with template."""
+
     def fn(_: CLIContext, _warnings: list[str]) -> CommandOutput:
         path = ctx.paths.config_path
         path.parent.mkdir(parents=True, exist_ok=True)
