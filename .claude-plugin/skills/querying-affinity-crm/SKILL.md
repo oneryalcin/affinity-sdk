@@ -200,13 +200,14 @@ xaffinity --dotenv --readonly person get email:alice@example.com --json
 
 ### List meetings for a person
 
-**For EXTERNAL contacts** - use interactions (auto-synced from calendars):
+**Interactions** - use for meetings with external participants (auto-synced from calendars):
 ```bash
 xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting --json
 ```
+Note: Interactions only appear if at least one external contact was involved.
 
-**For INTERNAL users (team members)** - interactions won't work, use notes:
+**Notes** - use for internal-only meetings or meeting notes content:
 ```bash
 xaffinity --dotenv --readonly note ls --person-id 123 --json
-# Then filter for isMeeting: true in the response
+# Filter response for isMeeting: true
 ```

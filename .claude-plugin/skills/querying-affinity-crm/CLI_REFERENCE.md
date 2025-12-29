@@ -186,13 +186,15 @@ xaffinity note create --person-id 123 --content "Meeting notes"
 
 ## Interactions (Meetings, Emails, Calls)
 
-**Use interactions for meetings, emails, and calls** - these are auto-synced from calendars and email.
+**Use interactions for meetings, emails, and calls** - auto-synced from calendars and email.
 
-**IMPORTANT**: Interactions only work for **external contacts**, not internal users (team members).
-For internal users, use notes with `isMeeting: true` to find meeting records.
+**IMPORTANT limitations:**
+- Interactions only appear if **at least one external contact** was involved
+- Internal-only meetings (team members only) won't appear unless logged with a note
+- Sync lag: Google Calendar ~30 min, Office365 up to 2 hours
 
 ```bash
-# List all interactions for an EXTERNAL person (meetings, emails, calls)
+# List interactions for a person (requires external participants)
 xaffinity --dotenv --readonly interaction ls --person-id 123 --json
 
 # Filter by type
@@ -203,6 +205,10 @@ xaffinity --dotenv --readonly interaction ls --person-id 123 --type chat-message
 ```
 
 Interaction types: `meeting`, `email`, `call`, `chat-message` (or `chat`)
+
+**Alternatives for internal users:**
+- Use notes with `isMeeting: true` for meeting records
+- Use Smart Fields (`Last Meeting`, `Next Meeting`) on person/company records
 
 ## URL Resolution
 
