@@ -9,6 +9,7 @@ from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 from ._v1_parsing import parse_choice
 
 
@@ -29,8 +30,7 @@ _VALUE_TYPE_MAP = {ft.value: ft for ft in FieldValueType}
 
 
 def _field_payload(field: FieldMetadata) -> dict[str, object]:
-    # TODO: Migrate to use serialize_model_for_cli() from ..serialization
-    return field.model_dump(by_alias=True, mode="json", exclude_none=True)
+    return serialize_model_for_cli(field)
 
 
 @field_group.command(name="ls", cls=RichCommand)

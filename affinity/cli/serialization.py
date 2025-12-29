@@ -6,6 +6,7 @@ All CLI commands should use these helpers to ensure consistent JSON output.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
@@ -39,12 +40,12 @@ def serialize_model_for_cli(model: BaseModel) -> dict[str, Any]:
     return model.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
-def serialize_models_for_cli(models: list[BaseModel]) -> list[dict[str, Any]]:
+def serialize_models_for_cli(models: Sequence[BaseModel]) -> list[dict[str, Any]]:
     """
-    Serialize a list of Pydantic models for CLI JSON output.
+    Serialize a sequence of Pydantic models for CLI JSON output.
 
     Args:
-        models: List of Pydantic models
+        models: Sequence of Pydantic models
 
     Returns:
         List of dictionaries suitable for JSON output

@@ -34,6 +34,7 @@ from ..resolve import (
 )
 from ..results import Artifact
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli, serialize_models_for_cli
 from ._v1_parsing import parse_json_value
 
 
@@ -205,7 +206,7 @@ def list_create(
                 owner_id=owner_id,
             )
         )
-        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(created)
         return CommandOutput(data={"list": payload}, api_called=True)
 
     run_command(ctx, command="list create", fn=fn)
@@ -234,11 +235,9 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
         fields = client.lists.get_fields(list_id)
         views = list_all_saved_views(client=client, list_id=list_id)
         data = {
-            "list": resolved.list.model_dump(by_alias=True, mode="json", exclude_none=True),
-            "fields": [f.model_dump(by_alias=True, mode="json", exclude_none=True) for f in fields],
-            "savedViews": [
-                v.model_dump(by_alias=True, mode="json", exclude_none=True) for v in views
-            ],
+            "list": serialize_model_for_cli(resolved.list),
+            "fields": serialize_models_for_cli(fields),
+            "savedViews": serialize_models_for_cli(views),
         }
         return CommandOutput(data=data, resolved=resolved.resolved, api_called=True)
 
@@ -765,7 +764,7 @@ def list_entry_add(
             assert opportunity_id is not None
             created = entries.add_opportunity(OpportunityId(opportunity_id), creator_id=creator_id)
 
-        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(created)
         return CommandOutput(
             data={"listEntry": payload},
             resolved=resolved_list.resolved,
@@ -838,7 +837,7 @@ def list_entry_update_field(
         except ValueError:
             parsed_field_id = EnrichedFieldId(field_id)
         result = entries.update_field_value(ListEntryId(entry_id), parsed_field_id, parsed_value)
-        payload = result.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(result)
         return CommandOutput(
             data={"fieldValues": payload},
             resolved=resolved_list.resolved,
@@ -879,7 +878,7 @@ def list_entry_batch_update(
                 exit_code=2,
             )
         result = entries.batch_update_fields(ListEntryId(entry_id), parsed)
-        payload = result.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(result)
         return CommandOutput(
             data={"fieldUpdates": payload},
             resolved=resolved_list.resolved,

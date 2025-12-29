@@ -15,6 +15,7 @@ from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 
 
 @click.group(name="field-value-changes", cls=RichGroup)
@@ -23,8 +24,8 @@ def field_value_changes_group() -> None:
 
 
 def _field_value_change_payload(item: FieldValueChange) -> dict[str, object]:
-    # mode="json" ensures datetime fields (changed_at) serialize as ISO strings
-    return item.model_dump(by_alias=True, exclude_none=True, mode="json")
+    # Serializes field value change with proper datetime handling
+    return serialize_model_for_cli(item)
 
 
 _ACTION_TYPE_MAP = {
