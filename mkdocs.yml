@@ -40,6 +40,7 @@ nav:
       - Overview: cli/index.md
       - Commands: cli/commands.md
       - Scripting: cli/scripting.md
+      - JSON Output Reference: cli-reference.md
   - Guides:
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
@@ -58,6 +59,7 @@ nav:
       - Debugging hooks: guides/debugging-hooks.md
       - Webhooks: guides/webhooks.md
       - Opportunity associations: guides/opportunity-associations.md
+      - V1-V2 routing (redirect): guides/v1-v2-routing.md
   - Troubleshooting: troubleshooting.md
   - Reference:
       - Client: reference/client.md

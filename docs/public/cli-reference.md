@@ -518,5 +518,6 @@ interface PersonSearchResponse extends CLIResponse<{ persons: Person[] }> {
 
 ## Related Documentation
 
-- [CLI Development Guide](../cli-development-guide.md) - For developers working on CLI commands
-- [Contributing](../../CONTRIBUTING.md) - General contribution guidelines
+- [CLI Commands Reference](cli/commands.md) - Complete command documentation
+- [CLI Scripting Guide](cli/scripting.md) - Working with JSON output and pagination
+- [CSV Export Guide](guides/csv-export.md) - Exporting data to CSV files
