@@ -116,4 +116,5 @@ See [Sync vs async](guides/sync-vs-async.md).
 - [Configuration](guides/configuration.md)
 - [Field types & values](guides/field-types-and-values.md)
 - [API versions & routing](guides/api-versions-and-routing.md)
+- [Claude Code Plugin](guides/claude-code-plugin.md) - AI-assisted development
 - [API reference](reference/client.md)

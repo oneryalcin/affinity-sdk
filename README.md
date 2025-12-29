@@ -50,6 +50,17 @@ pipx install "affinity-sdk[cli]"
 
 CLI docs: https://yaniv-golan.github.io/affinity-sdk/cli/
 
+### Claude Code Plugin
+
+If you use [Claude Code](https://claude.ai/code), install the plugin for automatic SDK/CLI knowledge:
+
+```bash
+/plugin marketplace add yaniv-golan/affinity-sdk
+/plugin install affinity-sdk@affinity-sdk
+```
+
+Plugin docs: https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugin/
+
 ## Quick Start
 
 ```python

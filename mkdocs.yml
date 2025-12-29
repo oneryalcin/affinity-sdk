@@ -42,6 +42,7 @@ nav:
       - Scripting: cli/scripting.md
       - JSON Output Reference: cli-reference.md
   - Guides:
+      - Claude Code plugin: guides/claude-code-plugin.md
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
       - Performance tuning: guides/performance.md

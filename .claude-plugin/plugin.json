@@ -1,0 +1,14 @@
+{
+  "name": "affinity-sdk",
+  "description": "Knowledge and commands for using the Affinity Python SDK and xaffinity CLI to query and manage Affinity CRM data",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yaniv Golan"
+  },
+  "homepage": "https://github.com/yaniv-golan/affinity-sdk",
+  "repository": "https://github.com/yaniv-golan/affinity-sdk",
+  "license": "MIT",
+  "keywords": ["affinity", "crm", "sdk", "cli", "api"],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"]
+}
