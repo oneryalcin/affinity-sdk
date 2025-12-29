@@ -35,6 +35,7 @@ Example:
 from __future__ import annotations
 
 import logging
+from importlib.metadata import version as _get_version
 
 # Main client
 from . import models, types
@@ -80,7 +81,7 @@ from .models.pagination import PaginationProgress
 # Policies
 from .policies import ExternalHookPolicy, Policies, WritePolicy
 
-__version__ = "0.2.0"
+__version__ = _get_version("affinity-sdk")
 
 _logger = logging.getLogger("affinity_sdk")
 if not any(isinstance(h, logging.NullHandler) for h in _logger.handlers):
