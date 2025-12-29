@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -332,3 +333,58 @@ def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
     assert len(payload["data"]["people"]) == 1
     assert len(payload["data"]["companies"]) == 1
     assert payload["meta"]["resolved"]["expand"] == ["companies", "people"]  # sorted
+
+
+def test_opportunity_files_dump(respx_mock: respx.MockRouter, tmp_path: object) -> None:
+    """Test opportunity files dump downloads files and creates manifest."""
+    out_dir = Path(tmp_path) / "opp-files"  # type: ignore[arg-type]
+
+    # Mock files list endpoint (V1 entity-files API)
+    respx_mock.get("https://api.affinity.co/entity-files").mock(
+        return_value=Response(
+            200,
+            json={
+                "files": [
+                    {
+                        "id": 5001,
+                        "name": "pitch.pdf",
+                        "size": 1024,
+                        "content_type": "application/pdf",
+                        "uploader_id": 1,
+                        "created_at": "2024-01-01T00:00:00Z",
+                    }
+                ],
+                "next_page_token": None,
+            },
+        )
+    )
+
+    # Mock file download endpoint (V1 entity-files download)
+    respx_mock.get("https://api.affinity.co/entity-files/download/5001").mock(
+        return_value=Response(200, content=b"fake pdf content")
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "opportunity", "files", "dump", "123", "--out", str(out_dir)],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["filesDownloaded"] == 1
+    assert payload["data"]["filesTotal"] == 1
+
+    # Verify manifest was created
+    manifest_path = out_dir / "manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["entity"]["type"] == "opportunity"
+    assert manifest["entity"]["opportunityId"] == 123
+    assert len(manifest["files"]) == 1
+    assert manifest["files"][0]["name"] == "pitch.pdf"
+
+    # Verify file was downloaded
+    downloaded_file = out_dir / "files" / "pitch.pdf"
+    assert downloaded_file.exists()
+    assert downloaded_file.read_bytes() == b"fake pdf content"

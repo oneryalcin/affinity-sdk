@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+import sys
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
+
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from affinity.models.entities import Opportunity, OpportunityCreate, OpportunityUpdate
 from affinity.models.types import ListType
@@ -18,6 +31,7 @@ from ..resolvers import ResolvedEntity
 from ..results import Artifact
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
+from ._entity_files_dump import dump_entity_files_bundle
 from .resolve_url_cmd import _parse_affinity_url
 
 
@@ -112,53 +126,77 @@ def opportunity_ls(
         rows: list[dict[str, object]] = []
         first_page = True
 
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
+
         pages_iter = client.opportunities.pages(limit=page_size, cursor=cursor)
 
-        for page in pages_iter:
-            for idx, opportunity in enumerate(page.data):
-                rows.append(_opportunity_ls_row(opportunity))
-                if max_results is not None and len(rows) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    pagination = None
-                    if (
-                        page.pagination.next_cursor
-                        and not stopped_mid_page
-                        and page.pagination.next_cursor != cursor
-                    ):
-                        pagination = {
-                            "opportunities": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
+                    )
+                )
+                task_id = progress.add_task("Fetching", total=max_results)
+
+            for page in pages_iter:
+                for idx, opportunity in enumerate(page.data):
+                    rows.append(_opportunity_ls_row(opportunity))
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(rows))
+                    if max_results is not None and len(rows) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        pagination = None
+                        if (
+                            page.pagination.next_cursor
+                            and not stopped_mid_page
+                            and page.pagination.next_cursor != cursor
+                        ):
+                            pagination = {
+                                "opportunities": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
                             }
-                        }
+                        return CommandOutput(
+                            data={"opportunities": rows[:max_results]},
+                            pagination=pagination,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
                     return CommandOutput(
-                        data={"opportunities": rows[:max_results]},
-                        pagination=pagination,
+                        data={"opportunities": rows},
+                        pagination=(
+                            {
+                                "opportunities": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
+                            }
+                            if page.pagination.next_cursor
+                            else None
+                        ),
                         api_called=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                return CommandOutput(
-                    data={"opportunities": rows},
-                    pagination=(
-                        {
-                            "opportunities": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
-                            }
-                        }
-                        if page.pagination.next_cursor
-                        else None
-                    ),
-                    api_called=True,
-                )
-            first_page = False
+                first_page = False
 
         # CSV export path
         if csv_path:
@@ -273,94 +311,118 @@ def opportunity_get(
         cached_person_ids: list[int] | None = None
         cached_company_ids: list[int] | None = None
 
-        if want_people and want_companies:
-            assoc = client.opportunities.get_associations(opportunity_id)
-            cached_person_ids = [int(pid) for pid in assoc.person_ids]
-            cached_company_ids = [int(cid) for cid in assoc.company_ids]
+        # Show spinner for expansion operations
+        show_expand_progress = (
+            expand_set
+            and ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
 
-        # Handle people expansion
-        if want_people:
-            people_cap = max_results
-            if people_cap is None and not all_pages:
-                people_cap = 100
-            if people_cap is not None and people_cap <= 0:
-                data["people"] = []
-            else:
-                # Use cached IDs if available, otherwise fetch
-                if cached_person_ids is not None:
-                    person_ids = cached_person_ids
-                else:
-                    person_ids = [
-                        int(pid)
-                        for pid in client.opportunities.get_associated_person_ids(opportunity_id)
-                    ]
-                total_people = len(person_ids)
-                if people_cap is not None and total_people > people_cap:
-                    warnings.append(
-                        f"People truncated at {people_cap:,} items; re-run with --all "
-                        "or a higher --max-results to fetch more."
+        with ExitStack() as stack:
+            if show_expand_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        SpinnerColumn(),
+                        TextColumn("Fetching expanded data..."),
+                        console=Console(file=sys.stderr),
+                        transient=True,
                     )
-                    if total_people > 50:
+                )
+                progress.add_task("expand", total=None)
+
+            if want_people and want_companies:
+                assoc = client.opportunities.get_associations(opportunity_id)
+                cached_person_ids = [int(pid) for pid in assoc.person_ids]
+                cached_company_ids = [int(cid) for cid in assoc.company_ids]
+
+            # Handle people expansion
+            if want_people:
+                people_cap = max_results
+                if people_cap is None and not all_pages:
+                    people_cap = 100
+                if people_cap is not None and people_cap <= 0:
+                    data["people"] = []
+                else:
+                    # Use cached IDs if available, otherwise fetch
+                    if cached_person_ids is not None:
+                        person_ids = cached_person_ids
+                    else:
+                        person_ids = [
+                            int(pid)
+                            for pid in client.opportunities.get_associated_person_ids(
+                                opportunity_id
+                            )
+                        ]
+                    total_people = len(person_ids)
+                    if people_cap is not None and total_people > people_cap:
                         warnings.append(
-                            f"Fetching {min(people_cap, total_people)} people requires "
-                            f"{min(people_cap, total_people) + 1} API calls."
+                            f"People truncated at {people_cap:,} items; re-run with --all "
+                            "or a higher --max-results to fetch more."
+                        )
+                        if total_people > 50:
+                            warnings.append(
+                                f"Fetching {min(people_cap, total_people)} people requires "
+                                f"{min(people_cap, total_people) + 1} API calls."
+                            )
+
+                    people = client.opportunities.get_associated_people(
+                        opportunity_id,
+                        max_results=people_cap,
+                    )
+                    data["people"] = [
+                        {
+                            "id": int(person.id),
+                            "name": person.full_name,
+                            "primaryEmail": person.primary_email,
+                            "type": (
+                                person.type.value
+                                if hasattr(person.type, "value")
+                                else person.type
+                                if person.type
+                                else None
+                            ),
+                        }
+                        for person in people
+                    ]
+
+            # Handle companies expansion
+            if want_companies:
+                companies_cap = max_results
+                if companies_cap is None and not all_pages:
+                    companies_cap = 100
+                if companies_cap is not None and companies_cap <= 0:
+                    data["companies"] = []
+                else:
+                    # Use cached IDs if available, otherwise fetch
+                    if cached_company_ids is not None:
+                        company_ids = cached_company_ids
+                    else:
+                        company_ids = [
+                            int(cid)
+                            for cid in client.opportunities.get_associated_company_ids(
+                                opportunity_id
+                            )
+                        ]
+                    total_companies = len(company_ids)
+                    if companies_cap is not None and total_companies > companies_cap:
+                        warnings.append(
+                            f"Companies truncated at {companies_cap:,} items; re-run with --all "
+                            "or a higher --max-results to fetch more."
                         )
 
-                people = client.opportunities.get_associated_people(
-                    opportunity_id,
-                    max_results=people_cap,
-                )
-                data["people"] = [
-                    {
-                        "id": int(person.id),
-                        "name": person.full_name,
-                        "primaryEmail": person.primary_email,
-                        "type": (
-                            person.type.value
-                            if hasattr(person.type, "value")
-                            else person.type
-                            if person.type
-                            else None
-                        ),
-                    }
-                    for person in people
-                ]
-
-        # Handle companies expansion
-        if want_companies:
-            companies_cap = max_results
-            if companies_cap is None and not all_pages:
-                companies_cap = 100
-            if companies_cap is not None and companies_cap <= 0:
-                data["companies"] = []
-            else:
-                # Use cached IDs if available, otherwise fetch
-                if cached_company_ids is not None:
-                    company_ids = cached_company_ids
-                else:
-                    company_ids = [
-                        int(cid)
-                        for cid in client.opportunities.get_associated_company_ids(opportunity_id)
-                    ]
-                total_companies = len(company_ids)
-                if companies_cap is not None and total_companies > companies_cap:
-                    warnings.append(
-                        f"Companies truncated at {companies_cap:,} items; re-run with --all "
-                        "or a higher --max-results to fetch more."
+                    companies = client.opportunities.get_associated_companies(
+                        opportunity_id,
+                        max_results=companies_cap,
                     )
-
-                companies = client.opportunities.get_associated_companies(
-                    opportunity_id,
-                    max_results=companies_cap,
-                )
-                data["companies"] = [
-                    {
-                        "id": int(company.id),
-                        "name": company.name,
-                        "domain": company.domain,
-                    }
-                    for company in companies
-                ]
+                    data["companies"] = [
+                        {
+                            "id": int(company.id),
+                            "name": company.name,
+                            "domain": company.domain,
+                        }
+                        for company in companies
+                    ]
 
         if expand_set:
             resolved["expand"] = sorted(expand_set)
@@ -549,6 +611,64 @@ def opportunity_delete(
 @opportunity_group.group(name="files", cls=RichGroup)
 def opportunity_files_group() -> None:
     """Opportunity files."""
+
+
+@opportunity_files_group.command(name="dump", cls=RichCommand)
+@click.argument("opportunity_id", type=int)
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(),
+    default=None,
+    help="Output directory for downloaded files.",
+)
+@click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
+@click.option(
+    "--concurrency", type=int, default=3, show_default=True, help="Number of concurrent downloads."
+)
+@click.option(
+    "--page-size", type=int, default=200, show_default=True, help="Page size for file listing."
+)
+@click.option("--max-files", type=int, default=None, help="Stop after N files.")
+@output_options
+@click.pass_obj
+def opportunity_files_dump(
+    ctx: CLIContext,
+    opportunity_id: int,
+    *,
+    out_dir: str | None,
+    overwrite: bool,
+    concurrency: int,
+    page_size: int,
+    max_files: int | None,
+) -> None:
+    """Download all files attached to an opportunity.
+
+    Creates a bundle directory with:
+    - files/ subdirectory containing all downloaded files
+    - manifest.json with file metadata
+
+    Example:
+        xaffinity opportunity files dump 12345 --out ./my-opp-files
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        return asyncio.run(
+            dump_entity_files_bundle(
+                ctx=ctx,
+                warnings=warnings,
+                out_dir=out_dir,
+                overwrite=overwrite,
+                concurrency=concurrency,
+                page_size=page_size,
+                max_files=max_files,
+                default_dirname=f"affinity-opportunity-{opportunity_id}-files",
+                manifest_entity={"type": "opportunity", "opportunityId": opportunity_id},
+                files_list_kwargs={"opportunity_id": OpportunityId(opportunity_id)},
+            )
+        )
+
+    run_command(ctx, command="opportunity files dump", fn=fn)
 
 
 @opportunity_files_group.command(name="upload", cls=RichCommand)

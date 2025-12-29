@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
+from contextlib import ExitStack
 from typing import Any
+
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.secondary import Reminder, ReminderCreate, ReminderUpdate
 from affinity.models.types import ReminderResetType, ReminderStatus, ReminderType
@@ -187,58 +192,85 @@ def reminder_ls(
         owner_id_value = UserId(owner_id) if owner_id is not None else None
         completer_id_value = UserId(completer_id) if completer_id is not None else None
 
-        while True:
-            page = client.reminders.list(
-                person_id=person_id_value,
-                company_id=company_id_value,
-                opportunity_id=opportunity_id_value,
-                creator_id=creator_id_value,
-                owner_id=owner_id_value,
-                completer_id=completer_id_value,
-                type=parsed_type,
-                reset_type=parsed_reset,
-                status=parsed_status,
-                due_before=due_before_value,
-                due_after=due_after_value,
-                page_size=page_size,
-                page_token=page_token,
-            )
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
 
-            for idx, reminder in enumerate(page.data):
-                results.append(_reminder_payload(reminder))
-                if max_results is not None and len(results) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    pagination = None
-                    if page.next_page_token and not stopped_mid_page:
-                        pagination = {
-                            "reminders": {"nextCursor": page.next_page_token, "prevCursor": None}
-                        }
-                    return CommandOutput(
-                        data={"reminders": results[:max_results]},
-                        pagination=pagination,
-                        api_called=True,
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                pagination = (
-                    {"reminders": {"nextCursor": page.next_page_token, "prevCursor": None}}
-                    if page.next_page_token
-                    else None
                 )
-                return CommandOutput(
-                    data={"reminders": results}, pagination=pagination, api_called=True
-                )
-            first_page = False
+                task_id = progress.add_task("Fetching", total=max_results)
 
-            page_token = page.next_page_token
-            if not page_token:
-                break
+            while True:
+                page = client.reminders.list(
+                    person_id=person_id_value,
+                    company_id=company_id_value,
+                    opportunity_id=opportunity_id_value,
+                    creator_id=creator_id_value,
+                    owner_id=owner_id_value,
+                    completer_id=completer_id_value,
+                    type=parsed_type,
+                    reset_type=parsed_reset,
+                    status=parsed_status,
+                    due_before=due_before_value,
+                    due_after=due_after_value,
+                    page_size=page_size,
+                    page_token=page_token,
+                )
+
+                for idx, reminder in enumerate(page.data):
+                    results.append(_reminder_payload(reminder))
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(results))
+                    if max_results is not None and len(results) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        pagination = None
+                        if page.next_page_token and not stopped_mid_page:
+                            pagination = {
+                                "reminders": {
+                                    "nextCursor": page.next_page_token,
+                                    "prevCursor": None,
+                                }
+                            }
+                        return CommandOutput(
+                            data={"reminders": results[:max_results]},
+                            pagination=pagination,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
+                    pagination = (
+                        {"reminders": {"nextCursor": page.next_page_token, "prevCursor": None}}
+                        if page.next_page_token
+                        else None
+                    )
+                    return CommandOutput(
+                        data={"reminders": results}, pagination=pagination, api_called=True
+                    )
+                first_page = False
+
+                page_token = page.next_page_token
+                if not page_token:
+                    break
 
         return CommandOutput(data={"reminders": results}, pagination=None, api_called=True)
 

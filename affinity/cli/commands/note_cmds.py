@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+from contextlib import ExitStack
+
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
+
 from affinity.models.secondary import Note, NoteCreate, NoteUpdate
 from affinity.models.types import InteractionType, NoteType
 from affinity.types import CompanyId, NoteId, OpportunityId, PersonId, UserId
@@ -96,51 +102,76 @@ def note_ls(
         company_id_value = CompanyId(company_id) if company_id is not None else None
         opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None
         creator_id_value = UserId(creator_id) if creator_id is not None else None
-        while True:
-            page = client.notes.list(
-                person_id=person_id_value,
-                company_id=company_id_value,
-                opportunity_id=opportunity_id_value,
-                creator_id=creator_id_value,
-                page_size=page_size,
-                page_token=page_token,
-            )
 
-            for idx, note in enumerate(page.data):
-                results.append(_note_payload(note))
-                if max_results is not None and len(results) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    pagination = None
-                    if page.next_page_token and not stopped_mid_page:
-                        pagination = {
-                            "notes": {"nextCursor": page.next_page_token, "prevCursor": None}
-                        }
-                    return CommandOutput(
-                        data={"notes": results[:max_results]},
-                        pagination=pagination,
-                        api_called=True,
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
+
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                pagination = (
-                    {"notes": {"nextCursor": page.next_page_token, "prevCursor": None}}
-                    if page.next_page_token
-                    else None
                 )
-                return CommandOutput(
-                    data={"notes": results}, pagination=pagination, api_called=True
-                )
-            first_page = False
+                task_id = progress.add_task("Fetching", total=max_results)
 
-            page_token = page.next_page_token
-            if not page_token:
-                break
+            while True:
+                page = client.notes.list(
+                    person_id=person_id_value,
+                    company_id=company_id_value,
+                    opportunity_id=opportunity_id_value,
+                    creator_id=creator_id_value,
+                    page_size=page_size,
+                    page_token=page_token,
+                )
+
+                for idx, note in enumerate(page.data):
+                    results.append(_note_payload(note))
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(results))
+                    if max_results is not None and len(results) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        pagination = None
+                        if page.next_page_token and not stopped_mid_page:
+                            pagination = {
+                                "notes": {"nextCursor": page.next_page_token, "prevCursor": None}
+                            }
+                        return CommandOutput(
+                            data={"notes": results[:max_results]},
+                            pagination=pagination,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
+                    pagination = (
+                        {"notes": {"nextCursor": page.next_page_token, "prevCursor": None}}
+                        if page.next_page_token
+                        else None
+                    )
+                    return CommandOutput(
+                        data={"notes": results}, pagination=pagination, api_called=True
+                    )
+                first_page = False
+
+                page_token = page.next_page_token
+                if not page_token:
+                    break
 
         return CommandOutput(data={"notes": results}, pagination=None, api_called=True)
 

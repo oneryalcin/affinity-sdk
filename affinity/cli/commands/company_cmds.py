@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import Callable
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
+
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.entities import Company, CompanyCreate, CompanyUpdate
 from affinity.models.types import EnrichedFieldId, FieldId
@@ -27,6 +32,229 @@ from ._list_entry_fields import (
     filter_list_entry_fields,
 )
 from .resolve_url_cmd import _parse_affinity_url
+
+
+def _fetch_v2_collection(
+    *,
+    client: Any,
+    path: str,
+    section: str,
+    default_limit: int,
+    default_cap: int | None,
+    allow_unbounded: bool,
+    max_results: int | None,
+    all_pages: bool,
+    warnings: list[str],
+    pagination: dict[str, Any],
+    keep_item: Callable[[Any], bool] | None = None,
+) -> list[Any]:
+    """Fetch a paginated V2 collection with configurable limits.
+
+    This helper centralizes the pagination logic for fetching lists, list-entries,
+    and other V2 collections. It handles:
+    - Page size limits
+    - Max result caps
+    - Pagination cursor tracking
+    - Optional item filtering
+
+    Args:
+        client: The Affinity client instance.
+        path: The API path to fetch (e.g., "/companies/123/lists").
+        section: Name for this section (used in warnings and pagination keys).
+        default_limit: Default page size for API requests.
+        default_cap: Default max items if no explicit cap and not fetching all pages.
+        allow_unbounded: Whether unbounded fetching is allowed without --all.
+        max_results: Explicit max results limit (from --max-results).
+        all_pages: Whether to fetch all pages (from --all flag).
+        warnings: List to append warnings to (mutated in place).
+        pagination: Dict to store pagination cursors (mutated in place).
+        keep_item: Optional filter function to keep only matching items.
+
+    Returns:
+        List of fetched items.
+    """
+    effective_cap = max_results
+    if effective_cap is None and default_cap is not None and not all_pages:
+        effective_cap = default_cap
+    if effective_cap is not None and effective_cap <= 0:
+        return []
+
+    should_paginate = all_pages or allow_unbounded or effective_cap is not None
+    limit = default_limit
+    if effective_cap is not None:
+        limit = min(default_limit, effective_cap)
+
+    truncated_mid_page = False
+    payload = client._http.get(path, params={"limit": limit} if limit else None)
+    rows = payload.get("data", [])
+    if not isinstance(rows, list):
+        rows = []
+    page_items = list(rows)
+    if keep_item is not None:
+        page_items = [r for r in page_items if keep_item(r)]
+    items: list[Any] = page_items
+
+    page_pagination = payload.get("pagination", {})
+    if not isinstance(page_pagination, dict):
+        page_pagination = {}
+    next_url = page_pagination.get("nextUrl")
+    prev_url = page_pagination.get("prevUrl")
+
+    if effective_cap is not None and len(items) > effective_cap:
+        truncated_mid_page = True
+        items = items[:effective_cap]
+        next_url = None
+
+    while (
+        should_paginate
+        and isinstance(next_url, str)
+        and next_url
+        and (effective_cap is None or len(items) < effective_cap)
+    ):
+        payload = client._http.get_url(next_url)
+        rows = payload.get("data", [])
+        if isinstance(rows, list):
+            page_items = list(rows)
+            if keep_item is not None:
+                page_items = [r for r in page_items if keep_item(r)]
+            items.extend(page_items)
+        page_pagination = payload.get("pagination", {})
+        if not isinstance(page_pagination, dict):
+            page_pagination = {}
+        next_url = page_pagination.get("nextUrl")
+        prev_url = page_pagination.get("prevUrl")
+
+        if effective_cap is not None and len(items) > effective_cap:
+            truncated_mid_page = True
+            items = items[:effective_cap]
+            next_url = None
+            break
+
+    if truncated_mid_page and effective_cap is not None:
+        warnings.append(
+            f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
+            "to avoid skipping items. Re-run with a higher --max-results "
+            "or with --all."
+        )
+    elif isinstance(next_url, str) and next_url:
+        pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
+
+    return items
+
+
+def _normalize_sdk_item(item: Any) -> Any:
+    """Normalize an SDK model or dict to a plain dict for JSON output."""
+    if isinstance(item, dict):
+        return item
+    dump = getattr(item, "model_dump", None)
+    if callable(dump):
+        payload = dump(by_alias=True, mode="json")
+        fields_raw = getattr(item, "fields_raw", None)
+        if isinstance(fields_raw, list):
+            payload["fields"] = fields_raw
+        return payload
+    return item
+
+
+def _fetch_v2_collection_sdk(
+    *,
+    fetch_page: Callable[[int | None, str | None], Any],
+    section: str,
+    default_limit: int,
+    default_cap: int | None,
+    allow_unbounded: bool,
+    max_results: int | None,
+    all_pages: bool,
+    warnings: list[str],
+    pagination: dict[str, Any],
+    keep_item: Callable[[Any], bool] | None = None,
+) -> list[Any]:
+    """Fetch a paginated V2 collection using SDK methods.
+
+    This helper centralizes the pagination logic for fetching lists, list-entries,
+    and other V2 collections using SDK page methods. It handles:
+    - Page size limits
+    - Max result caps
+    - Pagination cursor tracking
+    - Optional item filtering
+    - Normalizing SDK models to dicts
+
+    Args:
+        fetch_page: Callback to fetch a page, takes (limit, cursor) and returns a Page object.
+        section: Name for this section (used in warnings and pagination keys).
+        default_limit: Default page size for API requests.
+        default_cap: Default max items if no explicit cap and not fetching all pages.
+        allow_unbounded: Whether unbounded fetching is allowed without --all.
+        max_results: Explicit max results limit (from --max-results).
+        all_pages: Whether to fetch all pages (from --all flag).
+        warnings: List to append warnings to (mutated in place).
+        pagination: Dict to store pagination cursors (mutated in place).
+        keep_item: Optional filter function to keep only matching items.
+
+    Returns:
+        List of fetched items (as dicts).
+    """
+    effective_cap = max_results
+    if effective_cap is None and default_cap is not None and not all_pages:
+        effective_cap = default_cap
+    if effective_cap is not None and effective_cap <= 0:
+        return []
+
+    should_paginate = all_pages or allow_unbounded or effective_cap is not None
+    limit = default_limit
+    if effective_cap is not None:
+        limit = min(default_limit, effective_cap)
+
+    truncated_mid_page = False
+    page = fetch_page(limit, None)
+    rows = page.data if isinstance(page.data, list) else []
+    page_items = [_normalize_sdk_item(r) for r in rows]
+    if keep_item is not None:
+        page_items = [r for r in page_items if keep_item(r)]
+    items: list[Any] = list(page_items)
+
+    page_pagination = getattr(page, "pagination", None)
+    next_url = getattr(page_pagination, "next_cursor", None) if page_pagination else None
+    prev_url = getattr(page_pagination, "prev_cursor", None) if page_pagination else None
+
+    if effective_cap is not None and len(items) > effective_cap:
+        truncated_mid_page = True
+        items = items[:effective_cap]
+        next_url = None
+
+    while (
+        should_paginate
+        and isinstance(next_url, str)
+        and next_url
+        and (effective_cap is None or len(items) < effective_cap)
+    ):
+        page = fetch_page(None, next_url)
+        rows = page.data if isinstance(page.data, list) else []
+        if rows:
+            page_items = [_normalize_sdk_item(r) for r in rows]
+            if keep_item is not None:
+                page_items = [r for r in page_items if keep_item(r)]
+            items.extend(page_items)
+        page_pagination = getattr(page, "pagination", None)
+        next_url = getattr(page_pagination, "next_cursor", None) if page_pagination else None
+        prev_url = getattr(page_pagination, "prev_cursor", None) if page_pagination else None
+
+        if effective_cap is not None and len(items) > effective_cap:
+            truncated_mid_page = True
+            items = items[:effective_cap]
+            next_url = None
+            break
+
+    if truncated_mid_page and effective_cap is not None:
+        warnings.append(
+            f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
+            "to avoid skipping items. Re-run with a higher --max-results "
+            "or with --all."
+        )
+    elif isinstance(next_url, str) and next_url:
+        pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
+
+    return items
 
 
 @click.group(name="company", cls=RichGroup)
@@ -91,48 +319,73 @@ def company_search(
         client = ctx.get_client(warnings=warnings)
         results: list[dict[str, object]] = []
         first_page = True
-        for page in client.companies.search_pages(
-            query,
-            with_interaction_dates=with_interaction_dates,
-            with_interaction_persons=with_interaction_persons,
-            with_opportunities=with_opportunities,
-            page_size=page_size,
-            page_token=cursor,
-        ):
-            for idx, company in enumerate(page.data):
-                results.append(_company_row(company))
-                if max_results is not None and len(results) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    return CommandOutput(
-                        data={"companies": results[:max_results]},
-                        pagination={
-                            "companies": {
-                                "nextCursor": page.next_page_token,
-                                "prevCursor": None,
+
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
+
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
+                    )
+                )
+                task_id = progress.add_task("Searching", total=max_results)
+
+            for page in client.companies.search_pages(
+                query,
+                with_interaction_dates=with_interaction_dates,
+                with_interaction_persons=with_interaction_persons,
+                with_opportunities=with_opportunities,
+                page_size=page_size,
+                page_token=cursor,
+            ):
+                for idx, company in enumerate(page.data):
+                    results.append(_company_row(company))
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(results))
+                    if max_results is not None and len(results) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        return CommandOutput(
+                            data={"companies": results[:max_results]},
+                            pagination={
+                                "companies": {
+                                    "nextCursor": page.next_page_token,
+                                    "prevCursor": None,
+                                }
                             }
+                            if page.next_page_token and not stopped_mid_page
+                            else None,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
+                    return CommandOutput(
+                        data={"companies": results},
+                        pagination={
+                            "companies": {"nextCursor": page.next_page_token, "prevCursor": None}
                         }
-                        if page.next_page_token and not stopped_mid_page
+                        if page.next_page_token
                         else None,
                         api_called=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                return CommandOutput(
-                    data={"companies": results},
-                    pagination={
-                        "companies": {"nextCursor": page.next_page_token, "prevCursor": None}
-                    }
-                    if page.next_page_token
-                    else None,
-                    api_called=True,
-                )
-            first_page = False
+                first_page = False
 
         return CommandOutput(data={"companies": results}, pagination=None, api_called=True)
 
@@ -234,6 +487,12 @@ def company_ls(
         rows: list[dict[str, object]] = []
         first_page = True
 
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
+
         pages_iter = client.companies.pages(
             field_ids=parsed_field_ids,
             field_types=parsed_field_types,
@@ -242,51 +501,69 @@ def company_ls(
             cursor=cursor,
         )
 
-        for page in pages_iter:
-            for idx, company in enumerate(page.data):
-                rows.append(_company_ls_row(company))
-                if max_results is not None and len(rows) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    pagination = None
-                    if (
-                        page.pagination.next_cursor
-                        and not stopped_mid_page
-                        and page.pagination.next_cursor != cursor
-                    ):
-                        pagination = {
-                            "companies": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
+                    )
+                )
+                task_id = progress.add_task("Fetching", total=max_results)
+
+            for page in pages_iter:
+                for idx, company in enumerate(page.data):
+                    rows.append(_company_ls_row(company))
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(rows))
+                    if max_results is not None and len(rows) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        pagination = None
+                        if (
+                            page.pagination.next_cursor
+                            and not stopped_mid_page
+                            and page.pagination.next_cursor != cursor
+                        ):
+                            pagination = {
+                                "companies": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
                             }
-                        }
+                        return CommandOutput(
+                            data={"companies": rows[:max_results]},
+                            pagination=pagination,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
                     return CommandOutput(
-                        data={"companies": rows[:max_results]},
-                        pagination=pagination,
+                        data={"companies": rows},
+                        pagination=(
+                            {
+                                "companies": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
+                            }
+                            if page.pagination.next_cursor
+                            else None
+                        ),
                         api_called=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                return CommandOutput(
-                    data={"companies": rows},
-                    pagination=(
-                        {
-                            "companies": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
-                            }
-                        }
-                        if page.pagination.next_cursor
-                        else None
-                    ),
-                    api_called=True,
-                )
-            first_page = False
+                first_page = False
 
         # CSV export path
         if csv_path:
@@ -1017,388 +1294,328 @@ def company_get(
         data: dict[str, Any] = {"company": company_payload}
         pagination: dict[str, Any] = {}
 
-        def normalize_item(item: Any) -> Any:
-            if isinstance(item, dict):
-                return item
-            dump = getattr(item, "model_dump", None)
-            if callable(dump):
-                payload = dump(by_alias=True, mode="json")
-                fields_raw = getattr(item, "fields_raw", None)
-                if isinstance(fields_raw, list):
-                    payload["fields"] = fields_raw
-                return payload
-            return item
+        # Show spinner for expansion operations
+        show_expand_progress = (
+            expand_set
+            and ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
 
-        def fetch_v2_collection(
-            *,
-            fetch_page: Callable[[int | None, str | None], Any],
-            section: str,
-            default_limit: int,
-            default_cap: int | None,
-            allow_unbounded: bool,
-            keep_item: Callable[[Any], bool] | None = None,
-        ) -> list[Any]:
-            effective_cap = max_results
-            if effective_cap is None and default_cap is not None and not all_pages:
-                effective_cap = default_cap
-            if effective_cap is not None and effective_cap <= 0:
-                return []
+        # Variables needed for list-entries expansion
+        list_id: ListId | None = None
+        entries_items: list[Any] = []
 
-            should_paginate = all_pages or allow_unbounded or effective_cap is not None
-            limit = default_limit
-            if effective_cap is not None:
-                limit = min(default_limit, effective_cap)
-
-            truncated_mid_page = False
-            page = fetch_page(limit, None)
-            rows = page.data if isinstance(page.data, list) else []
-            page_items = [normalize_item(r) for r in rows]
-            if keep_item is not None:
-                page_items = [r for r in page_items if keep_item(r)]
-            items: list[Any] = list(page_items)
-
-            page_pagination = getattr(page, "pagination", None)
-            next_url = getattr(page_pagination, "next_cursor", None) if page_pagination else None
-            prev_url = getattr(page_pagination, "prev_cursor", None) if page_pagination else None
-
-            if effective_cap is not None and len(items) > effective_cap:
-                truncated_mid_page = True
-                items = items[:effective_cap]
-                next_url = None
-
-            while (
-                should_paginate
-                and isinstance(next_url, str)
-                and next_url
-                and (effective_cap is None or len(items) < effective_cap)
-            ):
-                page = fetch_page(None, next_url)
-                rows = page.data if isinstance(page.data, list) else []
-                if rows:
-                    page_items = [normalize_item(r) for r in rows]
-                    if keep_item is not None:
-                        page_items = [r for r in page_items if keep_item(r)]
-                    items.extend(page_items)
-                page_pagination = getattr(page, "pagination", None)
-                next_url = (
-                    getattr(page_pagination, "next_cursor", None) if page_pagination else None
+        with ExitStack() as stack:
+            if show_expand_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        SpinnerColumn(),
+                        TextColumn("Fetching expanded data..."),
+                        console=Console(file=sys.stderr),
+                        transient=True,
+                    )
                 )
-                prev_url = (
-                    getattr(page_pagination, "prev_cursor", None) if page_pagination else None
+                progress.add_task("expand", total=None)
+
+            if "lists" in expand_set:
+
+                def fetch_lists_page(limit: int | None, cursor: str | None) -> Any:
+                    return client.companies.get_lists(
+                        company_id,
+                        limit=limit,
+                        cursor=cursor,
+                    )
+
+                data["lists"] = _fetch_v2_collection_sdk(
+                    fetch_page=fetch_lists_page,
+                    section="lists",
+                    default_limit=100,
+                    default_cap=100,
+                    allow_unbounded=True,
+                    max_results=max_results,
+                    all_pages=all_pages,
+                    warnings=warnings,
+                    pagination=pagination,
                 )
 
-                if effective_cap is not None and len(items) > effective_cap:
-                    truncated_mid_page = True
-                    items = items[:effective_cap]
-                    next_url = None
-                    break
-
-            if truncated_mid_page and effective_cap is not None:
-                warnings.append(
-                    f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
-                    "to avoid skipping items. Re-run with a higher --max-results "
-                    "or with --all."
-                )
-            elif isinstance(next_url, str) and next_url:
-                pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
-
-            return items
-
-        if "lists" in expand_set:
-
-            def fetch_lists_page(limit: int | None, cursor: str | None) -> Any:
-                return client.companies.get_lists(
-                    company_id,
-                    limit=limit,
-                    cursor=cursor,
-                )
-
-            data["lists"] = fetch_v2_collection(
-                fetch_page=fetch_lists_page,
-                section="lists",
-                default_limit=100,
-                default_cap=100,
-                allow_unbounded=True,
-            )
-        if "list-entries" in expand_set:
-            list_id: ListId | None = None
-            if list_selector:
-                raw_list_selector = list_selector.strip()
-                if raw_list_selector.isdigit():
-                    list_id = ListId(int(raw_list_selector))
-                    resolved.update({"list": {"input": list_selector, "listId": int(list_id)}})
-                else:
-                    resolved_list_obj = resolve_list_selector(client=client, selector=list_selector)
-                    list_id = ListId(int(resolved_list_obj.list.id))
-                    resolved.update(resolved_list_obj.resolved)
-
-            def keep_entry(item: Any) -> bool:
-                if list_id is None:
-                    return True
-                return isinstance(item, dict) and item.get("listId") == int(list_id)
-
-            def fetch_list_entries_page(limit: int | None, cursor: str | None) -> Any:
-                return client.companies.get_list_entries(
-                    company_id,
-                    limit=limit,
-                    cursor=cursor,
-                )
-
-            entries_items = fetch_v2_collection(
-                fetch_page=fetch_list_entries_page,
-                section="listEntries",
-                default_limit=100,
-                default_cap=None,
-                allow_unbounded=False,
-                keep_item=keep_entry if list_id is not None else None,
-            )
-            data["listEntries"] = entries_items
-
-            if ctx.output != "json":
-                list_name_by_id: dict[int, str] = {}
-                if isinstance(data.get("lists"), list):
-                    for item in data.get("lists", []):
-                        if not isinstance(item, dict):
-                            continue
-                        lid = item.get("id")
-                        name = item.get("name")
-                        if isinstance(lid, int) and isinstance(name, str) and name.strip():
-                            list_name_by_id[lid] = name.strip()
-                if effective_show_list_entry_fields:
-                    needed_list_ids: set[int] = set()
-                    for entry in entries_items:
-                        if not isinstance(entry, dict):
-                            continue
-                        lid = entry.get("listId")
-                        if isinstance(lid, int) and lid not in list_name_by_id:
-                            needed_list_ids.add(lid)
-                    for lid in sorted(needed_list_ids):
-                        try:
-                            list_obj = client.lists.get(ListId(lid))
-                        except Exception:
-                            continue
-                        if getattr(list_obj, "name", None):
-                            list_name_by_id[lid] = str(list_obj.name)
-
-                resolved_list_entry_fields: list[tuple[str, str]] = []
-                if effective_list_entry_fields:
-                    if list_id is not None:
-                        fields_meta = client.lists.get_fields(list_id)
-                        by_id: dict[str, str] = {}
-                        by_name: dict[str, list[str]] = {}
-                        for f in fields_meta:
-                            fid = str(getattr(f, "id", "")).strip()
-                            name = str(getattr(f, "name", "")).strip()
-                            if fid:
-                                by_id[fid] = name or fid
-                            if name:
-                                by_name.setdefault(name.lower(), []).append(fid or name)
-
-                        for spec in effective_list_entry_fields:
-                            raw = spec.strip()
-                            if not raw:
-                                continue
-                            if raw in by_id:
-                                resolved_list_entry_fields.append((raw, by_id[raw]))
-                                continue
-                            matches = by_name.get(raw.lower(), [])
-                            if len(matches) == 1:
-                                fid = matches[0]
-                                resolved_list_entry_fields.append((fid, by_id.get(fid, raw)))
-                                continue
-                            if len(matches) > 1:
-                                raise CLIError(
-                                    (
-                                        f'Ambiguous list-entry field name "{raw}" '
-                                        f"({len(matches)} matches)"
-                                    ),
-                                    exit_code=2,
-                                    error_type="ambiguous_resolution",
-                                    details={"name": raw, "matches": matches[:20]},
-                                )
-                            raise CLIError(
-                                f'Unknown list-entry field: "{raw}"',
-                                exit_code=2,
-                                error_type="usage_error",
-                                hint=(
-                                    "Tip: run `xaffinitylist view <list>` and inspect "
-                                    "`data.fields[*].id` / `data.fields[*].name`."
-                                ),
-                                details={"field": raw},
-                            )
+            if "list-entries" in expand_set:
+                if list_selector:
+                    raw_list_selector = list_selector.strip()
+                    if raw_list_selector.isdigit():
+                        list_id = ListId(int(raw_list_selector))
+                        resolved.update({"list": {"input": list_selector, "listId": int(list_id)}})
                     else:
-                        for spec in effective_list_entry_fields:
-                            raw = spec.strip()
-                            if raw:
-                                resolved_list_entry_fields.append((raw, raw))
+                        resolved_list_obj = resolve_list_selector(
+                            client=client, selector=list_selector
+                        )
+                        list_id = ListId(int(resolved_list_obj.list.id))
+                        resolved.update(resolved_list_obj.resolved)
 
-                def unique_label(label: str, *, used: set[str], fallback: str) -> str:
-                    base = (label or "").strip() or fallback
-                    if base not in used:
-                        used.add(base)
-                        return base
-                    idx = 2
-                    while f"{base} ({idx})" in used:
-                        idx += 1
-                    final = f"{base} ({idx})"
-                    used.add(final)
-                    return final
+                def keep_entry(item: Any) -> bool:
+                    if list_id is None:
+                        return True
+                    return isinstance(item, dict) and item.get("listId") == int(list_id)
 
-                used_labels: set[str] = {
-                    "list",
-                    "listId",
-                    "listEntryId",
-                    "createdAt",
-                    "fieldsCount",
-                }
-                projected: list[tuple[str, str]] = []
-                for fid, label in resolved_list_entry_fields:
-                    projected.append((fid, unique_label(label, used=used_labels, fallback=fid)))
+                def fetch_list_entries_page(limit: int | None, cursor: str | None) -> Any:
+                    return client.companies.get_list_entries(
+                        company_id,
+                        limit=limit,
+                        cursor=cursor,
+                    )
 
-                summary_rows: list[dict[str, Any]] = []
+                entries_items = _fetch_v2_collection_sdk(
+                    fetch_page=fetch_list_entries_page,
+                    section="listEntries",
+                    default_limit=100,
+                    default_cap=None,
+                    allow_unbounded=False,
+                    max_results=max_results,
+                    all_pages=all_pages,
+                    warnings=warnings,
+                    pagination=pagination,
+                    keep_item=keep_entry if list_id is not None else None,
+                )
+                data["listEntries"] = entries_items
+
+            if "people" in expand_set:
+                people_cap = max_results
+                if people_cap is None and not all_pages:
+                    people_cap = 100
+                if people_cap is not None and people_cap <= 0:
+                    data["people"] = []
+                else:
+                    person_ids = client.companies.get_associated_person_ids(company_id)
+                    total_people = len(person_ids)
+                    if people_cap is not None and total_people > people_cap:
+                        warnings.append(
+                            f"People truncated at {people_cap:,} items; re-run with --all "
+                            "or a higher --max-results to fetch more."
+                        )
+
+                    people = client.companies.get_associated_people(
+                        company_id,
+                        max_results=people_cap,
+                    )
+                    data["people"] = [
+                        {
+                            "id": int(person.id),
+                            "name": person.full_name,
+                            "primaryEmail": person.primary_email,
+                            "type": (
+                                person.type.value
+                                if hasattr(person.type, "value")
+                                else person.type
+                                if person.type
+                                else None
+                            ),
+                        }
+                        for person in people
+                    ]
+
+        if "list-entries" in expand_set and entries_items and ctx.output != "json":
+            list_name_by_id: dict[int, str] = {}
+            if isinstance(data.get("lists"), list):
+                for item in data.get("lists", []):
+                    if not isinstance(item, dict):
+                        continue
+                    lid = item.get("id")
+                    name = item.get("name")
+                    if isinstance(lid, int) and isinstance(name, str) and name.strip():
+                        list_name_by_id[lid] = name.strip()
+            if effective_show_list_entry_fields:
+                needed_list_ids: set[int] = set()
                 for entry in entries_items:
                     if not isinstance(entry, dict):
                         continue
+                    lid = entry.get("listId")
+                    if isinstance(lid, int) and lid not in list_name_by_id:
+                        needed_list_ids.add(lid)
+                for lid in sorted(needed_list_ids):
+                    try:
+                        list_obj = client.lists.get(ListId(lid))
+                    except Exception:
+                        continue
+                    if getattr(list_obj, "name", None):
+                        list_name_by_id[lid] = str(list_obj.name)
+
+            resolved_list_entry_fields: list[tuple[str, str]] = []
+            if effective_list_entry_fields:
+                if list_id is not None:
+                    fields_meta = client.lists.get_fields(list_id)
+                    by_id: dict[str, str] = {}
+                    by_name: dict[str, list[str]] = {}
+                    for f in fields_meta:
+                        fid = str(getattr(f, "id", "")).strip()
+                        name = str(getattr(f, "name", "")).strip()
+                        if fid:
+                            by_id[fid] = name or fid
+                        if name:
+                            by_name.setdefault(name.lower(), []).append(fid or name)
+
+                    for spec in effective_list_entry_fields:
+                        raw = spec.strip()
+                        if not raw:
+                            continue
+                        if raw in by_id:
+                            resolved_list_entry_fields.append((raw, by_id[raw]))
+                            continue
+                        matches = by_name.get(raw.lower(), [])
+                        if len(matches) == 1:
+                            fid = matches[0]
+                            resolved_list_entry_fields.append((fid, by_id.get(fid, raw)))
+                            continue
+                        if len(matches) > 1:
+                            raise CLIError(
+                                (
+                                    f'Ambiguous list-entry field name "{raw}" '
+                                    f"({len(matches)} matches)"
+                                ),
+                                exit_code=2,
+                                error_type="ambiguous_resolution",
+                                details={"name": raw, "matches": matches[:20]},
+                            )
+                        raise CLIError(
+                            f'Unknown list-entry field: "{raw}"',
+                            exit_code=2,
+                            error_type="usage_error",
+                            hint=(
+                                "Tip: run `xaffinitylist view <list>` and inspect "
+                                "`data.fields[*].id` / `data.fields[*].name`."
+                            ),
+                            details={"field": raw},
+                        )
+                else:
+                    for spec in effective_list_entry_fields:
+                        raw = spec.strip()
+                        if raw:
+                            resolved_list_entry_fields.append((raw, raw))
+
+            def unique_label(label: str, *, used: set[str], fallback: str) -> str:
+                base = (label or "").strip() or fallback
+                if base not in used:
+                    used.add(base)
+                    return base
+                idx = 2
+                while f"{base} ({idx})" in used:
+                    idx += 1
+                final = f"{base} ({idx})"
+                used.add(final)
+                return final
+
+            used_labels: set[str] = {
+                "list",
+                "listId",
+                "listEntryId",
+                "createdAt",
+                "fieldsCount",
+            }
+            projected: list[tuple[str, str]] = []
+            for fid, label in resolved_list_entry_fields:
+                projected.append((fid, unique_label(label, used=used_labels, fallback=fid)))
+
+            summary_rows: list[dict[str, Any]] = []
+            for entry in entries_items:
+                if not isinstance(entry, dict):
+                    continue
+                list_id_value = entry.get("listId")
+                list_name = (
+                    list_name_by_id.get(list_id_value) if isinstance(list_id_value, int) else None
+                )
+                list_label = list_name or (str(list_id_value) if list_id_value is not None else "")
+                fields_payload = entry.get("fields", [])
+                fields_list = fields_payload if isinstance(fields_payload, list) else []
+                row: dict[str, Any] = {}
+                row["list"] = list_label
+                row["listId"] = list_id_value if isinstance(list_id_value, int) else None
+                row["listEntryId"] = entry.get("id")
+                row["createdAt"] = entry.get("createdAt")
+                fields_count = len(fields_list)
+                if effective_show_list_entry_fields:
+                    _filtered, list_only_count, total_count = filter_list_entry_fields(
+                        fields_list,
+                        scope=effective_list_entry_fields_scope,
+                    )
+                    if effective_list_entry_fields_scope == "list-only":
+                        fields_count = list_only_count
+                    else:
+                        fields_count = total_count
+                row["fieldsCount"] = fields_count
+
+                field_by_id: dict[str, dict[str, Any]] = {}
+                for f in fields_list:
+                    if not isinstance(f, dict):
+                        continue
+                    fld_id = f.get("id")
+                    if isinstance(fld_id, str) and fld_id:
+                        field_by_id[fld_id] = f
+
+                for fid, label in projected:
+                    field_obj = field_by_id.get(fid)
+                    value_obj = field_obj.get("value") if isinstance(field_obj, dict) else None
+                    row[label] = value_obj
+
+                summary_rows.append(row)
+
+            data["listEntries"] = summary_rows
+
+            if effective_show_list_entry_fields:
+                for entry in entries_items:
+                    if not isinstance(entry, dict):
+                        continue
+                    list_entry_id = entry.get("id")
                     list_id_value = entry.get("listId")
                     list_name = (
                         list_name_by_id.get(list_id_value)
                         if isinstance(list_id_value, int)
                         else None
                     )
-                    list_label = list_name or (
-                        str(list_id_value) if list_id_value is not None else ""
-                    )
+                    if list_name:
+                        list_hint = (
+                            f"{list_name} (listId={list_id_value})"
+                            if list_id_value is not None
+                            else str(list_name)
+                        )
+                    else:
+                        list_hint = (
+                            f"listId={list_id_value}"
+                            if list_id_value is not None
+                            else "listId=unknown"
+                        )
+                    title = f"List Entry {list_entry_id} ({list_hint}) Fields"
+
                     fields_payload = entry.get("fields", [])
                     fields_list = fields_payload if isinstance(fields_payload, list) else []
-                    row: dict[str, Any] = {}
-                    row["list"] = list_label
-                    row["listId"] = list_id_value if isinstance(list_id_value, int) else None
-                    row["listEntryId"] = entry.get("id")
-                    row["createdAt"] = entry.get("createdAt")
-                    fields_count = len(fields_list)
-                    if effective_show_list_entry_fields:
-                        _filtered, list_only_count, total_count = filter_list_entry_fields(
-                            fields_list,
-                            scope=effective_list_entry_fields_scope,
-                        )
-                        if effective_list_entry_fields_scope == "list-only":
-                            fields_count = list_only_count
-                        else:
-                            fields_count = total_count
-                    row["fieldsCount"] = fields_count
-
-                    field_by_id: dict[str, dict[str, Any]] = {}
-                    for f in fields_list:
-                        if not isinstance(f, dict):
-                            continue
-                        fld_id = f.get("id")
-                        if isinstance(fld_id, str) and fld_id:
-                            field_by_id[fld_id] = f
-
-                    for fid, label in projected:
-                        field_obj = field_by_id.get(fid)
-                        value_obj = field_obj.get("value") if isinstance(field_obj, dict) else None
-                        row[label] = value_obj
-
-                    summary_rows.append(row)
-
-                data["listEntries"] = summary_rows
-
-                if effective_show_list_entry_fields:
-                    for entry in entries_items:
-                        if not isinstance(entry, dict):
-                            continue
-                        list_entry_id = entry.get("id")
-                        list_id_value = entry.get("listId")
-                        list_name = (
-                            list_name_by_id.get(list_id_value)
-                            if isinstance(list_id_value, int)
-                            else None
-                        )
-                        if list_name:
-                            list_hint = (
-                                f"{list_name} (listId={list_id_value})"
-                                if list_id_value is not None
-                                else str(list_name)
-                            )
-                        else:
-                            list_hint = (
-                                f"listId={list_id_value}"
-                                if list_id_value is not None
-                                else "listId=unknown"
-                            )
-                        title = f"List Entry {list_entry_id} ({list_hint}) Fields"
-
-                        fields_payload = entry.get("fields", [])
-                        fields_list = fields_payload if isinstance(fields_payload, list) else []
-                        filtered_fields, list_only_count, total_count = filter_list_entry_fields(
-                            fields_list,
-                            scope=effective_list_entry_fields_scope,
-                        )
-                        if total_count == 0:
-                            data[title] = {"_text": "(no fields)"}
-                            continue
-                        if (
-                            effective_list_entry_fields_scope == "list-only"
-                            and list_only_count == 0
-                        ):
-                            data[title] = {
-                                "_text": (
-                                    f"(no list-specific fields; {total_count} non-list fields "
-                                    "available with --list-entry-fields-scope all)"
-                                )
-                            }
-                            continue
-
-                        field_rows = build_list_entry_field_rows(filtered_fields)
-                        if (
-                            effective_list_entry_fields_scope == "list-only"
-                            and list_only_count < total_count
-                        ):
-                            data[title] = {
-                                "_rows": field_rows,
-                                "_hint": (
-                                    "Some non-list fields hidden — use "
-                                    "--list-entry-fields-scope all to include them"
-                                ),
-                            }
-                        else:
-                            data[title] = field_rows
-
-        if "people" in expand_set:
-            people_cap = max_results
-            if people_cap is None and not all_pages:
-                people_cap = 100
-            if people_cap is not None and people_cap <= 0:
-                data["people"] = []
-            else:
-                person_ids = client.companies.get_associated_person_ids(company_id)
-                total_people = len(person_ids)
-                if people_cap is not None and total_people > people_cap:
-                    warnings.append(
-                        f"People truncated at {people_cap:,} items; re-run with --all "
-                        "or a higher --max-results to fetch more."
+                    filtered_fields, list_only_count, total_count = filter_list_entry_fields(
+                        fields_list,
+                        scope=effective_list_entry_fields_scope,
                     )
+                    if total_count == 0:
+                        data[title] = {"_text": "(no fields)"}
+                        continue
+                    if effective_list_entry_fields_scope == "list-only" and list_only_count == 0:
+                        data[title] = {
+                            "_text": (
+                                f"(no list-specific fields; {total_count} non-list fields "
+                                "available with --list-entry-fields-scope all)"
+                            )
+                        }
+                        continue
 
-                people = client.companies.get_associated_people(
-                    company_id,
-                    max_results=people_cap,
-                )
-                data["people"] = [
-                    {
-                        "id": int(person.id),
-                        "name": person.full_name,
-                        "primaryEmail": person.primary_email,
-                        "type": (
-                            person.type.value
-                            if hasattr(person.type, "value")
-                            else person.type
-                            if person.type
-                            else None
-                        ),
-                    }
-                    for person in people
-                ]
+                    field_rows = build_list_entry_field_rows(filtered_fields)
+                    if (
+                        effective_list_entry_fields_scope == "list-only"
+                        and list_only_count < total_count
+                    ):
+                        data[title] = {
+                            "_rows": field_rows,
+                            "_hint": (
+                                "Some non-list fields hidden — use "
+                                "--list-entry-fields-scope all to include them"
+                            ),
+                        }
+                    else:
+                        data[title] = field_rows
 
         if selection_resolved:
             resolved["fieldSelection"] = selection_resolved

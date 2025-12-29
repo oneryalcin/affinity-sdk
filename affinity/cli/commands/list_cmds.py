@@ -97,61 +97,88 @@ def list_ls(
         pages = client.lists.pages(limit=page_size, cursor=cursor)
         rows: list[dict[str, object]] = []
         first_page = True
-        for page in pages:
-            for idx, item in enumerate(page.data):
-                if lt is not None and item.type != lt:
-                    continue
-                rows.append(
-                    {
-                        "id": int(item.id),
-                        "name": item.name,
-                        "type": ListType(item.type).name.lower(),
-                        "ownerId": int(item.owner_id) if getattr(item, "owner_id", None) else None,
-                        "isPublic": getattr(item, "is_public", None),
-                    }
+
+        show_progress = (
+            ctx.progress != "never"
+            and not ctx.quiet
+            and (ctx.progress == "always" or sys.stderr.isatty())
+        )
+
+        with ExitStack() as stack:
+            progress: Progress | None = None
+            task_id: TaskID | None = None
+            if show_progress:
+                progress = stack.enter_context(
+                    Progress(
+                        TextColumn("{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.completed} rows"),
+                        TimeElapsedColumn(),
+                        console=Console(file=sys.stderr),
+                        transient=True,
+                    )
                 )
-                if max_results is not None and len(rows) >= max_results:
-                    stopped_mid_page = idx < (len(page.data) - 1)
-                    if stopped_mid_page:
-                        warnings.append(
-                            "Results truncated mid-page; resume cursor omitted "
-                            "to avoid skipping items. Re-run with a higher "
-                            "--max-results or without it to paginate safely."
-                        )
-                    pagination = None
-                    if (
-                        page.pagination.next_cursor
-                        and not stopped_mid_page
-                        and page.pagination.next_cursor != cursor
-                    ):
-                        pagination = {
-                            "lists": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
-                            }
+                task_id = progress.add_task("Fetching", total=max_results)
+
+            for page in pages:
+                for idx, item in enumerate(page.data):
+                    if lt is not None and item.type != lt:
+                        continue
+                    rows.append(
+                        {
+                            "id": int(item.id),
+                            "name": item.name,
+                            "type": ListType(item.type).name.lower(),
+                            "ownerId": int(item.owner_id)
+                            if getattr(item, "owner_id", None)
+                            else None,
+                            "isPublic": getattr(item, "is_public", None),
                         }
+                    )
+                    if progress and task_id is not None:
+                        progress.update(task_id, completed=len(rows))
+                    if max_results is not None and len(rows) >= max_results:
+                        stopped_mid_page = idx < (len(page.data) - 1)
+                        if stopped_mid_page:
+                            warnings.append(
+                                "Results truncated mid-page; resume cursor omitted "
+                                "to avoid skipping items. Re-run with a higher "
+                                "--max-results or without it to paginate safely."
+                            )
+                        pagination = None
+                        if (
+                            page.pagination.next_cursor
+                            and not stopped_mid_page
+                            and page.pagination.next_cursor != cursor
+                        ):
+                            pagination = {
+                                "lists": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
+                            }
+                        return CommandOutput(
+                            data={"lists": rows[:max_results]},
+                            pagination=pagination,
+                            api_called=True,
+                        )
+
+                if first_page and not all_pages and max_results is None:
                     return CommandOutput(
-                        data={"lists": rows[:max_results]},
-                        pagination=pagination,
+                        data={"lists": rows},
+                        pagination=(
+                            {
+                                "lists": {
+                                    "nextCursor": page.pagination.next_cursor,
+                                    "prevCursor": page.pagination.prev_cursor,
+                                }
+                            }
+                            if page.pagination.next_cursor
+                            else None
+                        ),
                         api_called=True,
                     )
-
-            if first_page and not all_pages and max_results is None:
-                return CommandOutput(
-                    data={"lists": rows},
-                    pagination=(
-                        {
-                            "lists": {
-                                "nextCursor": page.pagination.next_cursor,
-                                "prevCursor": page.pagination.prev_cursor,
-                            }
-                        }
-                        if page.pagination.next_cursor
-                        else None
-                    ),
-                    api_called=True,
-                )
-            first_page = False
+                first_page = False
 
         return CommandOutput(data={"lists": rows}, pagination=None, api_called=True)
 
