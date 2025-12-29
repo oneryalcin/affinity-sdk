@@ -1,6 +1,16 @@
 # CLI
 
-The SDK ships an optional `affinity` CLI that dogfoods the SDK. Install it as an extra so library-only users don’t pay the dependency cost.
+The SDK ships an optional `affinity` CLI that dogfoods the SDK. Install it as an extra so library-only users don't pay the dependency cost.
+
+## Key Features
+
+- **CSV Export**: Export people, companies, opportunities, and list entries to CSV with `--csv` flag ([CSV Export Guide](../guides/csv-export.md))
+- **Filtering**: Server-side filtering on custom fields with `--filter` ([Filtering Guide](../guides/filtering.md))
+- **JSON Output**: All commands support `--json` for programmatic use ([Scripting Guide](scripting.md))
+- **Pagination**: Fetch all pages with `--all` or control page size with `--page-size`
+- **Name Resolution**: Use names instead of IDs for lists, fields, and entities
+
+See [Commands Reference](commands.md) for complete command documentation.
 
 ## Install
 

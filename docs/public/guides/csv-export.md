@@ -307,6 +307,7 @@ affinity list export 12345 --all --csv large-export.csv
 
 ## Related Documentation
 
-- [JSON Output Guide](./json-output.md) - Understanding JSON structure
-- [List Export Guide](./list-export.md) - Advanced list export features
+- [CLI Scripting Guide](../cli/scripting.md) - JSON output and automation
+- [CLI Commands Reference](../cli/commands.md) - Complete command documentation
 - [Field Values Guide](./field-values.md) - Working with custom fields
+- [Filtering Guide](./filtering.md) - Server-side and client-side filtering
