@@ -1218,9 +1218,9 @@ def company_get(
                     for f in fields_list:
                         if not isinstance(f, dict):
                             continue
-                        field_id = f.get("id")
-                        if isinstance(field_id, str) and field_id:
-                            field_by_id[field_id] = f
+                        fld_id = f.get("id")
+                        if isinstance(fld_id, str) and fld_id:
+                            field_by_id[fld_id] = f
 
                     for fid, label in projected:
                         field_obj = field_by_id.get(fid)
