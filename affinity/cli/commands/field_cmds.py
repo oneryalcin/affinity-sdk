@@ -29,7 +29,7 @@ _VALUE_TYPE_MAP = {ft.value: ft for ft in FieldValueType}
 
 
 def _field_payload(field: FieldMetadata) -> dict[str, object]:
-    return field.model_dump(by_alias=True, exclude_none=True)
+    return field.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
 @field_group.command(name="ls", cls=RichCommand)

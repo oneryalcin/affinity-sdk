@@ -15,7 +15,7 @@ def relationship_strength_group() -> None:
 
 
 def _strength_payload(item: RelationshipStrength) -> dict[str, object]:
-    return item.model_dump(by_alias=True, exclude_none=True)
+    return item.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
 @relationship_strength_group.command(name="get", cls=RichCommand)

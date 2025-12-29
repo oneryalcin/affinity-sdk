@@ -1299,7 +1299,7 @@ def person_create(
                 company_ids=[CompanyId(cid) for cid in company_ids],
             )
         )
-        payload = created.model_dump(by_alias=True, exclude_none=True)
+        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
         return CommandOutput(data={"person": payload}, api_called=True)
 
     run_command(ctx, command="person create", fn=fn)
@@ -1353,7 +1353,7 @@ def person_update(
                 company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
             ),
         )
-        payload = updated.model_dump(by_alias=True, exclude_none=True)
+        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
         return CommandOutput(data={"person": payload}, api_called=True)
 
     run_command(ctx, command="person update", fn=fn)

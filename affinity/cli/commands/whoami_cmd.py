@@ -14,7 +14,7 @@ def whoami_cmd(ctx: CLIContext) -> None:
         client = ctx.get_client(warnings=warnings)
         who = client.whoami()
         return CommandOutput(
-            data=who.model_dump(by_alias=True, mode="json"),
+            data=who.model_dump(by_alias=True, mode="json", exclude_none=True),
             warnings=warnings,
             api_called=True,
         )

@@ -225,7 +225,9 @@ def opportunity_get(
         else:
             opp = client.opportunities.get(opportunity_id)
 
-        data: dict[str, Any] = {"opportunity": opp.model_dump(by_alias=True, exclude_none=True)}
+        data: dict[str, Any] = {
+            "opportunity": opp.model_dump(by_alias=True, mode="json", exclude_none=True)
+        }
         if not details and not opp.fields:
             data["opportunity"].pop("fields", None)
 
@@ -392,7 +394,7 @@ def opportunity_create(
             company_ids=[CompanyId(cid) for cid in company_ids],
         )
         created = client.opportunities.create(data)
-        payload = created.model_dump(by_alias=True, exclude_none=True)
+        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
 
         return CommandOutput(
             data={"opportunity": payload},
@@ -455,7 +457,7 @@ def opportunity_update(
             company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
         )
         updated = client.opportunities.update(OpportunityId(opportunity_id), data)
-        payload = updated.model_dump(by_alias=True, exclude_none=True)
+        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
 
         return CommandOutput(
             data={"opportunity": payload},

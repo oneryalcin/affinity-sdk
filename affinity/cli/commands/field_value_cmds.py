@@ -17,7 +17,7 @@ def field_value_group() -> None:
 
 
 def _field_value_payload(value: FieldValue) -> dict[str, object]:
-    return value.model_dump(by_alias=True, exclude_none=True)
+    return value.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
 def _validate_exactly_one_target(

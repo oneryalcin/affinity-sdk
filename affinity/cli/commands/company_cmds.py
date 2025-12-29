@@ -936,7 +936,7 @@ def company_get(
             field_ids=field_ids,
             field_types=field_types_param,
         )
-        company_payload = company.model_dump(by_alias=True, mode="json")
+        company_payload = company.model_dump(by_alias=True, mode="json", exclude_none=True)
         fields_raw = getattr(company, "fields_raw", None)
         if isinstance(fields_raw, list):
             company_payload["fields"] = fields_raw
@@ -1372,7 +1372,7 @@ def company_create(
                 person_ids=[PersonId(pid) for pid in person_ids],
             )
         )
-        payload = created.model_dump(by_alias=True, exclude_none=True)
+        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
         return CommandOutput(data={"company": payload}, api_called=True)
 
     run_command(ctx, command="company create", fn=fn)
@@ -1418,7 +1418,7 @@ def company_update(
                 person_ids=[PersonId(pid) for pid in person_ids] if person_ids else None,
             ),
         )
-        payload = updated.model_dump(by_alias=True, exclude_none=True)
+        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
         return CommandOutput(data={"company": payload}, api_called=True)
 
     run_command(ctx, command="company update", fn=fn)

@@ -14,7 +14,7 @@ def task_group() -> None:
 
 
 def _task_payload(task: MergeTask) -> dict[str, object]:
-    return task.model_dump(by_alias=True, exclude_none=True)
+    return task.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
 @task_group.command(name="get", cls=RichCommand)
