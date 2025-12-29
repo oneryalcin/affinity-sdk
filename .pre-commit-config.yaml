@@ -47,3 +47,9 @@ repos:
         language: system
         types: [python]
         files: ^affinity/cli/commands/.*\.py$
+      - id: sync-plugin-version
+        name: Sync plugin version with SDK
+        entry: python tools/sync_plugin_version.py
+        language: system
+        files: ^(pyproject\.toml|\.claude-plugin/plugin\.json)$
+        pass_filenames: false

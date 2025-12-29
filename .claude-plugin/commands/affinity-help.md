@@ -29,29 +29,28 @@ with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
 
 ## CLI Quick Start
 
-```bash
-# API key: use --dotenv to load from .env file, or export AFFINITY_API_KEY
-# ALWAYS use --readonly by default
-xaffinity --dotenv --readonly person ls --all
-xaffinity --dotenv --readonly company ls --all
+**Always use: `--dotenv --readonly --json`**
 
-# Export to CSV
+```bash
+# Standard pattern for queries
+xaffinity --dotenv --readonly person search "John Smith" --json
+xaffinity --dotenv --readonly person get 123 --json
+xaffinity --dotenv --readonly company get domain:acme.com --json
+
+# Export to CSV (no --json needed)
 xaffinity --dotenv --readonly person ls --all --csv people.csv
 
-# JSON for scripting
+# Parse JSON with jq
 xaffinity --dotenv --readonly person ls --json --all | jq '.data.persons[]'
-
-# Filter custom fields
-xaffinity --dotenv --readonly person ls --filter 'field("Dept") = "Sales"' --all
 ```
 
 ## Key Gotchas
 
-1. **Read-only by default**: Only allow writes when user explicitly approves
-2. **Use typed IDs**: `PersonId(123)` not `123`
-3. **Use context manager**: `with Affinity() as client:`
-4. **Filters only work on custom fields** - not `type`, `name`, `domain`, etc.
-5. **CSV export requires `--all`**
+1. **Always use `--json`**: For structured, parseable output
+2. **Always use `--readonly`**: Only allow writes when user explicitly approves
+3. **Always use `--dotenv`**: Loads API key from .env file
+4. **Use typed IDs (SDK)**: `PersonId(123)` not `123`
+5. **Filters only work on custom fields** - not `type`, `name`, `domain`, etc.
 
 ## More Info
 

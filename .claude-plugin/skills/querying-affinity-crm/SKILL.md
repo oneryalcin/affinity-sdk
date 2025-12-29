@@ -1,6 +1,6 @@
 ---
 name: querying-affinity-crm
-description: Queries and manages Affinity CRM data using the Python SDK (affinity package) or xaffinity CLI. Use when looking up people, contacts, companies, organizations, deals, opportunities, lists, or pipelines in Affinity. Handles person search, company lookup, list entries, field values, and data export.
+description: Use this skill when the user asks about "Affinity", "Affinity CRM", "xaffinity", "affinity-sdk", or wants to search, find, get, show, or export people, persons, contacts, companies, organizations, deals, opportunities, lists, pipelines, or CRM data from Affinity. Also use when writing Python scripts with the Affinity SDK or running xaffinity CLI commands.
 ---
 
 # Querying Affinity CRM
@@ -32,6 +32,20 @@ xaffinity --dotenv --readonly company get 123
 ```
 
 Only remove the read-only restriction when the user explicitly confirms they want to create, update, or delete data.
+
+### Use --json for Structured Output - IMPORTANT
+
+**Always use `--json` flag when parsing CLI output programmatically.**
+
+```bash
+# CORRECT: Use --json for structured, parseable output
+xaffinity --dotenv --readonly person get 123 --json
+
+# Access data via jq or parse in code
+xaffinity --dotenv --readonly person search "name" --json | jq '.data.persons[]'
+```
+
+The `--json` flag returns structured JSON that is reliable to parse. Without it, output is human-formatted tables that are harder to parse correctly.
 
 ### Typed IDs (SDK) - Required
 
@@ -122,40 +136,35 @@ See [SDK_REFERENCE.md](SDK_REFERENCE.md) for complete patterns including error h
 
 ## CLI Quick Reference
 
+**Always include: `--dotenv` (loads API key), `--readonly` (safety), `--json` (structured output)**
+
 ```bash
-# Authentication (set environment variable)
-export AFFINITY_API_KEY="your-key"
+# Standard pattern for all queries:
+xaffinity --dotenv --readonly <command> --json
 
-# Identity
-xaffinity whoami
+# Search for a person
+xaffinity --dotenv --readonly person search "John Smith" --json
 
-# List entities
-xaffinity person ls --all
-xaffinity company ls --all
-xaffinity opportunity ls --all
+# Get person by ID
+xaffinity --dotenv --readonly person get 123 --json
 
-# Get by ID
-xaffinity person get 123
-xaffinity company get 456 --all-fields
+# Get person by email
+xaffinity --dotenv --readonly person get email:alice@example.com --json
 
-# Export to CSV
-xaffinity person ls --all --csv people.csv
-xaffinity company ls --all --csv companies.csv --csv-bom  # Excel-compatible
-xaffinity list export 12345 --all --csv entries.csv
+# List all companies
+xaffinity --dotenv --readonly company ls --all --json
 
-# JSON output for scripting
-xaffinity person ls --json --all | jq '.data.persons[]'
+# Get company by domain
+xaffinity --dotenv --readonly company get domain:acme.com --json
+
+# Export to CSV (doesn't need --json)
+xaffinity --dotenv --readonly person ls --all --csv people.csv --csv-bom
+
+# Parse JSON with jq
+xaffinity --dotenv --readonly person search "name" --json | jq '.data.persons[]'
 
 # Filter on custom fields
-xaffinity person ls --filter 'field("Department") = "Sales"' --all
-
-# Filter built-in properties (client-side via jq)
-xaffinity person ls --json --all | jq '.data.persons[] | select(.type == "internal")'
-
-# Resolve by name or URL
-xaffinity person get email:alice@example.com
-xaffinity company get domain:acme.com
-xaffinity resolve-url "https://app.affinity.co/companies/123"
+xaffinity --dotenv --readonly person ls --filter 'field("Department") = "Sales"' --all --json
 ```
 
 See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete command reference.
