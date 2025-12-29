@@ -268,6 +268,7 @@ CsvHeaderMode = Literal["names", "ids"]
     type=click.Choice(["names", "ids"]),
     default="names",
     show_default=True,
+    help="Use field names or IDs for CSV headers.",
 )
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel.")
 @click.option("--dry-run", is_flag=True, help="Validate selectors and print export plan.")

@@ -21,6 +21,7 @@ from .paths import get_paths
     "--output",
     type=click.Choice(["table", "json"]),
     default="table",
+    help="Output format (table or json).",
 )
 @click.option("--json", "json_flag", is_flag=True, help="Alias for --output json.")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress non-essential stderr output.")
@@ -37,6 +38,7 @@ from .paths import get_paths
     "--env-file",
     type=click.Path(dir_okay=False),
     default=".env",
+    help="Path to .env file (used with --dotenv).",
 )
 @click.option(
     "--api-key-file",
@@ -68,7 +70,9 @@ from .paths import get_paths
     is_flag=True,
     help="Trace request/response/error events to stderr (safe redaction).",
 )
-@click.option("--log-file", type=click.Path(dir_okay=False), default=None)
+@click.option(
+    "--log-file", type=click.Path(dir_okay=False), default=None, help="Override log file path."
+)
 @click.option("--no-log-file", is_flag=True, help="Disable file logging explicitly.")
 @click.version_option(version=affinity.__version__, prog_name="xaffinity")
 @click.pass_context

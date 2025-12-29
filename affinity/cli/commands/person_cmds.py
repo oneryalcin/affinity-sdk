@@ -1204,10 +1204,20 @@ def person_files_group() -> None:
 
 @person_files_group.command(name="dump", cls=RichCommand)
 @click.argument("person_id", type=int)
-@click.option("--out", "out_dir", type=click.Path(), default=None)
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(),
+    default=None,
+    help="Output directory for downloaded files.",
+)
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
-@click.option("--concurrency", type=int, default=3, show_default=True)
-@click.option("--page-size", type=int, default=200, show_default=True)
+@click.option(
+    "--concurrency", type=int, default=3, show_default=True, help="Number of concurrent downloads."
+)
+@click.option(
+    "--page-size", type=int, default=200, show_default=True, help="Page size for file listing."
+)
 @click.option("--max-files", type=int, default=None, help="Stop after N files.")
 @output_options
 @click.pass_obj

@@ -36,9 +36,27 @@ def task_get(ctx: CLIContext, task_url: str) -> None:
 
 @task_group.command(name="wait", cls=RichCommand)
 @click.argument("task_url")
-@click.option("--timeout", type=float, default=300.0, show_default=True)
-@click.option("--poll-interval", type=float, default=2.0, show_default=True)
-@click.option("--max-poll-interval", type=float, default=30.0, show_default=True)
+@click.option(
+    "--timeout",
+    type=float,
+    default=300.0,
+    show_default=True,
+    help="Maximum seconds to wait for task completion.",
+)
+@click.option(
+    "--poll-interval",
+    type=float,
+    default=2.0,
+    show_default=True,
+    help="Initial polling interval in seconds.",
+)
+@click.option(
+    "--max-poll-interval",
+    type=float,
+    default=30.0,
+    show_default=True,
+    help="Maximum polling interval in seconds.",
+)
 @output_options
 @click.pass_obj
 def task_wait(
