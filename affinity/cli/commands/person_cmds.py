@@ -11,11 +11,13 @@ from affinity.types import CompanyId, FieldType, ListId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..csv_utils import artifact_path, write_csv_from_rows
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
+from ..results import Artifact
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
@@ -180,6 +182,8 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     default=None,
     help='V2 filter expression (e.g., \'field("Email").contains("@acme.com")\').',
 )
+@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
+@click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
 @output_options
 @click.pass_obj
 def person_ls(
@@ -192,6 +196,8 @@ def person_ls(
     field_ids: tuple[str, ...],
     field_types: tuple[str, ...],
     filter_expr: str | None,
+    csv_path: str | None,
+    csv_bom: bool,
 ) -> None:
     """
     List persons with V2 pagination.
@@ -204,6 +210,8 @@ def person_ls(
     - `affinity person ls --page-size 50`
     - `affinity person ls --field-type enriched --all`
     - `affinity person ls --filter 'field("Email").contains("@acme.com")'`
+    - `affinity person ls --all --csv people.csv`
+    - `affinity person ls --all --csv people.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -277,6 +285,34 @@ def person_ls(
                     api_called=True,
                 )
             first_page = False
+
+        # CSV export path
+        if csv_path:
+            csv_path_obj = Path(csv_path)
+            write_result = write_csv_from_rows(
+                path=csv_path_obj,
+                rows=rows,
+                bom=csv_bom,
+            )
+
+            csv_ref, csv_is_relative = artifact_path(csv_path_obj)
+            return CommandOutput(
+                data={
+                    "csv": csv_ref,
+                    "rowsWritten": write_result.rows_written,
+                },
+                artifacts=[
+                    Artifact(
+                        type="csv",
+                        path=csv_ref,
+                        path_is_relative=csv_is_relative,
+                        rows_written=write_result.rows_written,
+                        bytes_written=write_result.bytes_written,
+                        partial=False,
+                    )
+                ],
+                api_called=True,
+            )
 
         return CommandOutput(data={"persons": rows}, pagination=None, api_called=True)
 

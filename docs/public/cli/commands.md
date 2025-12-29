@@ -67,15 +67,23 @@ Options:
 
 - `--field <id-or-name>` (repeatable): field ID or name to include
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
-- `--filter <expression>`: V2 filter expression
+- `--filter <expression>`: V2 filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+- `--csv <path>`: write CSV output (requires `--all`)
+- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+
+**Note:** `--filter` only works with custom fields using `field("Name")` syntax. To filter on built-in properties like `type`, `firstName`, etc., use `--json` output with `jq`.
 
 ```bash
 affinity person ls
 affinity person ls --page-size 50
 affinity person ls --field-type enriched --all
-affinity person ls --filter 'field("Email").contains("@acme.com")'
+affinity person ls --filter 'field("Email") =~ "@acme.com"'
+affinity person ls --all --csv people.csv
+affinity person ls --all --csv people.csv --csv-bom
 ```
+
+See the [CSV Export Guide](../guides/csv-export.md) for more details.
 
 ### `affinity person get <personSelector>`
 
@@ -185,15 +193,23 @@ Options:
 
 - `--field <id-or-name>` (repeatable): field ID or name to include
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
-- `--filter <expression>`: V2 filter expression
+- `--filter <expression>`: V2 filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+- `--csv <path>`: write CSV output (requires `--all`)
+- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+
+**Note:** `--filter` only works with custom fields using `field("Name")` syntax. To filter on built-in properties like `name`, `domain`, etc., use `--json` output with `jq`.
 
 ```bash
 affinity company ls
 affinity company ls --page-size 50
 affinity company ls --field-type enriched --all
-affinity company ls --filter 'field("Industry").equals("Software")'
+affinity company ls --filter 'field("Industry") = "Software"'
+affinity company ls --all --csv companies.csv
+affinity company ls --all --csv companies.csv --csv-bom
 ```
+
+See the [CSV Export Guide](../guides/csv-export.md) for more details.
 
 ### `affinity company get <companySelector>`
 
@@ -285,10 +301,20 @@ affinity company files upload 9876 --file a.pdf --file b.pdf
 
 List opportunities (basic v2 representation).
 
+Options:
+
+- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
+- `--csv <path>`: write CSV output (requires `--all`)
+- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+
 ```bash
 affinity opportunity ls
 affinity opportunity ls --page-size 200 --all --json
+affinity opportunity ls --all --csv opportunities.csv
+affinity opportunity ls --all --csv opportunities.csv --csv-bom
 ```
+
+See the [CSV Export Guide](../guides/csv-export.md) for more details.
 
 ### `affinity opportunity get <opportunitySelector>`
 
@@ -365,13 +391,24 @@ affinity list view "My Pipeline" --json
 
 ### `affinity list export <list>`
 
-Exports list entries with selected fields.
+Exports list entries with selected fields. This is the most powerful CSV export command, supporting custom fields and complex filtering.
+
+Options:
+
+- `--csv <path>`: write CSV output
+- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+- `--field <id-or-name>` (repeatable): include specific fields
+- `--saved-view <name>`: use a saved view's field selection
+- `--filter <expression>`: V1 filter expression
 
 ```bash
 affinity list export 123 --csv out.csv
 affinity list export "My Pipeline" --saved-view "Board" --csv out.csv
 affinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv out.csv
+affinity list export 123 --csv out.csv --csv-bom
 ```
+
+See the [CSV Export Guide](../guides/csv-export.md) for more details.
 
 ### `affinity list entry add <list>`
 

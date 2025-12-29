@@ -23,7 +23,7 @@ from affinity.types import (
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
-from ..csv_utils import write_csv
+from ..csv_utils import artifact_path, write_csv
 from ..errors import CLIError
 from ..options import output_options
 from ..resolve import (
@@ -450,7 +450,7 @@ def list_export(
                 )
                 temp_path.replace(csv_path_obj)
 
-                csv_ref, csv_is_relative = _artifact_path(csv_path_obj)
+                csv_ref, csv_is_relative = artifact_path(csv_path_obj)
                 data = {
                     "listId": int(list_id),
                     "rowsWritten": rows_written,
@@ -522,14 +522,6 @@ def list_export(
         raise AssertionError("unreachable")
 
     run_command(ctx, command="list export", fn=fn)
-
-
-def _artifact_path(path: Path) -> tuple[str, bool]:
-    try:
-        rel = path.resolve().relative_to(Path.cwd().resolve())
-        return str(rel), True
-    except Exception:
-        return str(path.resolve()), False
 
 
 def _resolve_field_selectors(

@@ -9,11 +9,13 @@ from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..csv_utils import artifact_path, write_csv_from_rows
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
+from ..results import Artifact
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from .resolve_url_cmd import _parse_affinity_url
@@ -72,6 +74,8 @@ def _resolve_opportunity_selector(
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N items total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
+@click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
 @output_options
 @click.pass_obj
 def opportunity_ls(
@@ -81,6 +85,8 @@ def opportunity_ls(
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
+    csv_path: str | None,
+    csv_bom: bool,
 ) -> None:
     """
     List opportunities (basic v2 representation).
@@ -89,6 +95,8 @@ def opportunity_ls(
     - `affinity opportunity ls`
     - `affinity opportunity ls --page-size 200`
     - `affinity opportunity ls --cursor <cursor>`
+    - `affinity opportunity ls --all --csv opportunities.csv`
+    - `affinity opportunity ls --all --csv opportunities.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -151,6 +159,34 @@ def opportunity_ls(
                     api_called=True,
                 )
             first_page = False
+
+        # CSV export path
+        if csv_path:
+            csv_path_obj = Path(csv_path)
+            write_result = write_csv_from_rows(
+                path=csv_path_obj,
+                rows=rows,
+                bom=csv_bom,
+            )
+
+            csv_ref, csv_is_relative = artifact_path(csv_path_obj)
+            return CommandOutput(
+                data={
+                    "csv": csv_ref,
+                    "rowsWritten": write_result.rows_written,
+                },
+                artifacts=[
+                    Artifact(
+                        type="csv",
+                        path=csv_ref,
+                        path_is_relative=csv_is_relative,
+                        rows_written=write_result.rows_written,
+                        bytes_written=write_result.bytes_written,
+                        partial=False,
+                    )
+                ],
+                api_called=True,
+            )
 
         return CommandOutput(data={"opportunities": rows}, pagination=None, api_called=True)
 

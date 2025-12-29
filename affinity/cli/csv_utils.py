@@ -63,3 +63,58 @@ def write_csv(
 
     bytes_written = path.stat().st_size
     return CsvWriteResult(rows_written=rows_written, bytes_written=bytes_written)
+
+
+def artifact_path(path: Path) -> tuple[str, bool]:
+    """
+    Resolve artifact path to relative or absolute string.
+
+    Returns:
+        Tuple of (path_string, is_relative)
+    """
+    try:
+        rel = path.resolve().relative_to(Path.cwd().resolve())
+        return str(rel), True
+    except Exception:
+        return str(path.resolve()), False
+
+
+def write_csv_from_rows(
+    *,
+    path: Path,
+    rows: Iterable[dict[str, Any]],
+    bom: bool = False,
+) -> CsvWriteResult:
+    """
+    Write CSV from row dictionaries with auto-detected columns.
+
+    Detects column names from first row. Handles empty row lists gracefully.
+
+    Args:
+        path: Output CSV file path
+        rows: Iterable of dictionaries (must all have same keys)
+        bom: Whether to write UTF-8 BOM for Excel compatibility
+
+    Returns:
+        CsvWriteResult with row/byte counts
+
+    Example:
+        >>> rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        >>> write_csv_from_rows(path=Path("out.csv"), rows=rows)
+        CsvWriteResult(rows_written=2, bytes_written=42)
+    """
+    rows_list = list(rows)
+    if not rows_list:
+        # Write empty file (no headers - we don't know column names without data)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return CsvWriteResult(rows_written=0, bytes_written=0)
+
+    fieldnames = list(rows_list[0].keys())
+
+    return write_csv(
+        path=path,
+        rows=rows_list,
+        fieldnames=fieldnames,
+        bom=bom,
+    )

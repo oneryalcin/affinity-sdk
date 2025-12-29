@@ -1,35 +1,132 @@
 # Filtering
 
-For V2 list endpoints that accept `filter`, you can pass:
+V2 list endpoints accept `filter` expressions to query custom fields.
 
-- a raw filter string, or
-- a `FilterExpression` built with `affinity.F`
+**Important:** V2 filters only work with **custom fields**, not built-in entity properties. Built-in properties like `type`, `firstName`, `domain`, etc. cannot be filtered.
 
-## Operator reference
+## Recommended: Use the Filter Builder
 
-The builder outputs Affinity’s V2 filtering language:
-
-| Meaning | Operator | Example |
-|---|---|---|
-| and | `&` | `foo = 1 & bar = 2` |
-| or | `|` | `foo = 1 | bar = 2` |
-| not | `!` | `!(foo = 1)` |
-| equals | `=` | `name = "Acme"` |
-| not equals | `!=` | `status != "inactive"` |
-| starts with | `=^` | `name =^ "Ac"` |
-| ends with | `=$` | `name =$ "me"` |
-| contains | `=~` | `name =~ "cm"` |
-| is NULL | `!= *` | `email != *` |
-| is not NULL | `= *` | `email = *` |
+Use `affinity.F` to build type-safe filter expressions:
 
 ```python
 from affinity import Affinity, F
 
 with Affinity(api_key="your-key") as client:
-    companies = client.companies.list(filter=F.field("domain").contains("acme"))
-    for c in companies.data:
-        print(c.name)
+    # ✅ Recommended: Type-safe filter builder
+    companies = client.companies.list(
+        filter=F.field("Industry").equals("Software")
+    )
 ```
+
+Benefits of the filter builder:
+- ✅ Prevents syntax errors with type checking
+- ✅ Handles escaping automatically
+- ✅ Makes it clear you're filtering custom fields (via `field()` method)
+- ✅ Provides IDE autocomplete for filter operations
+
+**CLI users:** The CLI uses raw filter string syntax. See [CLI commands reference](../cli/commands.md) for examples.
+
+## Filter Builder Examples
+
+**Simple comparisons:**
+
+```python
+from affinity import Affinity, F
+
+# Equals
+persons = client.persons.list(filter=F.field("Department").equals("Sales"))
+
+# Contains (case-insensitive substring match)
+companies = client.companies.list(filter=F.field("Industry").contains("Tech"))
+
+# Starts with
+persons = client.persons.list(filter=F.field("Title").starts_with("VP"))
+
+# Greater than (for numbers/dates)
+opportunities = client.opportunities.list(filter=F.field("Amount").greater_than(100000))
+
+# Is null / is not null
+persons = client.persons.list(filter=F.field("Manager").is_null())
+```
+
+**Complex logic (AND/OR/NOT):**
+
+```python
+# AND: Both conditions must be true
+active_sales = client.persons.list(
+    filter=F.field("Department").equals("Sales") & F.field("Status").equals("Active")
+)
+
+# OR: Either condition can be true
+tech_or_finance = client.companies.list(
+    filter=F.field("Industry").equals("Technology") | F.field("Industry").equals("Finance")
+)
+
+# NOT: Negate a condition
+non_archived = client.persons.list(
+    filter=~F.field("Archived").equals(True)
+)
+
+# Complex: (A AND B) OR (C AND D)
+result = client.companies.list(
+    filter=(
+        (F.field("Industry").equals("Software") & F.field("Region").equals("US"))
+        | (F.field("Industry").equals("Hardware") & F.field("Region").equals("EU"))
+    )
+)
+```
+
+**In list (multiple values):**
+
+```python
+# Match any value in the list
+multi_region = client.companies.list(
+    filter=F.field("Region").in_list(["US", "Canada", "Mexico"])
+)
+```
+
+## Raw Filter Strings (Advanced)
+
+For CLI or advanced SDK use, you can use raw filter strings:
+
+| Meaning | Operator | Example |
+|---|---|---|
+| and | `&` | `field("A") = 1 & field("B") = 2` |
+| or | `|` | `field("A") = 1 | field("B") = 2` |
+| not | `!` | `!(field("A") = 1)` |
+| equals | `=` | `field("Industry") = "Software"` |
+| not equals | `!=` | `field("Status") != "inactive"` |
+| starts with | `=^` | `field("Name") =^ "Ac"` |
+| ends with | `=$` | `field("Name") =$ "Inc"` |
+| contains | `=~` | `field("Title") =~ "Manager"` |
+| is NULL | `!= *` | `field("Email") != *` |
+| is not NULL | `= *` | `field("Email") = *` |
+
+**CLI example:**
+```bash
+affinity person ls --filter 'field("Department") = "Sales"'
+```
+
+**SDK with raw string:**
+```python
+# Less safe than using F, but works
+persons = client.persons.list(filter='field("Department") = "Sales"')
+```
+
+## What can be filtered?
+
+**✅ Custom fields** (added to entities in Affinity):
+- `field("Department").equals("Sales")`
+- `field("Status").contains("Active")`
+- `field("Industry").equals("Software")`
+- `field("Region").in_list(["US", "Canada"])`
+
+**❌ Built-in properties** (cannot be filtered with V2 filter expressions):
+- Person: `type`, `firstName`, `lastName`, `primaryEmail`, `emailAddresses`
+- Company: `name`, `domain`, `domains`
+- Opportunity: `name`, `listId`
+
+For built-in properties, retrieve all data and filter client-side (see [CSV Export Guide](./csv-export.md) for examples).
 
 ## Next steps
 
