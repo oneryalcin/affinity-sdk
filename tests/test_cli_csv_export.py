@@ -387,3 +387,837 @@ def test_opportunity_ls_csv_empty_results(respx_mock: respx.MockRouter, tmp_path
     # Verify empty file was created
     assert csv_file.exists()
     assert csv_file.stat().st_size == 0
+
+
+# ==============================================================================
+# List Export with --expand Tests
+# ==============================================================================
+
+
+def test_list_export_expand_invalid_on_person_list(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Test that --expand people fails on a person list."""
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Contacts",
+                "type": "person",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 10,
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "list", "export", "12345", "--expand", "people", "--all"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is False
+    assert "not yet supported for person lists" in payload["error"]["message"]
+
+
+def test_list_export_expand_cursor_combination_fails(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Test that --cursor cannot be combined with --expand."""
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 10,
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--cursor",
+            "abc123",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert payload["ok"] is False
+    assert "--cursor cannot be combined with --expand" in payload["error"]["message"]
+
+
+def test_list_export_expand_people_csv_flat(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
+    """Test list export with --expand people produces flat CSV with one row per person."""
+    # Mock list metadata
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 2,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [{"id": "f1", "name": "Status", "type": "dropdown", "valueType": None}],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock list entries
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1001,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-01T00:00:00Z",
+                        "entity": {"id": 5001, "name": "Deal One"},
+                        "fields": {"data": {"f1": "Active"}},
+                    },
+                    {
+                        "id": 1002,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-02T00:00:00Z",
+                        "entity": {"id": 5002, "name": "Deal Two"},
+                        "fields": {"data": {"f1": "Closed"}},
+                    },
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock V1 opportunity get for associations (entry 1 - 2 people)
+    respx_mock.get("https://api.affinity.co/opportunities/5001").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5001,
+                "name": "Deal One",
+                "list_id": 12345,
+                "person_ids": [101, 102],
+                "organization_ids": [],
+            },
+        )
+    )
+    # Mock V1 opportunity get for associations (entry 2 - 1 person)
+    respx_mock.get("https://api.affinity.co/opportunities/5002").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5002,
+                "name": "Deal Two",
+                "list_id": 12345,
+                "person_ids": [103],
+                "organization_ids": [],
+            },
+        )
+    )
+
+    # Mock person details
+    respx_mock.get("https://api.affinity.co/persons/101").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 101,
+                "first_name": "Alice",
+                "last_name": "Smith",
+                "emails": ["alice@example.com"],
+                "type": 1,
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/persons/102").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 102,
+                "first_name": "Bob",
+                "last_name": "Jones",
+                "emails": ["bob@example.com"],
+                "type": 1,
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/persons/103").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 103,
+                "first_name": "Carol",
+                "last_name": "White",
+                "emails": ["carol@example.com"],
+                "type": 1,
+            },
+        )
+    )
+
+    csv_file = tmp_path / "opps-with-people.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--all",
+            "--csv",
+            str(csv_file),
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["rowsWritten"] == 3  # 2 people for entry 1 + 1 for entry 2
+
+    # Verify entriesProcessed and associationsFetched in JSON output (Gap fix)
+    assert payload["data"]["entriesProcessed"] == 2
+    assert payload["data"]["associationsFetched"]["people"] == 3
+
+    # Verify CSV content
+    assert csv_file.exists()
+    with csv_file.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        assert len(rows) == 3
+
+        # First entry, first person
+        assert rows[0]["listEntryId"] == "1001"
+        assert rows[0]["entityId"] == "5001"
+        assert rows[0]["entityName"] == "Deal One"
+        assert rows[0]["expandedType"] == "person"
+        assert rows[0]["expandedId"] == "101"
+        assert rows[0]["expandedName"] == "Alice Smith"
+        assert rows[0]["expandedEmail"] == "alice@example.com"
+
+        # First entry, second person
+        assert rows[1]["listEntryId"] == "1001"
+        assert rows[1]["expandedId"] == "102"
+        assert rows[1]["expandedName"] == "Bob Jones"
+
+        # Second entry, first person
+        assert rows[2]["listEntryId"] == "1002"
+        assert rows[2]["entityId"] == "5002"
+        assert rows[2]["expandedId"] == "103"
+        assert rows[2]["expandedName"] == "Carol White"
+
+
+def test_list_export_expand_zero_associations(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
+    """Test that entries with zero associations still appear in output."""
+    # Mock list metadata
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 1,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock list entries with one entry that has no associations
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1001,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-01T00:00:00Z",
+                        "entity": {"id": 5001, "name": "Empty Deal"},
+                        "fields": {"data": {}},
+                    }
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock V1 opportunity get for associations (no people)
+    respx_mock.get("https://api.affinity.co/opportunities/5001").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5001,
+                "name": "Empty Deal",
+                "list_id": 12345,
+                "person_ids": [],
+                "organization_ids": [],
+            },
+        )
+    )
+
+    csv_file = tmp_path / "opps-empty.csv"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--all",
+            "--csv",
+            str(csv_file),
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+    assert payload["data"]["rowsWritten"] == 1  # Still 1 row for the entry
+
+    # Verify CSV content has empty expansion columns
+    assert csv_file.exists()
+    with csv_file.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        assert len(rows) == 1
+        assert rows[0]["listEntryId"] == "1001"
+        assert rows[0]["expandedType"] == ""
+        assert rows[0]["expandedId"] == ""
+        assert rows[0]["expandedName"] == ""
+        assert rows[0]["expandedEmail"] == ""
+
+
+def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
+    """Test list export with --expand produces JSON with nested arrays."""
+    # Mock list metadata
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 1,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock list entries
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1001,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-01T00:00:00Z",
+                        "entity": {"id": 5001, "name": "Deal One"},
+                        "fields": {"data": {}},
+                    }
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock V1 opportunity get for associations
+    respx_mock.get("https://api.affinity.co/opportunities/5001").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5001,
+                "name": "Deal One",
+                "list_id": 12345,
+                "person_ids": [101],
+                "organization_ids": [201],
+            },
+        )
+    )
+
+    # Mock person details
+    respx_mock.get("https://api.affinity.co/persons/101").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 101,
+                "first_name": "Alice",
+                "last_name": "Smith",
+                "emails": ["alice@example.com"],
+                "type": 1,
+            },
+        )
+    )
+
+    # Mock company details
+    respx_mock.get("https://api.affinity.co/organizations/201").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 201,
+                "name": "Acme Corp",
+                "domain": "acme.com",
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--expand",
+            "companies",
+            "--all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+
+    # Check nested arrays
+    rows = payload["data"]["rows"]
+    assert len(rows) == 1
+    assert "people" in rows[0]
+    assert "companies" in rows[0]
+    assert len(rows[0]["people"]) == 1
+    assert len(rows[0]["companies"]) == 1
+    assert rows[0]["people"][0]["id"] == 101
+    assert rows[0]["people"][0]["name"] == "Alice Smith"
+    assert rows[0]["companies"][0]["id"] == 201
+    assert rows[0]["companies"][0]["name"] == "Acme Corp"
+
+    # Check summary data
+    assert payload["data"]["entriesProcessed"] == 1
+    assert payload["data"]["associationsFetched"]["people"] == 1
+    assert payload["data"]["associationsFetched"]["companies"] == 1
+
+
+def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
+    """Test --dry-run output includes expand info."""
+    # Mock list metadata with entry count
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 50,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--expand",
+            "companies",
+            "--dry-run",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+
+    assert "expand" in payload["data"]
+    assert sorted(payload["data"]["expand"]) == ["companies", "people"]
+    assert payload["data"]["expandMaxResults"] == 100
+    assert "estimatedApiCalls" in payload["data"]
+    assert "get_associations" in payload["data"]["estimatedApiCalls"]["note"]
+
+    # Verify listName and estimatedEntries are included (gap fix)
+    assert payload["data"]["listName"] == "Pipeline"
+    assert payload["data"]["estimatedEntries"] == 50
+
+
+def test_list_export_expand_fields_phase4_deferral() -> None:
+    """Test --expand-fields fails with Phase 4 deferral message."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand-fields",
+            "Status",
+            "--all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert "not yet implemented" in payload["error"]["message"]
+    assert "Phase 4" in payload["error"]["message"]
+    assert payload["error"]["type"] == "usage_error"
+
+
+def test_list_export_expand_field_type_phase4_deferral() -> None:
+    """Test --expand-field-type fails with Phase 4 deferral message."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand-field-type",
+            "person",
+            "--all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert "not yet implemented" in payload["error"]["message"]
+    assert "Phase 4" in payload["error"]["message"]
+    assert payload["error"]["type"] == "usage_error"
+
+
+def test_list_export_expand_all_with_max_results_warning(respx_mock: respx.MockRouter) -> None:
+    """Test --expand-all + --expand-max-results emits warning."""
+    # Mock list metadata
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 1,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock entries
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1001,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-01T00:00:00Z",
+                        "entity": {"id": 5001, "name": "Deal"},
+                        "fields": {"data": {}},
+                    }
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock V1 opportunity for associations
+    respx_mock.get("https://api.affinity.co/opportunities/5001").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5001,
+                "name": "Deal",
+                "list_id": 12345,
+                "person_ids": [],
+                "organization_ids": [],
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--expand-all",
+            "--expand-max-results",
+            "50",
+            "--all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.strip())
+
+    # Check warning is present in either meta.warnings or top-level warnings
+    warnings_list = payload.get("warnings", []) or payload.get("meta", {}).get("warnings", [])
+    assert any("--expand-all" in w and "ignoring" in w for w in warnings_list)
+
+
+def test_list_export_expand_csv_mode_nested(respx_mock: respx.MockRouter, tmp_path: object) -> None:
+    """Test --csv-mode nested outputs JSON arrays in CSV columns."""
+    csv_file = Path(tmp_path) / "nested.csv"  # type: ignore[arg-type]
+
+    # Mock list metadata
+    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": "opportunity",
+                "isPublic": False,
+                "ownerId": 1,
+                "creatorId": 1,
+                "listSize": 1,
+            },
+        )
+    )
+
+    # Mock fields
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [{"id": "f1", "name": "Status", "type": "dropdown", "valueType": None}],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock entries
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1001,
+                        "listId": 12345,
+                        "creatorId": 1,
+                        "type": "opportunity",
+                        "createdAt": "2024-01-01T00:00:00Z",
+                        "entity": {"id": 5001, "name": "Deal One"},
+                        "fields": {"data": {"f1": "Active"}},
+                    }
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    # Mock V1 opportunity for associations
+    respx_mock.get("https://api.affinity.co/opportunities/5001").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 5001,
+                "name": "Deal One",
+                "list_id": 12345,
+                "person_ids": [101, 102],
+                "organization_ids": [201],
+            },
+        )
+    )
+
+    # Mock person details
+    respx_mock.get("https://api.affinity.co/persons/101").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 101,
+                "first_name": "Alice",
+                "last_name": "Smith",
+                "emails": ["alice@example.com"],
+                "type": 1,
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/persons/102").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 102,
+                "first_name": "Bob",
+                "last_name": "Jones",
+                "emails": ["bob@example.com"],
+                "type": 1,
+            },
+        )
+    )
+
+    # Mock company details
+    respx_mock.get("https://api.affinity.co/organizations/201").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 201,
+                "name": "Acme Corp",
+                "domain": "acme.com",
+            },
+        )
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--json",
+            "list",
+            "export",
+            "12345",
+            "--expand",
+            "people",
+            "--expand",
+            "companies",
+            "--csv-mode",
+            "nested",
+            "--csv",
+            str(csv_file),
+            "--all",
+        ],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+
+    # Read CSV and check nested JSON columns
+    with csv_file.open() as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    assert len(rows) == 1  # Single row (nested mode)
+    row = rows[0]
+
+    # Verify nested JSON columns
+    assert "_expand_people" in row
+    assert "_expand_companies" in row
+
+    people_data = json.loads(row["_expand_people"])
+    companies_data = json.loads(row["_expand_companies"])
+
+    assert len(people_data) == 2
+    assert people_data[0]["id"] == 101
+    assert people_data[0]["name"] == "Alice Smith"
+    assert people_data[1]["id"] == 102
+    assert people_data[1]["name"] == "Bob Jones"
+
+    assert len(companies_data) == 1
+    assert companies_data[0]["id"] == 201
+    assert companies_data[0]["name"] == "Acme Corp"
