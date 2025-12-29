@@ -1,0 +1,16 @@
+{
+  "name": "affinity-sdk",
+  "owner": {
+    "name": "Yaniv Golan"
+  },
+  "metadata": {
+    "description": "Plugins for the Affinity Python SDK and xaffinity CLI"
+  },
+  "plugins": [
+    {
+      "name": "affinity-sdk",
+      "source": ".",
+      "description": "Knowledge and commands for using the Affinity Python SDK and xaffinity CLI to query and manage Affinity CRM data"
+    }
+  ]
+}
