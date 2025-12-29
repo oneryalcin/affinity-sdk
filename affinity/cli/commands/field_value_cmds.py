@@ -17,6 +17,7 @@ def field_value_group() -> None:
 
 
 def _field_value_payload(value: FieldValue) -> dict[str, object]:
+    # TODO: Migrate to use serialize_model_for_cli() from ..serialization
     return value.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 

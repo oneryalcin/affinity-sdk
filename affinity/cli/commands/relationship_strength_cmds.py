@@ -7,6 +7,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..options import output_options
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 
 
 @click.group(name="relationship-strength", cls=RichGroup)
@@ -15,7 +16,7 @@ def relationship_strength_group() -> None:
 
 
 def _strength_payload(item: RelationshipStrength) -> dict[str, object]:
-    return item.model_dump(by_alias=True, mode="json", exclude_none=True)
+    return serialize_model_for_cli(item)
 
 
 @relationship_strength_group.command(name="get", cls=RichCommand)

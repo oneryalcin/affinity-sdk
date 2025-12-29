@@ -771,13 +771,34 @@ def company_get(
     all_pages: bool,
 ) -> None:
     """
-    Get a company by id, URL, or resolver selector.
+    Get a company by id, URL, domain, or name.
+
+    The COMPANY_SELECTOR can be:
+
+    - Company ID (e.g., `12345`)
+    - Company URL (e.g., `https://app.affinity.co/companies/12345`)
+    - Domain (e.g., `domain:acme.com`)
+    - Name (e.g., `name:"Acme Inc"`)
+
+    List Entry Fields:
+
+    Use --list-entry-field and related flags to customize which list-entry
+    fields are shown in table output. These flags are ignored in JSON mode
+    to ensure full-fidelity output.
+
+    JSON Output:
+
+    When using --json, all list-entry fields are included regardless of
+    --list-entry-field flags. Use table output for selective field display.
 
     Examples:
+
     - `affinity company get 223384905`
     - `affinity company get https://mydomain.affinity.com/companies/223384905`
     - `affinity company get domain:acme.com`
-    - `affinity company get name:\"Acme Inc\"`
+    - `affinity company get name:"Acme Inc"`
+    - `affinity company get 223384905 --expand list-entries --list "Portfolio"`
+    - `affinity company get 223384905 --json  # Full data, ignores field filters`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

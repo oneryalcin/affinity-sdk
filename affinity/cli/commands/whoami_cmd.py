@@ -4,6 +4,7 @@ from ..click_compat import RichCommand, click
 from ..context import CLIContext
 from ..options import output_options
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 
 
 @click.command(name="whoami", cls=RichCommand)
@@ -14,7 +15,7 @@ def whoami_cmd(ctx: CLIContext) -> None:
         client = ctx.get_client(warnings=warnings)
         who = client.whoami()
         return CommandOutput(
-            data=who.model_dump(by_alias=True, mode="json", exclude_none=True),
+            data=serialize_model_for_cli(who),
             warnings=warnings,
             api_called=True,
         )

@@ -34,6 +34,14 @@ Test files follow these naming patterns:
 
 For coverage gap tests, append `_additional_coverage` or `_remaining_coverage` to the base name.
 
+### CLI Development
+
+If you're working on CLI commands, please review the [CLI Development Guide](docs/cli-development-guide.md) for:
+- Standard command structure and patterns
+- Model serialization best practices
+- Testing CLI commands
+- Common pitfalls and troubleshooting
+
 ### Quality checks
 
 Before opening a PR, please run:

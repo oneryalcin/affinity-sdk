@@ -646,13 +646,34 @@ def person_get(
     all_pages: bool,
 ) -> None:
     """
-    Get a person by id, URL, or resolver selector.
+    Get a person by id, URL, email, or name.
+
+    The PERSON_SELECTOR can be:
+
+    - Person ID (e.g., `12345`)
+    - Person URL (e.g., `https://app.affinity.co/persons/12345`)
+    - Email (e.g., `email:john@example.com`)
+    - Name (e.g., `name:"John Smith"`)
+
+    List Entry Fields:
+
+    Use --list-entry-field and related flags to customize which list-entry
+    fields are shown in table output. These flags are ignored in JSON mode
+    to ensure full-fidelity output.
+
+    JSON Output:
+
+    When using --json, all list-entry fields are included regardless of
+    --list-entry-field flags. Use table output for selective field display.
 
     Examples:
+
     - `affinity person get 223384905`
     - `affinity person get https://mydomain.affinity.com/persons/223384905`
     - `affinity person get email:alice@example.com`
-    - `affinity person get name:\"Alice Smith\"`
+    - `affinity person get name:"Alice Smith"`
+    - `affinity person get 223384905 --expand list-entries --list "Sales Pipeline"`
+    - `affinity person get 223384905 --json  # Full data, ignores field filters`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

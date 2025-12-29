@@ -38,3 +38,12 @@ repos:
           - tomli-w>=1.0
           - python-dotenv>=1.0.0
           - types-click
+
+  - repo: local
+    hooks:
+      - id: check-cli-patterns
+        name: Check CLI serialization patterns
+        entry: python tools/check_cli_patterns.py
+        language: system
+        types: [python]
+        files: ^affinity/cli/commands/.*\.py$
