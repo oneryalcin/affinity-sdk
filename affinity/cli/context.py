@@ -34,8 +34,11 @@ from affinity.exceptions import (
 )
 from affinity.hooks import (
     ErrorHook,
+    EventHook,
+    HookEvent,
     RequestHook,
     RequestInfo,
+    RequestRetrying,
     ResponseHook,
     ResponseInfo,
 )
@@ -81,6 +84,7 @@ class ClientSettings:
     on_request: RequestHook | None
     on_response: ResponseHook | None
     on_error: ErrorHook | None
+    on_event: EventHook | None
 
 
 @dataclass
@@ -200,20 +204,20 @@ class CLIContext:
         v1_base_url = os.getenv("AFFINITY_V1_BASE_URL") or prof.v1_base_url or V1_BASE_URL
         v2_base_url = os.getenv("AFFINITY_V2_BASE_URL") or prof.v2_base_url or V2_BASE_URL
 
+        def _write_stderr(line: str) -> None:
+            sys.stderr.write(line + "\n")
+            with suppress(Exception):
+                sys.stderr.flush()
+
         on_request: RequestHook | None = None
         on_response: ResponseHook | None = None
         on_error: ErrorHook | None = None
         if self.trace:
 
-            def _write(line: str) -> None:
-                sys.stderr.write(line + "\n")
-                with suppress(Exception):
-                    sys.stderr.flush()
-
             def _on_request(req: RequestInfo) -> None:
                 method = req.method
                 url = _strip_url_query_and_fragment(req.url)
-                _write(f"trace -> {method} {url}")
+                _write_stderr(f"trace -> {method} {url}")
 
             def _on_response(res: ResponseInfo) -> None:
                 status = str(res.status_code)
@@ -223,16 +227,24 @@ class CLIContext:
                 if res.cache_hit:
                     extra.append("cacheHit=true")
                 suffix = (" " + " ".join(extra)) if extra else ""
-                _write(f"trace <- {status} {url}{suffix}")
+                _write_stderr(f"trace <- {status} {url}{suffix}")
 
             def _on_error(err: HookErrorInfo) -> None:
                 url = _strip_url_query_and_fragment(err.request.url)
                 exc_name = type(err.error).__name__
-                _write(f"trace !! {exc_name} {url}")
+                _write_stderr(f"trace !! {exc_name} {url}")
 
             on_request = _on_request
             on_response = _on_response
             on_error = _on_error
+
+        # Rate limit visibility - always show retrying messages (not just with --trace)
+        def _on_event(event: HookEvent) -> None:
+            if isinstance(event, RequestRetrying):
+                wait_int = int(event.wait_seconds)
+                _write_stderr(f"Rate limited (429) - retrying in {wait_int}s...")
+
+        on_event: EventHook = _on_event
 
         policies = Policies(write=WritePolicy.DENY) if self.readonly else Policies()
 
@@ -248,6 +260,7 @@ class CLIContext:
             on_request=on_request,
             on_response=on_response,
             on_error=on_error,
+            on_event=on_event,
         )
 
     def get_client(self, *, warnings: list[str]) -> Affinity:
@@ -269,6 +282,7 @@ class CLIContext:
             on_request=settings.on_request,
             on_response=settings.on_response,
             on_error=settings.on_error,
+            on_event=settings.on_event,
             policies=settings.policies,
         )
         return self._client
