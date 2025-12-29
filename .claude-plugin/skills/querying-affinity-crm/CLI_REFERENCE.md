@@ -188,20 +188,27 @@ xaffinity note create --person-id 123 --content "Meeting notes"
 
 **Use interactions for meetings, emails, and calls** - auto-synced from calendars and email.
 
-**IMPORTANT limitations:**
+**CRITICAL requirements:**
+- **Both `--start-time` AND `--end-time` are REQUIRED** (API will error without them)
+- **Maximum date range is 1 year** - start and end must be within 1 year of each other
 - Interactions only appear if **at least one external contact** was involved
 - Internal-only meetings (team members only) won't appear unless logged with a note
 - Sync lag: Google Calendar ~30 min, Office365 up to 2 hours
 
 ```bash
-# List interactions for a person (requires external participants)
-xaffinity --dotenv --readonly interaction ls --person-id 123 --json
+# List meetings for a person in 2025 (MUST specify date range, max 1 year)
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting \
+  --start-time 2025-01-01 --end-time 2025-12-31 --json
 
-# Filter by type
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting --json
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type email --json
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type call --json
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type chat-message --json
+# For multiple years, query each year separately
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting \
+  --start-time 2024-01-01 --end-time 2024-12-31 --json
+
+# Other interaction types (same date range requirements)
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type email \
+  --start-time 2025-01-01 --end-time 2025-12-31 --json
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type call \
+  --start-time 2025-01-01 --end-time 2025-12-31 --json
 ```
 
 Interaction types: `meeting`, `email`, `call`, `chat-message` (or `chat`)

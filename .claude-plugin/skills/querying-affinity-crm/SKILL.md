@@ -202,7 +202,11 @@ xaffinity --dotenv --readonly person get email:alice@example.com --json
 
 **Interactions** - use for meetings with external participants (auto-synced from calendars):
 ```bash
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting --json
+# REQUIRED: Both --start-time and --end-time (max 1 year range)
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting \
+  --start-time 2025-01-01 --end-time 2025-12-31 --json
+
+# For multiple years, query each year separately
 ```
 Note: Interactions only appear if at least one external contact was involved.
 
