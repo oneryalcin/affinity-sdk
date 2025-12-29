@@ -187,22 +187,22 @@ xaffinity note create --person-id 123 --content "Meeting notes"
 ## Interactions (Meetings, Emails, Calls)
 
 **Use interactions for meetings, emails, and calls** - these are auto-synced from calendars and email.
-Use notes for manual entries and meeting notes content.
+
+**IMPORTANT**: Interactions only work for **external contacts**, not internal users (team members).
+For internal users, use notes with `isMeeting: true` to find meeting records.
 
 ```bash
-# List all interactions for a person (meetings, emails, calls)
+# List all interactions for an EXTERNAL person (meetings, emails, calls)
 xaffinity --dotenv --readonly interaction ls --person-id 123 --json
 
 # Filter by type
 xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting --json
 xaffinity --dotenv --readonly interaction ls --person-id 123 --type email --json
 xaffinity --dotenv --readonly interaction ls --person-id 123 --type call --json
-
-# List interactions for a company
-xaffinity --dotenv --readonly interaction ls --company-id 456 --json
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type chat-message --json
 ```
 
-Interaction types: `meeting`, `email`, `call`, `chat_message`
+Interaction types: `meeting`, `email`, `call`, `chat-message` (or `chat`)
 
 ## URL Resolution
 
