@@ -9,6 +9,6 @@
   "repository": "https://github.com/yaniv-golan/affinity-sdk",
   "license": "MIT",
   "keywords": ["affinity", "crm", "sdk", "cli", "api"],
-  "commands": ["./commands/"],
-  "skills": ["./skills/"]
+  "commands": ["./.claude-plugin/commands/"],
+  "skills": ["./.claude-plugin/skills/"]
 }
