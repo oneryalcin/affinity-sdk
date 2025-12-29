@@ -8,6 +8,7 @@
 [![Typed](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy-lang.org/)
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-orange.svg)](https://docs.pydantic.dev/)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugin/)
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
