@@ -195,5 +195,17 @@ with Affinity.from_env() as client:
 
 Or via CLI:
 ```bash
-xaffinity person get email:alice@example.com
+xaffinity --dotenv --readonly person get email:alice@example.com --json
+```
+
+### List meetings for a person (use interactions, NOT notes)
+```bash
+# Interactions = auto-synced meetings/emails/calls from calendars
+# Notes = manual entries with meeting notes content
+
+# List meetings
+xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting --json
+
+# List all interactions (meetings, emails, calls)
+xaffinity --dotenv --readonly interaction ls --person-id 123 --json
 ```
