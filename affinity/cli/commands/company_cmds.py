@@ -15,7 +15,9 @@ from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
+from ..resolvers import ResolvedEntity
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
 from ._list_entry_fields import (
     ListEntryFieldsScope,
@@ -324,53 +326,55 @@ def _resolve_company_selector(*, client: Any, selector: str) -> tuple[CompanyId,
     raw = selector.strip()
     if raw.isdigit():
         company_id = CompanyId(int(raw))
-        return company_id, {
-            "company": {"input": selector, "companyId": int(company_id), "source": "id"}
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(company_id),
+            entity_type="company",
+            source="id",
+        )
+        return company_id, {"company": resolved.to_dict()}
 
     if raw.startswith(("http://", "https://")):
-        resolved = _parse_affinity_url(raw)
-        if resolved.type != "company" or resolved.company_id is None:
+        url_resolved = _parse_affinity_url(raw)
+        if url_resolved.type != "company" or url_resolved.company_id is None:
             raise CLIError(
                 "Expected a company URL like https://<tenant>.affinity.(co|com)/companies/<id>",
                 exit_code=2,
                 error_type="usage_error",
-                details={"input": selector, "resolvedType": resolved.type},
+                details={"input": selector, "resolvedType": url_resolved.type},
             )
-        company_id = CompanyId(int(resolved.company_id))
-        return company_id, {
-            "company": {
-                "input": selector,
-                "companyId": int(company_id),
-                "source": "url",
-                "canonicalUrl": f"https://app.affinity.co/companies/{int(company_id)}",
-            }
-        }
+        company_id = CompanyId(int(url_resolved.company_id))
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(company_id),
+            entity_type="company",
+            source="url",
+            canonical_url=f"https://app.affinity.co/companies/{int(company_id)}",
+        )
+        return company_id, {"company": resolved.to_dict()}
 
     lowered = raw.lower()
     if lowered.startswith("domain:"):
         domain = _strip_wrapping_quotes(raw.split(":", 1)[1])
         company_id = _resolve_company_by_domain(client=client, domain=domain)
-        return company_id, {
-            "company": {
-                "input": selector,
-                "companyId": int(company_id),
-                "source": "domain",
-                "domain": domain,
-            }
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(company_id),
+            entity_type="company",
+            source="domain",
+        )
+        return company_id, {"company": resolved.to_dict()}
 
     if lowered.startswith("name:"):
         name = _strip_wrapping_quotes(raw.split(":", 1)[1])
         company_id = _resolve_company_by_name(client=client, name=name)
-        return company_id, {
-            "company": {
-                "input": selector,
-                "companyId": int(company_id),
-                "source": "name",
-                "name": name,
-            }
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(company_id),
+            entity_type="company",
+            source="name",
+        )
+        return company_id, {"company": resolved.to_dict()}
 
     raise CLIError(
         "Unrecognized company selector.",
@@ -957,7 +961,7 @@ def company_get(
             field_ids=field_ids,
             field_types=field_types_param,
         )
-        company_payload = company.model_dump(by_alias=True, mode="json", exclude_none=True)
+        company_payload = serialize_model_for_cli(company)
         fields_raw = getattr(company, "fields_raw", None)
         if isinstance(fields_raw, list):
             company_payload["fields"] = fields_raw
@@ -1393,7 +1397,7 @@ def company_create(
                 person_ids=[PersonId(pid) for pid in person_ids],
             )
         )
-        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(created)
         return CommandOutput(data={"company": payload}, api_called=True)
 
     run_command(ctx, command="company create", fn=fn)
@@ -1439,7 +1443,7 @@ def company_update(
                 person_ids=[PersonId(pid) for pid in person_ids] if person_ids else None,
             ),
         )
-        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(updated)
         return CommandOutput(data={"company": payload}, api_called=True)
 
     run_command(ctx, command="company update", fn=fn)

@@ -15,7 +15,9 @@ from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
+from ..resolvers import ResolvedEntity
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
 from ._list_entry_fields import (
     ListEntryFieldsScope,
@@ -322,53 +324,55 @@ def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, d
     raw = selector.strip()
     if raw.isdigit():
         person_id = PersonId(int(raw))
-        return person_id, {
-            "person": {"input": selector, "personId": int(person_id), "source": "id"}
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="id",
+        )
+        return person_id, {"person": resolved.to_dict()}
 
     if raw.startswith(("http://", "https://")):
-        resolved = _parse_affinity_url(raw)
-        if resolved.type != "person" or resolved.person_id is None:
+        url_resolved = _parse_affinity_url(raw)
+        if url_resolved.type != "person" or url_resolved.person_id is None:
             raise CLIError(
                 "Expected a person URL like https://<tenant>.affinity.(co|com)/persons/<id>",
                 exit_code=2,
                 error_type="usage_error",
-                details={"input": selector, "resolvedType": resolved.type},
+                details={"input": selector, "resolvedType": url_resolved.type},
             )
-        person_id = PersonId(int(resolved.person_id))
-        return person_id, {
-            "person": {
-                "input": selector,
-                "personId": int(person_id),
-                "source": "url",
-                "canonicalUrl": f"https://app.affinity.co/persons/{int(person_id)}",
-            }
-        }
+        person_id = PersonId(int(url_resolved.person_id))
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="url",
+            canonical_url=f"https://app.affinity.co/persons/{int(person_id)}",
+        )
+        return person_id, {"person": resolved.to_dict()}
 
     lowered = raw.lower()
     if lowered.startswith("email:"):
         email = _strip_wrapping_quotes(raw.split(":", 1)[1])
         person_id = _resolve_person_by_email(client=client, email=email)
-        return person_id, {
-            "person": {
-                "input": selector,
-                "personId": int(person_id),
-                "source": "email",
-                "email": email,
-            }
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="email",
+        )
+        return person_id, {"person": resolved.to_dict()}
 
     if lowered.startswith("name:"):
         name = _strip_wrapping_quotes(raw.split(":", 1)[1])
         person_id = _resolve_person_by_name(client=client, name=name)
-        return person_id, {
-            "person": {
-                "input": selector,
-                "personId": int(person_id),
-                "source": "name",
-                "name": name,
-            }
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="name",
+        )
+        return person_id, {"person": resolved.to_dict()}
 
     raise CLIError(
         "Unrecognized person selector.",
@@ -1320,7 +1324,7 @@ def person_create(
                 company_ids=[CompanyId(cid) for cid in company_ids],
             )
         )
-        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(created)
         return CommandOutput(data={"person": payload}, api_called=True)
 
     run_command(ctx, command="person create", fn=fn)
@@ -1374,7 +1378,7 @@ def person_update(
                 company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
             ),
         )
-        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(updated)
         return CommandOutput(data={"person": payload}, api_called=True)
 
     run_command(ctx, command="person update", fn=fn)

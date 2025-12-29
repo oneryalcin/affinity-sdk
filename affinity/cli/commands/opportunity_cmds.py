@@ -13,7 +13,9 @@ from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
+from ..resolvers import ResolvedEntity
 from ..runner import CommandOutput, run_command
+from ..serialization import serialize_model_for_cli
 from .resolve_url_cmd import _parse_affinity_url
 
 
@@ -29,32 +31,32 @@ def _resolve_opportunity_selector(
     raw = selector.strip()
     if raw.isdigit():
         opportunity_id = OpportunityId(int(raw))
-        return opportunity_id, {
-            "opportunity": {
-                "input": selector,
-                "opportunityId": int(opportunity_id),
-                "source": "id",
-            }
-        }
+        resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(opportunity_id),
+            entity_type="opportunity",
+            source="id",
+        )
+        return opportunity_id, {"opportunity": resolved.to_dict()}
 
     if raw.startswith(("http://", "https://")):
-        resolved = _parse_affinity_url(raw)
-        if resolved.type != "opportunity" or resolved.opportunity_id is None:
+        url_parsed = _parse_affinity_url(raw)
+        if url_parsed.type != "opportunity" or url_parsed.opportunity_id is None:
             raise CLIError(
                 "Expected an opportunity URL like https://<tenant>.affinity.(co|com)/opportunities/<id>",
                 exit_code=2,
                 error_type="usage_error",
-                details={"input": selector, "resolvedType": resolved.type},
+                details={"input": selector, "resolvedType": url_parsed.type},
             )
-        opportunity_id = OpportunityId(int(resolved.opportunity_id))
-        return opportunity_id, {
-            "opportunity": {
-                "input": selector,
-                "opportunityId": int(opportunity_id),
-                "source": "url",
-                "canonicalUrl": f"https://app.affinity.co/opportunities/{int(opportunity_id)}",
-            }
-        }
+        opportunity_id = OpportunityId(int(url_parsed.opportunity_id))
+        url_resolved = ResolvedEntity(
+            input=selector,
+            entity_id=int(opportunity_id),
+            entity_type="opportunity",
+            source="url",
+            canonical_url=f"https://app.affinity.co/opportunities/{int(opportunity_id)}",
+        )
+        return opportunity_id, {"opportunity": url_resolved.to_dict()}
 
     raise CLIError(
         "Unrecognized opportunity selector.",
@@ -225,9 +227,7 @@ def opportunity_get(
         else:
             opp = client.opportunities.get(opportunity_id)
 
-        data: dict[str, Any] = {
-            "opportunity": opp.model_dump(by_alias=True, mode="json", exclude_none=True)
-        }
+        data: dict[str, Any] = {"opportunity": serialize_model_for_cli(opp)}
         if not details and not opp.fields:
             data["opportunity"].pop("fields", None)
 
@@ -394,7 +394,7 @@ def opportunity_create(
             company_ids=[CompanyId(cid) for cid in company_ids],
         )
         created = client.opportunities.create(data)
-        payload = created.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(created)
 
         return CommandOutput(
             data={"opportunity": payload},
@@ -457,11 +457,18 @@ def opportunity_update(
             company_ids=[CompanyId(cid) for cid in company_ids] if company_ids else None,
         )
         updated = client.opportunities.update(OpportunityId(opportunity_id), data)
-        payload = updated.model_dump(by_alias=True, mode="json", exclude_none=True)
+        payload = serialize_model_for_cli(updated)
+
+        resolved = ResolvedEntity(
+            input=str(opportunity_id),
+            entity_id=int(opportunity_id),
+            entity_type="opportunity",
+            source="id",
+        )
 
         return CommandOutput(
             data={"opportunity": payload},
-            resolved={"opportunity": {"opportunityId": int(opportunity_id), "source": "id"}},
+            resolved={"opportunity": resolved.to_dict()},
             api_called=True,
         )
 
@@ -486,9 +493,17 @@ def opportunity_delete(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.opportunities.delete(OpportunityId(opportunity_id))
+
+        resolved = ResolvedEntity(
+            input=str(opportunity_id),
+            entity_id=int(opportunity_id),
+            entity_type="opportunity",
+            source="id",
+        )
+
         return CommandOutput(
             data={"opportunityId": opportunity_id, "success": success},
-            resolved={"opportunity": {"opportunityId": int(opportunity_id), "source": "id"}},
+            resolved={"opportunity": resolved.to_dict()},
             api_called=True,
         )
 
