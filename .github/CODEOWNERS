@@ -1,2 +1,9 @@
 # Default owners for the entire repository.
 * @yaniv-golan
+
+# CLI Commands require extra attention to serialization patterns
+# See docs/cli-development-guide.md for review guidelines
+/affinity/cli/commands/ @yaniv-golan
+/affinity/cli/serialization.py @yaniv-golan
+/affinity/cli/resolvers.py @yaniv-golan
+/affinity/cli/types.py @yaniv-golan

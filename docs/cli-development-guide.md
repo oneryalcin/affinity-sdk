@@ -253,6 +253,83 @@ def entity_get(
 3. **Don't serialize metadata twice** - it's already in JSON-safe format
 4. **Provide examples** in help text showing the resolved structure
 
+### Using Standard Resolver Types
+
+For new commands, use the standard resolver types from `affinity.cli.resolvers` to ensure consistent metadata structure:
+
+```python
+from affinity.cli.resolvers import (
+    ResolvedEntity,
+    ResolvedFieldSelection,
+    ResolvedList,
+    build_resolved_metadata
+)
+
+def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, dict[str, Any]]:
+    """Resolve person selector to ID and metadata."""
+    # Parse selector and resolve to person ID
+    if selector.startswith("email:"):
+        email = selector[6:]
+        person = client.persons.search(email).data[0]
+        person_id = PersonId(person.id)
+
+        # Use standard resolver type
+        resolved_entity = ResolvedEntity(
+            input=selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="email",
+            canonical_url=f"https://app.affinity.co/persons/{person_id}"
+        )
+
+        return person_id, {"person": resolved_entity.to_dict()}
+    # ... handle other selector types
+
+# In the command function:
+def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+    client = ctx.get_client(warnings=warnings)
+    person_id, entity_resolved = _resolve_person_selector(
+        client=client,
+        selector=person_selector
+    )
+
+    # Build complete resolved metadata
+    resolved = build_resolved_metadata(
+        entity=ResolvedEntity(
+            input=person_selector,
+            entity_id=int(person_id),
+            entity_type="person",
+            source="email"
+        ),
+        field_selection=ResolvedFieldSelection(
+            field_types=["global", "enriched"]
+        ) if all_fields else None,
+        expand=list(expand) if expand else None
+    )
+
+    person = client.persons.get(person_id)
+    return CommandOutput(
+        data={"person": serialize_model_for_cli(person)},
+        resolved=resolved,
+        api_called=True
+    )
+```
+
+**Benefits of standard resolver types**:
+- Consistent structure across all commands
+- Type safety for resolver metadata
+- Automatic camelCase conversion
+- Clear documentation with examples
+
+**Available resolver types**:
+- `ResolvedEntity` - For person, company, opportunity resolution
+- `ResolvedList` - For list ID resolution
+- `ResolvedSavedView` - For saved view resolution
+- `ResolvedFieldSelection` - For field selection options
+- `build_resolved_metadata()` - Convenience builder
+
+See `affinity/cli/resolvers.py` for complete API documentation.
+
 ## Error Handling
 
 ### Raising CLI Errors
