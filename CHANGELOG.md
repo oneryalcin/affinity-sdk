@@ -8,19 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 ### Added
-- CLI: `affinity field-value-changes ls` for viewing field value change history.
+- CLI: `xaffinity field-value-changes ls` for viewing field value change history.
 - Inbound webhook parsing helpers: `parse_webhook(...)`, `dispatch_webhook(...)`, and `BodyRegistry`.
-- CLI: `affinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
-- CLI: `affinity company get --expand people` for associated people (v1-backed exception).
-- CLI: `affinity person get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
-- CLI: `affinity opportunity` command group with `ls/get/create/update/delete`.
+- CLI: `xaffinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
+- CLI: `xaffinity company get --expand people` for associated people (v1-backed exception).
+- CLI: `xaffinity person get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
+- CLI: `xaffinity opportunity` command group with `ls/get/create/update/delete`.
 - CLI: `--max-results` and `--all` controls for pagination and expansions (where supported).
 - File downloads: `client.files.download_stream_with_info(...)` exposes headers/filename/size alongside streamed bytes.
 - SDK: v1-only company association helpers `get_associated_person_ids(...)` and `get_associated_people(...)`.
 - SDK: list-scoped opportunity resolution helpers `resolve(...)` and `resolve_all(...)`.
 
 ### Changed
-- `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`), and `affinity list view` shows readable `valueType` values.
+- `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`), and `xaffinity list view` shows readable `valueType` values.
 - CLI: human/table output renders dict-shaped results as sections/tables (no JSON-looking panels) and hides pagination mechanics in expanded sections.
 - CLI: `--json` output now uses section-keyed `data` and `meta.pagination` (e.g. `data.lists`, `meta.pagination.lists.nextCursor`); pagination may be omitted when `--max-results` truncates mid-page to avoid unsafe resume tokens.
 - CLI: list-entry fields tables default to list-only fields; use `--list-entry-fields-scope all` for full payloads.

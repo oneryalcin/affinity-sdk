@@ -78,7 +78,7 @@ docs = [
 ]
 
 [project.scripts]
-affinity = "affinity.cli.main:cli"
+xaffinity = "affinity.cli.main:cli"
 
 [project.urls]
 Homepage = "https://github.com/yaniv-golan/affinity-sdk"

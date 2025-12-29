@@ -12,7 +12,7 @@ from .paths import get_paths
 
 
 @click.group(
-    name="affinity",
+    name="xaffinity",
     invoke_without_command=True,
     context_settings={"help_option_names": ["-h", "--help"]},
     cls=RichGroup,
@@ -70,9 +70,7 @@ from .paths import get_paths
 )
 @click.option("--log-file", type=click.Path(dir_okay=False), default=None)
 @click.option("--no-log-file", is_flag=True, help="Disable file logging explicitly.")
-@click.option("--v1-base-url", type=str, default=None, help="Override v1 base URL.")
-@click.option("--v2-base-url", type=str, default=None, help="Override v2 base URL.")
-@click.version_option(version=affinity.__version__, prog_name="affinity")
+@click.version_option(version=affinity.__version__, prog_name="xaffinity")
 @click.pass_context
 def cli(
     click_ctx: click.Context,
@@ -95,8 +93,6 @@ def cli(
     trace: bool,
     log_file: str | None,
     no_log_file: bool,
-    v1_base_url: str | None,
-    v2_base_url: str | None,
 ) -> None:
     if click_ctx.invoked_subcommand is None:
         # No args: show help; no network calls.
@@ -134,8 +130,6 @@ def cli(
         trace=trace,
         log_file=effective_log_file,
         enable_log_file=enable_log_file,
-        v1_base_url=v1_base_url,
-        v2_base_url=v2_base_url,
         _paths=paths,
     )
 

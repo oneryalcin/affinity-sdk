@@ -199,9 +199,9 @@ The pagination key always matches the data key (`persons`, `companies`, `opportu
 To fetch the next page, use the `--cursor` option:
 
 ```bash
-affinity person search "Alice" --json
+xaffinity person search "Alice" --json
 # Get nextCursor from response
-affinity person search "Alice" --cursor "eyJpZCI6MTIzfQ==" --json
+xaffinity person search "Alice" --cursor "eyJpZCI6MTIzfQ==" --json
 ```
 
 ## Rate Limit Metadata
@@ -267,7 +267,7 @@ The `error` object contains:
 
 Command:
 ```bash
-affinity person get email:john@example.com --json
+xaffinity person get email:john@example.com --json
 ```
 
 Response:
@@ -307,7 +307,7 @@ Response:
 
 Command:
 ```bash
-affinity person search "Alice" --json
+xaffinity person search "Alice" --json
 ```
 
 Response:
@@ -353,7 +353,7 @@ Response:
 
 Command:
 ```bash
-affinity list rows "Sales Pipeline" --saved-view "Active Deals" --json
+xaffinity list rows "Sales Pipeline" --saved-view "Active Deals" --json
 ```
 
 Response:

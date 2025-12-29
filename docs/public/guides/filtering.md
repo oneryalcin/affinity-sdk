@@ -104,7 +104,7 @@ For CLI or advanced SDK use, you can use raw filter strings:
 
 **CLI example:**
 ```bash
-affinity person ls --filter 'field("Department") = "Sales"'
+xaffinity person ls --filter 'field("Department") = "Sales"'
 ```
 
 **SDK with raw string:**

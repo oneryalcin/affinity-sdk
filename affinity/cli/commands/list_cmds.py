@@ -78,9 +78,9 @@ def list_ls(
 
     Examples:
 
-    - `affinity list ls`
-    - `affinity list ls --type person`
-    - `affinity list ls --type company --all`
+    - `xaffinitylist ls`
+    - `xaffinitylist ls --type person`
+    - `xaffinitylist ls --type company --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -183,8 +183,8 @@ def list_create(
 
     Examples:
 
-    - `affinity list create --name "Prospects" --type company`
-    - `affinity list create --name "Candidates" --type person --public`
+    - `xaffinitylist create --name "Prospects" --type company`
+    - `xaffinitylist create --name "Candidates" --type person --public`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -224,8 +224,8 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
 
     Examples:
 
-    - `affinity list view 12345`
-    - `affinity list view "Pipeline"`
+    - `xaffinitylist view 12345`
+    - `xaffinitylist view "Pipeline"`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -296,10 +296,10 @@ def list_export(
 
     Examples:
 
-    - `affinity list export "Pipeline" --all`
-    - `affinity list export 12345 --csv pipeline.csv --all`
-    - `affinity list export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
-    - `affinity list export "Pipeline" --field Status --field "Deal Size" --all`
+    - `xaffinitylist export "Pipeline" --all`
+    - `xaffinitylist export 12345 --csv pipeline.csv --all`
+    - `xaffinitylist export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
+    - `xaffinitylist export "Pipeline" --field Status --field "Deal Size" --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

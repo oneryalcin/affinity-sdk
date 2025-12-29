@@ -1,6 +1,6 @@
 # CLI
 
-The SDK ships an optional `affinity` CLI that dogfoods the SDK. Install it as an extra so library-only users don't pay the dependency cost.
+The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as an extra so library-only users don't pay the dependency cost.
 
 ## Key Features
 
@@ -40,8 +40,8 @@ API key sources (highest precedence first):
 Optional local development: `.env` loading is **opt-in**:
 
 ```bash
-affinity --dotenv whoami
-affinity --dotenv --env-file ./dev.env whoami
+xaffinity --dotenv whoami
+xaffinity --dotenv --env-file ./dev.env whoami
 ```
 
 ## Output contract
@@ -78,6 +78,15 @@ These flags expose useful SDK behaviors directly from the CLI:
 - `--readonly`: disallow write operations (guard rail for scripts).
 - `--max-retries N`: tune rate-limit retry behavior.
 - `--trace`: trace request/response/error events to stderr (safe redaction).
+
+## Advanced configuration (testing)
+
+For testing against mock servers, these environment variables override API base URLs:
+
+- `AFFINITY_V1_BASE_URL`: Override V1 API base URL (default: `https://api.affinity.co`)
+- `AFFINITY_V2_BASE_URL`: Override V2 API base URL (default: `https://api.affinity.co/v2`)
+
+These can also be set per-profile in the config file.
 
 ## Exit codes
 

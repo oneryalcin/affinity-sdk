@@ -8,16 +8,16 @@ Export data to CSV using the `--csv` flag:
 
 ```bash
 # Export all people to CSV
-affinity person ls --all --csv people.csv
+xaffinity person ls --all --csv people.csv
 
 # Export all companies to CSV
-affinity company ls --all --csv companies.csv
+xaffinity company ls --all --csv companies.csv
 
 # Export all opportunities to CSV
-affinity opportunity ls --all --csv opportunities.csv
+xaffinity opportunity ls --all --csv opportunities.csv
 
 # Export list entries with custom fields
-affinity list export 12345 --all --csv entries.csv
+xaffinity list export 12345 --all --csv entries.csv
 ```
 
 ## Excel Compatibility
@@ -25,7 +25,7 @@ affinity list export 12345 --all --csv entries.csv
 If you're opening CSV files in Microsoft Excel, use the `--csv-bom` flag to ensure proper character encoding:
 
 ```bash
-affinity person ls --all --csv people.csv --csv-bom
+xaffinity person ls --all --csv people.csv --csv-bom
 ```
 
 This adds a UTF-8 Byte Order Mark (BOM) to the file, which helps Excel correctly display special characters, accents, and non-English text.
@@ -34,10 +34,10 @@ This adds a UTF-8 Byte Order Mark (BOM) to the file, which helps Excel correctly
 
 | Command | CSV Flag | Example |
 |---------|----------|---------|
-| `person ls` | ✅ `--csv` | `affinity person ls --all --csv people.csv` |
-| `company ls` | ✅ `--csv` | `affinity company ls --all --csv companies.csv` |
-| `opportunity ls` | ✅ `--csv` | `affinity opportunity ls --all --csv opps.csv` |
-| `list export` | ✅ `--csv` | `affinity list export 12345 --all --csv entries.csv` |
+| `person ls` | ✅ `--csv` | `xaffinity person ls --all --csv people.csv` |
+| `company ls` | ✅ `--csv` | `xaffinity company ls --all --csv companies.csv` |
+| `opportunity ls` | ✅ `--csv` | `xaffinity opportunity ls --all --csv opps.csv` |
+| `list export` | ✅ `--csv` | `xaffinity list export 12345 --all --csv entries.csv` |
 
 **Note:** The `--csv` flag requires `--all` to fetch all pages of data. Single-page exports are not supported for CSV output.
 
@@ -98,7 +98,7 @@ The `list export` command is the most powerful CSV export option. It includes:
 - All custom field values
 - List entry metadata
 
-See `affinity list export --help` for details.
+See `xaffinity list export --help` for details.
 
 ## Advanced: Using jq for Custom CSV Exports
 
@@ -107,7 +107,7 @@ For commands without built-in `--csv` support, you can use `jq` to convert JSON 
 ### Basic Pattern
 
 ```bash
-affinity <command> --json --all | \
+xaffinity <command> --json --all | \
   jq -r '.data.<entity>[] | [.field1, .field2, .field3] | @csv' > output.csv
 ```
 
@@ -117,38 +117,38 @@ The `-r` flag is crucial - it outputs raw strings instead of JSON-quoted values.
 
 **Export field values:**
 ```bash
-affinity field-value ls --field-id field-12345 --json | \
+xaffinity field-value ls --field-id field-12345 --json | \
   jq -r '.data.fieldValues[] | [.fieldId, .value, .entityId] | @csv'
 ```
 
 **Export notes:**
 ```bash
-affinity note ls --person-id 123 --json --all | \
+xaffinity note ls --person-id 123 --json --all | \
   jq -r '.data.notes[] | [.id, .content, .createdAt] | @csv'
 ```
 
 **Export interactions:**
 ```bash
-affinity interaction ls --person-id 123 --json --all | \
+xaffinity interaction ls --person-id 123 --json --all | \
   jq -r '.data.interactions[] | [.id, .date, .type] | @csv'
 ```
 
 **Add headers manually:**
 ```bash
-affinity person ls --json --all | \
+xaffinity person ls --json --all | \
   jq -r '["ID","Name","Email"],
          (.data.persons[] | [.id, .name, .primaryEmail]) | @csv'
 ```
 
 **Handle arrays (join with semicolons):**
 ```bash
-affinity person ls --json --all | \
+xaffinity person ls --json --all | \
   jq -r '.data.persons[] | [.id, .name, (.emails | join("; "))] | @csv'
 ```
 
 **Extract from nested structures:**
 ```bash
-affinity person get 123 --json | \
+xaffinity person get 123 --json | \
   jq -r '.data.person.fields[] | [.fieldId, .value, .listEntryId] | @csv'
 ```
 
@@ -182,10 +182,10 @@ Make sure you're accessing the correct JSON path:
 
 ```bash
 # ❌ Wrong - missing .data
-affinity person ls --json | jq '.persons'
+xaffinity person ls --json | jq '.persons'
 
 # ✅ Correct
-affinity person ls --json | jq '.data.persons'
+xaffinity person ls --json | jq '.data.persons'
 ```
 
 ### CSV shows JSON strings
@@ -194,10 +194,10 @@ Use the `-r` flag with jq:
 
 ```bash
 # ❌ Wrong - produces "[1,\"Alice\"]"
-affinity person ls --json | jq '.data.persons[] | [.id, .name] | @csv'
+xaffinity person ls --json | jq '.data.persons[] | [.id, .name] | @csv'
 
 # ✅ Correct - produces "1,Alice"
-affinity person ls --json | jq -r '.data.persons[] | [.id, .name] | @csv'
+xaffinity person ls --json | jq -r '.data.persons[] | [.id, .name] | @csv'
 ```
 
 ### Special characters broken in Excel
@@ -205,7 +205,7 @@ affinity person ls --json | jq -r '.data.persons[] | [.id, .name] | @csv'
 Use the `--csv-bom` flag:
 
 ```bash
-affinity person ls --all --csv people.csv --csv-bom
+xaffinity person ls --all --csv people.csv --csv-bom
 ```
 
 ### Empty CSV file has no headers
@@ -220,10 +220,10 @@ The `--csv` flag requires `--all` to fetch all pages:
 
 ```bash
 # ✅ Correct
-affinity person ls --all --csv people.csv
+xaffinity person ls --all --csv people.csv
 
 # ❌ Won't work
-affinity person ls --csv people.csv
+xaffinity person ls --csv people.csv
 ```
 
 ### 2. Combine with filters
@@ -234,14 +234,14 @@ When filtering on custom fields, use `--filter` for server-side filtering. This 
 
 ```bash
 # ✅ Efficient: Server-side filtering on custom field
-affinity person ls --filter 'field("Department") = "Sales"' --all --csv sales-people.csv
+xaffinity person ls --filter 'field("Department") = "Sales"' --all --csv sales-people.csv
 ```
 
 You can also combine `--filter` with jq for additional client-side processing:
 
 ```bash
 # Filter server-side, then process with jq
-affinity person ls --filter 'field("Department") = "Sales"' --json --all | \
+xaffinity person ls --filter 'field("Department") = "Sales"' --json --all | \
   jq -r '.data.persons[] | [.id, .name, .primaryEmail] | @csv'
 ```
 
@@ -252,7 +252,7 @@ Built-in properties like `type`, `firstName`, `primaryEmail`, etc. cannot be fil
 ```bash
 # ⚠️ Less efficient: Client-side filtering on built-in 'type' property
 # (downloads all data, then filters locally)
-affinity person ls --json --all | \
+xaffinity person ls --json --all | \
   jq -r '.data.persons[] | select(.type == "internal") | [.id, .name] | @csv'
 ```
 
@@ -262,7 +262,7 @@ For complex scenarios, combine server-side custom field filtering with client-si
 
 ```bash
 # Filter on custom field server-side, then filter on type client-side
-affinity person ls --filter 'field("Department") = "Sales"' --json --all | \
+xaffinity person ls --filter 'field("Department") = "Sales"' --json --all | \
   jq -r '.data.persons[] | select(.type == "internal") | [.id, .name] | @csv'
 ```
 
@@ -274,9 +274,9 @@ Create reusable export scripts:
 #!/bin/bash
 # export-pipeline.sh
 
-affinity person ls --all --csv people.csv --csv-bom
-affinity company ls --all --csv companies.csv --csv-bom
-affinity opportunity ls --all --csv opportunities.csv --csv-bom
+xaffinity person ls --all --csv people.csv --csv-bom
+xaffinity company ls --all --csv companies.csv --csv-bom
+xaffinity opportunity ls --all --csv opportunities.csv --csv-bom
 
 echo "Export complete!"
 ```
@@ -296,13 +296,13 @@ For very large exports, monitor progress:
 
 ```bash
 # The CLI will show API call counts for large exports
-affinity list export 12345 --all --csv large-export.csv
+xaffinity list export 12345 --all --csv large-export.csv
 ```
 
 ## Getting Help
 
-- Run `affinity <command> --help` to see all available options
-- Check `affinity --version` to ensure you have the latest version
+- Run `xaffinity <command> --help` to see all available options
+- Check `xaffinity --version` to ensure you have the latest version
 - Report issues at https://github.com/anthropics/affinity-api-x/issues
 
 ## Related Documentation

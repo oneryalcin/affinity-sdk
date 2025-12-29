@@ -14,11 +14,11 @@ from ..runner import CommandOutput, run_command
 @click.pass_obj
 def completion_cmd(ctx: CLIContext, shell: str) -> None:
     if shell == "bash":
-        script = 'eval "$(_AFFINITY_COMPLETE=bash_source affinity)"\n'
+        script = 'eval "$(_XAFFINITY_COMPLETE=bash_source xaffinity)"\n'
     elif shell == "zsh":
-        script = 'eval "$(_AFFINITY_COMPLETE=zsh_source affinity)"\n'
+        script = 'eval "$(_XAFFINITY_COMPLETE=zsh_source xaffinity)"\n'
     else:
-        script = "eval (env _AFFINITY_COMPLETE=fish_source affinity)\n"
+        script = "eval (env _XAFFINITY_COMPLETE=fish_source xaffinity)\n"
 
     if ctx.output == "table":
         sys.stdout.write(script)

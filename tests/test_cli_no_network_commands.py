@@ -43,7 +43,7 @@ def test_cli_completion_table_emits_script() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["completion", "bash"])
     assert result.exit_code == 0
-    assert "_AFFINITY_COMPLETE" in result.output
+    assert "_XAFFINITY_COMPLETE" in result.output
 
 
 def test_cli_completion_json_emits_command_result() -> None:
@@ -54,4 +54,4 @@ def test_cli_completion_json_emits_command_result() -> None:
     assert payload["ok"] is True
     assert payload["command"] == "completion"
     assert payload["data"]["shell"] == "bash"
-    assert "_AFFINITY_COMPLETE" in payload["data"]["script"]
+    assert "_XAFFINITY_COMPLETE" in payload["data"]["script"]

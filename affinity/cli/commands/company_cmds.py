@@ -82,9 +82,9 @@ def company_search(
 
     Examples:
 
-    - `affinity company search longevitix`
-    - `affinity company search longevitix.co`
-    - `affinity company search longevitix --with-interaction-dates`
+    - `xaffinitycompany search longevitix`
+    - `xaffinitycompany search longevitix.co`
+    - `xaffinitycompany search longevitix --with-interaction-dates`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -208,12 +208,12 @@ def company_ls(
 
     Examples:
 
-    - `affinity company ls`
-    - `affinity company ls --page-size 50`
-    - `affinity company ls --field-type enriched --all`
-    - `affinity company ls --filter 'field("Industry").equals("Software")'`
-    - `affinity company ls --all --csv companies.csv`
-    - `affinity company ls --all --csv companies.csv --csv-bom`
+    - `xaffinitycompany ls`
+    - `xaffinitycompany ls --page-size 50`
+    - `xaffinitycompany ls --field-type enriched --all`
+    - `xaffinitycompany ls --filter 'field("Industry").equals("Software")'`
+    - `xaffinitycompany ls --all --csv companies.csv`
+    - `xaffinitycompany ls --all --csv companies.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -447,7 +447,7 @@ def _resolve_company_by_domain(*, client: Any, domain: str) -> CompanyId:
             f'Company not found for domain "{domain}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `affinity company search "{domain}"` to explore matches.',
+            hint=f'Run `xaffinitycompany search "{domain}"` to explore matches.',
             details={"domain": domain},
         )
     if len(matches) > 1:
@@ -488,7 +488,7 @@ def _resolve_company_by_name(*, client: Any, name: str) -> CompanyId:
             f'Company not found for name "{name}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `affinity company search "{name}"` to explore matches.',
+            hint=f'Run `xaffinitycompany search "{name}"` to explore matches.',
             details={"name": name},
         )
     if len(matches) > 1:
@@ -554,7 +554,7 @@ def _resolve_company_field_ids(
             f'Unknown field: "{text}"',
             exit_code=2,
             error_type="usage_error",
-            hint="Tip: run `affinity company get <id> --all-fields --json` and inspect "
+            hint="Tip: run `xaffinitycompany get <id> --all-fields --json` and inspect "
             "`data.company.fields[*].id` / `data.company.fields[*].name`.",
             details={"field": text},
         )
@@ -655,8 +655,8 @@ def company_files_upload(
 
     Examples:
 
-    - `affinity company files upload 123 --file doc.pdf`
-    - `affinity company files upload 123 --file a.pdf --file b.pdf`
+    - `xaffinitycompany files upload 123 --file doc.pdf`
+    - `xaffinitycompany files upload 123 --file a.pdf --file b.pdf`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -833,12 +833,12 @@ def company_get(
 
     Examples:
 
-    - `affinity company get 223384905`
-    - `affinity company get https://mydomain.affinity.com/companies/223384905`
-    - `affinity company get domain:acme.com`
-    - `affinity company get name:"Acme Inc"`
-    - `affinity company get 223384905 --expand list-entries --list "Portfolio"`
-    - `affinity company get 223384905 --json  # Full data, ignores field filters`
+    - `xaffinitycompany get 223384905`
+    - `xaffinitycompany get https://mydomain.affinity.com/companies/223384905`
+    - `xaffinitycompany get domain:acme.com`
+    - `xaffinitycompany get name:"Acme Inc"`
+    - `xaffinitycompany get 223384905 --expand list-entries --list "Portfolio"`
+    - `xaffinitycompany get 223384905 --json  # Full data, ignores field filters`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -946,7 +946,7 @@ def company_get(
                         exit_code=2,
                         error_type="usage_error",
                         hint=(
-                            "Tip: run `affinity list view <list>` to discover list-entry field IDs."
+                            "Tip: run `xaffinitylist view <list>` to discover list-entry field IDs."
                         ),
                         details={"field": spec},
                     )
@@ -1209,7 +1209,7 @@ def company_get(
                                 exit_code=2,
                                 error_type="usage_error",
                                 hint=(
-                                    "Tip: run `affinity list view <list>` and inspect "
+                                    "Tip: run `xaffinitylist view <list>` and inspect "
                                     "`data.fields[*].id` / `data.fields[*].name`."
                                 ),
                                 details={"field": raw},

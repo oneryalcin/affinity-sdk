@@ -82,9 +82,9 @@ def person_search(
 
     Examples:
 
-    - `affinity person search alice@example.com`
-    - `affinity person search \"Alice\" --all`
-    - `affinity person search \"Alice\" --with-interaction-dates`
+    - `xaffinityperson search alice@example.com`
+    - `xaffinityperson search \"Alice\" --all`
+    - `xaffinityperson search \"Alice\" --with-interaction-dates`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -206,12 +206,12 @@ def person_ls(
 
     Examples:
 
-    - `affinity person ls`
-    - `affinity person ls --page-size 50`
-    - `affinity person ls --field-type enriched --all`
-    - `affinity person ls --filter 'field("Email").contains("@acme.com")'`
-    - `affinity person ls --all --csv people.csv`
-    - `affinity person ls --all --csv people.csv --csv-bom`
+    - `xaffinityperson ls`
+    - `xaffinityperson ls --page-size 50`
+    - `xaffinityperson ls --field-type enriched --all`
+    - `xaffinityperson ls --filter 'field("Email").contains("@acme.com")'`
+    - `xaffinityperson ls --all --csv people.csv`
+    - `xaffinityperson ls --all --csv people.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -444,7 +444,7 @@ def _resolve_person_by_email(*, client: Any, email: str) -> PersonId:
             f'Person not found for email "{email}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `affinity person search "{email}"` to explore matches.',
+            hint=f'Run `xaffinityperson search "{email}"` to explore matches.',
             details={"email": email},
         )
     if len(matches) > 1:
@@ -488,7 +488,7 @@ def _resolve_person_by_name(*, client: Any, name: str) -> PersonId:
             f'Person not found for name "{name}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `affinity person search "{name}"` to explore matches.',
+            hint=f'Run `xaffinityperson search "{name}"` to explore matches.',
             details={"name": name},
         )
     if len(matches) > 1:
@@ -554,7 +554,7 @@ def _resolve_person_field_ids(
             f'Unknown field: "{text}"',
             exit_code=2,
             error_type="usage_error",
-            hint="Tip: run `affinity person get <id> --all-fields --json` and inspect "
+            hint="Tip: run `xaffinityperson get <id> --all-fields --json` and inspect "
             "`data.person.fields[*].id` / `data.person.fields[*].name`.",
             details={"field": text},
         )
@@ -708,12 +708,12 @@ def person_get(
 
     Examples:
 
-    - `affinity person get 223384905`
-    - `affinity person get https://mydomain.affinity.com/persons/223384905`
-    - `affinity person get email:alice@example.com`
-    - `affinity person get name:"Alice Smith"`
-    - `affinity person get 223384905 --expand list-entries --list "Sales Pipeline"`
-    - `affinity person get 223384905 --json  # Full data, ignores field filters`
+    - `xaffinityperson get 223384905`
+    - `xaffinityperson get https://mydomain.affinity.com/persons/223384905`
+    - `xaffinityperson get email:alice@example.com`
+    - `xaffinityperson get name:"Alice Smith"`
+    - `xaffinityperson get 223384905 --expand list-entries --list "Sales Pipeline"`
+    - `xaffinityperson get 223384905 --json  # Full data, ignores field filters`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -820,7 +820,7 @@ def person_get(
                         exit_code=2,
                         error_type="usage_error",
                         hint=(
-                            "Tip: run `affinity list view <list>` to discover list-entry field IDs."
+                            "Tip: run `xaffinitylist view <list>` to discover list-entry field IDs."
                         ),
                         details={"field": spec},
                     )
@@ -1038,7 +1038,7 @@ def person_get(
                                 exit_code=2,
                                 error_type="usage_error",
                                 hint=(
-                                    "Tip: run `affinity list view <list>` and inspect "
+                                    "Tip: run `xaffinitylist view <list>` and inspect "
                                     "`data.fields[*].id` / `data.fields[*].name`."
                                 ),
                                 details={"field": raw},
@@ -1263,8 +1263,8 @@ def person_files_upload(
 
     Examples:
 
-    - `affinity person files upload 123 --file doc.pdf`
-    - `affinity person files upload 123 --file a.pdf --file b.pdf`
+    - `xaffinityperson files upload 123 --file doc.pdf`
+    - `xaffinityperson files upload 123 --file a.pdf --file b.pdf`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

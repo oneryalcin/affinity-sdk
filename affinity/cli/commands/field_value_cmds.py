@@ -61,8 +61,8 @@ def field_value_ls(
 
     Examples:
 
-    - `affinity field-value ls --person-id 12345`
-    - `affinity field-value ls --company-id 67890`
+    - `xaffinityfield-value ls --person-id 12345`
+    - `xaffinityfield-value ls --company-id 67890`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -102,8 +102,8 @@ def field_value_create(
 
     Examples:
 
-    - `affinity field-value create --field-id field-123 --entity-id 456 --value "Active"`
-    - `affinity field-value create --field-id field-789 --entity-id 456 --value-json '[1,2,3]'`
+    - `xaffinityfield-value create --field-id field-123 --entity-id 456 --value "Active"`
+    - `xaffinityfield-value create --field-id field-789 --entity-id 456 --value-json '[1,2,3]'`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

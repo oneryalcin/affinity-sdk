@@ -101,8 +101,6 @@ class CLIContext:
     trace: bool
     log_file: Path | None
     enable_log_file: bool
-    v1_base_url: str | None
-    v2_base_url: str | None
     enable_beta_endpoints: bool
 
     _paths: CliPaths = field(default_factory=get_paths)
@@ -199,12 +197,8 @@ class CLIContext:
         if self.max_retries < 0:
             raise CLIError("--max-retries must be >= 0.", exit_code=2, error_type="usage_error")
 
-        v1_base_url = (
-            self.v1_base_url or os.getenv("AFFINITY_V1_BASE_URL") or prof.v1_base_url or V1_BASE_URL
-        )
-        v2_base_url = (
-            self.v2_base_url or os.getenv("AFFINITY_V2_BASE_URL") or prof.v2_base_url or V2_BASE_URL
-        )
+        v1_base_url = os.getenv("AFFINITY_V1_BASE_URL") or prof.v1_base_url or V1_BASE_URL
+        v2_base_url = os.getenv("AFFINITY_V2_BASE_URL") or prof.v2_base_url or V2_BASE_URL
 
         on_request: RequestHook | None = None
         on_response: ResponseHook | None = None

@@ -16,7 +16,7 @@ class CliPaths:
     log_file: Path
 
 
-def get_paths(*, app_name: str = "affinity", app_author: str = "Affinity") -> CliPaths:
+def get_paths(*, app_name: str = "xaffinity", app_author: str = "Affinity") -> CliPaths:
     dirs = PlatformDirs(app_name, app_author)
     config_dir = Path(dirs.user_config_dir)
     cache_dir = Path(dirs.user_cache_dir)
@@ -28,5 +28,5 @@ def get_paths(*, app_name: str = "affinity", app_author: str = "Affinity") -> Cl
         cache_dir=cache_dir,
         state_dir=state_dir,
         log_dir=log_dir,
-        log_file=log_dir / "affinity.log",
+        log_file=log_dir / "xaffinity.log",
     )

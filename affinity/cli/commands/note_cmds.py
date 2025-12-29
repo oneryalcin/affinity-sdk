@@ -75,9 +75,9 @@ def note_ls(
 
     Examples:
 
-    - `affinity note ls --person-id 12345`
-    - `affinity note ls --company-id 67890 --all`
-    - `affinity note ls --creator-id 111 --max-results 50`
+    - `xaffinitynote ls --person-id 12345`
+    - `xaffinitynote ls --company-id 67890 --all`
+    - `xaffinitynote ls --creator-id 111 --max-results 50`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -148,7 +148,7 @@ def note_get(ctx: CLIContext, note_id: int) -> None:
     """
     Get a note by id.
 
-    Example: `affinity note get 12345`
+    Example: `xaffinitynote get 12345`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -210,8 +210,8 @@ def note_create(
 
     Examples:
 
-    - `affinity note create --content "Meeting notes" --person-id 12345`
-    - `affinity note create --content "<b>Summary</b>" --type html --company-id 67890`
+    - `xaffinitynote create --content "Meeting notes" --person-id 12345`
+    - `xaffinitynote create --content "<b>Summary</b>" --type html --company-id 67890`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:

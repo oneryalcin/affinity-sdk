@@ -82,7 +82,7 @@ client = Affinity(api_key="your-key", transport=httpx.MockTransport(lambda req: 
 The `affinity` CLI can also trace requests/responses/errors:
 
 ```bash
-affinity --trace --no-progress whoami
+xaffinity --trace --no-progress whoami
 ```
 
 ## Next steps

@@ -92,11 +92,11 @@ def opportunity_ls(
     List opportunities (basic v2 representation).
 
     Examples:
-    - `affinity opportunity ls`
-    - `affinity opportunity ls --page-size 200`
-    - `affinity opportunity ls --cursor <cursor>`
-    - `affinity opportunity ls --all --csv opportunities.csv`
-    - `affinity opportunity ls --all --csv opportunities.csv --csv-bom`
+    - `xaffinityopportunity ls`
+    - `xaffinityopportunity ls --page-size 200`
+    - `xaffinityopportunity ls --cursor <cursor>`
+    - `xaffinityopportunity ls --all --csv opportunities.csv`
+    - `xaffinityopportunity ls --all --csv opportunities.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -244,11 +244,11 @@ def opportunity_get(
     Get an opportunity by id or URL.
 
     Examples:
-    - `affinity opportunity get 123`
-    - `affinity opportunity get https://mydomain.affinity.com/opportunities/123`
-    - `affinity opportunity get 123 --details`
-    - `affinity opportunity get 123 --expand people`
-    - `affinity opportunity get 123 --expand people --expand companies`
+    - `xaffinityopportunity get 123`
+    - `xaffinityopportunity get https://mydomain.affinity.com/opportunities/123`
+    - `xaffinityopportunity get 123 --details`
+    - `xaffinityopportunity get 123 --expand people`
+    - `xaffinityopportunity get 123 --expand people --expand companies`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -405,8 +405,8 @@ def opportunity_create(
     Create a new opportunity.
 
     Examples:
-    - `affinity opportunity create --name "Series A" --list "Dealflow"`
-    - `affinity opportunity create --name "Series A" --list 123 --person-id 1 --company-id 2`
+    - `xaffinityopportunity create --name "Series A" --list "Dealflow"`
+    - `xaffinityopportunity create --name "Series A" --list 123 --person-id 1 --company-id 2`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -472,8 +472,8 @@ def opportunity_update(
     Update an opportunity (replaces association arrays when provided).
 
     Examples:
-    - `affinity opportunity update 123 --name "Series A (Closed)"`
-    - `affinity opportunity update 123 --person-id 1 --person-id 2`
+    - `xaffinityopportunity update 123 --name "Series A (Closed)"`
+    - `xaffinityopportunity update 123 --person-id 1 --person-id 2`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -523,7 +523,7 @@ def opportunity_delete(
     Delete an opportunity.
 
     Example:
-    - `affinity opportunity delete 123`
+    - `xaffinityopportunity delete 123`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -574,8 +574,8 @@ def opportunity_files_upload(
 
     Examples:
 
-    - `affinity opportunity files upload 123 --file doc.pdf`
-    - `affinity opportunity files upload 123 --file a.pdf --file b.pdf`
+    - `xaffinityopportunity files upload 123 --file doc.pdf`
+    - `xaffinityopportunity files upload 123 --file a.pdf --file b.pdf`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
