@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "affinity-sdk",
-      "source": ".",
+      "source": "./",
       "description": "Knowledge and commands for using the Affinity Python SDK and xaffinity CLI to query and manage Affinity CRM data"
     }
   ]
