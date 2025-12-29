@@ -70,13 +70,21 @@ def _extract_id(value: Any) -> int | None:
 
 
 def _reminder_payload(reminder: Reminder) -> dict[str, object]:
+    # Convert enum values back to names for CLI display
+    type_name = ReminderType(reminder.type).name.lower().replace("_", "-")
+    status_name = ReminderStatus(reminder.status).name.lower()
+    reset_type_name = (
+        ReminderResetType(reminder.reset_type).name.lower()
+        if reminder.reset_type is not None
+        else None
+    )
     return {
         "id": int(reminder.id),
-        "type": int(reminder.type),
-        "status": int(reminder.status),
+        "type": type_name,
+        "status": status_name,
         "content": reminder.content,
         "dueDate": reminder.due_date,
-        "resetType": int(reminder.reset_type) if reminder.reset_type is not None else None,
+        "resetType": reset_type_name,
         "reminderDays": reminder.reminder_days,
         "ownerId": _extract_id(reminder.owner),
         "creatorId": _extract_id(reminder.creator),

@@ -32,11 +32,18 @@ _INTERACTION_DIRECTION_MAP = {
 
 
 def _interaction_payload(interaction: Interaction) -> dict[str, object]:
+    # Convert enum values back to names for CLI display
+    type_name = InteractionType(interaction.type).name.lower().replace("_", "-")
+    direction_name = (
+        InteractionDirection(interaction.direction).name.lower()
+        if interaction.direction is not None
+        else None
+    )
     return {
         "id": int(interaction.id),
-        "type": int(interaction.type),
+        "type": type_name,
         "date": interaction.date,
-        "direction": int(interaction.direction) if interaction.direction is not None else None,
+        "direction": direction_name,
         "title": interaction.title,
         "subject": interaction.subject,
         "startTime": interaction.start_time,

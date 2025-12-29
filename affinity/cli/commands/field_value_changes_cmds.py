@@ -25,7 +25,11 @@ def field_value_changes_group() -> None:
 
 def _field_value_change_payload(item: FieldValueChange) -> dict[str, object]:
     # Serializes field value change with proper datetime handling
-    return serialize_model_for_cli(item)
+    payload = serialize_model_for_cli(item)
+    # Convert enum value back to name for CLI display
+    if "actionType" in payload:
+        payload["actionType"] = FieldValueChangeAction(payload["actionType"]).name.lower()
+    return payload
 
 
 _ACTION_TYPE_MAP = {

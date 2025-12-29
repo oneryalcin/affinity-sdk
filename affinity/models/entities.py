@@ -19,6 +19,7 @@ from .types import (
     DropdownOptionId,
     EntityType,
     FieldId,
+    FieldValueChangeAction,
     FieldValueChangeId,
     FieldValueId,
     FieldValueType,
@@ -761,7 +762,7 @@ class FieldValueChange(AffinityModel):
     field_id: FieldId = Field(alias="fieldId")
     entity_id: int = Field(alias="entityId")
     list_entry_id: ListEntryId | None = Field(None, alias="listEntryId")
-    action_type: int = Field(alias="actionType")  # 0=Create, 1=Delete, 2=Update
+    action_type: FieldValueChangeAction = Field(alias="actionType")
     value: Any
     changed_at: ISODatetime = Field(alias="changedAt")
     changer: PersonSummary | None = None

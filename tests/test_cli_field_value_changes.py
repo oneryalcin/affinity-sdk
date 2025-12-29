@@ -55,7 +55,7 @@ def test_field_value_changes_ls_by_person_id(respx_mock: respx.MockRouter) -> No
     assert payload["data"]["fieldValueChanges"][0]["id"] == 101
     # Output uses camelCase aliases (by_alias=True)
     assert payload["data"]["fieldValueChanges"][0]["fieldId"] == "field-123"
-    assert payload["data"]["fieldValueChanges"][0]["actionType"] == 2
+    assert payload["data"]["fieldValueChanges"][0]["actionType"] == "update"
 
 
 def test_field_value_changes_ls_by_company_id(respx_mock: respx.MockRouter) -> None:
@@ -111,7 +111,7 @@ def test_field_value_changes_ls_with_action_type(respx_mock: respx.MockRouter) -
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
-    assert payload["data"]["fieldValueChanges"][0]["actionType"] == 0
+    assert payload["data"]["fieldValueChanges"][0]["actionType"] == "create"
 
 
 def test_field_value_changes_ls_requires_exactly_one_selector() -> None:

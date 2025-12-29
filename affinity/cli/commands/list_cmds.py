@@ -105,7 +105,7 @@ def list_ls(
                     {
                         "id": int(item.id),
                         "name": item.name,
-                        "type": item.type,
+                        "type": ListType(item.type).name.lower(),
                         "ownerId": int(item.owner_id) if getattr(item, "owner_id", None) else None,
                         "isPublic": getattr(item, "is_public", None),
                     }

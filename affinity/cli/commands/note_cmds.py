@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from affinity.models.secondary import Note, NoteCreate, NoteUpdate
-from affinity.models.types import NoteType
+from affinity.models.types import InteractionType, NoteType
 from affinity.types import CompanyId, NoteId, OpportunityId, PersonId, UserId
 
 from ..click_compat import RichCommand, RichGroup, click
@@ -27,9 +27,16 @@ _NOTE_TYPE_MAP = {
 
 
 def _note_payload(note: Note) -> dict[str, object]:
+    # Convert enum values back to names for CLI display
+    type_name = NoteType(note.type).name.lower().replace("_", "-")
+    interaction_type_name = (
+        InteractionType(note.interaction_type).name.lower().replace("_", "-")
+        if note.interaction_type is not None
+        else None
+    )
     return {
         "id": int(note.id),
-        "type": int(note.type),
+        "type": type_name,
         "creatorId": int(note.creator_id),
         "content": note.content,
         "personIds": [int(p) for p in note.person_ids],
@@ -39,7 +46,7 @@ def _note_payload(note: Note) -> dict[str, object]:
         "companyIds": [int(o) for o in note.company_ids],
         "opportunityIds": [int(o) for o in note.opportunity_ids],
         "interactionId": note.interaction_id,
-        "interactionType": int(note.interaction_type) if note.interaction_type else None,
+        "interactionType": interaction_type_name,
         "isMeeting": note.is_meeting,
         "parentId": int(note.parent_id) if note.parent_id else None,
         "createdAt": note.created_at,
