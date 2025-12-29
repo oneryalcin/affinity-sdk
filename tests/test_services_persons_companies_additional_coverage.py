@@ -1559,3 +1559,159 @@ def test_person_service_resolve_iterates_and_checks_empty_email_lists() -> None:
         assert service.resolve(email="c@example.com").id == PersonId(2)
     finally:
         http.close()
+
+
+# =============================================================================
+# Enhancement 3: include_field_values tests (DX-003)
+# =============================================================================
+
+
+@pytest.mark.req("DX-003")
+def test_person_service_get_with_include_field_values() -> None:
+    """Test PersonService.get with include_field_values=True uses V1 API."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email": "alice@example.com",
+                    "emails": ["alice@example.com"],
+                    "type": 0,
+                    "field_values": [
+                        {"id": 10, "field_id": 100, "value": "Active"},
+                        {"id": 11, "field_id": 101, "value": "Premium"},
+                    ],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = PersonService(http)
+        person = service.get(PersonId(1), include_field_values=True)
+
+        # Verify person data is returned
+        assert person.id == PersonId(1)
+        assert person.first_name == "Alice"
+        assert person.last_name == "Smith"
+
+        # Verify field_values is attached (dynamically added, not in model)
+        assert hasattr(person, "field_values")
+        field_values = person.field_values  # type: ignore[attr-defined]
+        assert len(field_values) == 2
+        assert field_values[0]["value"] == "Active"
+        assert field_values[1]["value"] == "Premium"
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-003")
+def test_person_service_get_without_include_field_values_uses_v2() -> None:
+    """Test PersonService.get without include_field_values uses V2 API."""
+    calls: dict[str, int] = {"v1": 0, "v2": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and "/v2/persons/1" in str(url):
+            calls["v2"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "firstName": "Alice",
+                    "lastName": "Smith",
+                    "primaryEmailAddress": "alice@example.com",
+                    "emails": ["alice@example.com"],
+                    "type": "external",
+                },
+                request=request,
+            )
+        if request.method == "GET" and str(url).startswith("https://v1.example/persons/"):
+            calls["v1"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = PersonService(http)
+
+        # Default (include_field_values=False) should use V2
+        person = service.get(PersonId(1))
+        assert person.id == PersonId(1)
+        assert calls["v2"] == 1
+        assert calls["v1"] == 0
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-003")
+async def test_async_person_service_get_with_include_field_values() -> None:
+    """Test async PersonService.get with include_field_values=True."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "first_name": "Bob",
+                    "last_name": "Jones",
+                    "primary_email": "bob@example.com",
+                    "emails": ["bob@example.com"],
+                    "type": 0,
+                    "field_values": [
+                        {"id": 20, "field_id": 200, "value": "Manager"},
+                    ],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncPersonService(client)
+        person = await service.get(PersonId(1), include_field_values=True)
+
+        # Verify person data
+        assert person.id == PersonId(1)
+        assert person.first_name == "Bob"
+
+        # Verify field_values is attached (dynamically added, not in model)
+        assert hasattr(person, "field_values")
+        field_values = person.field_values  # type: ignore[attr-defined]
+        assert len(field_values) == 1
+        assert field_values[0]["value"] == "Manager"
+    finally:
+        await client.close()

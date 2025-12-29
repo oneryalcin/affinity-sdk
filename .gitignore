@@ -55,3 +55,4 @@ docs/internal/
 .cursorrules
 tools/tmp_readonly_endpoint_syntax_suite.py
 .claude/
+tmp-scripts/set_primary_email_status.py

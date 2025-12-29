@@ -7,11 +7,41 @@ Provides type-safe access to paginated API responses.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..exceptions import TooManyResultsError
+
 T = TypeVar("T")
+
+__all__ = [
+    "PaginationProgress",
+    "PaginatedResponse",
+    "PageIterator",
+    "AsyncPageIterator",
+]
+
+# Default limit for .all() method to prevent OOM
+_DEFAULT_LIMIT = 100_000
+
+
+@dataclass
+class PaginationProgress:
+    """Progress information for pagination callbacks."""
+
+    page_number: int
+    """1-indexed page number."""
+
+    items_in_page: int
+    """Items in current page."""
+
+    items_so_far: int
+    """Cumulative items *including* just-yielded page."""
+
+    has_next: bool
+    """Whether more pages exist (matches Page.has_next)."""
 
 
 class AffinityModel(BaseModel):
@@ -133,6 +163,116 @@ class PageIterator(Generic[T]):
             if not response.has_next:
                 self._exhausted = True
 
+    def pages(
+        self,
+        *,
+        on_progress: Callable[[PaginationProgress], None] | None = None,
+    ) -> Iterator[PaginatedResponse[T]]:
+        """
+        Iterate through pages (not individual items).
+
+        Args:
+            on_progress: Optional callback fired after fetching each page.
+                Receives PaginationProgress with page_number, items_in_page,
+                items_so_far, and has_next. Callbacks should be lightweight;
+                heavy processing should happen outside the callback to avoid
+                blocking iteration.
+
+        Yields:
+            PaginatedResponse objects for each page.
+
+        Example:
+            def report(p: PaginationProgress):
+                print(f"Page {p.page_number}: {p.items_so_far} items so far")
+
+            for page in client.persons.all().pages(on_progress=report):
+                process(page.data)
+        """
+        page_number = 0
+        items_so_far = 0
+
+        while True:
+            requested_url = self._next_cursor
+            response = self._fetch_page(requested_url)
+            self._next_cursor = response.next_cursor
+            page_number += 1
+            items_in_page = len(response.data)
+            items_so_far += items_in_page
+
+            # Guard against pagination loops
+            if response.has_next and response.next_cursor == requested_url:
+                if response.data:
+                    if on_progress:
+                        on_progress(
+                            PaginationProgress(
+                                page_number=page_number,
+                                items_in_page=items_in_page,
+                                items_so_far=items_so_far,
+                                has_next=False,  # Loop detected, no more pages
+                            )
+                        )
+                    yield response
+                break
+
+            if response.data:
+                if on_progress:
+                    on_progress(
+                        PaginationProgress(
+                            page_number=page_number,
+                            items_in_page=items_in_page,
+                            items_so_far=items_so_far,
+                            has_next=response.has_next,
+                        )
+                    )
+                yield response
+
+            if not response.has_next:
+                break
+
+    def all(self, *, limit: int | None = _DEFAULT_LIMIT) -> list[T]:
+        """
+        Fetch all items across all pages into a list.
+
+        Args:
+            limit: Maximum items to fetch. Default 100,000. Set to None for unlimited.
+
+        Returns:
+            List of all items.
+
+        Raises:
+            TooManyResultsError: If results exceed limit.
+
+        Note:
+            The check occurs after extending results, so the final list may exceed
+            limit by up to one page before the error is raised.
+
+        Example:
+            # Default - safe for most use cases
+            persons = list(client.persons.all())  # Using iterator
+
+            # Or use .all() method with limit check
+            it = PageIterator(fetch_page)
+            persons = it.all()  # Returns list, raises if > 100k
+
+            # Explicit unlimited for large exports
+            all_persons = it.all(limit=None)
+
+            # Custom limit
+            persons = it.all(limit=500_000)
+        """
+        results: list[T] = []
+
+        for page in self.pages():
+            results.extend(page.data)
+
+            if limit is not None and len(results) > limit:
+                raise TooManyResultsError(
+                    f"Exceeded limit={limit:,} items. "
+                    f"Use pages() for streaming, add a filter, or pass limit=None."
+                )
+
+        return results
+
 
 class AsyncPageIterator(Generic[T]):
     """
@@ -189,6 +329,116 @@ class AsyncPageIterator(Generic[T]):
 
             if not response.has_next:
                 self._exhausted = True
+
+    async def pages(
+        self,
+        *,
+        on_progress: Callable[[PaginationProgress], None] | None = None,
+    ) -> AsyncIterator[PaginatedResponse[T]]:
+        """
+        Iterate through pages (not individual items).
+
+        Args:
+            on_progress: Optional callback fired after fetching each page.
+                Receives PaginationProgress with page_number, items_in_page,
+                items_so_far, and has_next. Callbacks should be lightweight;
+                heavy processing should happen outside the callback to avoid
+                blocking iteration.
+
+        Yields:
+            PaginatedResponse objects for each page.
+
+        Example:
+            def report(p: PaginationProgress):
+                print(f"Page {p.page_number}: {p.items_so_far} items so far")
+
+            async for page in client.persons.all().pages(on_progress=report):
+                process(page.data)
+        """
+        page_number = 0
+        items_so_far = 0
+
+        while True:
+            requested_url = self._next_cursor
+            response = await self._fetch_page(requested_url)
+            self._next_cursor = response.next_cursor
+            page_number += 1
+            items_in_page = len(response.data)
+            items_so_far += items_in_page
+
+            # Guard against pagination loops
+            if response.has_next and response.next_cursor == requested_url:
+                if response.data:
+                    if on_progress:
+                        on_progress(
+                            PaginationProgress(
+                                page_number=page_number,
+                                items_in_page=items_in_page,
+                                items_so_far=items_so_far,
+                                has_next=False,  # Loop detected, no more pages
+                            )
+                        )
+                    yield response
+                break
+
+            if response.data:
+                if on_progress:
+                    on_progress(
+                        PaginationProgress(
+                            page_number=page_number,
+                            items_in_page=items_in_page,
+                            items_so_far=items_so_far,
+                            has_next=response.has_next,
+                        )
+                    )
+                yield response
+
+            if not response.has_next:
+                break
+
+    async def all(self, *, limit: int | None = _DEFAULT_LIMIT) -> list[T]:
+        """
+        Fetch all items across all pages into a list.
+
+        Args:
+            limit: Maximum items to fetch. Default 100,000. Set to None for unlimited.
+
+        Returns:
+            List of all items.
+
+        Raises:
+            TooManyResultsError: If results exceed limit.
+
+        Note:
+            The check occurs after extending results, so the final list may exceed
+            limit by up to one page before the error is raised.
+
+        Example:
+            # Default - safe for most use cases
+            persons = [p async for p in client.persons.all()]  # Using async iterator
+
+            # Or use .all() method with limit check
+            it = AsyncPageIterator(fetch_page)
+            persons = await it.all()  # Returns list, raises if > 100k
+
+            # Explicit unlimited for large exports
+            all_persons = await it.all(limit=None)
+
+            # Custom limit
+            persons = await it.all(limit=500_000)
+        """
+        results: list[T] = []
+
+        async for page in self.pages():
+            results.extend(page.data)
+
+            if limit is not None and len(results) > limit:
+                raise TooManyResultsError(
+                    f"Exceeded limit={limit:,} items. "
+                    f"Use pages() for streaming, add a filter, or pass limit=None."
+                )
+
+        return results
 
 
 # =============================================================================

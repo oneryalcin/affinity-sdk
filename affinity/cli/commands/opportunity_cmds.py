@@ -172,6 +172,25 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
     is_flag=True,
     help="Fetch a fuller payload with associations and list entries.",
 )
+@click.option(
+    "--expand",
+    "expand",
+    multiple=True,
+    type=click.Choice(["people", "companies"]),
+    help="Include related data (repeatable). Uses V1 API for associations.",
+)
+@click.option(
+    "--max-results",
+    type=int,
+    default=None,
+    help="Maximum items per expansion (default: 100).",
+)
+@click.option(
+    "--all",
+    "all_pages",
+    is_flag=True,
+    help="Fetch all expanded items (no limit).",
+)
 @output_options
 @click.pass_obj
 def opportunity_get(
@@ -179,6 +198,9 @@ def opportunity_get(
     opportunity_selector: str,
     *,
     details: bool,
+    expand: tuple[str, ...],
+    max_results: int | None,
+    all_pages: bool,
 ) -> None:
     """
     Get an opportunity by id or URL.
@@ -187,28 +209,126 @@ def opportunity_get(
     - `affinity opportunity get 123`
     - `affinity opportunity get https://mydomain.affinity.com/opportunities/123`
     - `affinity opportunity get 123 --details`
+    - `affinity opportunity get 123 --expand people`
+    - `affinity opportunity get 123 --expand people --expand companies`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         opportunity_id, resolved = _resolve_opportunity_selector(selector=opportunity_selector)
 
-        payload = client._http.get(
-            f"/opportunities/{int(opportunity_id)}",
-            v1=details,
-        )
+        expand_set = {e.strip() for e in expand if e and e.strip()}
 
-        data: dict[str, Any]
-        if isinstance(payload, dict):
-            opp = Opportunity.model_validate(payload)
-            data = opp.model_dump(by_alias=True, exclude_none=True)
-            if "fields" not in payload:
-                data.pop("fields", None)
+        # Use service methods instead of raw HTTP
+        if details:
+            opp = client.opportunities.get_details(opportunity_id)
         else:
-            data = {"value": payload}
+            opp = client.opportunities.get(opportunity_id)
+
+        data: dict[str, Any] = {"opportunity": opp.model_dump(by_alias=True, exclude_none=True)}
+        if not details and not opp.fields:
+            data["opportunity"].pop("fields", None)
+
+        # Fetch associations once if both people and companies are requested (saves 1 V1 call)
+        want_people = "people" in expand_set
+        want_companies = "companies" in expand_set
+        cached_person_ids: list[int] | None = None
+        cached_company_ids: list[int] | None = None
+
+        if want_people and want_companies:
+            assoc = client.opportunities.get_associations(opportunity_id)
+            cached_person_ids = [int(pid) for pid in assoc.person_ids]
+            cached_company_ids = [int(cid) for cid in assoc.company_ids]
+
+        # Handle people expansion
+        if want_people:
+            people_cap = max_results
+            if people_cap is None and not all_pages:
+                people_cap = 100
+            if people_cap is not None and people_cap <= 0:
+                data["people"] = []
+            else:
+                # Use cached IDs if available, otherwise fetch
+                if cached_person_ids is not None:
+                    person_ids = cached_person_ids
+                else:
+                    person_ids = [
+                        int(pid)
+                        for pid in client.opportunities.get_associated_person_ids(opportunity_id)
+                    ]
+                total_people = len(person_ids)
+                if people_cap is not None and total_people > people_cap:
+                    warnings.append(
+                        f"People truncated at {people_cap:,} items; re-run with --all "
+                        "or a higher --max-results to fetch more."
+                    )
+                    if total_people > 50:
+                        warnings.append(
+                            f"Fetching {min(people_cap, total_people)} people requires "
+                            f"{min(people_cap, total_people) + 1} API calls."
+                        )
+
+                people = client.opportunities.get_associated_people(
+                    opportunity_id,
+                    max_results=people_cap,
+                )
+                data["people"] = [
+                    {
+                        "id": int(person.id),
+                        "name": person.full_name,
+                        "primaryEmail": person.primary_email,
+                        "type": (
+                            person.type.value
+                            if hasattr(person.type, "value")
+                            else person.type
+                            if person.type
+                            else None
+                        ),
+                    }
+                    for person in people
+                ]
+
+        # Handle companies expansion
+        if want_companies:
+            companies_cap = max_results
+            if companies_cap is None and not all_pages:
+                companies_cap = 100
+            if companies_cap is not None and companies_cap <= 0:
+                data["companies"] = []
+            else:
+                # Use cached IDs if available, otherwise fetch
+                if cached_company_ids is not None:
+                    company_ids = cached_company_ids
+                else:
+                    company_ids = [
+                        int(cid)
+                        for cid in client.opportunities.get_associated_company_ids(opportunity_id)
+                    ]
+                total_companies = len(company_ids)
+                if companies_cap is not None and total_companies > companies_cap:
+                    warnings.append(
+                        f"Companies truncated at {companies_cap:,} items; re-run with --all "
+                        "or a higher --max-results to fetch more."
+                    )
+
+                companies = client.opportunities.get_associated_companies(
+                    opportunity_id,
+                    max_results=companies_cap,
+                )
+                data["companies"] = [
+                    {
+                        "id": int(company.id),
+                        "name": company.name,
+                        "domain": company.domain,
+                    }
+                    for company in companies
+                ]
+
+        if expand_set:
+            resolved["expand"] = sorted(expand_set)
 
         return CommandOutput(
-            data={"opportunity": data},
+            data=data,
             resolved=resolved,
             api_called=True,
         )

@@ -252,6 +252,28 @@ class WriteNotAllowedError(PolicyError):
 
 
 # =============================================================================
+# Pagination Errors
+# =============================================================================
+
+
+class TooManyResultsError(AffinityError):
+    """
+    Raised when ``.all()`` exceeds the limit.
+
+    The default limit is 100,000 items (approximately 100MB for typical Person objects).
+    This protects against OOM errors when paginating large datasets.
+
+    To resolve:
+    - Use ``.pages()`` for streaming iteration (memory-efficient)
+    - Add filters to reduce result size
+    - Pass ``limit=None`` to ``.all()`` if you're certain you need all results
+    - Pass a custom ``limit=500_000`` if you need more than the default
+    """
+
+    pass
+
+
+# =============================================================================
 # URL Safety Errors
 # =============================================================================
 

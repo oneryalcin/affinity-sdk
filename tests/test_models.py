@@ -118,6 +118,70 @@ class TestTypedIds:
         # But they should be used with type annotations
 
 
+@pytest.mark.req("DX-005")
+class TestFieldIdNormalization:
+    """Test FieldId normalization (Enhancement 5)."""
+
+    def test_field_id_equality_with_field_id(self) -> None:
+        """FieldId compares equal to another FieldId with same value."""
+        assert FieldId("field-123") == FieldId("field-123")
+        assert FieldId(123) == FieldId("field-123")
+        assert FieldId("123") == FieldId("field-123")
+
+    def test_field_id_equality_with_string(self) -> None:
+        """FieldId compares equal to equivalent strings."""
+        assert FieldId("field-123") == "field-123"
+        assert FieldId(123) == "field-123"
+        assert FieldId("field-123") == "123"
+
+    def test_field_id_equality_with_int(self) -> None:
+        """FieldId compares equal to its numeric value."""
+        assert FieldId("field-123") == 123
+        assert FieldId(123) == 123
+
+    def test_field_id_inequality(self) -> None:
+        """FieldId correctly reports inequality."""
+        assert FieldId("field-123") != FieldId("field-456")
+        assert FieldId("field-123") != "field-456"
+        assert FieldId("field-123") != 456
+        assert FieldId("field-123") != "invalid"
+
+    def test_field_id_hash_consistency(self) -> None:
+        """FieldId hash is consistent for equal values."""
+        # Same FieldId values should have same hash
+        assert hash(FieldId("field-123")) == hash(FieldId(123))
+        assert hash(FieldId("field-123")) == hash(FieldId("123"))
+
+    def test_field_id_in_dict(self) -> None:
+        """FieldId can be used as dict key."""
+        d: dict[FieldId, str] = {FieldId("field-123"): "value1"}
+        assert d[FieldId(123)] == "value1"
+        assert d[FieldId("123")] == "value1"
+        assert d[FieldId("field-123")] == "value1"
+
+    def test_field_id_in_set(self) -> None:
+        """FieldId can be used in sets with proper deduplication."""
+        s = {FieldId("field-123"), FieldId(123), FieldId("123")}
+        assert len(s) == 1  # All refer to same field
+
+    def test_field_id_repr(self) -> None:
+        """FieldId has informative repr."""
+        fid = FieldId("field-123")
+        assert repr(fid) == "FieldId('field-123')"
+
+    def test_field_id_str(self) -> None:
+        """FieldId str returns the canonical value."""
+        fid = FieldId(123)
+        assert str(fid) == "field-123"
+
+    def test_field_id_invalid_values_not_equal(self) -> None:
+        """FieldId does not equal invalid strings."""
+        fid = FieldId("field-123")
+        assert fid != "not-a-field-id"
+        assert fid != "field-abc"  # Non-numeric
+        assert fid != ""
+
+
 @pytest.mark.req("TR-004")
 class TestEnums:
     """Test enum definitions."""
@@ -555,9 +619,9 @@ def test_field_value_service_list_requires_exactly_one_id() -> None:
     http = http_mod.HTTPClient(http_mod.ClientConfig(api_key="k", max_retries=0))
     try:
         service = FieldValueService(http)
-        with pytest.raises(ValueError, match="exactly one"):
+        with pytest.raises(ValueError, match="one entity ID"):
             service.list()
-        with pytest.raises(ValueError, match="exactly one"):
+        with pytest.raises(ValueError, match="one entity ID"):
             service.list(person_id=PersonId(1), company_id=CompanyId(2))
     finally:
         http.close()

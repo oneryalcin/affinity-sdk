@@ -350,13 +350,23 @@ class CompanyUpdate(AffinityModel):
 
 
 class Opportunity(AffinityModel):
-    """Deal/opportunity in a pipeline."""
+    """
+    Deal/opportunity in a pipeline.
+
+    Note:
+        The V2 API returns empty ``person_ids`` and ``company_ids`` arrays even
+        when associations exist. Use ``client.opportunities.get_associated_person_ids()``
+        or ``client.opportunities.get_details()`` to retrieve association data.
+
+        See the opportunity-associations guide for details.
+    """
 
     id: OpportunityId
     name: str
     list_id: ListId | None = Field(None, alias="listId")
 
-    # Associations
+    # Associations (Note: V2 API returns empty arrays; use get_details() or
+    # get_associated_person_ids() for populated data)
     person_ids: list[PersonId] = Field(default_factory=list, alias="personIds")
     company_ids: list[CompanyId] = Field(default_factory=list, alias="organizationIds")
 

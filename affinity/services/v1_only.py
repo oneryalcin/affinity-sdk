@@ -6,16 +6,18 @@ These services wrap V1 API endpoints that don't have V2 equivalents.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 import mimetypes
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 import httpx
 
 from ..downloads import AsyncDownloadedFile, DownloadedFile
+from ..exceptions import AffinityError
 from ..models.entities import (
     FieldCreate,
     FieldMetadata,
@@ -69,6 +71,12 @@ from ..progress import ProgressCallback
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
+
+# TypeVar for default parameter in get_for_entity()
+T = TypeVar("T")
+
+# Sentinel for distinguishing None from "not provided" in get_for_entity()
+_UNSET: Any = object()
 
 
 def _coerce_isoformat(payload: dict[str, Any], keys: tuple[str, ...]) -> None:
@@ -561,6 +569,58 @@ class FieldService:
 
         return bool(result.get("success", False))
 
+    def exists(self, field_id: AnyFieldId) -> bool:
+        """
+        Check if a field exists.
+
+        Useful for validation before setting field values.
+
+        Note: This fetches all fields and checks locally. If your code calls
+        exists() frequently in a loop, consider caching the result of fields.list()
+        yourself.
+
+        Args:
+            field_id: The field ID to check
+
+        Returns:
+            True if the field exists, False otherwise
+
+        Example:
+            if client.fields.exists(FieldId("field-123")):
+                client.field_values.create(...)
+        """
+        target_id = FieldId(field_id) if not isinstance(field_id, FieldId) else field_id
+        fields = self.list()
+        return any(f.id == target_id for f in fields)
+
+    def get_by_name(self, name: str) -> FieldMetadata | None:
+        """
+        Find a field by its display name.
+
+        Uses case-insensitive matching (casefold for i18n support).
+
+        Note: This fetches all fields and searches locally. If your code calls
+        get_by_name() frequently in a loop, consider caching the result of
+        fields.list() yourself.
+
+        Args:
+            name: The field display name to search for
+
+        Returns:
+            FieldMetadata if found, None otherwise
+
+        Example:
+            field = client.fields.get_by_name("Primary Email Status")
+            if field:
+                fv = client.field_values.get_for_entity(field.id, person_id=pid)
+        """
+        fields = self.list()
+        name_folded = name.strip().casefold()  # Strip whitespace, then casefold for i18n
+        for field in fields:
+            if field.name.casefold() == name_folded:
+                return field
+        return None
+
 
 # =============================================================================
 # Field Value Service (V1 API)
@@ -595,8 +655,8 @@ class FieldValueService:
         Raises:
             ValueError: If zero or multiple IDs are provided.
         """
-        provided = [
-            name
+        provided = {
+            name: value
             for name, value in (
                 ("person_id", person_id),
                 ("company_id", company_id),
@@ -604,13 +664,17 @@ class FieldValueService:
                 ("list_entry_id", list_entry_id),
             )
             if value is not None
-        ]
-        if len(provided) != 1:
-            joined = ", ".join(provided) if provided else "(none)"
+        }
+        if len(provided) == 0:
             raise ValueError(
-                "FieldValueService.list() requires exactly one of: person_id, "
-                "company_id, opportunity_id, or list_entry_id; "
-                f"got {len(provided)}: {joined}"
+                "field_values.list() requires exactly one entity ID. "
+                "Example: client.field_values.list(person_id=PersonId(123))"
+            )
+        if len(provided) > 1:
+            raise ValueError(
+                f"field_values.list() accepts only one entity ID, "
+                f"but received {len(provided)}: {', '.join(provided.keys())}. "
+                "Call list() separately for each entity."
             )
 
         params: dict[str, Any] = {}
@@ -656,6 +720,137 @@ class FieldValueService:
         """Delete a field value."""
         result = self._client.delete(f"/field-values/{field_value_id}", v1=True)
         return bool(result.get("success", False))
+
+    def get_for_entity(
+        self,
+        field_id: str | FieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        default: T = _UNSET,
+    ) -> FieldValue | T | None:
+        """
+        Get a specific field value for an entity.
+
+        Convenience method that fetches all field values and returns the one
+        matching field_id. Like dict.get(), returns None (or default) if not found.
+
+        Note: This still makes one API call to fetch all field values for the entity.
+        For entities with hundreds of field values, prefer using ``list()`` directly
+        if you need to inspect multiple fields.
+
+        Args:
+            field_id: The field to look up (accepts str or FieldId for convenience)
+            person_id: Person entity (exactly one entity ID required)
+            company_id: Company entity
+            opportunity_id: Opportunity entity
+            list_entry_id: List entry entity
+            default: Value to return if field not found (default: None)
+
+        Returns:
+            FieldValue if the field has a value, default otherwise.
+            Note: A FieldValue with ``.value is None`` still counts as "present" (explicit empty).
+
+        Example:
+            # Check if a person has a specific field value
+            status = client.field_values.get_for_entity(
+                "field-123",  # or FieldId("field-123")
+                person_id=PersonId(456),
+            )
+            if status is None:
+                print("Field is empty")
+            else:
+                print(f"Value: {status.value}")
+
+            # With default value
+            status = client.field_values.get_for_entity(
+                "field-123",
+                person_id=PersonId(456),
+                default="N/A",
+            )
+        """
+        all_values = self.list(
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+        )
+        # Normalize field_id for comparison (handles both str and FieldId)
+        target_id = FieldId(field_id) if not isinstance(field_id, FieldId) else field_id
+        for fv in all_values:
+            if fv.field_id == target_id:
+                return fv
+        return None if default is _UNSET else default
+
+    def list_batch(
+        self,
+        person_ids: Sequence[PersonId] | None = None,
+        company_ids: Sequence[CompanyId] | None = None,
+        opportunity_ids: Sequence[OpportunityId] | None = None,
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[PersonId | CompanyId | OpportunityId, builtins.list[FieldValue]]:
+        """
+        Get field values for multiple entities.
+
+        **Performance note:** This makes one API call per entity (O(n) calls).
+        There is no server-side batch endpoint. Use this for convenience and
+        consistent error handling, not for performance optimization.
+        For parallelism, use the async client.
+
+        Args:
+            person_ids: Sequence of person IDs (mutually exclusive with others)
+            company_ids: Sequence of company IDs
+            opportunity_ids: Sequence of opportunity IDs
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping entity_id -> list of field values.
+            Note: Dict ordering is not guaranteed; do not rely on insertion order.
+
+        Example:
+            # Check which persons have a specific field set
+            fv_map = client.field_values.list_batch(person_ids=person_ids)
+            for person_id, field_values in fv_map.items():
+                has_status = any(fv.field_id == target_field for fv in field_values)
+        """
+        # Validate exactly one sequence provided
+        provided = [
+            ("person_ids", person_ids),
+            ("company_ids", company_ids),
+            ("opportunity_ids", opportunity_ids),
+        ]
+        non_none = [(name, seq) for name, seq in provided if seq is not None]
+        if len(non_none) != 1:
+            raise ValueError("Exactly one of person_ids, company_ids, or opportunity_ids required")
+
+        name, ids = non_none[0]
+        result: dict[PersonId | CompanyId | OpportunityId, list[FieldValue]] = {}
+
+        for entity_id in ids:
+            try:
+                if name == "person_ids":
+                    result[entity_id] = self.list(person_id=cast(PersonId, entity_id))
+                elif name == "company_ids":
+                    result[entity_id] = self.list(company_id=cast(CompanyId, entity_id))
+                else:
+                    result[entity_id] = self.list(opportunity_id=cast(OpportunityId, entity_id))
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                # skip: continue without this entity
+            except Exception as e:
+                if on_error == "raise":
+                    # Preserve status_code if available
+                    status_code = getattr(e, "status_code", None)
+                    raise AffinityError(
+                        f"Failed to get field values for {name[:-1]} {entity_id}: {e}",
+                        status_code=status_code,
+                    ) from e
+
+        return result
 
 
 # =============================================================================
@@ -1530,6 +1725,58 @@ class AsyncFieldService:
 
         return bool(result.get("success", False))
 
+    async def exists(self, field_id: AnyFieldId) -> bool:
+        """
+        Check if a field exists.
+
+        Useful for validation before setting field values.
+
+        Note: This fetches all fields and checks locally. If your code calls
+        exists() frequently in a loop, consider caching the result of fields.list()
+        yourself.
+
+        Args:
+            field_id: The field ID to check
+
+        Returns:
+            True if the field exists, False otherwise
+
+        Example:
+            if await client.fields.exists(FieldId("field-123")):
+                await client.field_values.create(...)
+        """
+        target_id = FieldId(field_id) if not isinstance(field_id, FieldId) else field_id
+        fields = await self.list()
+        return any(f.id == target_id for f in fields)
+
+    async def get_by_name(self, name: str) -> FieldMetadata | None:
+        """
+        Find a field by its display name.
+
+        Uses case-insensitive matching (casefold for i18n support).
+
+        Note: This fetches all fields and searches locally. If your code calls
+        get_by_name() frequently in a loop, consider caching the result of
+        fields.list() yourself.
+
+        Args:
+            name: The field display name to search for
+
+        Returns:
+            FieldMetadata if found, None otherwise
+
+        Example:
+            field = await client.fields.get_by_name("Primary Email Status")
+            if field:
+                fv = await client.field_values.get_for_entity(field.id, person_id=pid)
+        """
+        fields = await self.list()
+        name_folded = name.strip().casefold()  # Strip whitespace, then casefold for i18n
+        for field in fields:
+            if field.name.casefold() == name_folded:
+                return field
+        return None
+
 
 class AsyncFieldValueService:
     """Async service for managing field values (V1 API)."""
@@ -1545,8 +1792,8 @@ class AsyncFieldValueService:
         opportunity_id: OpportunityId | None = None,
         list_entry_id: ListEntryId | None = None,
     ) -> builtins.list[FieldValue]:
-        provided = [
-            name
+        provided = {
+            name: value
             for name, value in (
                 ("person_id", person_id),
                 ("company_id", company_id),
@@ -1554,13 +1801,17 @@ class AsyncFieldValueService:
                 ("list_entry_id", list_entry_id),
             )
             if value is not None
-        ]
-        if len(provided) != 1:
-            joined = ", ".join(provided) if provided else "(none)"
+        }
+        if len(provided) == 0:
             raise ValueError(
-                "FieldValueService.list() requires exactly one of: person_id, "
-                "company_id, opportunity_id, or list_entry_id; "
-                f"got {len(provided)}: {joined}"
+                "field_values.list() requires exactly one entity ID. "
+                "Example: client.field_values.list(person_id=PersonId(123))"
+            )
+        if len(provided) > 1:
+            raise ValueError(
+                f"field_values.list() accepts only one entity ID, "
+                f"but received {len(provided)}: {', '.join(provided.keys())}. "
+                "Call list() separately for each entity."
             )
 
         params: dict[str, Any] = {}
@@ -1604,6 +1855,148 @@ class AsyncFieldValueService:
     async def delete(self, field_value_id: FieldValueId) -> bool:
         result = await self._client.delete(f"/field-values/{field_value_id}", v1=True)
         return bool(result.get("success", False))
+
+    async def get_for_entity(
+        self,
+        field_id: str | FieldId,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        list_entry_id: ListEntryId | None = None,
+        default: T = _UNSET,
+    ) -> FieldValue | T | None:
+        """
+        Get a specific field value for an entity.
+
+        Convenience method that fetches all field values and returns the one
+        matching field_id. Like dict.get(), returns None (or default) if not found.
+
+        Note: This still makes one API call to fetch all field values for the entity.
+        For entities with hundreds of field values, prefer using ``list()`` directly
+        if you need to inspect multiple fields.
+
+        Args:
+            field_id: The field to look up (accepts str or FieldId for convenience)
+            person_id: Person entity (exactly one entity ID required)
+            company_id: Company entity
+            opportunity_id: Opportunity entity
+            list_entry_id: List entry entity
+            default: Value to return if field not found (default: None)
+
+        Returns:
+            FieldValue if the field has a value, default otherwise.
+            Note: A FieldValue with ``.value is None`` still counts as "present" (explicit empty).
+
+        Example:
+            # Check if a person has a specific field value
+            status = await client.field_values.get_for_entity(
+                "field-123",  # or FieldId("field-123")
+                person_id=PersonId(456),
+            )
+            if status is None:
+                print("Field is empty")
+            else:
+                print(f"Value: {status.value}")
+
+            # With default value
+            status = await client.field_values.get_for_entity(
+                "field-123",
+                person_id=PersonId(456),
+                default="N/A",
+            )
+        """
+        all_values = await self.list(
+            person_id=person_id,
+            company_id=company_id,
+            opportunity_id=opportunity_id,
+            list_entry_id=list_entry_id,
+        )
+        # Normalize field_id for comparison (handles both str and FieldId)
+        target_id = FieldId(field_id) if not isinstance(field_id, FieldId) else field_id
+        for fv in all_values:
+            if fv.field_id == target_id:
+                return fv
+        return None if default is _UNSET else default
+
+    async def list_batch(
+        self,
+        person_ids: Sequence[PersonId] | None = None,
+        company_ids: Sequence[CompanyId] | None = None,
+        opportunity_ids: Sequence[OpportunityId] | None = None,
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+        concurrency: int | None = 10,
+    ) -> dict[PersonId | CompanyId | OpportunityId, builtins.list[FieldValue]]:
+        """
+        Get field values for multiple entities concurrently.
+
+        Uses asyncio.gather() for concurrent API calls, bounded by semaphore.
+        Significant speedup compared to sequential sync version.
+
+        Args:
+            person_ids: Sequence of person IDs (mutually exclusive with others)
+            company_ids: Sequence of company IDs
+            opportunity_ids: Sequence of opportunity IDs
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+            concurrency: Maximum concurrent requests. Default 10. Set to None for unlimited.
+
+        Returns:
+            Dict mapping entity_id -> list of field values.
+            Note: Dict ordering is not guaranteed; do not rely on insertion order.
+
+        Example:
+            # Check which persons have a specific field set
+            fv_map = await client.field_values.list_batch(person_ids=person_ids)
+            for person_id, field_values in fv_map.items():
+                has_status = any(fv.field_id == target_field for fv in field_values)
+        """
+        # Validate exactly one sequence provided
+        provided = [
+            ("person_ids", person_ids),
+            ("company_ids", company_ids),
+            ("opportunity_ids", opportunity_ids),
+        ]
+        non_none = [(name, seq) for name, seq in provided if seq is not None]
+        if len(non_none) != 1:
+            raise ValueError("Exactly one of person_ids, company_ids, or opportunity_ids required")
+
+        name, ids = non_none[0]
+        semaphore = asyncio.Semaphore(concurrency) if concurrency else None
+
+        async def fetch_one(
+            entity_id: PersonId | CompanyId | OpportunityId,
+        ) -> tuple[PersonId | CompanyId | OpportunityId, builtins.list[FieldValue] | None]:
+            async def do_fetch() -> builtins.list[FieldValue]:
+                if name == "person_ids":
+                    return await self.list(person_id=cast(PersonId, entity_id))
+                elif name == "company_ids":
+                    return await self.list(company_id=cast(CompanyId, entity_id))
+                else:
+                    return await self.list(opportunity_id=cast(OpportunityId, entity_id))
+
+            try:
+                if semaphore:
+                    async with semaphore:
+                        values = await do_fetch()
+                else:
+                    values = await do_fetch()
+                return (entity_id, values)
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                return (entity_id, None)
+            except Exception as e:
+                if on_error == "raise":
+                    status_code = getattr(e, "status_code", None)
+                    raise AffinityError(
+                        f"Failed to get field values for {name[:-1]} {entity_id}: {e}",
+                        status_code=status_code,
+                    ) from e
+                return (entity_id, None)
+
+        results = await asyncio.gather(*[fetch_one(eid) for eid in ids])
+        return {eid: values for eid, values in results if values is not None}
 
 
 class AsyncFieldValueChangesService:

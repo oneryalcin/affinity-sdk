@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 import pytest
 
-from affinity.clients.http import ClientConfig, HTTPClient
+from affinity import AffinityError
+from affinity.clients.http import AsyncHTTPClient, ClientConfig, HTTPClient
 from affinity.models.entities import FieldCreate, FieldValueCreate
 from affinity.models.secondary import (
     InteractionCreate,
@@ -42,6 +43,8 @@ from affinity.models.types import (
 )
 from affinity.services.rate_limits import RateLimitService
 from affinity.services.v1_only import (
+    AsyncFieldService,
+    AsyncFieldValueService,
     AuthService,
     EntityFileService,
     FieldService,
@@ -552,3 +555,754 @@ def test_field_value_changes_service_validation_and_request_building() -> None:
         assert len(items) == 1
     finally:
         http.close()
+
+
+# =============================================================================
+# Enhancement 1: get_for_entity() tests (DX-001)
+# =============================================================================
+
+
+@pytest.mark.req("DX-001")
+def test_field_value_service_get_for_entity_found() -> None:
+    """Test get_for_entity returns matching FieldValue when found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "fieldId": "field-100", "entityId": 1, "value": "active"},
+                        {"id": 2, "fieldId": "field-200", "entityId": 1, "value": "other"},
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        result = svc.get_for_entity(FieldId("field-100"), person_id=PersonId(1))
+        assert result is not None
+        assert result.id == 1
+        assert result.value == "active"
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-001")
+def test_field_value_service_get_for_entity_not_found_returns_none() -> None:
+    """Test get_for_entity returns None when field not found (no default)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "fieldId": "field-999", "entityId": 1, "value": "x"},
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        result = svc.get_for_entity(FieldId("field-100"), person_id=PersonId(1))
+        assert result is None
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-001")
+def test_field_value_service_get_for_entity_with_default() -> None:
+    """Test get_for_entity returns default when field not found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(200, json={"data": []}, request=request)
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        result = svc.get_for_entity(FieldId("field-100"), person_id=PersonId(1), default="N/A")
+        assert result == "N/A"
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-001")
+def test_field_value_service_get_for_entity_accepts_string_field_id() -> None:
+    """Test get_for_entity accepts string field_id and normalizes it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "fieldId": "field-100", "entityId": 1, "value": "found"},
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        # Test with plain string "field-100"
+        result = svc.get_for_entity("field-100", person_id=PersonId(1))
+        assert result is not None
+        assert result.value == "found"
+    finally:
+        http.close()
+
+
+# =============================================================================
+# Enhancement 2: list_batch() tests (DX-002)
+# =============================================================================
+
+
+@pytest.mark.req("DX-002")
+def test_field_value_service_list_batch_success() -> None:
+    """Test list_batch returns dict mapping entity_id -> field values."""
+    call_count = {"value": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["value"] += 1
+        if request.method == "GET" and request.url.path == "/field-values":
+            person_id = request.url.params.get("person_id")
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": call_count["value"],
+                            "fieldId": "field-1",
+                            "entityId": int(person_id),
+                            "value": f"value-{person_id}",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        result = svc.list_batch(person_ids=[PersonId(1), PersonId(2), PersonId(3)])
+
+        # Should have 3 entries
+        assert len(result) == 3
+        assert PersonId(1) in result
+        assert PersonId(2) in result
+        assert PersonId(3) in result
+
+        # Should have made 3 API calls (one per entity)
+        assert call_count["value"] == 3
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-002")
+def test_field_value_service_list_batch_on_error_raise() -> None:
+    """Test list_batch raises on error with on_error='raise'."""
+    call_count = {"value": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["value"] += 1
+        if request.method == "GET" and request.url.path == "/field-values":
+            person_id = request.url.params.get("person_id")
+            if person_id == "2":
+                return httpx.Response(404, json={"message": "not found"}, request=request)
+            return httpx.Response(
+                200,
+                json={"data": [{"id": 1, "fieldId": "field-1", "entityId": 1, "value": "x"}]},
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        with pytest.raises(AffinityError):
+            svc.list_batch(person_ids=[PersonId(1), PersonId(2), PersonId(3)], on_error="raise")
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-002")
+def test_field_value_service_list_batch_on_error_skip() -> None:
+    """Test list_batch skips failed entities with on_error='skip'."""
+    call_count = {"value": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["value"] += 1
+        if request.method == "GET" and request.url.path == "/field-values":
+            person_id = request.url.params.get("person_id")
+            if person_id == "2":
+                return httpx.Response(404, json={"message": "not found"}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": call_count["value"],
+                            "fieldId": "field-1",
+                            "entityId": int(person_id),
+                            "value": "x",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldValueService(http)
+        result = svc.list_batch(person_ids=[PersonId(1), PersonId(2), PersonId(3)], on_error="skip")
+
+        # Should only have 2 entries (entity 2 was skipped)
+        assert len(result) == 2
+        assert PersonId(1) in result
+        assert PersonId(2) not in result
+        assert PersonId(3) in result
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-002")
+def test_field_value_service_list_batch_requires_exactly_one_sequence() -> None:
+    """Test list_batch raises when zero or multiple sequences provided."""
+    http = HTTPClient(ClientConfig(api_key="test", max_retries=0))
+    try:
+        svc = FieldValueService(http)
+
+        # No sequences provided
+        with pytest.raises(ValueError, match="Exactly one"):
+            svc.list_batch()
+
+        # Multiple sequences provided
+        with pytest.raises(ValueError, match="Exactly one"):
+            svc.list_batch(person_ids=[PersonId(1)], company_ids=[CompanyId(2)])
+    finally:
+        http.close()
+
+
+# =============================================================================
+# Enhancement 8: fields.exists() and get_by_name() tests (DX-008)
+# =============================================================================
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_exists_returns_true_when_found() -> None:
+    """Test exists() returns True when field exists."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                        {
+                            "id": "field-200",
+                            "name": "Owner",
+                            "valueType": 0,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        assert svc.exists(FieldId("field-100")) is True
+        assert svc.exists(FieldId("field-200")) is True
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_exists_returns_false_when_not_found() -> None:
+    """Test exists() returns False when field does not exist."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        assert svc.exists(FieldId("field-999")) is False
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_get_by_name_found() -> None:
+    """Test get_by_name() returns FieldMetadata when found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                        {
+                            "id": "field-200",
+                            "name": "Primary Owner",
+                            "valueType": 0,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        result = svc.get_by_name("Status")
+        assert result is not None
+        assert result.id == FieldId("field-100")
+        assert result.name == "Status"
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_get_by_name_case_insensitive() -> None:
+    """Test get_by_name() is case-insensitive (uses casefold)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Primary Email Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        # Test various case variations
+        assert svc.get_by_name("PRIMARY EMAIL STATUS") is not None
+        assert svc.get_by_name("primary email status") is not None
+        assert svc.get_by_name("Primary Email Status") is not None
+        assert svc.get_by_name("  Primary Email Status  ") is not None  # Whitespace stripped
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_get_by_name_not_found() -> None:
+    """Test get_by_name() returns None when field not found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        assert svc.get_by_name("NonExistent Field") is None
+    finally:
+        http.close()
+
+
+@pytest.mark.req("DX-008")
+def test_field_service_get_by_name_returns_first_match() -> None:
+    """Test get_by_name() returns first match when multiple fields have same name."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                        {
+                            "id": "field-200",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = HTTPClient(ClientConfig(api_key="test", transport=transport, max_retries=0))
+    try:
+        svc = FieldService(http)
+        # When multiple fields have the same name, returns first match
+        field = svc.get_by_name("Status")
+
+        assert field is not None
+        # First matching field is returned
+        assert field.id == FieldId("field-100")
+    finally:
+        http.close()
+
+
+# =============================================================================
+# Async Tests for Enhancement 1: get_for_entity() (DX-001)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-001")
+async def test_async_field_value_service_get_for_entity_found() -> None:
+    """Test async get_for_entity returns matching FieldValue when found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "fieldId": "field-100", "entityId": 1, "value": "active"},
+                        {"id": 2, "fieldId": "field-200", "entityId": 1, "value": "other"},
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldValueService(http)
+        result = await svc.get_for_entity(FieldId("field-100"), person_id=PersonId(1))
+        assert result is not None
+        assert result.id == 1
+        assert result.value == "active"
+    finally:
+        await http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-001")
+async def test_async_field_value_service_get_for_entity_with_default() -> None:
+    """Test async get_for_entity returns default when field not found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            return httpx.Response(200, json={"data": []}, request=request)
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldValueService(http)
+        result = await svc.get_for_entity(
+            FieldId("field-100"), person_id=PersonId(1), default="N/A"
+        )
+        assert result == "N/A"
+    finally:
+        await http.close()
+
+
+# =============================================================================
+# Async Tests for Enhancement 2: list_batch() (DX-002)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-002")
+async def test_async_field_value_service_list_batch_success() -> None:
+    """Test async list_batch returns dict mapping entity_id -> field values."""
+    call_count = {"value": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["value"] += 1
+        if request.method == "GET" and request.url.path == "/field-values":
+            person_id = request.url.params.get("person_id")
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": call_count["value"],
+                            "fieldId": "field-1",
+                            "entityId": int(person_id),
+                            "value": f"value-{person_id}",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldValueService(http)
+        result = await svc.list_batch(person_ids=[PersonId(1), PersonId(2), PersonId(3)])
+
+        # Should have 3 entries
+        assert len(result) == 3
+        assert PersonId(1) in result
+        assert PersonId(2) in result
+        assert PersonId(3) in result
+    finally:
+        await http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-002")
+async def test_async_field_value_service_list_batch_on_error_skip() -> None:
+    """Test async list_batch skips failed entities with on_error='skip'."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/field-values":
+            person_id = request.url.params.get("person_id")
+            if person_id == "2":
+                return httpx.Response(404, json={"message": "not found"}, request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 1,
+                            "fieldId": "field-1",
+                            "entityId": int(person_id),
+                            "value": "x",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldValueService(http)
+        result = await svc.list_batch(
+            person_ids=[PersonId(1), PersonId(2), PersonId(3)], on_error="skip"
+        )
+
+        # Should only have 2 entries (entity 2 was skipped)
+        assert len(result) == 2
+        assert PersonId(1) in result
+        assert PersonId(2) not in result
+        assert PersonId(3) in result
+    finally:
+        await http.close()
+
+
+# =============================================================================
+# Async Tests for Enhancement 8: exists() and get_by_name() (DX-008)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-008")
+async def test_async_field_service_exists_returns_true_when_found() -> None:
+    """Test async exists() returns True when field exists."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldService(http)
+        assert await svc.exists(FieldId("field-100")) is True
+    finally:
+        await http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-008")
+async def test_async_field_service_exists_returns_false_when_not_found() -> None:
+    """Test async exists() returns False when field does not exist."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldService(http)
+        assert await svc.exists(FieldId("field-999")) is False
+    finally:
+        await http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-008")
+async def test_async_field_service_get_by_name_found() -> None:
+    """Test async get_by_name() returns FieldMetadata when found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldService(http)
+        result = await svc.get_by_name("Status")
+        assert result is not None
+        assert result.id == FieldId("field-100")
+        assert result.name == "Status"
+    finally:
+        await http.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-008")
+async def test_async_field_service_get_by_name_not_found() -> None:
+    """Test async get_by_name() returns None when field not found."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/fields":
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "field-100",
+                            "name": "Status",
+                            "valueType": 2,
+                            "allowsMultiple": False,
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    http = AsyncHTTPClient(ClientConfig(api_key="test", async_transport=transport, max_retries=0))
+    try:
+        svc = AsyncFieldService(http)
+        assert await svc.get_by_name("NonExistent Field") is None
+    finally:
+        await http.close()

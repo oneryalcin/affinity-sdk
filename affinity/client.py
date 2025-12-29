@@ -6,9 +6,12 @@ Provides a unified interface to all Affinity API functionality.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import importlib
 import importlib.util
 import os
+import warnings
 from typing import Any, Literal, cast
 
 import httpx
@@ -237,6 +240,10 @@ class Affinity:
         )
         self._http = HTTPClient(config)
 
+        # Resource management tracking
+        self._closed = False
+        self._entered_context = False
+
         # Initialize services
         self._companies: CompanyService | None = None
         self._persons: PersonService | None = None
@@ -293,6 +300,7 @@ class Affinity:
         )
 
     def __enter__(self) -> Affinity:
+        self._entered_context = True
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -300,7 +308,23 @@ class Affinity:
 
     def close(self) -> None:
         """Close the HTTP client and release resources."""
-        self._http.close()
+        if not self._closed:
+            self._http.close()
+            self._closed = True
+
+    def __del__(self) -> None:
+        """Warn if client was not properly closed."""
+        if not self._closed and not self._entered_context:
+            warnings.warn(
+                "Affinity client was not closed. "
+                "Use 'with Affinity.from_env() as client:' "
+                "or call client.close() when done.",
+                ResourceWarning,
+                stacklevel=2,
+            )
+            # Still close to prevent actual resource leaks
+            with contextlib.suppress(Exception):
+                self.close()
 
     # =========================================================================
     # Service Properties (lazy initialization)
@@ -530,6 +554,11 @@ class AsyncAffinity:
             policies=policies or Policies(),
         )
         self._http = AsyncHTTPClient(config)
+
+        # Resource management tracking
+        self._closed = False
+        self._entered_context = False
+
         self._companies: AsyncCompanyService | None = None
         self._persons: AsyncPersonService | None = None
         self._opportunities: AsyncOpportunityService | None = None
@@ -698,6 +727,7 @@ class AsyncAffinity:
 
     async def __aenter__(self) -> AsyncAffinity:
         """Enter an async context and return this client."""
+        self._entered_context = True
         return self
 
     async def __aexit__(self, *args: Any) -> None:
@@ -706,7 +736,28 @@ class AsyncAffinity:
 
     async def close(self) -> None:
         """Close the HTTP client."""
-        await self._http.close()
+        if not self._closed:
+            await self._http.close()
+            self._closed = True
+
+    def __del__(self) -> None:
+        """Warn if client was not properly closed."""
+        if not self._closed and not self._entered_context:
+            warnings.warn(
+                "AsyncAffinity client was not closed. "
+                "Use 'async with AsyncAffinity.from_env() as client:' "
+                "or call await client.close() when done.",
+                ResourceWarning,
+                stacklevel=2,
+            )
+            # Schedule close if loop is running; otherwise silently skip
+            # (can't await in __del__, and sync close would block)
+            # Use call_soon_threadsafe for thread-safety in multi-threaded loops
+            try:
+                loop = asyncio.get_running_loop()
+                loop.call_soon_threadsafe(lambda: asyncio.create_task(self._http.close()))
+            except RuntimeError:
+                pass  # No running loop - skip async cleanup
 
     def clear_cache(self) -> None:
         """Clear the response cache."""

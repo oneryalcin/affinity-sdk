@@ -54,6 +54,7 @@ from .pagination import (
     PageIterator,
     PaginatedResponse,
     PaginationInfo,
+    PaginationProgress,
 )
 
 # Rate limit snapshot (unified)
@@ -153,6 +154,7 @@ __all__ = [
     "Grant",
     # Pagination
     "PaginationInfo",
+    "PaginationProgress",
     "PaginatedResponse",
     "PageIterator",
     "AsyncPageIterator",

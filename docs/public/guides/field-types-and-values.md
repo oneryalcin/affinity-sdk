@@ -56,6 +56,28 @@ with Affinity(api_key="your-key") as client:
 
 Invalid formats raise `ValueError` immediately at construction time.
 
+### FieldId comparison semantics
+
+`FieldId` normalizes values at construction time, enabling direct equality comparisons without manual string conversion:
+
+```python
+from affinity.types import FieldId
+
+# All these are equal - normalized to "field-123"
+assert FieldId(123) == FieldId("123") == FieldId("field-123")
+
+# Works in sets and dicts
+seen = {FieldId(123)}
+assert FieldId("field-123") in seen  # True
+
+# Compare API response IDs directly
+field_id = FieldId(123)
+if field_id == api_response_field_id:  # No str() conversion needed
+    process(field_id)
+```
+
+This normalization eliminates common comparison bugs where `FieldId(123) != FieldId("field-123")` due to type differences.
+
 ### V1-only writes and numeric field IDs
 
 The SDK uses V2 field metadata endpoints for reads. Some write operations still use V1

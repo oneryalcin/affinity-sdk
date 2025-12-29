@@ -8,20 +8,30 @@ is available via list entries.
 from __future__ import annotations
 
 import builtins
-from collections.abc import AsyncIterator, Iterator
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncIterator, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
+from ..exceptions import AffinityError
 from ..models.entities import (
+    Company,
     Opportunity,
     OpportunityCreate,
     OpportunityUpdate,
+    Person,
 )
 from ..models.pagination import AsyncPageIterator, PageIterator, PaginatedResponse, PaginationInfo
-from ..models.types import ListId, OpportunityId
+from ..models.types import CompanyId, ListId, OpportunityId, PersonId
 from .lists import AsyncListEntryService, ListEntryService
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
+
+
+class OpportunityAssociations(NamedTuple):
+    """Person and company associations for an opportunity."""
+
+    person_ids: builtins.list[PersonId]
+    company_ids: builtins.list[CompanyId]
 
 
 class OpportunityService:
@@ -62,6 +72,13 @@ class OpportunityService:
 
         Includes association IDs and (when present) list entries, which are not
         always included in the default `get()` response.
+
+        See Also:
+            - :meth:`get_associated_person_ids`: Get just person IDs (single API call)
+            - :meth:`get_associated_people`: Get full Person objects
+            - :meth:`get_associated_company_ids`: Get just company IDs (single API call)
+            - :meth:`get_associated_companies`: Get full Company objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
         """
         # Uses the v1 endpoint because it returns a fuller payload (including
         # association IDs and, when present, list entries).
@@ -267,6 +284,292 @@ class OpportunityService:
         result = self._client.delete(f"/opportunities/{opportunity_id}", v1=True)
         return bool(result.get("success", False))
 
+    # =========================================================================
+    # Association Methods (V1 API)
+    # =========================================================================
+
+    def get_associated_person_ids(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[PersonId]:
+        """
+        Get associated person IDs for an opportunity.
+
+        V1-only: V2 does not expose opportunity -> person associations.
+        Uses GET `/opportunities/{id}` (V1) and returns `person_ids`.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of person IDs to return
+
+        Returns:
+            List of PersonId values associated with this opportunity
+
+        See Also:
+            - :meth:`get_associated_people`: Returns full Person objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
+        """
+        data = self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        # for consistency with CompanyService pattern that handles "organization" wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+        person_ids = None
+        if isinstance(source, dict):
+            person_ids = source.get("person_ids") or source.get("personIds")
+
+        if not isinstance(person_ids, list):
+            return []
+
+        ids = [PersonId(int(pid)) for pid in person_ids if pid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    def get_associated_people(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Get associated people for an opportunity.
+
+        V1-only exception. Performs one V1 request to get person IDs,
+        then one V1 request per person to fetch full Person objects.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of people to return
+
+        Returns:
+            List of Person objects associated with this opportunity
+
+        Note:
+            For large associations (N > 50), be aware of rate limits.
+            This method makes 1 + N API calls where N is the number of people.
+        """
+        person_ids = self.get_associated_person_ids(opportunity_id, max_results=max_results)
+
+        people: builtins.list[Person] = []
+        for person_id in person_ids:
+            # Use V1 for consistency with CompanyService pattern
+            data = self._client.get(f"/persons/{person_id}", v1=True)
+            people.append(Person.model_validate(data))
+        return people
+
+    def get_associated_company_ids(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[CompanyId]:
+        """
+        Get associated company IDs for an opportunity.
+
+        V1-only: V2 does not expose opportunity -> company associations.
+        Uses GET `/opportunities/{id}` (V1) and returns `organization_ids`.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of company IDs to return
+
+        Returns:
+            List of CompanyId values associated with this opportunity
+
+        See Also:
+            - :meth:`get_associated_companies`: Returns full Company objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
+        """
+        data = self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        # for consistency with CompanyService pattern that handles "organization" wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+        company_ids = None
+        if isinstance(source, dict):
+            company_ids = source.get("organization_ids") or source.get("organizationIds")
+
+        if not isinstance(company_ids, list):
+            return []
+
+        ids = [CompanyId(int(cid)) for cid in company_ids if cid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    def get_associated_companies(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Company]:
+        """
+        Get associated companies for an opportunity.
+
+        V1-only exception. Performs one V1 request to get company IDs,
+        then one V1 request per company to fetch full Company objects.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of companies to return
+
+        Returns:
+            List of Company objects associated with this opportunity
+
+        Note:
+            For large associations (N > 50), be aware of rate limits.
+            This method makes 1 + N API calls where N is the number of companies.
+        """
+        company_ids = self.get_associated_company_ids(opportunity_id, max_results=max_results)
+
+        companies: builtins.list[Company] = []
+        for company_id in company_ids:
+            # V1 uses "organizations" terminology
+            data = self._client.get(f"/organizations/{company_id}", v1=True)
+            companies.append(Company.model_validate(data))
+        return companies
+
+    def get_associations(
+        self,
+        opportunity_id: OpportunityId,
+    ) -> OpportunityAssociations:
+        """
+        Get both person and company associations in a single V1 call.
+
+        Use this when you need both types of associations to avoid
+        duplicate API calls from separate get_associated_*_ids() calls.
+
+        Args:
+            opportunity_id: The opportunity ID
+
+        Returns:
+            OpportunityAssociations named tuple with person_ids and company_ids
+
+        Example:
+            assoc = client.opportunities.get_associations(opp_id)
+            print(assoc.person_ids)   # IDE autocomplete works
+            print(assoc.company_ids)  # IDE autocomplete works
+        """
+        data = self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+
+        person_ids: builtins.list[PersonId] = []
+        company_ids: builtins.list[CompanyId] = []
+
+        if isinstance(source, dict):
+            raw_person_ids = source.get("person_ids") or source.get("personIds")
+            raw_company_ids = source.get("organization_ids") or source.get("organizationIds")
+
+            if isinstance(raw_person_ids, list):
+                person_ids = [PersonId(int(pid)) for pid in raw_person_ids if pid is not None]
+            if isinstance(raw_company_ids, list):
+                company_ids = [CompanyId(int(cid)) for cid in raw_company_ids if cid is not None]
+
+        return OpportunityAssociations(person_ids=person_ids, company_ids=company_ids)
+
+    def get_associated_person_ids_batch(
+        self,
+        opportunity_ids: Sequence[OpportunityId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[OpportunityId, builtins.list[PersonId]]:
+        """
+        Get person associations for multiple opportunities.
+
+        Makes one V1 API call per opportunity. Useful for iterating list entries
+        where V2 returns empty person_ids.
+
+        Args:
+            opportunity_ids: Sequence of opportunity IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping opportunity_id -> list of person_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails. The exception
+                includes the failing opportunity_id in its context.
+
+        Example:
+            # Get all persons from an opportunity list
+            opp_ids = [entry.entity.id for entry in client.lists.entries(list_id).all()]
+            associations = client.opportunities.get_associated_person_ids_batch(opp_ids)
+            all_person_ids = set()
+            for person_ids in associations.values():
+                all_person_ids.update(person_ids)
+        """
+        result: dict[OpportunityId, builtins.list[PersonId]] = {}
+        for opp_id in opportunity_ids:
+            try:
+                result[opp_id] = self.get_associated_person_ids(opp_id)
+            except AffinityError:
+                # Re-raise SDK errors directly - they already have good context
+                if on_error == "raise":
+                    raise
+                # skip: continue without this opportunity
+            except Exception as e:
+                if on_error == "raise":
+                    # Wrap non-SDK errors with context, preserving chain
+                    raise AffinityError(
+                        f"Failed to get associations for opportunity {opp_id}: {e}"
+                    ) from e
+                # skip: continue without this opportunity
+        return result
+
+    def get_associated_company_ids_batch(
+        self,
+        opportunity_ids: Sequence[OpportunityId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[OpportunityId, builtins.list[CompanyId]]:
+        """
+        Get company associations for multiple opportunities.
+
+        Makes one V1 API call per opportunity. Useful for iterating list entries
+        where V2 returns empty company_ids.
+
+        Args:
+            opportunity_ids: Sequence of opportunity IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping opportunity_id -> list of company_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails. The exception
+                includes the failing opportunity_id in its context.
+
+        Example:
+            # Get all companies from an opportunity list
+            opp_ids = [entry.entity.id for entry in client.lists.entries(list_id).all()]
+            associations = client.opportunities.get_associated_company_ids_batch(opp_ids)
+            all_company_ids = set()
+            for company_ids in associations.values():
+                all_company_ids.update(company_ids)
+        """
+        result: dict[OpportunityId, builtins.list[CompanyId]] = {}
+        for opp_id in opportunity_ids:
+            try:
+                result[opp_id] = self.get_associated_company_ids(opp_id)
+            except AffinityError:
+                # Re-raise SDK errors directly - they already have good context
+                if on_error == "raise":
+                    raise
+                # skip: continue without this opportunity
+            except Exception as e:
+                if on_error == "raise":
+                    # Wrap non-SDK errors with context, preserving chain
+                    raise AffinityError(
+                        f"Failed to get company associations for opportunity {opp_id}: {e}"
+                    ) from e
+                # skip: continue without this opportunity
+        return result
+
 
 class AsyncOpportunityService:
     """Async version of OpportunityService (TR-009)."""
@@ -293,6 +596,13 @@ class AsyncOpportunityService:
 
         Includes association IDs and (when present) list entries, which are not
         always included in the default `get()` response.
+
+        See Also:
+            - :meth:`get_associated_person_ids`: Get just person IDs (single API call)
+            - :meth:`get_associated_people`: Get full Person objects
+            - :meth:`get_associated_company_ids`: Get just company IDs (single API call)
+            - :meth:`get_associated_companies`: Get full Company objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
         """
         # Uses the v1 endpoint because it returns a fuller payload (including
         # association IDs and, when present, list entries).
@@ -499,3 +809,285 @@ class AsyncOpportunityService:
         """
         result = await self._client.delete(f"/opportunities/{opportunity_id}", v1=True)
         return bool(result.get("success", False))
+
+    # =========================================================================
+    # Association Methods (V1 API)
+    # =========================================================================
+
+    async def get_associated_person_ids(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[PersonId]:
+        """
+        Get associated person IDs for an opportunity.
+
+        V1-only: V2 does not expose opportunity -> person associations.
+        Uses GET `/opportunities/{id}` (V1) and returns `person_ids`.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of person IDs to return
+
+        Returns:
+            List of PersonId values associated with this opportunity
+
+        See Also:
+            - :meth:`get_associated_people`: Returns full Person objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
+        """
+        data = await self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+        person_ids = None
+        if isinstance(source, dict):
+            person_ids = source.get("person_ids") or source.get("personIds")
+
+        if not isinstance(person_ids, list):
+            return []
+
+        ids = [PersonId(int(pid)) for pid in person_ids if pid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    async def get_associated_people(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Person]:
+        """
+        Get associated people for an opportunity.
+
+        V1-only exception. Performs one V1 request to get person IDs,
+        then one V1 request per person to fetch full Person objects.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of people to return
+
+        Returns:
+            List of Person objects associated with this opportunity
+
+        Note:
+            For large associations (N > 50), be aware of rate limits.
+            This method makes 1 + N API calls where N is the number of people.
+        """
+        person_ids = await self.get_associated_person_ids(opportunity_id, max_results=max_results)
+
+        people: builtins.list[Person] = []
+        for person_id in person_ids:
+            data = await self._client.get(f"/persons/{person_id}", v1=True)
+            people.append(Person.model_validate(data))
+        return people
+
+    async def get_associated_company_ids(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[CompanyId]:
+        """
+        Get associated company IDs for an opportunity.
+
+        V1-only: V2 does not expose opportunity -> company associations.
+        Uses GET `/opportunities/{id}` (V1) and returns `organization_ids`.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of company IDs to return
+
+        Returns:
+            List of CompanyId values associated with this opportunity
+
+        See Also:
+            - :meth:`get_associated_companies`: Returns full Company objects
+            - :meth:`get_associations`: Get both person and company IDs in one call
+        """
+        data = await self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+        company_ids = None
+        if isinstance(source, dict):
+            company_ids = source.get("organization_ids") or source.get("organizationIds")
+
+        if not isinstance(company_ids, list):
+            return []
+
+        ids = [CompanyId(int(cid)) for cid in company_ids if cid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    async def get_associated_companies(
+        self,
+        opportunity_id: OpportunityId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[Company]:
+        """
+        Get associated companies for an opportunity.
+
+        V1-only exception. Performs one V1 request to get company IDs,
+        then one V1 request per company to fetch full Company objects.
+
+        Args:
+            opportunity_id: The opportunity ID
+            max_results: Maximum number of companies to return
+
+        Returns:
+            List of Company objects associated with this opportunity
+
+        Note:
+            For large associations (N > 50), be aware of rate limits.
+            This method makes 1 + N API calls where N is the number of companies.
+        """
+        company_ids = await self.get_associated_company_ids(opportunity_id, max_results=max_results)
+
+        companies: builtins.list[Company] = []
+        for company_id in company_ids:
+            data = await self._client.get(f"/organizations/{company_id}", v1=True)
+            companies.append(Company.model_validate(data))
+        return companies
+
+    async def get_associations(
+        self,
+        opportunity_id: OpportunityId,
+    ) -> OpportunityAssociations:
+        """
+        Get both person and company associations in a single V1 call.
+
+        Use this when you need both types of associations to avoid
+        duplicate API calls from separate get_associated_*_ids() calls.
+
+        Args:
+            opportunity_id: The opportunity ID
+
+        Returns:
+            OpportunityAssociations named tuple with person_ids and company_ids
+
+        Example:
+            assoc = await client.opportunities.get_associations(opp_id)
+            print(assoc.person_ids)   # IDE autocomplete works
+            print(assoc.company_ids)  # IDE autocomplete works
+        """
+        data = await self._client.get(f"/opportunities/{opportunity_id}", v1=True)
+        # Defensive: V1 returns directly (not wrapped), but handle potential wrapper
+        opportunity = data.get("opportunity") if isinstance(data, dict) else None
+        source = opportunity if isinstance(opportunity, dict) else data
+
+        person_ids: builtins.list[PersonId] = []
+        company_ids: builtins.list[CompanyId] = []
+
+        if isinstance(source, dict):
+            raw_person_ids = source.get("person_ids") or source.get("personIds")
+            raw_company_ids = source.get("organization_ids") or source.get("organizationIds")
+
+            if isinstance(raw_person_ids, list):
+                person_ids = [PersonId(int(pid)) for pid in raw_person_ids if pid is not None]
+            if isinstance(raw_company_ids, list):
+                company_ids = [CompanyId(int(cid)) for cid in raw_company_ids if cid is not None]
+
+        return OpportunityAssociations(person_ids=person_ids, company_ids=company_ids)
+
+    async def get_associated_person_ids_batch(
+        self,
+        opportunity_ids: Sequence[OpportunityId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[OpportunityId, builtins.list[PersonId]]:
+        """
+        Get person associations for multiple opportunities.
+
+        Makes one V1 API call per opportunity. Useful for iterating list entries
+        where V2 returns empty person_ids.
+
+        Args:
+            opportunity_ids: Sequence of opportunity IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping opportunity_id -> list of person_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails. The exception
+                includes the failing opportunity_id in its context.
+
+        Example:
+            # Get all persons from an opportunity list
+            opp_ids = [entry.entity.id async for entry in client.lists.entries(list_id).all()]
+            associations = await client.opportunities.get_associated_person_ids_batch(opp_ids)
+            all_person_ids = set()
+            for person_ids in associations.values():
+                all_person_ids.update(person_ids)
+        """
+        result: dict[OpportunityId, builtins.list[PersonId]] = {}
+        for opp_id in opportunity_ids:
+            try:
+                result[opp_id] = await self.get_associated_person_ids(opp_id)
+            except AffinityError:
+                # Re-raise SDK errors directly - they already have good context
+                if on_error == "raise":
+                    raise
+                # skip: continue without this opportunity
+            except Exception as e:
+                if on_error == "raise":
+                    # Wrap non-SDK errors with context, preserving chain
+                    raise AffinityError(
+                        f"Failed to get associations for opportunity {opp_id}: {e}"
+                    ) from e
+                # skip: continue without this opportunity
+        return result
+
+    async def get_associated_company_ids_batch(
+        self,
+        opportunity_ids: Sequence[OpportunityId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[OpportunityId, builtins.list[CompanyId]]:
+        """
+        Get company associations for multiple opportunities.
+
+        Makes one V1 API call per opportunity. Useful for iterating list entries
+        where V2 returns empty company_ids.
+
+        Args:
+            opportunity_ids: Sequence of opportunity IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping opportunity_id -> list of company_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails. The exception
+                includes the failing opportunity_id in its context.
+
+        Example:
+            # Get all companies from an opportunity list
+            opp_ids = [entry.entity.id async for entry in client.lists.entries(list_id).all()]
+            associations = await client.opportunities.get_associated_company_ids_batch(opp_ids)
+            all_company_ids = set()
+            for company_ids in associations.values():
+                all_company_ids.update(company_ids)
+        """
+        result: dict[OpportunityId, builtins.list[CompanyId]] = {}
+        for opp_id in opportunity_ids:
+            try:
+                result[opp_id] = await self.get_associated_company_ids(opp_id)
+            except AffinityError:
+                # Re-raise SDK errors directly - they already have good context
+                if on_error == "raise":
+                    raise
+                # skip: continue without this opportunity
+            except Exception as e:
+                if on_error == "raise":
+                    # Wrap non-SDK errors with context, preserving chain
+                    raise AffinityError(
+                        f"Failed to get company associations for opportunity {opp_id}: {e}"
+                    ) from e
+                # skip: continue without this opportunity
+        return result

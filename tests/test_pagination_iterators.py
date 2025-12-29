@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from affinity.models import AsyncPageIterator, PageIterator, PaginatedResponse
+from affinity import TooManyResultsError
+from affinity.models import AsyncPageIterator, PageIterator, PaginatedResponse, PaginationProgress
 
 
 def _page(data: list[int], next_cursor: str | None) -> PaginatedResponse[int]:
@@ -293,3 +294,193 @@ def test_page_iterator_stress_test_large_dataset() -> None:
 
     # Verify items are sequential
     assert result == list(range(len(result)))
+
+
+# =============================================================================
+# Tests for PaginationProgress callback (Enhancement 4)
+# =============================================================================
+
+
+@pytest.mark.req("DX-004")
+def test_page_iterator_pages_calls_on_progress() -> None:
+    """Verify on_progress callback is called with correct PaginationProgress."""
+    progress_calls: list[PaginationProgress] = []
+
+    def fetch_page(url: str | None) -> PaginatedResponse[int]:
+        if url is None:
+            return _page([1, 2, 3], "p2")
+        if url == "p2":
+            return _page([4, 5], "p3")
+        if url == "p3":
+            return _page([6], None)
+        raise AssertionError(f"unexpected url: {url}")
+
+    it = PageIterator(fetch_page)
+    pages = list(it.pages(on_progress=progress_calls.append))
+
+    assert len(progress_calls) == 3
+    assert len(pages) == 3
+
+    # First page
+    assert progress_calls[0].page_number == 1
+    assert progress_calls[0].items_in_page == 3
+    assert progress_calls[0].items_so_far == 3
+    assert progress_calls[0].has_next is True
+
+    # Second page
+    assert progress_calls[1].page_number == 2
+    assert progress_calls[1].items_in_page == 2
+    assert progress_calls[1].items_so_far == 5
+    assert progress_calls[1].has_next is True
+
+    # Third page
+    assert progress_calls[2].page_number == 3
+    assert progress_calls[2].items_in_page == 1
+    assert progress_calls[2].items_so_far == 6
+    assert progress_calls[2].has_next is False
+
+
+@pytest.mark.req("DX-004")
+def test_page_iterator_pages_no_callback() -> None:
+    """Verify pages() works without callback."""
+
+    def fetch_page(url: str | None) -> PaginatedResponse[int]:
+        if url is None:
+            return _page([1, 2], None)
+        raise AssertionError(f"unexpected url: {url}")
+
+    it = PageIterator(fetch_page)
+    pages = list(it.pages())
+    assert len(pages) == 1
+    assert pages[0].data == [1, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-004")
+async def test_async_page_iterator_pages_calls_on_progress() -> None:
+    """Verify async on_progress callback is called correctly."""
+    progress_calls: list[PaginationProgress] = []
+
+    async def fetch_page(url: str | None) -> PaginatedResponse[int]:
+        if url is None:
+            return _page([1, 2], "p2")
+        if url == "p2":
+            return _page([3, 4, 5], None)
+        raise AssertionError(f"unexpected url: {url}")
+
+    it = AsyncPageIterator(fetch_page)
+    pages: list[PaginatedResponse[int]] = []
+    async for page in it.pages(on_progress=progress_calls.append):
+        pages.append(page)
+
+    assert len(progress_calls) == 2
+    assert progress_calls[0].page_number == 1
+    assert progress_calls[0].items_so_far == 2
+    assert progress_calls[1].page_number == 2
+    assert progress_calls[1].items_so_far == 5
+
+
+# =============================================================================
+# Tests for TooManyResultsError and .all() limit (Enhancement 7)
+# =============================================================================
+
+
+@pytest.mark.req("DX-007")
+def test_page_iterator_all_returns_list() -> None:
+    """Verify .all() returns a list of all items."""
+
+    def fetch_page(url: str | None) -> PaginatedResponse[int]:
+        if url is None:
+            return _page([1, 2], "p2")
+        if url == "p2":
+            return _page([3, 4], None)
+        raise AssertionError(f"unexpected url: {url}")
+
+    it = PageIterator(fetch_page)
+    result = it.all()
+    assert result == [1, 2, 3, 4]
+    assert isinstance(result, list)
+
+
+@pytest.mark.req("DX-007")
+def test_page_iterator_all_raises_too_many_results_error() -> None:
+    """Verify .all() raises TooManyResultsError when limit exceeded."""
+    page_num = 0
+
+    def fetch_page(_url: str | None) -> PaginatedResponse[int]:
+        nonlocal page_num
+        page_num += 1
+        # Return pages with 100 items each
+        start = (page_num - 1) * 100
+        data = list(range(start, start + 100))
+        next_url = f"p{page_num + 1}" if page_num < 20 else None
+        return _page(data, next_url)
+
+    it = PageIterator(fetch_page)
+    with pytest.raises(TooManyResultsError, match="Exceeded limit=500 items"):
+        it.all(limit=500)
+
+
+@pytest.mark.req("DX-007")
+def test_page_iterator_all_respects_custom_limit() -> None:
+    """Verify .all() respects custom limit."""
+
+    def fetch_page(_url: str | None) -> PaginatedResponse[int]:
+        return _page([1, 2, 3], None)
+
+    it = PageIterator(fetch_page)
+    result = it.all(limit=10)
+    assert result == [1, 2, 3]
+
+
+@pytest.mark.req("DX-007")
+def test_page_iterator_all_unlimited() -> None:
+    """Verify .all(limit=None) disables the limit check."""
+    page_num = 0
+
+    def fetch_page(_url: str | None) -> PaginatedResponse[int]:
+        nonlocal page_num
+        page_num += 1
+        if page_num <= 3:
+            return _page([page_num], f"p{page_num + 1}")
+        return _page([page_num], None)
+
+    it = PageIterator(fetch_page)
+    result = it.all(limit=None)
+    assert result == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-007")
+async def test_async_page_iterator_all_returns_list() -> None:
+    """Verify async .all() returns a list."""
+
+    async def fetch_page(url: str | None) -> PaginatedResponse[int]:
+        if url is None:
+            return _page([1, 2], "p2")
+        if url == "p2":
+            return _page([3], None)
+        raise AssertionError(f"unexpected url: {url}")
+
+    it = AsyncPageIterator(fetch_page)
+    result = await it.all()
+    assert result == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-007")
+async def test_async_page_iterator_all_raises_too_many_results_error() -> None:
+    """Verify async .all() raises TooManyResultsError when limit exceeded."""
+    page_num = 0
+
+    async def fetch_page(_url: str | None) -> PaginatedResponse[int]:
+        nonlocal page_num
+        page_num += 1
+        start = (page_num - 1) * 100
+        data = list(range(start, start + 100))
+        next_url = f"p{page_num + 1}" if page_num < 20 else None
+        return _page(data, next_url)
+
+    it = AsyncPageIterator(fetch_page)
+    with pytest.raises(TooManyResultsError, match="Exceeded limit=500 items"):
+        await it.all(limit=500)

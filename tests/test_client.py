@@ -2,6 +2,8 @@
 Tests for the HTTP client and service layer.
 """
 
+import gc
+import warnings
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -19,7 +21,7 @@ from httpx import Headers, Response
 if respx is None:  # pragma: no cover
     pytest.skip("respx is not installed", allow_module_level=True)
 
-from affinity import Affinity, AffinityError, NotFoundError, RateLimitError
+from affinity import Affinity, AffinityError, AsyncAffinity, NotFoundError, RateLimitError
 from affinity.clients.http import (
     REPEATABLE_QUERY_PARAMS,
     AsyncHTTPClient,
@@ -1052,6 +1054,59 @@ class TestClientLifecycle:
             snapshot = client.rate_limits.snapshot()
             assert snapshot.source in {"unknown", "headers"}
 
+    def test_resource_warning_on_unclosed_sync_client(self) -> None:
+        """Test that ResourceWarning is raised when sync client not closed."""
+        # Create client without context manager and don't close
+        client = Affinity(api_key="test-key")
+        # Mark that we didn't enter context (simulating direct construction)
+        assert not client._closed
+
+        # Force garbage collection to trigger __del__
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always", ResourceWarning)
+            del client
+            gc.collect()
+
+            # Check that a ResourceWarning was raised
+            resource_warnings = [
+                warning for warning in w if issubclass(warning.category, ResourceWarning)
+            ]
+            assert len(resource_warnings) >= 1
+            assert "not closed" in str(resource_warnings[0].message)
+
+    def test_no_warning_when_context_manager_used(self) -> None:
+        """Test that no ResourceWarning is raised when context manager used."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always", ResourceWarning)
+
+            with Affinity(api_key="test-key") as client:
+                _ = client  # Use the client
+
+            gc.collect()
+
+            # Check that no ResourceWarning was raised
+            resource_warnings = [
+                warning for warning in w if issubclass(warning.category, ResourceWarning)
+            ]
+            assert len(resource_warnings) == 0
+
+    def test_no_warning_when_close_called_explicitly(self) -> None:
+        """Test that no ResourceWarning when close() is called explicitly."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always", ResourceWarning)
+
+            client = Affinity(api_key="test-key")
+            client.close()
+
+            del client
+            gc.collect()
+
+            # Check that no ResourceWarning was raised
+            resource_warnings = [
+                warning for warning in w if issubclass(warning.category, ResourceWarning)
+            ]
+            assert len(resource_warnings) == 0
+
 
 @pytest.mark.asyncio
 @pytest.mark.req("TR-006")
@@ -1160,3 +1215,69 @@ async def test_async_affinity_lists_iter_auto_paginates() -> None:
         assert lists == [1]
     finally:
         await http_client.close()
+
+
+# =============================================================================
+# Async Client Lifecycle Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-009")
+async def test_async_resource_warning_on_unclosed_client() -> None:
+    """Test that ResourceWarning is raised when async client not closed."""
+    # Create client without context manager and don't close
+    client = AsyncAffinity(api_key="test-key")
+    assert not client._closed
+
+    # Force garbage collection to trigger __del__
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", ResourceWarning)
+        del client
+        gc.collect()
+
+        # Check that a ResourceWarning was raised
+        resource_warnings = [
+            warning for warning in w if issubclass(warning.category, ResourceWarning)
+        ]
+        assert len(resource_warnings) >= 1
+        assert "not closed" in str(resource_warnings[0].message)
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-009")
+async def test_async_no_warning_when_context_manager_used() -> None:
+    """Test that no ResourceWarning is raised when async context manager used."""
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", ResourceWarning)
+
+        async with AsyncAffinity(api_key="test-key") as client:
+            _ = client  # Use the client
+
+        gc.collect()
+
+        # Check that no ResourceWarning was raised
+        resource_warnings = [
+            warning for warning in w if issubclass(warning.category, ResourceWarning)
+        ]
+        assert len(resource_warnings) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.req("DX-009")
+async def test_async_no_warning_when_close_called_explicitly() -> None:
+    """Test that no ResourceWarning when close() is called explicitly."""
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", ResourceWarning)
+
+        client = AsyncAffinity(api_key="test-key")
+        await client.close()
+
+        del client
+        gc.collect()
+
+        # Check that no ResourceWarning was raised
+        resource_warnings = [
+            warning for warning in w if issubclass(warning.category, ResourceWarning)
+        ]
+        assert len(resource_warnings) == 0

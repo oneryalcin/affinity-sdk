@@ -61,7 +61,33 @@ _FIELD_ID_RE = re.compile(r"^field-(\d+)$")
 
 
 class FieldId(StrId):
-    """V2-style field id (e.g. 'field-123')."""
+    """
+    V2-style field id (e.g. 'field-123').
+
+    FieldId provides normalized comparison semantics:
+    - ``FieldId(123) == FieldId("123")`` → ``True``
+    - ``FieldId("field-123") == "field-123"`` → ``True``
+    - ``FieldId("field-123") == 123`` → ``True``
+
+    This normalization is specific to FieldId because field IDs uniquely come
+    from mixed sources (some APIs return integers, some return strings like
+    "field-123"). Other TypedId subclasses (PersonId, CompanyId, etc.) don't
+    have this problem - they consistently use integers.
+    """
+
+    def __new__(cls, value: Any) -> FieldId:
+        """Normalize value to 'field-xxx' format at construction time."""
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, int):
+            return str.__new__(cls, f"field-{value}")
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate.isdigit():
+                return str.__new__(cls, f"field-{candidate}")
+            if _FIELD_ID_RE.match(candidate):
+                return str.__new__(cls, candidate)
+        raise ValueError("FieldId must be an int, digits, or 'field-<digits>'")
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -71,19 +97,46 @@ class FieldId(StrId):
         _ = handler
 
         def validate(value: Any) -> FieldId:
-            if isinstance(value, cls):
-                return value
-            if isinstance(value, int):
-                return cls(f"field-{value}")
-            if isinstance(value, str):
-                candidate = value.strip()
-                if candidate.isdigit():
-                    return cls(f"field-{candidate}")
-                if _FIELD_ID_RE.match(candidate):
-                    return cls(candidate)
-            raise ValueError("FieldId must be an int, digits, or 'field-<digits>'")
+            # Use __new__ which handles all normalization
+            return cls(value)
 
         return core_schema.no_info_plain_validator_function(validate)
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Normalize comparison for FieldId.
+
+        Supports comparison with:
+        - Other FieldId instances
+        - Strings (e.g., "field-123" or "123")
+        - Integers (e.g., 123)
+        """
+        if isinstance(other, FieldId):
+            # Both are FieldId - compare string representations
+            return str.__eq__(self, other)
+        if isinstance(other, str):
+            # Compare with string - could be "field-123" or "123"
+            try:
+                other_normalized = FieldId(other)
+                return str.__eq__(self, other_normalized)
+            except ValueError:
+                return False
+        if isinstance(other, int):
+            # Compare with integer
+            return str.__eq__(self, f"field-{other}")
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        """Hash the string representation for dict/set usage."""
+        return str.__hash__(self)
+
+    def __repr__(self) -> str:
+        """Return a representation useful for debugging."""
+        return f"FieldId({str.__repr__(self)})"
+
+    def __str__(self) -> str:
+        """Return the canonical string value (e.g., 'field-123')."""
+        return str.__str__(self)
 
 
 class FieldValueId(IntId):

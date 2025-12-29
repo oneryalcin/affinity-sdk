@@ -52,6 +52,52 @@ def _person_matches(person: Person, *, email: str | None, name: str | None) -> b
     return False
 
 
+# V1 → V2 key mapping for person responses
+_V1_TO_V2_KEYS = {
+    "first_name": "firstName",
+    "last_name": "lastName",
+    "primary_email_address": "primaryEmailAddress",
+    "email_addresses": "emailAddresses",
+    "organization_ids": "organizationIds",
+    "opportunity_ids": "opportunityIds",
+    "current_organization_ids": "currentOrganizationIds",
+    "list_entry_id": "listEntryId",
+    "interaction_dates": "interactionDates",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+}
+
+
+def _normalize_v1_person_response(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize V1 person response to match V2 schema.
+
+    V1 uses snake_case (first_name), V2 uses camelCase (firstName).
+    The Person model uses aliases, so we need consistent key names.
+
+    Implementation notes:
+    - Maps snake_case keys to camelCase as needed
+    - Strips unknown keys to avoid Pydantic strict mode errors
+    - Handles nested field_values entries appropriately
+    - V1 may include field values for deleted fields; these are preserved
+    """
+    result: dict[str, Any] = {}
+
+    for key, value in data.items():
+        # Skip field_values - handled separately
+        if key == "field_values":
+            continue
+
+        # Map known V1 keys to V2
+        if key in _V1_TO_V2_KEYS:
+            result[_V1_TO_V2_KEYS[key]] = value
+        else:
+            # Keep as-is (id, type, emails, etc. are same in both)
+            result[key] = value
+
+    return result
+
+
 class PersonService:
     """
     Service for managing persons (contacts).
@@ -216,18 +262,43 @@ class PersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
     ) -> Person:
         """
         Get a single person by ID.
 
         Args:
             person_id: The person ID
-            field_ids: Specific field IDs to include
-            field_types: Field types to include
+            field_ids: Specific field IDs to include (V2 API)
+            field_types: Field types to include (V2 API)
+            include_field_values: If True, use V1 API to fetch embedded field values.
+                This saves one API call when you need both person info and field values.
+                Note: V1 response is ~2-3x larger than V2; consider this when fetching
+                many persons. V1 may include field values for deleted fields.
 
         Returns:
-            Person object with requested field data
+            Person object with requested field data.
+            When include_field_values=True, the Person will have a `field_values`
+            attribute containing the list of FieldValue objects.
         """
+        if include_field_values:
+            # Use V1 API which returns field values embedded
+            data = self._client.get(f"/persons/{person_id}", v1=True)
+
+            # Extract field_values before normalization
+            field_values_data = data.get("field_values", [])
+
+            # Normalize V1 response to V2 schema
+            normalized = _normalize_v1_person_response(data)
+            person = Person.model_validate(normalized)
+
+            # Attach field_values as an attribute
+            # Using object.__setattr__ to bypass Pydantic's frozen/immutable if needed
+            object.__setattr__(person, "field_values", field_values_data)
+
+            return person
+
+        # Standard V2 path
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
@@ -729,18 +800,42 @@ class AsyncPersonService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
     ) -> Person:
         """
         Get a single person by ID.
 
         Args:
             person_id: The person ID
-            field_ids: Specific field IDs to include
-            field_types: Field types to include
+            field_ids: Specific field IDs to include (V2 API)
+            field_types: Field types to include (V2 API)
+            include_field_values: If True, use V1 API to fetch embedded field values.
+                This saves one API call when you need both person info and field values.
+                Note: V1 response is ~2-3x larger than V2; consider this when fetching
+                many persons. V1 may include field values for deleted fields.
 
         Returns:
-            Person object with requested field data
+            Person object with requested field data.
+            When include_field_values=True, the Person will have a `field_values`
+            attribute containing the list of FieldValue objects.
         """
+        if include_field_values:
+            # Use V1 API which returns field values embedded
+            data = await self._client.get(f"/persons/{person_id}", v1=True)
+
+            # Extract field_values before normalization
+            field_values_data = data.get("field_values", [])
+
+            # Normalize V1 response to V2 schema
+            normalized = _normalize_v1_person_response(data)
+            person = Person.model_validate(normalized)
+
+            # Attach field_values as an attribute
+            object.__setattr__(person, "field_values", field_values_data)
+
+            return person
+
+        # Standard V2 path
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
