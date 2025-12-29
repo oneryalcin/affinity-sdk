@@ -6,7 +6,18 @@ Complete command reference for the `xaffinity` CLI.
 
 ```bash
 pip install affinity-sdk
+```
+
+**API Key options (choose one):**
+```bash
+# Option 1: Environment variable
 export AFFINITY_API_KEY="your-api-key"
+
+# Option 2: Use --dotenv to load from .env file in current directory
+xaffinity --dotenv whoami
+
+# Option 3: Read from file
+xaffinity --api-key-file ~/.affinity-key whoami
 ```
 
 ## Read-Only Mode (IMPORTANT)

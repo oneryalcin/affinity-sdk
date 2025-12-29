@@ -1,6 +1,6 @@
 ---
 name: querying-affinity-crm
-description: Queries and manages Affinity CRM data using the Python SDK (affinity package) or xaffinity CLI. Covers companies, persons, lists, opportunities, and field values. Use when writing scripts to export Affinity data, query pipelines, work with contacts, or automate CRM workflows.
+description: Queries and manages Affinity CRM data using the Python SDK (affinity package) or xaffinity CLI. Use when looking up people, contacts, companies, organizations, deals, opportunities, lists, or pipelines in Affinity. Handles person search, company lookup, list entries, field values, and data export.
 ---
 
 # Querying Affinity CRM
@@ -25,10 +25,10 @@ with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
     ...  # Write operations will raise WriteNotAllowedError
 ```
 
-**CLI - Use --readonly flag:**
+**CLI - Use --readonly flag (and --dotenv to load API key from .env):**
 ```bash
-xaffinity --readonly person ls --all
-xaffinity --readonly company get 123
+xaffinity --dotenv --readonly person ls --all
+xaffinity --dotenv --readonly company get 123
 ```
 
 Only remove the read-only restriction when the user explicitly confirms they want to create, update, or delete data.

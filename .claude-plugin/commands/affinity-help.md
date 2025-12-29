@@ -30,21 +30,19 @@ with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
 ## CLI Quick Start
 
 ```bash
-# Set API key
-export AFFINITY_API_KEY="your-key"
-
+# API key: use --dotenv to load from .env file, or export AFFINITY_API_KEY
 # ALWAYS use --readonly by default
-xaffinity --readonly person ls --all
-xaffinity --readonly company ls --all
+xaffinity --dotenv --readonly person ls --all
+xaffinity --dotenv --readonly company ls --all
 
 # Export to CSV
-xaffinity --readonly person ls --all --csv people.csv
+xaffinity --dotenv --readonly person ls --all --csv people.csv
 
 # JSON for scripting
-xaffinity --readonly person ls --json --all | jq '.data.persons[]'
+xaffinity --dotenv --readonly person ls --json --all | jq '.data.persons[]'
 
 # Filter custom fields
-xaffinity --readonly person ls --filter 'field("Dept") = "Sales"' --all
+xaffinity --dotenv --readonly person ls --filter 'field("Dept") = "Sales"' --all
 ```
 
 ## Key Gotchas
