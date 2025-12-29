@@ -47,6 +47,12 @@ xaffinity person create --first-name Ada --last-name Lovelace
 | `--csv <path>` | Export to CSV (requires `--all`) |
 | `--csv-bom` | Add UTF-8 BOM for Excel |
 
+## Timezone Note
+
+**All datetimes from the API are in UTC.** When displaying to users:
+- Convert to user's local timezone or clearly state "UTC"
+- Example: `2025-12-30T13:00:00Z` (UTC) = 3:00 PM Israel time, 5:00 AM PST
+
 ## Identity
 
 ```bash

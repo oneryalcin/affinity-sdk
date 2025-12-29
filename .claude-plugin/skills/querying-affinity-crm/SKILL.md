@@ -89,6 +89,13 @@ client.persons.list(filter=F.field("Department").equals("Sales"))
 
 Filter built-in properties client-side after fetching data.
 
+### Timezone Handling - Datetimes are UTC
+
+The API returns all datetimes in **UTC**. When displaying times to users:
+- **Always convert to user's local timezone** or clearly state "UTC"
+- Example: `2025-12-30T13:00:00Z` (UTC) = 3:00 PM Israel time, 5:00 AM PST
+- If unsure of user's timezone, ask or display both UTC and a common timezone
+
 ## SDK Quick Reference
 
 ```python
