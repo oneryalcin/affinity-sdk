@@ -63,7 +63,7 @@ def test_list_service_list_all_get_fields_and_create_entry_helpers() -> None:
                 200, json={"data": [], "pagination": {"nextUrl": None}}, request=request
             )
 
-        if request.method == "GET" and url == httpx.URL("https://v2.example/v2/lists/10"):
+        if request.method == "GET" and url == httpx.URL("https://v1.example/lists/10"):
             return httpx.Response(
                 200,
                 json={
@@ -71,9 +71,9 @@ def test_list_service_list_all_get_fields_and_create_entry_helpers() -> None:
                     "name": "L",
                     "type": 0,
                     "public": True,
-                    "ownerId": 1,
-                    "creatorId": 1,
-                    "listSize": 1,
+                    "owner_id": 1,
+                    "creator_id": 1,
+                    "list_size": 1,
                     "fields": [],
                 },
                 request=request,
@@ -363,7 +363,7 @@ async def test_async_list_service_and_list_entry_membership() -> None:
                 request=request,
             )
 
-        if request.method == "GET" and url == httpx.URL("https://v2.example/v2/lists/10"):
+        if request.method == "GET" and url == httpx.URL("https://v1.example/lists/10"):
             return httpx.Response(
                 200,
                 json={
@@ -371,8 +371,8 @@ async def test_async_list_service_and_list_entry_membership() -> None:
                     "name": "L",
                     "type": 0,
                     "public": True,
-                    "ownerId": 1,
-                    "listSize": 1,
+                    "owner_id": 1,
+                    "list_size": 1,
                 },
                 request=request,
             )

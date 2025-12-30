@@ -669,7 +669,7 @@ class TestListService:
 
     def test_get_list(self, respx_mock: respx.MockRouter) -> None:
         """Test getting a list."""
-        respx_mock.get("https://api.affinity.co/v2/lists/789").mock(
+        respx_mock.get("https://api.affinity.co/lists/789").mock(
             return_value=Response(
                 200,
                 json={
@@ -677,8 +677,8 @@ class TestListService:
                     "name": "Deal Pipeline",
                     "type": 8,
                     "public": True,
-                    "ownerId": 1,
-                    "listSize": 50,
+                    "owner_id": 1,
+                    "list_size": 50,
                 },
             )
         )

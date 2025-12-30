@@ -109,17 +109,17 @@ def test_opportunity_get_details_uses_v1(respx_mock: respx.MockRouter) -> None:
 
 
 def test_opportunity_create_update_delete(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get("https://api.affinity.co/v2/lists/41780").mock(
+    respx_mock.get("https://api.affinity.co/lists/41780").mock(
         return_value=Response(
             200,
             json={
                 "id": 41780,
                 "name": "Dealflow",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 0,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 0,
             },
         )
     )

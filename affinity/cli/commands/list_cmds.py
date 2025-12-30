@@ -617,57 +617,79 @@ def list_export(
         columns = _columns_meta(selected_field_ids, field_by_id=field_by_id)
 
         if dry_run:
-            data: dict[str, Any] = {
-                "listId": int(list_id),
-                "listName": resolved_list.list.name,
-                "listType": list_type.name.lower(),
-                "savedView": saved_view,
-                "fieldIds": selected_field_ids,
-                "filter": filter_expr,
-                "pageSize": page_size,
-                "cursor": cursor,
-                "csv": str(csv_path) if csv_path else None,
-            }
+            if want_expand:
+                # Cleaner output for --expand mode (omit irrelevant fields like cursor)
+                data: dict[str, Any] = {
+                    "listId": int(list_id),
+                    "listName": resolved_list.list.name,
+                    "listType": list_type.name.lower(),
+                    "csv": str(csv_path) if csv_path else None,
+                }
+                if filter_expr:
+                    data["filter"] = filter_expr
+            else:
+                # Standard export - show all query params
+                data = {
+                    "listId": int(list_id),
+                    "listName": resolved_list.list.name,
+                    "listType": list_type.name.lower(),
+                    "savedView": saved_view,
+                    "fieldIds": selected_field_ids,
+                    "filter": filter_expr,
+                    "pageSize": page_size,
+                    "cursor": cursor,
+                    "csv": str(csv_path) if csv_path else None,
+                }
             if want_expand:
                 # Estimate API calls for expansion
                 entry_count = resolved_list.list.list_size or 0
                 expand_calls = entry_count  # 1 call per entry (optimized for dual)
                 data["expand"] = sorted(expand_set)
                 data["expandMaxResults"] = effective_expand_limit
-                data["estimatedEntries"] = entry_count
                 data["csvMode"] = csv_mode if csv_path else None
-                data["estimatedApiCalls"] = {
-                    "listEntries": max(1, entry_count // page_size),
-                    "associations": expand_calls,
-                    "total": max(1, entry_count // page_size) + expand_calls,
-                    "note": (
-                        "Using get_associations() optimization "
-                        "(both people+companies in 1 call per entry)"
-                        if "people" in expand_set and "companies" in expand_set
-                        else "1 call per entry"
-                    ),
-                }
-                # Estimate duration based on entry count
-                if entry_count <= 50:
-                    data["estimatedDuration"] = "~30 seconds to 1 minute"
-                elif entry_count <= 150:
-                    data["estimatedDuration"] = f"~2-5 minutes for {entry_count} entries"
-                elif entry_count <= 500:
-                    data["estimatedDuration"] = f"~5-10 minutes for {entry_count} entries"
-                else:
-                    data["estimatedDuration"] = f"~10-20+ minutes for {entry_count} entries"
                 # Add dry run warnings
-                dry_run_warnings = []
+                dry_run_warnings: list[str] = []
+                # Handle unreliable listSize from API (often returns 0 for non-empty lists)
+                if entry_count == 0:
+                    data["estimatedEntries"] = "unknown (API metadata unavailable)"
+                    data["estimatedApiCalls"] = "unknown"
+                    data["estimatedDuration"] = "unknown"
+                    dry_run_warnings.append(
+                        "Cannot estimate - Affinity API reports 0 entries but list may "
+                        "contain data. The export will fetch all available entries."
+                    )
+                else:
+                    data["estimatedEntries"] = entry_count
+                    data["estimatedApiCalls"] = {
+                        "listEntries": max(1, entry_count // page_size),
+                        "associations": expand_calls,
+                        "total": max(1, entry_count // page_size) + expand_calls,
+                        "note": (
+                            "Using get_associations() optimization "
+                            "(both people+companies in 1 call per entry)"
+                            if "people" in expand_set and "companies" in expand_set
+                            else "1 call per entry"
+                        ),
+                    }
+                    # Estimate duration based on entry count
+                    if entry_count <= 50:
+                        data["estimatedDuration"] = "~30 seconds to 1 minute"
+                    elif entry_count <= 150:
+                        data["estimatedDuration"] = f"~2-5 minutes for {entry_count} entries"
+                    elif entry_count <= 500:
+                        data["estimatedDuration"] = f"~5-10 minutes for {entry_count} entries"
+                    else:
+                        data["estimatedDuration"] = f"~10-20+ minutes for {entry_count} entries"
+                    if entry_count > 1000:
+                        dry_run_warnings.append(
+                            f"Large export ({entry_count} entries) may take 10-15 minutes or more."
+                        )
                 dry_run_warnings.append("Expansion uses V1 API which is slower than V2.")
                 if effective_expand_limit is not None:
                     dry_run_warnings.append(
                         f"Using --expand-max-results {effective_expand_limit} (default). "
                         "Some entries may have more associations. "
                         "Use --expand-all for complete data."
-                    )
-                if entry_count > 1000:
-                    dry_run_warnings.append(
-                        f"Large export ({entry_count} entries) may take 10-15 minutes or more."
                     )
                 data["warnings"] = dry_run_warnings
             return CommandOutput(

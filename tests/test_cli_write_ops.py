@@ -183,15 +183,15 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
-    respx_mock.get("https://api.affinity.co/v2/lists/123").mock(
+    respx_mock.get("https://api.affinity.co/lists/123").mock(
         return_value=Response(
             200,
             json={
                 "id": 123,
                 "name": "Dealflow",
-                "type": "company",
-                "isPublic": False,
-                "ownerId": 42,
+                "type": 1,
+                "public": False,
+                "owner_id": 42,
             },
         )
     )

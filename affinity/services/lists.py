@@ -199,8 +199,11 @@ class ListService:
         Get a single list by ID.
 
         Includes field metadata for the list.
+
+        Note: Uses V1 API because V2's listSize field is undocumented and
+        returns incorrect values (often 0 for non-empty lists).
         """
-        data = self._client.get(f"/lists/{list_id}")
+        data = self._client.get(f"/lists/{list_id}", v1=True)
         return _safe_model_validate(AffinityList, data)
 
     def resolve(
@@ -1000,8 +1003,11 @@ class AsyncListService:
         Get a single list by ID.
 
         Includes field metadata for the list.
+
+        Note: Uses V1 API because V2's listSize field is undocumented and
+        returns incorrect values (often 0 for non-empty lists).
         """
-        data = await self._client.get(f"/lists/{list_id}")
+        data = await self._client.get(f"/lists/{list_id}", v1=True)
         return _safe_model_validate(AffinityList, data)
 
     async def resolve(

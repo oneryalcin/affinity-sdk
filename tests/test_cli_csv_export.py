@@ -398,17 +398,17 @@ def test_list_export_expand_invalid_on_person_list(
     respx_mock: respx.MockRouter,
 ) -> None:
     """Test that --expand people fails on a person list (only companies is valid)."""
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 10,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 10,
             },
         )
     )
@@ -431,17 +431,17 @@ def test_list_export_expand_invalid_on_company_list(
     respx_mock: respx.MockRouter,
 ) -> None:
     """Test that --expand companies fails on a company list (only people is valid)."""
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Organizations",
-                "type": "organization",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 10,
+                "type": 1,  # organization
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 10,
             },
         )
     )
@@ -464,17 +464,17 @@ def test_list_export_expand_cursor_combination_fails(
     respx_mock: respx.MockRouter,
 ) -> None:
     """Test that --cursor cannot be combined with --expand."""
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 10,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 10,
             },
         )
     )
@@ -504,17 +504,17 @@ def test_list_export_expand_cursor_combination_fails(
 def test_list_export_expand_people_csv_flat(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
     """Test list export with --expand people produces flat CSV with one row per person."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 2,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 2,
             },
         )
     )
@@ -682,17 +682,17 @@ def test_list_export_expand_people_csv_flat(respx_mock: respx.MockRouter, tmp_pa
 def test_list_export_expand_zero_associations(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
     """Test that entries with zero associations still appear in output."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -781,17 +781,17 @@ def test_list_export_expand_zero_associations(respx_mock: respx.MockRouter, tmp_
 def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
     """Test list export with --expand produces JSON with nested arrays."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -909,17 +909,17 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
 def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
     """Test --dry-run output includes expand info."""
     # Mock list metadata with entry count
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 50,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 50,
             },
         )
     )
@@ -1015,17 +1015,17 @@ def test_list_export_expand_field_type_requires_expand() -> None:
 def test_list_export_expand_all_with_max_results_warning(respx_mock: respx.MockRouter) -> None:
     """Test --expand-all + --expand-max-results emits warning."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1107,17 +1107,17 @@ def test_list_export_expand_csv_mode_nested(respx_mock: respx.MockRouter, tmp_pa
     csv_file = Path(tmp_path) / "nested.csv"  # type: ignore[arg-type]
 
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1263,17 +1263,17 @@ def test_list_export_expand_csv_mode_nested(respx_mock: respx.MockRouter, tmp_pa
 def test_company_list_export_expand_people(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
     """Test company list export with --expand people."""
     # Mock list metadata (company/organization list)
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Organizations",
-                "type": "organization",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 2,
+                "type": 1,  # organization
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 2,
             },
         )
     )
@@ -1439,17 +1439,17 @@ def test_company_list_export_expand_people(respx_mock: respx.MockRouter, tmp_pat
 def test_company_list_export_expand_people_json(respx_mock: respx.MockRouter) -> None:
     """Test company list export with --expand people produces JSON output."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Organizations",
-                "type": "organization",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 1,  # organization
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1550,17 +1550,17 @@ def test_company_list_export_expand_people_json(respx_mock: respx.MockRouter) ->
 def test_person_list_export_expand_companies(respx_mock: respx.MockRouter, tmp_path: Path) -> None:
     """Test person list export with --expand companies."""
     # Mock list metadata (person list)
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 2,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 2,
             },
         )
     )
@@ -1721,17 +1721,17 @@ def test_person_list_export_expand_companies(respx_mock: respx.MockRouter, tmp_p
 def test_person_list_export_expand_companies_json(respx_mock: respx.MockRouter) -> None:
     """Test person list export with --expand companies produces JSON output."""
     # Mock list metadata
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1848,17 +1848,17 @@ def test_list_export_expand_opportunities_list_requires_expand_opportunities(
 ) -> None:
     """Test --expand-opportunities-list requires --expand opportunities."""
     # Mock list lookup
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 10,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 10,
             },
         )
     )
@@ -1891,17 +1891,17 @@ def test_list_export_expand_opportunities_valid_on_person_list(
 ) -> None:
     """Test --expand opportunities is valid on person lists (no error)."""
     # Mock person list
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1940,17 +1940,17 @@ def test_list_export_expand_opportunities_valid_on_company_list(
 ) -> None:
     """Test --expand opportunities is valid on company lists (no error)."""
     # Mock company list
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Organizations",
-                "type": "organization",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 1,  # organization
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
@@ -1989,17 +1989,17 @@ def test_list_export_expand_opportunities_invalid_on_opportunity_list(
 ) -> None:
     """Test --expand opportunities is NOT valid on opportunity lists."""
     # Mock opportunity list
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 10,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 10,
             },
         )
     )
@@ -2024,33 +2024,33 @@ def test_list_export_expand_opportunities_list_must_be_opportunity_type(
 ) -> None:
     """Test --expand-opportunities-list must reference an opportunity list."""
     # Mock person list (main list)
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Contacts",
-                "type": "person",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 0,  # person
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
 
     # Mock the referenced list as a company list (invalid)
-    respx_mock.get("https://api.affinity.co/v2/lists/67890").mock(
+    respx_mock.get("https://api.affinity.co/lists/67890").mock(
         return_value=Response(
             200,
             json={
                 "id": 67890,
                 "name": "Organizations",
-                "type": "organization",  # Not opportunity
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 5,
+                "type": 1,  # organization - Not opportunity
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 5,
             },
         )
     )
@@ -2082,17 +2082,17 @@ def test_list_export_expand_fields_validates_invalid_field(
 ) -> None:
     """Test --expand-fields with invalid field name fails with helpful error."""
     # Mock list metadata (opportunity list so we can expand people)
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 5,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 5,
             },
         )
     )
@@ -2171,17 +2171,17 @@ def test_list_export_expand_fields_validates_by_name(
     csv_file = Path(tmp_path) / "output.csv"  # type: ignore[arg-type]
 
     # Mock list metadata (opportunity list so we can expand people)
-    respx_mock.get("https://api.affinity.co/v2/lists/12345").mock(
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
         return_value=Response(
             200,
             json={
                 "id": 12345,
                 "name": "Pipeline",
-                "type": "opportunity",
-                "isPublic": False,
-                "ownerId": 1,
-                "creatorId": 1,
-                "listSize": 1,
+                "type": 8,
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 1,
             },
         )
     )
