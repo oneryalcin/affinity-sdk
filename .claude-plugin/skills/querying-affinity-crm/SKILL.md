@@ -124,6 +124,18 @@ The API returns all datetimes in **UTC**. When displaying times to users:
 - Example: `2025-12-30T13:00:00Z` (UTC) = 3:00 PM Israel time, 5:00 AM PST
 - If unsure of user's timezone, ask or display both UTC and a common timezone
 
+### API Limitations - Common Gotchas
+
+**Interactions (meetings/emails/calls):**
+- **Maximum 1-year date range** - `--start-time` and `--end-time` must be within 1 year of each other
+- For longer periods, query each year separately
+- Only shows interactions with **external participants** (internal-only meetings won't appear)
+
+**Filtering:**
+- `--filter` works only on **custom fields**, not built-in properties (see above)
+
+See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete details.
+
 ## SDK Quick Reference
 
 ```python

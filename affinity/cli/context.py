@@ -307,6 +307,20 @@ def exit_code_for_exception(exc: Exception) -> int:
     return 1
 
 
+def _hint_for_validation_message(message: str) -> str | None:
+    """Return a specific hint if the error message matches a known pattern."""
+    msg_lower = message.lower()
+
+    # Date range exceeded for interactions
+    if "date range" in msg_lower and ("1 year" in msg_lower or "within" in msg_lower):
+        return (
+            "The Affinity API limits interaction queries to 1 year. "
+            "Split your query into multiple 1-year ranges."
+        )
+
+    return None
+
+
 def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
     if isinstance(exc, CLIError):
         return exc
@@ -398,31 +412,39 @@ def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
         if not field_name and len(sanitized_params) == 1:
             field_name = next(iter(sanitized_params.keys()))
 
-        hint = "Check command arguments and retry."
-        if "organization_id" in sanitized_params or "company_id" in sanitized_params:
-            company_id = sanitized_params.get("organization_id") or sanitized_params.get(
-                "company_id"
-            )
-            if isinstance(company_id, int):
-                hint = (
-                    f"Verify the company id exists and you have access (company_id={company_id})."
+        # Check for specific error patterns in the message first
+        pattern_hint = _hint_for_validation_message(message)
+        if pattern_hint is not None:
+            hint = pattern_hint
+        else:
+            hint = "Check command arguments and retry."
+            if "organization_id" in sanitized_params or "company_id" in sanitized_params:
+                company_id = sanitized_params.get("organization_id") or sanitized_params.get(
+                    "company_id"
                 )
-        elif "person_id" in sanitized_params:
-            person_id = sanitized_params.get("person_id")
-            if isinstance(person_id, int):
-                hint = f"Verify the person id exists and you have access (person_id={person_id})."
-        elif "opportunity_id" in sanitized_params:
-            opportunity_id = sanitized_params.get("opportunity_id")
-            if isinstance(opportunity_id, int):
-                hint = (
-                    "Verify the opportunity id exists and you have access "
-                    f"(opportunity_id={opportunity_id})."
-                )
-        elif field_name:
-            hint = f"Check the value for `{field_name}` and retry."
-        elif sanitized_params:
-            bits = ", ".join(f"{k}={v}" for k, v in sorted(sanitized_params.items()))
-            hint = f"Check parameter values ({bits}) and retry."
+                if isinstance(company_id, int):
+                    hint = (
+                        "Verify the company id exists and you have access "
+                        f"(company_id={company_id})."
+                    )
+            elif "person_id" in sanitized_params:
+                person_id = sanitized_params.get("person_id")
+                if isinstance(person_id, int):
+                    hint = (
+                        f"Verify the person id exists and you have access (person_id={person_id})."
+                    )
+            elif "opportunity_id" in sanitized_params:
+                opportunity_id = sanitized_params.get("opportunity_id")
+                if isinstance(opportunity_id, int):
+                    hint = (
+                        "Verify the opportunity id exists and you have access "
+                        f"(opportunity_id={opportunity_id})."
+                    )
+            elif field_name:
+                hint = f"Check the value for `{field_name}` and retry."
+            elif sanitized_params:
+                bits = ", ".join(f"{k}={v}" for k, v in sorted(sanitized_params.items()))
+                hint = f"Check parameter values ({bits}) and retry."
 
         details = _details_for_affinity_error(exc, verbosity=verbosity) or {}
         if sanitized_params:
