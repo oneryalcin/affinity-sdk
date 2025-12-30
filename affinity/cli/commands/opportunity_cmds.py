@@ -641,7 +641,11 @@ def opportunity_files_group() -> None:
     "--concurrency", type=int, default=3, show_default=True, help="Number of concurrent downloads."
 )
 @click.option(
-    "--page-size", type=int, default=200, show_default=True, help="Page size for file listing."
+    "--page-size",
+    type=int,
+    default=100,
+    show_default=True,
+    help="Page size for file listing (max 100).",
 )
 @click.option("--max-files", type=int, default=None, help="Stop after N files.")
 @output_options

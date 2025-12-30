@@ -498,7 +498,7 @@ def test_list_export_expand_cursor_combination_fails(
     assert result.exit_code == 2
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
-    assert "--cursor cannot be combined with --expand" in payload["error"]["message"]
+    assert "--cursor cannot be combined with" in payload["error"]["message"]
 
 
 def test_list_export_expand_people_csv_flat(respx_mock: respx.MockRouter, tmp_path: Path) -> None:

@@ -296,7 +296,9 @@ ExpandOnError = Literal["raise", "skip"]
     default=None,
     help="Filter expression (mutually exclusive with --saved-view).",
 )
-@click.option("--page-size", type=int, default=200, show_default=True, help="Page size (limit).")
+@click.option(
+    "--page-size", type=int, default=100, show_default=True, help="Page size (limit, max 100)."
+)
 @click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
 @click.option("--max-results", type=int, default=None, help="Stop after N rows total.")
 @click.option("--all", "all_pages", is_flag=True, help="Fetch all rows.")
