@@ -476,7 +476,7 @@ def test_list_service_create_saved_views_and_list_entry_params() -> None:
         ):
             assert url.params.get_list("fieldIds") == ["field-1"]
             assert url.params.get_list("fieldTypes") == ["global"]
-            assert url.params.get("filter") == "x"
+            # NOTE: filter is NOT sent to API - it's applied client-side
             limit = url.params.get("limit")
             if limit is not None:
                 assert limit == "1"

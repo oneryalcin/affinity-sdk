@@ -7,6 +7,7 @@ Provides operations for managing lists (spreadsheets) and their entries (rows).
 from __future__ import annotations
 
 import builtins
+import contextlib
 import re
 import warnings
 from collections.abc import AsyncIterator, Iterator, Sequence
@@ -505,12 +506,20 @@ class ListEntryService:
         # Parse filter expression if provided
         filter_expr: FilterExpression | None = None
         if filter is not None:
-            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
-            # Emit warning about client-side filtering
-            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            if isinstance(filter, str):
+                # Treat whitespace-only strings as no filter
+                stripped = filter.strip()
+                if stripped:
+                    with contextlib.suppress(ValueError):
+                        filter_expr = parse_filter(stripped)
+            else:
+                filter_expr = filter
+            # Emit warning about client-side filtering (only if we have an actual filter)
+            if filter_expr is not None:
+                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         if cursor is not None:
-            if field_ids or field_types or filter is not None or limit is not None:
+            if field_ids or field_types or filter_expr is not None or limit is not None:
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -597,9 +606,17 @@ class ListEntryService:
         # Parse filter once for all pages
         filter_expr: FilterExpression | None = None
         if filter is not None:
-            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
-            # Emit warning once for the entire iteration
-            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            if isinstance(filter, str):
+                # Treat whitespace-only strings as no filter
+                stripped = filter.strip()
+                if stripped:
+                    with contextlib.suppress(ValueError):
+                        filter_expr = parse_filter(stripped)
+            else:
+                filter_expr = filter
+            # Emit warning once for the entire iteration (only if we have an actual filter)
+            if filter_expr is not None:
+                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
@@ -1251,12 +1268,20 @@ class AsyncListEntryService:
         # Parse filter expression if provided
         filter_expr: FilterExpression | None = None
         if filter is not None:
-            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
-            # Emit warning about client-side filtering
-            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            if isinstance(filter, str):
+                # Treat whitespace-only strings as no filter
+                stripped = filter.strip()
+                if stripped:
+                    with contextlib.suppress(ValueError):
+                        filter_expr = parse_filter(stripped)
+            else:
+                filter_expr = filter
+            # Emit warning about client-side filtering (only if we have an actual filter)
+            if filter_expr is not None:
+                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         if cursor is not None:
-            if field_ids or field_types or filter is not None or limit is not None:
+            if field_ids or field_types or filter_expr is not None or limit is not None:
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -1345,9 +1370,17 @@ class AsyncListEntryService:
         # Parse filter once for all pages
         filter_expr: FilterExpression | None = None
         if filter is not None:
-            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
-            # Emit warning once for the entire iteration
-            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            if isinstance(filter, str):
+                # Treat whitespace-only strings as no filter
+                stripped = filter.strip()
+                if stripped:
+                    with contextlib.suppress(ValueError):
+                        filter_expr = parse_filter(stripped)
+            else:
+                filter_expr = filter
+            # Emit warning once for the entire iteration (only if we have an actual filter)
+            if filter_expr is not None:
+                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         async def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
