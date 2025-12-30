@@ -5,10 +5,14 @@ Complete patterns for the Affinity Python SDK (`affinity` package).
 ## Installation
 
 ```bash
+# SDK only (Python API wrapper)
 pip install affinity-sdk
 
-# With .env file support
+# SDK with .env file support
 pip install "affinity-sdk[dotenv]"
+
+# CLI (xaffinity command)
+pip install "affinity-sdk[cli]"
 ```
 
 ## Client Initialization

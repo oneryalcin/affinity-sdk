@@ -5,7 +5,7 @@ Complete command reference for the `xaffinity` CLI.
 ## Installation and Setup
 
 ```bash
-pip install affinity-sdk
+pip install "affinity-sdk[cli]"
 ```
 
 **API Key options (choose one):**
