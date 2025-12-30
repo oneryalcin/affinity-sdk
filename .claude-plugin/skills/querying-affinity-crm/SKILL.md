@@ -13,7 +13,11 @@ xaffinity config check-key --json
 
 This MUST be your first action when handling any Affinity request. Do not skip this step.
 
-**If `"configured": true`** - Proceed with the user's request below.
+**If `"configured": true`** - Use the `pattern` field from the output for ALL subsequent commands. Example:
+- If `"pattern": "xaffinity --dotenv --readonly <command> --json"` → use `--dotenv`
+- If `"pattern": "xaffinity --readonly <command> --json"` → no `--dotenv` needed
+
+Then proceed with the user's request below.
 
 **If `"configured": false` or exit code 1** - Stop and help the user set up their API key:
 
@@ -35,280 +39,153 @@ This MUST be your first action when handling any Affinity request. Do not skip t
 
 The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide access to Affinity CRM data.
 
-## Critical Patterns (Must Follow)
+## Critical Patterns
 
-### Read-Only by Default - IMPORTANT
+- **Read-only mode**: Always use `--readonly` unless user explicitly requests writes
+- **JSON output**: Always include `--json` for structured, parseable output
+- **Filtering**: `--filter` works only on **custom fields**, not built-in properties (`name`, `email`, etc.)
+- **Timezones**: API returns UTC. Convert to user's local timezone or state "UTC"
 
-**Always use read-only mode unless the user explicitly requests data modification.**
+**For Python scripts**: See [SDK_REFERENCE.md](SDK_REFERENCE.md) for SDK patterns, typed IDs, and async support.
 
-CRM data is sensitive. Scripts should default to read-only to prevent accidental changes.
+## Gotchas & Workarounds
 
-**SDK - Use read-only policy:**
-```python
-from affinity import Affinity
-from affinity.policies import Policies, WritePolicy
-
-# Default for scripts - prevents accidental writes
-with Affinity.from_env(policies=Policies(write=WritePolicy.DENY)) as client:
-    ...  # Write operations will raise WriteNotAllowedError
-```
-
-**CLI - Use --readonly flag (and --dotenv to load API key from .env):**
+### Internal user meetings are NOT in interactions
+The interactions API only shows meetings with **external** contacts. Team-only meetings won't appear.
 ```bash
-xaffinity --dotenv --readonly person ls --all
-xaffinity --dotenv --readonly company get 123
+# Returns NOTHING for internal-only meetings:
+interaction ls --person-id 123 --type meeting --start-time 2025-01-01 --end-time 2025-12-31
+```
+**Workaround:** Use notes: `note ls --person-id 123` and filter for `isMeeting: true`
+
+### Interactions require BOTH start-time AND end-time (max 1 year)
+```bash
+# WRONG - will error:
+interaction ls --person-id 123 --type meeting
+
+# CORRECT:
+interaction ls --person-id 123 --type meeting --start-time 2025-01-01 --end-time 2025-12-31
 ```
 
-Only remove the read-only restriction when the user explicitly confirms they want to create, update, or delete data.
+### Smart Fields (Last Meeting, Next Meeting) are NOT in the API
+These UI-only calculated fields don't exist in the API.
+**Workaround:** Use `--with-interaction-dates` on person/company search:
+```bash
+person search "Alice" --with-interaction-dates
+company search "Acme" --with-interaction-dates
+```
 
-### Use --json for Structured Output - IMPORTANT
-
-**Always use `--json` flag when parsing CLI output programmatically.**
+### Opportunities can only be in ONE list (created with it)
+Unlike persons/companies, opportunities are tightly coupled to their list:
+- Creating an opportunity requires `--list-id` and auto-creates the list entry
+- Deleting the opportunity = removing from list (same operation)
+- Cannot move/copy an opportunity to another list
 
 ```bash
-# CORRECT: Use --json for structured, parseable output
-xaffinity --dotenv --readonly person get 123 --json
-
-# Access data via jq or parse in code
-xaffinity --dotenv --readonly person search "name" --json | jq '.data.persons[]'
+# CREATE a new opportunity (automatically added to the specified list):
+opportunity create --list-id LIST_ID --name "Deal Name"
 ```
 
-The `--json` flag returns structured JSON that is reliable to parse. Without it, output is human-formatted tables that are harder to parse correctly.
+### Global organizations are read-only
+Companies marked `global: true` cannot have their name/domain changed or be deleted.
 
-### Typed IDs (SDK) - Required
-
-```python
-from affinity.types import PersonId, CompanyId, ListId, OpportunityId
-
-client.persons.get(PersonId(123))      # Correct
-client.companies.get(CompanyId(456))   # Correct
-client.persons.get(123)                # WRONG - will fail type checking
-```
-
-Available typed IDs: `PersonId`, `CompanyId`, `ListId`, `ListEntryId`, `OpportunityId`, `FieldId`, `NoteId`, `UserId`
-
-### Client Lifecycle (SDK) - Always Use Context Manager
-
-```python
-from affinity import Affinity
-
-with Affinity.from_env() as client:  # Reads AFFINITY_API_KEY from environment
-    ...
-
-# Or with explicit key:
-with Affinity(api_key="your-key") as client:
-    ...
-```
-
-### Filtering Limitation - Custom Fields Only
-
-The `F` filter builder and `--filter` CLI option work **only on custom fields**, not built-in properties.
-
-**Works (custom fields):**
-```python
-from affinity import F
-client.persons.list(filter=F.field("Department").equals("Sales"))
-```
-
-**Does NOT work (built-in properties):**
-- `type`, `firstName`, `lastName`, `primaryEmail` (Person)
-- `name`, `domain`, `domains` (Company)
-- `name`, `listId` (Opportunity)
-
-Filter built-in properties client-side after fetching data.
-
-### Timezone Handling - Datetimes are UTC
-
-The API returns all datetimes in **UTC**. When displaying times to users:
-- **Always convert to user's local timezone** or clearly state "UTC"
-- Example: `2025-12-30T13:00:00Z` (UTC) = 3:00 PM Israel time, 5:00 AM PST
-- If unsure of user's timezone, ask or display both UTC and a common timezone
-
-### API Limitations - Common Gotchas
-
-**Interactions (meetings/emails/calls):**
-- **Maximum 1-year date range** - `--start-time` and `--end-time` must be within 1 year of each other
-- For longer periods, query each year separately
-- Only shows interactions with **external participants** (internal-only meetings won't appear)
-
-**Filtering:**
-- `--filter` works only on **custom fields**, not built-in properties (see above)
-
-See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete details.
-
-## SDK Quick Reference
-
-```python
-from affinity import Affinity, F, AsyncAffinity
-from affinity.types import PersonId, CompanyId, ListId, FieldType
-from affinity.exceptions import NotFoundError, RateLimitError
-
-with Affinity.from_env() as client:
-    # Identity
-    me = client.whoami()
-
-    # Pagination - choose based on data size
-    page = client.companies.list(limit=50)           # Single page
-    all_companies = client.companies.all()           # All pages (list, max 100k default)
-    for person in client.persons.iter():             # Memory-efficient iterator
-        ...
-
-    # Field selection
-    client.companies.list(field_types=[FieldType.ENRICHED, FieldType.GLOBAL])
-
-    # Filtering (custom fields only)
-    client.persons.list(filter=F.field("Department").equals("Sales"))
-    client.companies.list(filter=F.field("Industry").contains("Tech"))
-
-    # Complex filters
-    client.persons.list(
-        filter=F.field("Status").equals("Active") & F.field("Region").equals("US")
-    )
-
-    # Lists and entries
-    for lst in client.lists.all():
-        entries_service = client.lists.entries(lst.id)
-        for entry in entries_service.all():
-            ...
-
-    # Resolve by name
-    pipeline = client.lists.resolve(name="Deal Pipeline")
-
-# Async variant
-async with AsyncAffinity.from_env() as client:
-    companies = await client.companies.all()
-```
-
-See [SDK_REFERENCE.md](SDK_REFERENCE.md) for complete patterns including error handling, rate limits, and field values.
+### Field definitions cannot be created/updated via API
+Must use Affinity web UI to create or modify field definitions.
 
 ## CLI Quick Reference
 
-**Always include: `--dotenv` (loads API key), `--readonly` (safety), `--json` (structured output)**
+**Use the `pattern` from check-key output** (includes `--dotenv` only if needed):
 
 ```bash
-# Standard pattern for all queries:
-xaffinity --dotenv --readonly <command> --json
-
-# Search for a person
+# Replace <command> in the pattern from check-key:
+# If pattern was "xaffinity --dotenv --readonly <command> --json":
 xaffinity --dotenv --readonly person search "John Smith" --json
 
-# Get person by ID
-xaffinity --dotenv --readonly person get 123 --json
+# If pattern was "xaffinity --readonly <command> --json":
+xaffinity --readonly person search "John Smith" --json
+```
 
-# Get person by email
-xaffinity --dotenv --readonly person get email:alice@example.com --json
+**IMPORTANT: Use `--help` to discover options. Never guess.**
 
-# List all companies
-xaffinity --dotenv --readonly company ls --all --json
+```bash
+xaffinity person --help              # See all person subcommands
+xaffinity list export --help         # See export options
+```
 
-# Get company by domain
-xaffinity --dotenv --readonly company get domain:acme.com --json
+**Common commands** (using pattern from check-key):
 
-# Export to CSV (doesn't need --json)
-xaffinity --dotenv --readonly person ls --all --csv people.csv --csv-bom
+```bash
+# Get by ID or identifier
+person get 123                       # By ID
+person get email:alice@example.com   # By email
+company get domain:acme.com          # By domain
 
-# Parse JSON with jq
-xaffinity --dotenv --readonly person search "name" --json | jq '.data.persons[]'
+# List/search
+person search "John Smith"
+company ls --all
+list export LIST_ID --all
 
-# Filter on custom fields (plain field names, quote names with spaces)
-xaffinity --dotenv --readonly person ls --filter 'Department = "Sales"' --all --json
+# Export to CSV (no --json needed)
+person ls --all --csv people.csv --csv-bom
+
+# Filter on custom fields
+person ls --filter 'Department = "Sales"' --all
 ```
 
 See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete command reference.
 
 ## Common Workflows
 
-**IMPORTANT:** Use CLI's built-in `--filter` and `--csv` options directly. Don't write Python scripts for simple export tasks.
+**Use CLI options directly.** Don't write Python scripts for simple export tasks.
 
 ### Export list entries with associated entities
 ```bash
-# Export opportunity list with associated people
-xaffinity --dotenv --readonly list export LIST_ID --expand people --all --csv output.csv --csv-bom
+# Export opportunity list with associated people (add --dotenv if check-key indicated)
+list export LIST_ID --expand people --all --csv output.csv --csv-bom
 
 # Export with both people and companies
-xaffinity --dotenv --readonly list export LIST_ID --expand people --expand companies --all --csv output.csv
+list export LIST_ID --expand people --expand companies --all --csv output.csv
 ```
 
 **Valid expand values:** `people` (opportunity/company lists), `companies` (opportunity/person lists)
 
-See [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) for detailed options (CSV modes, field expansion, limits).
+See [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) for detailed options.
 
 ### Export list entries filtered by custom field
 ```bash
-# Filter on a custom field
-xaffinity --dotenv --readonly list export LIST_ID \
-  --filter 'Status = "Active"' \
-  --all --csv output.csv --csv-bom
+list export LIST_ID --filter 'Status = "Active"' --all --csv output.csv --csv-bom
 
 # Combine filter with expand
-xaffinity --dotenv --readonly list export LIST_ID --expand people \
-  --filter 'Status = "Active"' \
-  --all --csv filtered_with_people.csv --csv-bom
+list export LIST_ID --expand people --filter 'Status = "Active"' --all --csv out.csv
 ```
 
-**Filter syntax:**
-- `=` exact match, `=~` contains, `=^` starts with, `=$` ends with
-- `!= *` is NULL, `= *` is not NULL, `= ""` is empty string
-- `&` AND, `|` OR, `!()` NOT
-- Field names with spaces must be quoted: `"My Custom Field" = "Value"`
+**Filter syntax:** `=` exact, `=~` contains, `=^` starts, `=$` ends, `!= *` NULL, `&` AND, `|` OR
 
 ### Export all contacts to CSV
 ```bash
-xaffinity --dotenv --readonly person ls --all --csv contacts.csv --csv-bom
-```
-
-### Get list entries with custom fields
-```python
-with Affinity.from_env() as client:
-    pipeline = client.lists.resolve(name="Deal Pipeline")
-    entries = client.lists.entries(pipeline.id)
-    for entry in entries.all(field_types=[FieldType.LIST]):
-        print(entry.entity.name, entry.fields.data)
+person ls --all --csv contacts.csv --csv-bom
 ```
 
 ### Find person by email
-```python
-with Affinity.from_env() as client:
-    results = client.persons.search("alice@example.com")
-    if results.data:
-        person = results.data[0]
-```
-
-Or via CLI:
 ```bash
-xaffinity --dotenv --readonly person get email:alice@example.com --json
+person get email:alice@example.com
 ```
 
 ### List meetings for a person
 
-**Interactions** - use for meetings with external participants (auto-synced from calendars):
+**Interactions** - meetings with external participants (max 1-year range):
 ```bash
-# REQUIRED: Both --start-time and --end-time (max 1 year range)
-xaffinity --dotenv --readonly interaction ls --person-id 123 --type meeting \
-  --start-time 2025-01-01 --end-time 2025-12-31 --json
-
-# For multiple years, query each year separately
-```
-Note: Interactions only appear if at least one external contact was involved.
-
-**Notes** - use for internal-only meetings or meeting notes content:
-```bash
-xaffinity --dotenv --readonly note ls --person-id 123 --json
-# Filter response for isMeeting: true
+interaction ls --person-id 123 --type meeting --start-time 2025-01-01 --end-time 2025-12-31
 ```
 
-## Finding More Information
-
-**CLI help** - Get command syntax and options:
+**Notes** - internal-only meetings or meeting notes:
 ```bash
-xaffinity --help                    # All commands
-xaffinity person --help             # Person commands
-xaffinity list export --help        # Specific command options
+note ls --person-id 123   # Filter for isMeeting: true
 ```
 
-**Documentation site**: https://yaniv-golan.github.io/affinity-sdk/
+## Reference Files
 
-**Reference files in this skill:**
-- [SDK_REFERENCE.md](SDK_REFERENCE.md) - Python SDK patterns
-- [CLI_REFERENCE.md](CLI_REFERENCE.md) - CLI command reference
-- [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) - Detailed list export with expansions
+- [CLI_REFERENCE.md](CLI_REFERENCE.md) - Complete CLI command reference
+- [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) - List export with expansions
+- [SDK_REFERENCE.md](SDK_REFERENCE.md) - **Python scripts only** (typed IDs, async, error handling)
+- Documentation: https://yaniv-golan.github.io/affinity-sdk/

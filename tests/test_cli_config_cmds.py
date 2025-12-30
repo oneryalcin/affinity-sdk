@@ -64,6 +64,7 @@ class TestConfigCheckKey:
 
         assert result.exit_code == 1
         assert '"configured": false' in result.output
+        assert '"pattern": null' in result.output
 
     def test_check_key_from_environment(self, runner, monkeypatch):
         """Test check-key finds key in environment."""
@@ -77,6 +78,7 @@ class TestConfigCheckKey:
         assert result.exit_code == 0
         assert '"configured": true' in result.output
         assert '"source": "environment"' in result.output
+        assert '"pattern": "xaffinity --readonly <command> --json"' in result.output
 
     def test_check_key_from_config(self, runner, monkeypatch):
         """Test check-key finds key in config.toml."""
@@ -93,6 +95,7 @@ class TestConfigCheckKey:
         assert result.exit_code == 0
         assert '"configured": true' in result.output
         assert '"source": "config"' in result.output
+        assert '"pattern": "xaffinity --readonly <command> --json"' in result.output
 
     def test_check_key_from_dotenv_file_quoted(self, runner, monkeypatch):
         """Test check-key finds key in .env file with quoted value."""
@@ -108,6 +111,7 @@ class TestConfigCheckKey:
         assert result.exit_code == 0
         assert '"configured": true' in result.output
         assert '"source": "dotenv"' in result.output
+        assert '"pattern": "xaffinity --dotenv --readonly <command> --json"' in result.output
 
     def test_check_key_from_dotenv_file_unquoted(self, runner, monkeypatch):
         """Test check-key finds key in .env file with unquoted value."""
@@ -123,6 +127,7 @@ class TestConfigCheckKey:
         assert result.exit_code == 0
         assert '"configured": true' in result.output
         assert '"source": "dotenv"' in result.output
+        assert '"pattern": "xaffinity --dotenv --readonly <command> --json"' in result.output
 
     def test_check_key_ignores_empty_value_in_env(self, runner, monkeypatch):
         """Test check-key doesn't consider empty api_key as configured."""
@@ -137,6 +142,7 @@ class TestConfigCheckKey:
 
         assert result.exit_code == 1
         assert '"configured": false' in result.output
+        assert '"pattern": null' in result.output
 
     def test_check_key_ignores_wrong_section_in_config(self, runner, monkeypatch):
         """Test check-key only looks in [default] section of config.toml."""
@@ -153,6 +159,7 @@ class TestConfigCheckKey:
 
         assert result.exit_code == 1
         assert '"configured": false' in result.output
+        assert '"pattern": null' in result.output
 
 
 class TestConfigSetupKey:

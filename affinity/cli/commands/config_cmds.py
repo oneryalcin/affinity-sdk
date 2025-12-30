@@ -161,10 +161,20 @@ def check_key(ctx: CLIContext) -> None:
     # For JSON output, use the normal flow
     def fn(_ctx: CLIContext, _warnings: list[str]) -> CommandOutput:
         key_found, source = _find_existing_key(ctx)
+
+        # Build the recommended command pattern based on key source
+        pattern: str | None = None
+        if key_found:
+            if source == "dotenv":
+                pattern = "xaffinity --dotenv --readonly <command> --json"
+            else:
+                pattern = "xaffinity --readonly <command> --json"
+
         return CommandOutput(
             data={
                 "configured": key_found,
                 "source": source,  # "environment", "dotenv", "config", or None
+                "pattern": pattern,  # Recommended command pattern to use
             },
             api_called=False,
             exit_code=0 if key_found else 1,

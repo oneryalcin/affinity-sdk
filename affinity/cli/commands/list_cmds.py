@@ -1487,6 +1487,37 @@ def _iterate_list_entries(
         first_page = False
 
 
+def _extract_field_values(obj: Any) -> dict[str, Any]:
+    """Extract field values from an object with fields_raw (V2 API) or fields.data (fallback).
+
+    The V2 API returns fields as an array: [{"id": "field-X", "value": {"data": ...}}, ...]
+    This helper parses that format into a dict mapping field_id -> value.
+
+    Args:
+        obj: An object with `fields_raw` (list) and/or `fields.data` (dict) attributes
+
+    Returns:
+        Dict mapping field_id (str) -> field value
+    """
+    field_values: dict[str, Any] = {}
+    fields_raw = getattr(obj, "fields_raw", None)
+    if isinstance(fields_raw, list):
+        for field_obj in fields_raw:
+            if isinstance(field_obj, dict) and "id" in field_obj:
+                fid_key = str(field_obj["id"])
+                value_wrapper = field_obj.get("value")
+                if isinstance(value_wrapper, dict):
+                    field_values[fid_key] = value_wrapper.get("data")
+                else:
+                    field_values[fid_key] = value_wrapper
+    else:
+        # Fallback to fields.data for older API formats
+        fields_attr = getattr(obj, "fields", None)
+        if fields_attr is not None and hasattr(fields_attr, "data") and fields_attr.data:
+            field_values = dict(fields_attr.data)
+    return field_values
+
+
 def _entry_to_row(
     entry: ListEntryWithEntity,
     field_ids: list[str],
@@ -1507,9 +1538,13 @@ def _entry_to_row(
         "entityId": entity_id,
         "entityName": entity_name,
     }
+
+    # Extract field values from entity (V2 API stores fields on entity, not entry)
+    field_values = _extract_field_values(entry.entity) if entry.entity else {}
+
     for fid in field_ids:
         key = fid if key_mode == "ids" else field_by_id[fid].name if fid in field_by_id else fid
-        row[key] = entry.fields.data.get(str(fid))
+        row[key] = field_values.get(str(fid))
     return row
 
 
@@ -1534,7 +1569,8 @@ def _person_to_expand_dict(
     }
     # Include field values if requested and present
     if (field_types or field_ids) and hasattr(person, "fields") and person.fields.requested:
-        for field_id, value in person.fields.data.items():
+        field_values = _extract_field_values(person)
+        for field_id, value in field_values.items():
             # Get display name from mapping, fallback to field_id
             display_name = (
                 field_id_to_display.get(str(field_id), str(field_id))
@@ -1569,7 +1605,8 @@ def _company_to_expand_dict(
     }
     # Include field values if requested and present
     if (field_types or field_ids) and hasattr(company, "fields") and company.fields.requested:
-        for field_id, value in company.fields.data.items():
+        field_values = _extract_field_values(company)
+        for field_id, value in field_values.items():
             # Get display name from mapping, fallback to field_id
             display_name = (
                 field_id_to_display.get(str(field_id), str(field_id))
@@ -2274,13 +2311,12 @@ def list_entry_get(
 def _validate_entry_target(
     person_id: int | None,
     company_id: int | None,
-    opportunity_id: int | None,
 ) -> None:
-    count = sum(1 for value in (person_id, company_id, opportunity_id) if value is not None)
+    count = sum(1 for value in (person_id, company_id) if value is not None)
     if count == 1:
         return
     raise CLIError(
-        "Provide exactly one of --person-id, --company-id, or --opportunity-id.",
+        "Provide exactly one of --person-id or --company-id.",
         error_type="usage_error",
         exit_code=2,
     )
@@ -2290,7 +2326,6 @@ def _validate_entry_target(
 @click.argument("list_selector")
 @click.option("--person-id", type=int, default=None, help="Person id to add.")
 @click.option("--company-id", type=int, default=None, help="Company id to add.")
-@click.option("--opportunity-id", type=int, default=None, help="Opportunity id to add.")
 @click.option("--creator-id", type=int, default=None, help="Creator id override.")
 @output_options
 @click.pass_obj
@@ -2300,25 +2335,25 @@ def list_entry_add(
     *,
     person_id: int | None,
     company_id: int | None,
-    opportunity_id: int | None,
     creator_id: int | None,
 ) -> None:
-    """Add a list entry (V1 write path)."""
+    """Add a person or company to a list (V1 write path).
+
+    Note: Opportunities cannot be added to lists this way. Use 'opportunity create --list-id'
+    instead, which creates both the opportunity and its list entry atomically.
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        _validate_entry_target(person_id, company_id, opportunity_id)
+        _validate_entry_target(person_id, company_id)
         client = ctx.get_client(warnings=warnings)
         resolved_list = resolve_list_selector(client=client, selector=list_selector)
         entries = client.lists.entries(resolved_list.list.id)
 
-        created = None
         if person_id is not None:
             created = entries.add_person(PersonId(person_id), creator_id=creator_id)
-        elif company_id is not None:
-            created = entries.add_company(CompanyId(company_id), creator_id=creator_id)
         else:
-            assert opportunity_id is not None
-            created = entries.add_opportunity(OpportunityId(opportunity_id), creator_id=creator_id)
+            assert company_id is not None
+            created = entries.add_company(CompanyId(company_id), creator_id=creator_id)
 
         payload = serialize_model_for_cli(created)
         return CommandOutput(
