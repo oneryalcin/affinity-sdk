@@ -104,7 +104,7 @@ For CLI or advanced SDK use, you can use raw filter strings:
 
 **CLI example:**
 ```bash
-xaffinity person ls --filter 'field("Department") = "Sales"'
+xaffinity person ls --filter 'Department = "Sales"'
 ```
 
 **SDK with raw string:**
@@ -116,10 +116,14 @@ persons = client.persons.list(filter='field("Department") = "Sales"')
 ## What can be filtered?
 
 **✅ Custom fields** (added to entities in Affinity):
-- `field("Department").equals("Sales")`
-- `field("Status").contains("Active")`
-- `field("Industry").equals("Software")`
-- `field("Region").in_list(["US", "Canada"])`
+
+Python SDK:
+- `F.field("Department").equals("Sales")`
+- `F.field("Status").contains("Active")`
+
+CLI (raw filter syntax):
+- `Department = "Sales"`
+- `Status =~ "Active"`
 
 **❌ Built-in properties** (cannot be filtered with V2 filter expressions):
 - Person: `type`, `firstName`, `lastName`, `primaryEmail`, `emailAddresses`

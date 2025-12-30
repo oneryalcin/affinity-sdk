@@ -72,13 +72,13 @@ Options:
 - `--csv <path>`: write CSV output (requires `--all`)
 - `--csv-bom`: write UTF-8 BOM for Excel compatibility
 
-**Note:** `--filter` only works with custom fields using `field("Name")` syntax. To filter on built-in properties like `type`, `firstName`, etc., use `--json` output with `jq`.
+**Note:** `--filter` only works with custom fields. To filter on built-in properties like `type`, `firstName`, etc., use `--json` output with `jq`.
 
 ```bash
 xaffinity person ls
 xaffinity person ls --page-size 50
 xaffinity person ls --field-type enriched --all
-xaffinity person ls --filter 'field("Email") =~ "@acme.com"'
+xaffinity person ls --filter 'Email =~ "@acme.com"'
 xaffinity person ls --all --csv people.csv
 xaffinity person ls --all --csv people.csv --csv-bom
 ```
@@ -198,13 +198,13 @@ Options:
 - `--csv <path>`: write CSV output (requires `--all`)
 - `--csv-bom`: write UTF-8 BOM for Excel compatibility
 
-**Note:** `--filter` only works with custom fields using `field("Name")` syntax. To filter on built-in properties like `name`, `domain`, etc., use `--json` output with `jq`.
+**Note:** `--filter` only works with custom fields. To filter on built-in properties like `name`, `domain`, etc., use `--json` output with `jq`.
 
 ```bash
 xaffinity company ls
 xaffinity company ls --page-size 50
 xaffinity company ls --field-type enriched --all
-xaffinity company ls --filter 'field("Industry") = "Software"'
+xaffinity company ls --filter 'Industry = "Software"'
 xaffinity company ls --all --csv companies.csv
 xaffinity company ls --all --csv companies.csv --csv-bom
 ```

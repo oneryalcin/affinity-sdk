@@ -234,14 +234,14 @@ When filtering on custom fields, use `--filter` for server-side filtering. This 
 
 ```bash
 # ✅ Efficient: Server-side filtering on custom field
-xaffinity person ls --filter 'field("Department") = "Sales"' --all --csv sales-people.csv
+xaffinity person ls --filter 'Department = "Sales"' --all --csv sales-people.csv
 ```
 
 You can also combine `--filter` with jq for additional client-side processing:
 
 ```bash
 # Filter server-side, then process with jq
-xaffinity person ls --filter 'field("Department") = "Sales"' --json --all | \
+xaffinity person ls --filter 'Department = "Sales"' --json --all | \
   jq -r '.data.persons[] | [.id, .name, .primaryEmail] | @csv'
 ```
 
@@ -262,7 +262,7 @@ For complex scenarios, combine server-side custom field filtering with client-si
 
 ```bash
 # Filter on custom field server-side, then filter on type client-side
-xaffinity person ls --filter 'field("Department") = "Sales"' --json --all | \
+xaffinity person ls --filter 'Department = "Sales"' --json --all | \
   jq -r '.data.persons[] | select(.type == "internal") | [.id, .name] | @csv'
 ```
 
