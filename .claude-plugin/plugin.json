@@ -10,5 +10,6 @@
   "license": "MIT",
   "keywords": ["affinity", "crm", "sdk", "cli", "api"],
   "commands": ["./.claude-plugin/commands/"],
-  "skills": ["./.claude-plugin/skills/"]
+  "skills": ["./.claude-plugin/skills/"],
+  "hooks": ["./.claude-plugin/hooks/"]
 }
