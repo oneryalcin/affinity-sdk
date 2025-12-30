@@ -170,17 +170,43 @@ xaffinity --dotenv --readonly person ls --all --csv people.csv --csv-bom
 # Parse JSON with jq
 xaffinity --dotenv --readonly person search "name" --json | jq '.data.persons[]'
 
-# Filter on custom fields
-xaffinity --dotenv --readonly person ls --filter 'field("Department") = "Sales"' --all --json
+# Filter on custom fields (plain field names, quote names with spaces)
+xaffinity --dotenv --readonly person ls --filter 'Department = "Sales"' --all --json
 ```
 
 See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete command reference.
 
 ## Common Workflows
 
+**IMPORTANT:** Use CLI's built-in `--filter` and `--csv` options directly. Don't write Python scripts for simple export tasks.
+
+### Export list entries filtered by custom field to CSV
+```bash
+# Export with filter on a custom field (custom fields are user-defined)
+xaffinity --dotenv --readonly list export LIST_ID --expand people \
+  --filter 'Status = "Active"' \
+  --all --csv output.csv --csv-bom
+
+# Filter for NULL values (field has no value)
+xaffinity --dotenv --readonly list export LIST_ID --expand people \
+  --filter '"Custom Field" != *' \
+  --all --csv null_values.csv --csv-bom
+
+# Filter for multiple values with OR
+xaffinity --dotenv --readonly list export LIST_ID --expand people \
+  --filter '("Custom Field" != *) | ("Custom Field" = "Value1") | ("Custom Field" = "Value2")' \
+  --all --csv filtered.csv --csv-bom
+```
+
+**Filter syntax:**
+- `=` exact match, `=~` contains, `=^` starts with, `=$` ends with
+- `!= *` is NULL, `= *` is not NULL, `= ""` is empty string
+- `&` AND, `|` OR, `!()` NOT
+- Field names with spaces must be quoted: `"My Custom Field" = "Value"`
+
 ### Export all contacts to CSV
 ```bash
-xaffinity person ls --all --csv contacts.csv --csv-bom
+xaffinity --dotenv --readonly person ls --all --csv contacts.csv --csv-bom
 ```
 
 ### Get list entries with custom fields

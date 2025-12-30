@@ -137,8 +137,8 @@ xaffinity company delete 456
 xaffinity list ls
 
 # Get list details
-xaffinity list get 789
-xaffinity list get 'name:"Deal Pipeline"'
+xaffinity list view 789
+xaffinity list view 'name:"Deal Pipeline"'
 
 # Get list fields
 xaffinity list fields 789
@@ -146,7 +146,27 @@ xaffinity list fields 789
 # Export list entries
 xaffinity list export 789 --all
 xaffinity list export 789 --all --csv entries.csv
+
+# Export with expanded people data
+xaffinity list export 789 --expand people --all --csv entries_with_people.csv --csv-bom
+
+# Export filtered by custom field
+xaffinity list export LIST_ID --expand people \
+  --filter 'Status = "Active"' \
+  --all --csv active_entries.csv --csv-bom
+
+# Filter for NULL values (use != *)
+xaffinity list export LIST_ID --expand people \
+  --filter '"Custom Field" != *' \
+  --all --csv null_values.csv --csv-bom
+
+# Filter for multiple values with OR (use | operator)
+xaffinity list export LIST_ID --expand people \
+  --filter 'Status = "Open" | Status = "Pending"' \
+  --all --csv filtered.csv --csv-bom
 ```
+
+See [Filtering](#filtering) section for complete filter syntax reference.
 
 ## Opportunities
 
@@ -236,41 +256,45 @@ xaffinity resolve-url "https://mydomain.affinity.com/persons/456"
 **Custom fields only** (built-in properties like `type`, `name`, `domain` cannot be filtered server-side):
 
 ```bash
-# Equals
-xaffinity person ls --filter 'field("Department") = "Sales"' --all
+# Equals (quote field names with spaces)
+xaffinity person ls --filter 'Department = "Sales"' --all
+xaffinity person ls --filter '"Primary Email Status" = "Valid"' --all
 
 # Contains
-xaffinity company ls --filter 'field("Industry") =~ "Tech"' --all
+xaffinity company ls --filter 'Industry =~ "Tech"' --all
 
 # Starts with
-xaffinity person ls --filter 'field("Title") =^ "VP"' --all
+xaffinity person ls --filter 'Title =^ "VP"' --all
 
 # AND / OR
-xaffinity person ls --filter 'field("Dept") = "Sales" & field("Status") = "Active"' --all
-xaffinity company ls --filter 'field("Region") = "US" | field("Region") = "EU"' --all
+xaffinity person ls --filter 'Dept = "Sales" & Status = "Active"' --all
+xaffinity company ls --filter 'Region = "US" | Region = "EU"' --all
 
 # NOT
-xaffinity person ls --filter '!(field("Archived") = true)' --all
+xaffinity person ls --filter '!(Archived = true)' --all
 
 # NULL checks
-xaffinity person ls --filter 'field("Manager") != *' --all   # is null
-xaffinity person ls --filter 'field("Manager") = *' --all    # is not null
+xaffinity person ls --filter 'Manager != *' --all   # is null
+xaffinity person ls --filter 'Manager = *' --all    # is not null
 ```
 
 ## Filter Operators Reference
 
 | Meaning | Operator | Example |
 |---------|----------|---------|
-| equals | `=` | `field("Status") = "Active"` |
-| not equals | `!=` | `field("Status") != "Closed"` |
-| contains | `=~` | `field("Name") =~ "Corp"` |
-| starts with | `=^` | `field("Name") =^ "Ac"` |
-| ends with | `=$` | `field("Name") =$ "Inc"` |
-| is null | `!= *` | `field("Email") != *` |
-| is not null | `= *` | `field("Email") = *` |
-| AND | `&` | `field("A") = 1 & field("B") = 2` |
-| OR | `\|` | `field("A") = 1 \| field("B") = 2` |
-| NOT | `!` | `!(field("A") = 1)` |
+| equals | `=` | `Status = "Active"` |
+| not equals | `!=` | `Status != "Closed"` |
+| contains | `=~` | `Name =~ "Corp"` |
+| starts with | `=^` | `Name =^ "Ac"` |
+| ends with | `=$` | `Name =$ "Inc"` |
+| is null | `!= *` | `Email != *` |
+| is not null | `= *` | `Email = *` |
+| is empty | `= ""` | `Notes = ""` |
+| AND | `&` | `A = 1 & B = 2` |
+| OR | `\|` | `A = 1 \| B = 2` |
+| NOT | `!` | `!(A = 1)` |
+
+**Note:** Field names with spaces must be quoted: `"Primary Email Status" = "Valid"`
 
 ## JSON Output for Scripting
 
