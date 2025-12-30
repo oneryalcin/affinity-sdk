@@ -132,6 +132,63 @@ CLI (raw filter syntax):
 
 For built-in properties, retrieve all data and filter client-side (see [CSV Export Guide](./csv-export.md) for examples).
 
+## Filtering in List Exports (CLI)
+
+The `list export` command supports two filter options with **identical syntax** but different behavior:
+
+| Option | What It Filters | Where Filtering Happens |
+|--------|----------------|------------------------|
+| `--filter` | List entries | Server-side (API) |
+| `--expand-filter` | Expanded entities (people, companies) | Client-side (after fetch) |
+
+### Why the difference?
+
+The Affinity API supports filtering for list entries, but **does not support filtering associations**.
+
+When you use `--expand people`, the CLI:
+
+1. Fetches the list entries (can be filtered with `--filter`)
+2. For each entry, fetches ALL associated people (API returns all, no filter option)
+3. Filters the people locally based on `--expand-filter`
+
+This means `--expand-filter`:
+
+- Uses the same syntax as `--filter` for consistency
+- Is applied after fetching data (doesn't reduce API calls)
+- Still useful for reducing output size and focusing on relevant associations
+
+### Supported operators for `--expand-filter`
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| `=` | Exact match | `name=Alice` |
+| `!=` | Not equal | `name!=Bob` |
+| `=*` | IS NOT NULL (has value) | `email=*` |
+| `!=*` | IS NULL (empty/not set) | `email!=*` |
+| `=~` | Contains substring | `name=~Corp` |
+| `\|` | OR | `status=Unknown \| status=Valid` |
+| `&` | AND | `status=Valid & role=CEO` |
+| `!` | NOT (prefix) | `!(status=Inactive)` |
+| `()` | Grouping | `(status=A \| status=B) & role=CEO` |
+
+### Example
+
+```bash
+# Server-side: only fetch Active opportunities
+# Client-side: only include people with valid email status
+xaffinity list export 275454 \
+  --filter "Status=Active" \
+  --expand people \
+  --expand-filter "Primary Email Status=Valid | Primary Email Status=Unknown | Primary Email Status!=*" \
+  --all --csv output.csv
+```
+
+### Performance consideration
+
+Since `--expand-filter` is client-side, all associations are still fetched from the API.
+For large lists with many associations, the export may take time even if the filter
+reduces the final output significantly. Use `--dry-run` to estimate API calls.
+
 ## Next steps
 
 - [Pagination](pagination.md)

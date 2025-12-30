@@ -681,6 +681,111 @@ def _kv_table(obj: dict[str, Any]) -> Table:
     return table
 
 
+def _render_fields_section(
+    *,
+    title: str,
+    fields: list[dict[str, Any]],
+    field_metadata: dict[str, str] | None,
+    verbose: bool = False,
+) -> Any:
+    """Render field values as a human-readable table with field names.
+
+    Groups multi-value fields (same field_id with multiple values) and shows
+    field name only on the first row. Shows Field Name, Field ID, Value columns.
+    If verbose=True, also shows Value ID column.
+
+    Args:
+        title: Section title (e.g., "Fields (29)")
+        fields: List of field value dicts from the API
+        field_metadata: Mapping of field_id -> field_name (can be None)
+        verbose: If True, include Value ID column
+    """
+    if not fields:
+        return None
+
+    # Group fields by field_id to handle multi-value fields
+    from collections import OrderedDict
+
+    grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for field in fields:
+        field_id = field.get("fieldId") or field.get("id") or ""
+        if isinstance(field_id, str):
+            grouped.setdefault(field_id, []).append(field)
+
+    # Build table
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Field")
+    table.add_column("Field ID")
+    table.add_column("Value")
+    if verbose:
+        table.add_column("Value ID")
+
+    def format_field_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and value.is_integer():
+                return f"{int(value):,}"
+            if isinstance(value, int):
+                return f"{value:,}"
+            return str(value)
+        if isinstance(value, str):
+            # Truncate long values
+            if len(value) > 120:
+                return value[:117] + "..."
+            return value
+        if isinstance(value, dict):
+            # Handle typed values like {type: "...", data: ...}
+            data = value.get("data")
+            if data is not None:
+                return format_field_value(data)
+            # Handle name/text objects
+            name = value.get("name") or value.get("text")
+            if isinstance(name, str):
+                return name
+            return f"object ({len(value)} keys)"
+        if isinstance(value, list):
+            if all(isinstance(v, str) for v in value):
+                return ", ".join(value)
+            if all(isinstance(v, dict) for v in value):
+                # Extract names/texts from list of objects
+                texts = []
+                for item in value:
+                    text = item.get("text") or item.get("name")
+                    if isinstance(text, str):
+                        texts.append(text)
+                if texts:
+                    return ", ".join(texts)
+            return f"list ({len(value)} items)"
+        return str(value)
+
+    field_metadata = field_metadata or {}
+
+    for field_id, field_values in grouped.items():
+        field_name = field_metadata.get(field_id, "")
+        for idx, fv in enumerate(field_values):
+            # Show field name and ID only on first row for multi-value fields
+            display_name = field_name if idx == 0 else ""
+            display_id = field_id if idx == 0 else ""
+
+            value = fv.get("value")
+            value_str = format_field_value(value)
+
+            if verbose:
+                value_id = fv.get("id", "")
+                value_id_str = str(value_id) if value_id else ""
+                table.add_row(display_name, display_id, value_str, value_id_str)
+            else:
+                table.add_row(display_name, display_id, value_str)
+
+    renderables: list[Any] = []
+    renderables.append(Text(title, style="bold"))
+    renderables.append(table)
+    return Group(*renderables)
+
+
 def _render_collection_section(
     *,
     title: str | None,
@@ -874,6 +979,22 @@ def _render_human_data(
                     hint=cast(str, v.get("_hint")),
                 )
             if isinstance(v, list) and all(isinstance(x, dict) for x in v):
+                # Check if this is a fields section with metadata available
+                if (
+                    only_key == "fields"
+                    and isinstance(meta_resolved, dict)
+                    and "fieldMetadata" in meta_resolved
+                ):
+                    field_metadata = meta_resolved.get("fieldMetadata")
+                    if isinstance(field_metadata, dict):
+                        fields_section = _render_fields_section(
+                            title=f"Fields ({len(v)})" if v else "Fields",
+                            fields=cast(list[dict[str, Any]], v),
+                            field_metadata=cast(dict[str, str], field_metadata),
+                            verbose=verbosity >= 1,
+                        )
+                        if fields_section is not None:
+                            return fields_section
                 return _render_collection_section(
                     title=only_key, rows=v, pagination=section_pagination
                 )
@@ -928,6 +1049,23 @@ def _render_human_data(
                     )
                 )
             elif isinstance(v, list) and all(isinstance(x, dict) for x in v):
+                # Check if this is a fields section with metadata available
+                if (
+                    key == "fields"
+                    and isinstance(meta_resolved, dict)
+                    and "fieldMetadata" in meta_resolved
+                ):
+                    field_metadata = meta_resolved.get("fieldMetadata")
+                    if isinstance(field_metadata, dict):
+                        fields_section = _render_fields_section(
+                            title=f"Fields ({len(v)})" if v else "Fields",
+                            fields=cast(list[dict[str, Any]], v),
+                            field_metadata=cast(dict[str, str], field_metadata),
+                            verbose=verbosity >= 1,
+                        )
+                        if fields_section is not None:
+                            sections.append(fields_section)
+                        continue
                 sections.append(
                     _render_collection_section(title=key, rows=v, pagination=section_pagination)
                 )

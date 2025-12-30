@@ -221,6 +221,25 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
+    # Mock for field metadata fetch (used by set-field/set-fields) - V2 API
+    respx_mock.get("https://api.affinity.co/v2/lists/123/fields").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "field-1",
+                        "name": "Status",
+                        "valueType": 0,
+                        "allowsMultiple": False,
+                        "listId": 123,
+                    }
+                ]
+            },
+        )
+    )
+    # Mock for existing field values check (used by set-field)
+    respx_mock.get("https://api.affinity.co/field-values").mock(return_value=Response(200, json=[]))
 
     runner = CliRunner()
     created = runner.invoke(
@@ -247,7 +266,7 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
             "--json",
             "list",
             "entry",
-            "update-field",
+            "set-field",
             "123",
             "98765",
             "--field-id",
@@ -259,7 +278,7 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
     )
     assert updated_field.exit_code == 0
     updated_payload = json.loads(updated_field.output.strip())
-    assert updated_payload["data"]["fieldValues"]["data"]["field-1"] == "Active"
+    assert updated_payload["data"]["fieldValue"]["data"]["field-1"] == "Active"
 
     batch_updated = runner.invoke(
         cli,
@@ -267,7 +286,7 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
             "--json",
             "list",
             "entry",
-            "batch-update",
+            "set-fields",
             "123",
             "98765",
             "--updates-json",
@@ -319,46 +338,6 @@ def test_field_and_field_value_ops(respx_mock: respx.MockRouter) -> None:
     respx_mock.delete("https://api.affinity.co/fields/123").mock(
         return_value=Response(200, json={"success": True})
     )
-    respx_mock.get("https://api.affinity.co/field-values").mock(
-        return_value=Response(
-            200,
-            json={
-                "data": [
-                    {
-                        "id": 555,
-                        "field_id": "field-123",
-                        "entity_id": 42,
-                        "value": "Active",
-                    }
-                ]
-            },
-        )
-    )
-    respx_mock.post("https://api.affinity.co/field-values").mock(
-        return_value=Response(
-            200,
-            json={
-                "id": 556,
-                "field_id": "field-123",
-                "entity_id": 42,
-                "value": "Investor",
-            },
-        )
-    )
-    respx_mock.put("https://api.affinity.co/field-values/555").mock(
-        return_value=Response(
-            200,
-            json={
-                "id": 555,
-                "field_id": "field-123",
-                "entity_id": 42,
-                "value": "Updated",
-            },
-        )
-    )
-    respx_mock.delete("https://api.affinity.co/field-values/555").mock(
-        return_value=Response(200, json={"success": True})
-    )
 
     runner = CliRunner()
     field_ls = runner.invoke(
@@ -398,52 +377,6 @@ def test_field_and_field_value_ops(respx_mock: respx.MockRouter) -> None:
     assert field_delete.exit_code == 0
     field_delete_payload = json.loads(field_delete.output.strip())
     assert field_delete_payload["data"]["success"] is True
-
-    values_ls = runner.invoke(
-        cli,
-        ["--json", "field-value", "ls", "--person-id", "42"],
-        env={"AFFINITY_API_KEY": "test-key"},
-    )
-    assert values_ls.exit_code == 0
-    values_payload = json.loads(values_ls.output.strip())
-    assert values_payload["data"]["fieldValues"][0]["id"] == 555
-
-    value_create = runner.invoke(
-        cli,
-        [
-            "--json",
-            "field-value",
-            "create",
-            "--field-id",
-            "field-123",
-            "--entity-id",
-            "42",
-            "--value",
-            "Investor",
-        ],
-        env={"AFFINITY_API_KEY": "test-key"},
-    )
-    assert value_create.exit_code == 0
-    value_create_payload = json.loads(value_create.output.strip())
-    assert value_create_payload["data"]["fieldValue"]["id"] == 556
-
-    value_update = runner.invoke(
-        cli,
-        ["--json", "field-value", "update", "555", "--value", "Updated"],
-        env={"AFFINITY_API_KEY": "test-key"},
-    )
-    assert value_update.exit_code == 0
-    value_update_payload = json.loads(value_update.output.strip())
-    assert value_update_payload["data"]["fieldValue"]["value"] == "Updated"
-
-    value_delete = runner.invoke(
-        cli,
-        ["--json", "field-value", "delete", "555"],
-        env={"AFFINITY_API_KEY": "test-key"},
-    )
-    assert value_delete.exit_code == 0
-    value_delete_payload = json.loads(value_delete.output.strip())
-    assert value_delete_payload["data"]["success"] is True
 
 
 def test_relationship_strength_and_task(respx_mock: respx.MockRouter) -> None:

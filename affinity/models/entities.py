@@ -242,6 +242,9 @@ class Person(AffinityModel):
     # V1: only returned when with_interaction_dates=true; preserve shape for forward compatibility.
     interactions: dict[str, Any] | None = None
 
+    # List entries (returned for single person fetch)
+    list_entries: list[ListEntry] | None = Field(None, alias="listEntries")
+
     @property
     def full_name(self) -> str:
         """Get the person's full name."""

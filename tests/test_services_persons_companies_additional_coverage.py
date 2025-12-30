@@ -1715,3 +1715,219 @@ async def test_async_person_service_get_with_include_field_values() -> None:
         assert field_values[0]["value"] == "Manager"
     finally:
         await client.close()
+
+
+# =============================================================================
+# TC-004 / TC-005: Tests for search_pages() and search_all() pagination helpers
+# =============================================================================
+
+
+def test_person_service_search_pages_iterates_multiple_pages() -> None:
+    """TC-004: Test PersonService.search_pages() pagination."""
+    page_tokens = [None, "token1", "token2"]
+    current_page = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/persons"
+        ):
+            current_page[0] += 1
+            next_token = (
+                page_tokens[current_page[0]] if current_page[0] < len(page_tokens) else None
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "persons": [
+                        {
+                            "id": current_page[0],
+                            "firstName": f"Person{current_page[0]}",
+                            "lastName": "Test",
+                            "type": "external",
+                        }
+                    ],
+                    "next_page_token": next_token,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = PersonService(client)
+        pages = list(service.search_pages("test"))
+        assert len(pages) == 3
+        assert pages[0].data[0].first_name == "Person1"
+        assert pages[1].data[0].first_name == "Person2"
+        assert pages[2].data[0].first_name == "Person3"
+    finally:
+        client.close()
+
+
+def test_person_service_search_all_flattens_results() -> None:
+    """TC-004: Test PersonService.search_all() auto-pagination."""
+    page_tokens = [None, "token1", None]
+    current_page = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/persons"
+        ):
+            current_page[0] += 1
+            next_token = (
+                page_tokens[current_page[0]] if current_page[0] < len(page_tokens) else None
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "persons": [
+                        {
+                            "id": current_page[0],
+                            "firstName": f"Person{current_page[0]}",
+                            "lastName": "Test",
+                            "type": "external",
+                        },
+                        {
+                            "id": current_page[0] + 10,
+                            "firstName": f"Person{current_page[0] + 10}",
+                            "lastName": "Test",
+                            "type": "external",
+                        },
+                    ],
+                    "next_page_token": next_token,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = PersonService(client)
+        persons = list(service.search_all("test"))
+        assert len(persons) == 4  # 2 per page * 2 pages
+        assert persons[0].first_name == "Person1"
+        assert persons[1].first_name == "Person11"
+        assert persons[2].first_name == "Person2"
+        assert persons[3].first_name == "Person12"
+    finally:
+        client.close()
+
+
+def test_company_service_search_pages_iterates_multiple_pages() -> None:
+    """TC-005: Test CompanyService.search_pages() pagination."""
+    page_tokens = [None, "token1", "token2"]
+    current_page = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/organizations"
+        ):
+            current_page[0] += 1
+            next_token = (
+                page_tokens[current_page[0]] if current_page[0] < len(page_tokens) else None
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "organizations": [
+                        {
+                            "id": current_page[0],
+                            "name": f"Company{current_page[0]}",
+                            "domain": f"company{current_page[0]}.com",
+                        }
+                    ],
+                    "next_page_token": next_token,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = CompanyService(client)
+        pages = list(service.search_pages("test"))
+        assert len(pages) == 3
+        assert pages[0].data[0].name == "Company1"
+        assert pages[1].data[0].name == "Company2"
+        assert pages[2].data[0].name == "Company3"
+    finally:
+        client.close()
+
+
+def test_company_service_search_all_flattens_results() -> None:
+    """TC-005: Test CompanyService.search_all() auto-pagination."""
+    page_tokens = [None, "token1", None]
+    current_page = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.copy_with(query=None) == httpx.URL(
+            "https://v1.example/organizations"
+        ):
+            current_page[0] += 1
+            next_token = (
+                page_tokens[current_page[0]] if current_page[0] < len(page_tokens) else None
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "organizations": [
+                        {
+                            "id": current_page[0],
+                            "name": f"Company{current_page[0]}",
+                            "domain": f"company{current_page[0]}.com",
+                        },
+                        {
+                            "id": current_page[0] + 10,
+                            "name": f"Company{current_page[0] + 10}",
+                            "domain": f"company{current_page[0] + 10}.com",
+                        },
+                    ],
+                    "next_page_token": next_token,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = CompanyService(client)
+        companies = list(service.search_all("test"))
+        assert len(companies) == 4  # 2 per page * 2 pages
+        assert companies[0].name == "Company1"
+        assert companies[1].name == "Company11"
+        assert companies[2].name == "Company2"
+        assert companies[3].name == "Company12"
+    finally:
+        client.close()

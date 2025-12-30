@@ -561,34 +561,34 @@ xaffinity field delete field-123
 
 ## Field Values
 
-### `xxaffinity field-value ls`
+### `xaffinity field-value ls`
 
 ```bash
-xxaffinity field-value ls --person-id 26229794
-xxaffinity field-value ls --list-entry-id 98765 --json
+xaffinity field-value ls --person-id 26229794
+xaffinity field-value ls --list-entry-id 98765 --json
 ```
 
-### `xxaffinity field-value create`
+### `xaffinity field-value create`
 
 ```bash
-xxaffinity field-value create --field-id field-123 --entity-id 26229794 --value \"Investor\"
+xaffinity field-value create --field-id field-123 --entity-id 26229794 --value \"Investor\"
 ```
 
-### `xxaffinity field-value update <fieldValueId>`
+### `xaffinity field-value update <fieldValueId>`
 
 ```bash
-xxaffinity field-value update 555 --value-json '\"Active\"'
+xaffinity field-value update 555 --value-json '\"Active\"'
 ```
 
-### `xxaffinity field-value delete <fieldValueId>`
+### `xaffinity field-value delete <fieldValueId>`
 
 ```bash
-xxaffinity field-value delete 555
+xaffinity field-value delete 555
 ```
 
 ## Field Value Changes
 
-### `xxxaffinity field-value-changes ls`
+### `xaffinity field-value-changes ls`
 
 List field value change history for a specific field on an entity (V1).
 
@@ -604,8 +604,8 @@ Options:
 Exactly one entity selector (`--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id`) is required.
 
 ```bash
-xxxaffinity field-value-changes ls --field-id field-123 --person-id 456
-xxxaffinity field-value-changes ls --field-id field-123 --company-id 789 --action-type update
+xaffinity field-value-changes ls --field-id field-123 --person-id 456
+xaffinity field-value-changes ls --field-id field-123 --company-id 789 --action-type update
 xaffinity --json field-value-changes ls --field-id field-123 --list-entry-id 101
 ```
 

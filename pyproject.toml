@@ -130,6 +130,9 @@ ignore = [
 "tools/*.py" = [
     "PLC0415",  # dev tools may use local imports for lazy SDK loading
 ]
+"affinity/cli/**/*.py" = [
+    "PLC0415",  # CLI uses local imports for lazy loading to reduce startup time
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["affinity"]

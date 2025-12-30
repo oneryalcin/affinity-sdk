@@ -1117,6 +1117,10 @@ class AsyncCompanyService:
         if not data.person_ids:
             payload.pop("person_ids", None)
         result = await self._client.post("/organizations", json=payload, v1=True)
+
+        if self._client.cache:
+            self._client.cache.invalidate_prefix("company")
+
         return Company.model_validate(result)
 
     async def update(self, company_id: CompanyId, data: CompanyUpdate) -> Company:
@@ -1136,6 +1140,10 @@ class AsyncCompanyService:
             json=payload,
             v1=True,
         )
+
+        if self._client.cache:
+            self._client.cache.invalidate_prefix("company")
+
         return Company.model_validate(result)
 
     async def delete(self, company_id: CompanyId) -> bool:
@@ -1145,6 +1153,10 @@ class AsyncCompanyService:
         Uses V1 API.
         """
         result = await self._client.delete(f"/organizations/{company_id}", v1=True)
+
+        if self._client.cache:
+            self._client.cache.invalidate_prefix("company")
+
         return bool(result.get("success", False))
 
     # =========================================================================
@@ -1168,8 +1180,8 @@ class AsyncCompanyService:
         result = await self._client.post(
             "/company-merges",
             json={
-                "primaryOrganizationId": int(primary_id),
-                "duplicateOrganizationId": int(duplicate_id),
+                "primaryCompanyId": int(primary_id),
+                "duplicateCompanyId": int(duplicate_id),
             },
         )
         return str(result.get("taskUrl", ""))

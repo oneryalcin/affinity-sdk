@@ -1622,6 +1622,20 @@ def company_get(
         if expand_set:
             resolved["expand"] = sorted(expand_set)
 
+        # Fetch field metadata if fields were requested and present in response
+        company_fields = (
+            company_payload.get("fields") if isinstance(company_payload, dict) else None
+        )
+        if isinstance(company_fields, list) and company_fields:
+            try:
+                from ..field_utils import build_field_id_to_name_map
+
+                field_metadata = client.companies.get_fields()
+                resolved["fieldMetadata"] = build_field_id_to_name_map(field_metadata)
+            except Exception:
+                # Field metadata is optional - continue without names if fetch fails
+                pass
+
         return CommandOutput(
             data=data,
             pagination=pagination or None,
@@ -1750,3 +1764,333 @@ def company_merge(
         return CommandOutput(data={"taskUrl": task_url}, api_called=True)
 
     run_command(ctx, command="company merge", fn=fn)
+
+
+@company_group.command(name="set-field", cls=RichCommand)
+@click.argument("company_id", type=int)
+@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Industry').")
+@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
+@click.option("--value", help="Value to set (string).")
+@click.option("--value-json", help="Value to set (JSON).")
+@click.option("--append", is_flag=True, help="Append to multi-value field instead of replacing.")
+@output_options
+@click.pass_obj
+def company_set_field(
+    ctx: CLIContext,
+    company_id: int,
+    *,
+    field_name: str | None,
+    field_id: str | None,
+    value: str | None,
+    value_json: str | None,
+    append: bool,
+) -> None:
+    """
+    Set a field value on a company.
+
+    Use --field for field name resolution or --field-id for direct field ID.
+    Use --append for multi-value fields to add without replacing existing values.
+
+    Examples:
+
+    - `xaffinity company set-field 123 --field Industry --value "Software"`
+    - `xaffinity company set-field 123 --field-id field-260415 --value "Active"`
+    - `xaffinity company set-field 123 --field Tags --value "Enterprise" --append`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        from affinity.models.entities import FieldValueCreate
+        from affinity.types import FieldId as FieldIdType
+
+        from ..field_utils import (
+            FieldResolver,
+            fetch_field_metadata,
+            find_field_values_for_field,
+            validate_field_option_mutual_exclusion,
+        )
+        from ._v1_parsing import parse_json_value
+
+        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
+
+        if value is None and value_json is None:
+            raise CLIError(
+                "Provide --value or --value-json.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+        if value is not None and value_json is not None:
+            raise CLIError(
+                "Use only one of --value or --value-json.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        client = ctx.get_client(warnings=warnings)
+        resolved: dict[str, Any] = {}
+
+        # Fetch field metadata and resolve field
+        field_metadata = fetch_field_metadata(client=client, entity_type="company")
+        resolver = FieldResolver(field_metadata)
+
+        target_field_id = (
+            field_id
+            if field_id
+            else resolver.resolve_field_name_or_id(field_name or "", context="field")
+        )
+        resolved["fieldId"] = target_field_id
+        resolved["fieldName"] = resolver.get_field_name(target_field_id)
+
+        # Check if field allows multiple values
+        field_allows_multiple = False
+        for fm in field_metadata:
+            if str(fm.id) == target_field_id:
+                field_allows_multiple = fm.allows_multiple
+                break
+
+        # If not appending and field has existing values, delete them first
+        if not append:
+            existing_values = client.field_values.list(company_id=CompanyId(company_id))
+            existing_for_field = find_field_values_for_field(
+                field_values=[serialize_model_for_cli(v) for v in existing_values],
+                field_id=target_field_id,
+            )
+            if existing_for_field:
+                if not field_allows_multiple:
+                    # Single-value field: delete existing value
+                    for fv in existing_for_field:
+                        fv_id = fv.get("id")
+                        if fv_id:
+                            client.field_values.delete(fv_id)
+                else:
+                    # Multi-value field without --append: error
+                    field_label = resolved["fieldName"] or target_field_id
+                    raise CLIError(
+                        f"Field '{field_label}' has {len(existing_for_field)} value(s). "
+                        "Use --append to add, or unset-field first.",
+                        exit_code=2,
+                        error_type="usage_error",
+                    )
+
+        # Create the field value
+        parsed_value = value if value_json is None else parse_json_value(value_json, label="value")
+        created = client.field_values.create(
+            FieldValueCreate(
+                field_id=FieldIdType(target_field_id),
+                entity_id=company_id,
+                value=parsed_value,
+            )
+        )
+
+        payload = serialize_model_for_cli(created)
+        return CommandOutput(
+            data={"fieldValue": payload},
+            resolved=resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="company set-field", fn=fn)
+
+
+@company_group.command(name="set-fields", cls=RichCommand)
+@click.argument("company_id", type=int)
+@click.option(
+    "--updates-json",
+    required=True,
+    help='JSON object of field name/ID -> value pairs (e.g. \'{"Industry": "Tech"}\').',
+)
+@output_options
+@click.pass_obj
+def company_set_fields(
+    ctx: CLIContext,
+    company_id: int,
+    *,
+    updates_json: str,
+) -> None:
+    """
+    Set multiple field values on a company at once.
+
+    Field names are resolved case-insensitively. Field IDs can also be used.
+    All field names are validated before any updates are applied.
+
+    Examples:
+
+    - `xaffinity company set-fields 123 --updates-json '{"Industry": "Tech"}'`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        from affinity.models.entities import FieldValueCreate
+        from affinity.types import FieldId as FieldIdType
+
+        from ..field_utils import FieldResolver, fetch_field_metadata
+        from ._v1_parsing import parse_json_value
+
+        parsed = parse_json_value(updates_json, label="updates-json")
+        if not isinstance(parsed, dict):
+            raise CLIError(
+                "--updates-json must be a JSON object.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        if not parsed:
+            raise CLIError(
+                "--updates-json cannot be empty.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        client = ctx.get_client(warnings=warnings)
+        resolved: dict[str, Any] = {}
+
+        # Fetch field metadata and resolve ALL field names first
+        field_metadata = fetch_field_metadata(client=client, entity_type="company")
+        resolver = FieldResolver(field_metadata)
+
+        # Validate all field names - this raises on any invalid names
+        resolved_updates, _ = resolver.resolve_all_field_names_or_ids(parsed, context="field")
+
+        # Create field values
+        results: list[dict[str, Any]] = []
+        for fid, field_value in resolved_updates.items():
+            created = client.field_values.create(
+                FieldValueCreate(
+                    field_id=FieldIdType(fid),
+                    entity_id=company_id,
+                    value=field_value,
+                )
+            )
+            results.append(serialize_model_for_cli(created))
+
+        resolved["fieldsUpdated"] = len(results)
+
+        return CommandOutput(
+            data={"fieldValues": results},
+            resolved=resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="company set-fields", fn=fn)
+
+
+@company_group.command(name="unset-field", cls=RichCommand)
+@click.argument("company_id", type=int)
+@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Industry').")
+@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
+@click.option("--value", help="Specific value to unset (for multi-value fields).")
+@click.option("--all-values", "unset_all", is_flag=True, help="Unset all values for field.")
+@output_options
+@click.pass_obj
+def company_unset_field(
+    ctx: CLIContext,
+    company_id: int,
+    *,
+    field_name: str | None,
+    field_id: str | None,
+    value: str | None,
+    unset_all: bool,
+) -> None:
+    """
+    Unset a field value from a company.
+
+    For multi-value fields, use --value to remove a specific value or
+    --all-values to remove all values.
+
+    Examples:
+
+    - `xaffinity company unset-field 123 --field Industry`
+    - `xaffinity company unset-field 123 --field Tags --value "Enterprise"`
+    - `xaffinity company unset-field 123 --field Tags --all-values`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        from ..field_utils import (
+            FieldResolver,
+            fetch_field_metadata,
+            find_field_values_for_field,
+            format_value_for_comparison,
+            validate_field_option_mutual_exclusion,
+        )
+
+        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
+
+        client = ctx.get_client(warnings=warnings)
+        resolved: dict[str, Any] = {}
+
+        # Fetch field metadata and resolve field
+        field_metadata = fetch_field_metadata(client=client, entity_type="company")
+        resolver = FieldResolver(field_metadata)
+
+        target_field_id = (
+            field_id
+            if field_id
+            else resolver.resolve_field_name_or_id(field_name or "", context="field")
+        )
+        resolved["fieldId"] = target_field_id
+        resolved["fieldName"] = resolver.get_field_name(target_field_id)
+
+        # Get existing field values
+        existing_values = client.field_values.list(company_id=CompanyId(company_id))
+        existing_for_field = find_field_values_for_field(
+            field_values=[serialize_model_for_cli(v) for v in existing_values],
+            field_id=target_field_id,
+        )
+
+        if not existing_for_field:
+            # Idempotent - success with warning
+            warnings.append(
+                f"Field '{resolved['fieldName'] or target_field_id}' has no values on this company."
+            )
+            return CommandOutput(
+                data={"deleted": 0},
+                resolved=resolved,
+                api_called=True,
+            )
+
+        # Determine which values to delete
+        to_delete: list[dict[str, Any]] = []
+
+        if len(existing_for_field) == 1:
+            # Single value: delete it (no flags needed)
+            to_delete = existing_for_field
+        elif unset_all:
+            # Multi-value with --all-values: delete all
+            to_delete = existing_for_field
+        elif value is not None:
+            # Multi-value with --value: find matching value
+            value_str = value.strip()
+            for fv in existing_for_field:
+                fv_value = fv.get("value")
+                if format_value_for_comparison(fv_value) == value_str:
+                    to_delete.append(fv)
+                    break
+            if not to_delete:
+                field_label = resolved["fieldName"] or target_field_id
+                raise CLIError(
+                    f"Value '{value}' not found for field '{field_label}'.",
+                    exit_code=2,
+                    error_type="not_found",
+                )
+        else:
+            # Multi-value without --value or --all-values: error
+            raise CLIError(
+                f"Field has {len(existing_for_field)} values. "
+                "Use --value to unset a specific value, or --all-values to unset all.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        # Delete the field values
+        deleted_count = 0
+        for fv in to_delete:
+            fv_id = fv.get("id")
+            if fv_id:
+                client.field_values.delete(fv_id)
+                deleted_count += 1
+
+        return CommandOutput(
+            data={"deleted": deleted_count},
+            resolved=resolved,
+            api_called=True,
+        )
+
+    run_command(ctx, command="company unset-field", fn=fn)
