@@ -83,7 +83,7 @@ If you have a list name from configuration (and not a `ListId`), you can resolve
 
 ```python
 from affinity import Affinity
-from affinity.models.types import ListType
+from affinity.types import ListType
 
 with Affinity.from_env() as client:
     pipeline = client.lists.resolve(name="Deal Pipeline", list_type=ListType.OPPORTUNITY)

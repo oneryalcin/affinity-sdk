@@ -21,7 +21,7 @@ This is because the V2 API returns a "partial representation" that omits associa
 Use the dedicated association methods:
 
 ```python
-from affinity.models.types import OpportunityId
+from affinity.types import OpportunityId
 
 # Get person IDs only (1 API call)
 person_ids = client.opportunities.get_associated_person_ids(OpportunityId(123))
@@ -52,7 +52,7 @@ The return type is a `NamedTuple` with IDE autocomplete support.
 When working with lists of opportunities, use the batch helper:
 
 ```python
-from affinity.models.types import ListId, OpportunityId
+from affinity.types import ListId, OpportunityId
 
 # Step 1: Get all opportunity IDs from a list
 opp_ids = [
