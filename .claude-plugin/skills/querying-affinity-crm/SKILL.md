@@ -256,3 +256,19 @@ Note: Interactions only appear if at least one external contact was involved.
 xaffinity --dotenv --readonly note ls --person-id 123 --json
 # Filter response for isMeeting: true
 ```
+
+## Finding More Information
+
+**CLI help** - Get command syntax and options:
+```bash
+xaffinity --help                    # All commands
+xaffinity person --help             # Person commands
+xaffinity list export --help        # Specific command options
+```
+
+**Documentation site**: https://yaniv-golan.github.io/affinity-sdk/
+
+**Reference files in this skill:**
+- [SDK_REFERENCE.md](SDK_REFERENCE.md) - Python SDK patterns
+- [CLI_REFERENCE.md](CLI_REFERENCE.md) - CLI command reference
+- [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) - Detailed list export with expansions
