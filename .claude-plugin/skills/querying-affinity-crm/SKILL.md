@@ -180,22 +180,30 @@ See [CLI_REFERENCE.md](CLI_REFERENCE.md) for complete command reference.
 
 **IMPORTANT:** Use CLI's built-in `--filter` and `--csv` options directly. Don't write Python scripts for simple export tasks.
 
-### Export list entries filtered by custom field to CSV
+### Export list entries with associated entities
 ```bash
-# Export with filter on a custom field (custom fields are user-defined)
-xaffinity --dotenv --readonly list export LIST_ID --expand people \
+# Export opportunity list with associated people
+xaffinity --dotenv --readonly list export LIST_ID --expand people --all --csv output.csv --csv-bom
+
+# Export with both people and companies
+xaffinity --dotenv --readonly list export LIST_ID --expand people --expand companies --all --csv output.csv
+```
+
+**Valid expand values:** `people` (opportunity/company lists), `companies` (opportunity/person lists)
+
+See [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) for detailed options (CSV modes, field expansion, limits).
+
+### Export list entries filtered by custom field
+```bash
+# Filter on a custom field
+xaffinity --dotenv --readonly list export LIST_ID \
   --filter 'Status = "Active"' \
   --all --csv output.csv --csv-bom
 
-# Filter for NULL values (field has no value)
+# Combine filter with expand
 xaffinity --dotenv --readonly list export LIST_ID --expand people \
-  --filter '"Custom Field" != *' \
-  --all --csv null_values.csv --csv-bom
-
-# Filter for multiple values with OR
-xaffinity --dotenv --readonly list export LIST_ID --expand people \
-  --filter '("Custom Field" != *) | ("Custom Field" = "Value1") | ("Custom Field" = "Value2")' \
-  --all --csv filtered.csv --csv-bom
+  --filter 'Status = "Active"' \
+  --all --csv filtered_with_people.csv --csv-bom
 ```
 
 **Filter syntax:**

@@ -146,27 +146,30 @@ xaffinity list fields 789
 # Export list entries
 xaffinity list export 789 --all
 xaffinity list export 789 --all --csv entries.csv
-
-# Export with expanded people data
-xaffinity list export 789 --expand people --all --csv entries_with_people.csv --csv-bom
-
-# Export filtered by custom field
-xaffinity list export LIST_ID --expand people \
-  --filter 'Status = "Active"' \
-  --all --csv active_entries.csv --csv-bom
-
-# Filter for NULL values (use != *)
-xaffinity list export LIST_ID --expand people \
-  --filter '"Custom Field" != *' \
-  --all --csv null_values.csv --csv-bom
-
-# Filter for multiple values with OR (use | operator)
-xaffinity list export LIST_ID --expand people \
-  --filter 'Status = "Open" | Status = "Pending"' \
-  --all --csv filtered.csv --csv-bom
 ```
 
-See [Filtering](#filtering) section for complete filter syntax reference.
+### List Export with Expansions
+
+Export list entries with associated people/companies using `--expand`:
+
+```bash
+# Export with associated people
+xaffinity list export LIST_ID --expand people --all --csv output.csv --csv-bom
+
+# Export with both people and companies (opportunity lists)
+xaffinity list export LIST_ID --expand people --expand companies --all --csv output.csv
+
+# Combine with filters
+xaffinity list export LIST_ID --expand people \
+  --filter 'Status = "Active"' \
+  --all --csv active_with_people.csv --csv-bom
+```
+
+**Valid expand values:** `people` (opportunity/company lists), `companies` (opportunity/person lists)
+
+See [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) for detailed options: CSV modes, field expansion, association limits, error handling.
+
+See [Filtering](#filtering) section for filter syntax reference.
 
 ## Opportunities
 
