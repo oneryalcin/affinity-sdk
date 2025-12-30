@@ -7,6 +7,37 @@ description: Use this skill when the user asks about "Affinity", "Affinity CRM",
 
 The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide access to Affinity CRM data.
 
+## Before Running Any Command - API Key Check
+
+**IMPORTANT**: Before executing your first `xaffinity` command or SDK code in a session, verify the API key is configured:
+
+```bash
+xaffinity config check-key --json
+```
+
+This command automatically checks environment variables, `.env` file in the current directory, and user config - no `--dotenv` flag needed.
+
+**When to check:**
+- **Once per conversation** at the start, before any Affinity operations
+- **After the user says they've completed setup**, to verify it worked
+- **NOT** before every single command (once confirmed, proceed with operations)
+
+If the check fails (exit code 1 or `"configured": false`), guide the user through setup:
+
+1. **Tell the user** they need to configure an API key before you can access Affinity
+2. **Direct them to get a key** from [Affinity API Settings](https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys):
+   - In Affinity: Settings → API → Generate New Key
+   - Copy the key immediately (it won't be shown again)
+3. **Run the secure setup command**:
+   ```bash
+   xaffinity config setup-key
+   ```
+   This prompts for the key with hidden input, stores it securely, and validates it.
+
+**SECURITY**: Never ask the user to paste their API key in the chat. Always direct them to use the setup command which keeps the key private.
+
+After setup, re-run the verification check before proceeding.
+
 ## Critical Patterns (Must Follow)
 
 ### Read-Only by Default - IMPORTANT

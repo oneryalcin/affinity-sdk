@@ -9,6 +9,76 @@ These commands never call the Affinity API:
 - `xaffinity version` (also `xaffinity --version`)
 - `xaffinity config path`
 - `xaffinity config init`
+- `xaffinity config check-key` (reads files, but never calls API)
+
+## Configuration
+
+### `xaffinity config path`
+
+Show the path to the configuration file.
+
+```bash
+xaffinity config path
+```
+
+### `xaffinity config init`
+
+Create a new configuration file with template.
+
+```bash
+xaffinity config init
+xaffinity config init --force  # Overwrite existing
+```
+
+### `xaffinity config check-key`
+
+Check if an API key is configured. Returns exit code 0 if key found, 1 if not found.
+
+This command checks (in order):
+1. `AFFINITY_API_KEY` environment variable
+2. `.env` file in current directory
+3. User config file (`config.toml`)
+
+```bash
+xaffinity config check-key
+xaffinity config check-key --json
+xaffinity config check-key && echo "Key exists"
+```
+
+The `--json` output includes:
+- `configured`: boolean indicating if a key was found
+- `source`: where the key was found (`"environment"`, `"dotenv"`, `"config"`, or `null`)
+
+### `xaffinity config setup-key`
+
+Securely configure your Affinity API key. Prompts for the key with hidden input (not echoed to screen).
+
+Options:
+
+- `--scope [project|user]`: Where to store the key
+  - `project`: `.env` file in current directory (auto-added to `.gitignore`)
+  - `user`: User config file (`config.toml`, with `chmod 600` on Unix)
+- `--force`: Overwrite existing key without confirmation
+- `--validate/--no-validate`: Test key against API after storing (default: validate)
+
+```bash
+# Interactive setup (prompts for scope)
+xaffinity config setup-key
+
+# Store in current project's .env file
+xaffinity config setup-key --scope project
+
+# Store in user config (works across all projects)
+xaffinity config setup-key --scope user
+
+# Overwrite existing key
+xaffinity config setup-key --force
+
+# Skip API validation
+xaffinity config setup-key --no-validate
+```
+
+Get your API key from [Affinity API Settings](https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys).
 
 ## Global options
 

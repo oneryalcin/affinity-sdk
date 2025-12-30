@@ -31,6 +31,7 @@ class CommandOutput:
     columns: list[dict[str, Any]] | None = None
     rate_limit: Any | None = None
     api_called: bool = False
+    exit_code: int = 0  # Allow commands to specify non-zero exit codes (e.g., check-key)
 
 
 def _emit_json(result: CommandResult) -> None:
@@ -123,7 +124,7 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
             columns=out.columns,
         )
         emit_result(ctx, result)
-        raise click.exceptions.Exit(0)
+        raise click.exceptions.Exit(out.exit_code)
     except click.exceptions.Exit:
         raise
     except Exception as exc:
