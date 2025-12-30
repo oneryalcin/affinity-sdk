@@ -3,40 +3,31 @@ name: querying-affinity-crm
 description: Use this skill when the user asks about "Affinity", "Affinity CRM", "xaffinity", "affinity-sdk", or wants to search, find, get, show, or export people, persons, contacts, companies, organizations, deals, opportunities, lists, pipelines, or CRM data from Affinity. Also use when writing Python scripts with the Affinity SDK or running xaffinity CLI commands.
 ---
 
-# Querying Affinity CRM
+# REQUIRED FIRST STEP: Verify API Key
 
-The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide access to Affinity CRM data.
-
-## Before Running Any Command - API Key Check
-
-**IMPORTANT**: Before executing your first `xaffinity` command or SDK code in a session, verify the API key is configured:
+**STOP. Before doing ANYTHING else, run this command:**
 
 ```bash
 xaffinity config check-key --json
 ```
 
-This command automatically checks environment variables, `.env` file in the current directory, and user config - no `--dotenv` flag needed.
+This MUST be your first action when handling any Affinity request. Do not skip this step.
 
-**When to check:**
-- **Once per conversation** at the start, before any Affinity operations
-- **After the user says they've completed setup**, to verify it worked
-- **NOT** before every single command (once confirmed, proceed with operations)
+**If `"configured": true`** - Proceed with the user's request below.
 
-If the check fails (exit code 1 or `"configured": false`), guide the user through setup:
+**If `"configured": false` or exit code 1** - Stop and help the user set up their API key:
+1. Tell them: "You need to configure an Affinity API key first."
+2. Direct them to get a key: Affinity → Settings → API → Generate New Key
+3. Run: `xaffinity config setup-key` (secure hidden input)
+4. Re-run the check to verify before proceeding
 
-1. **Tell the user** they need to configure an API key before you can access Affinity
-2. **Direct them to get a key** from [Affinity API Settings](https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys):
-   - In Affinity: Settings → API → Generate New Key
-   - Copy the key immediately (it won't be shown again)
-3. **Run the secure setup command**:
-   ```bash
-   xaffinity config setup-key
-   ```
-   This prompts for the key with hidden input, stores it securely, and validates it.
+**SECURITY**: Never ask users to paste API keys in chat. The setup command keeps keys private.
 
-**SECURITY**: Never ask the user to paste their API key in the chat. Always direct them to use the setup command which keeps the key private.
+---
 
-After setup, re-run the verification check before proceeding.
+# Querying Affinity CRM
+
+The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide access to Affinity CRM data.
 
 ## Critical Patterns (Must Follow)
 
