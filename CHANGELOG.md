@@ -7,23 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.3.0 - 2025-12-30
+
 ### Added
+- CLI: `xaffinity list export --expand` for exporting list entries with entity field expansion (company/person/opportunity fields).
 - CLI: `xaffinity field-value-changes ls` for viewing field value change history.
-- Inbound webhook parsing helpers: `parse_webhook(...)`, `dispatch_webhook(...)`, and `BodyRegistry`.
-- CLI: `xaffinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
-- CLI: `xaffinity company get --expand people` for associated people (v1-backed exception).
+- CLI: `xaffinity company get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries|people`.
 - CLI: `xaffinity person get` (id/URL/resolver selectors) with `--all-fields` and `--expand lists|list-entries`.
+- CLI: `xaffinity person ls` and `xaffinity company ls` with search flags.
 - CLI: `xaffinity opportunity` command group with `ls/get/create/update/delete`.
-- CLI: `--max-results` and `--all` controls for pagination and expansions (where supported).
-- File downloads: `client.files.download_stream_with_info(...)` exposes headers/filename/size alongside streamed bytes.
+- CLI: `xaffinity note`, `xaffinity reminder`, and `xaffinity interaction` command groups.
+- CLI: `xaffinity file upload` command for file uploads.
+- CLI: Write/merge/field operations for list entries.
+- CLI: `--max-results` and `--all` controls for pagination and expansions.
+- CLI: Progress reporting for all paginated commands.
+- CLI: Rate limit visibility via SDK event hook.
+- CLI: `--trace` flag for debugging SDK requests.
+- SDK: `client.files.download_stream_with_info(...)` exposes headers/filename/size alongside streamed bytes.
 - SDK: v1-only company association helpers `get_associated_person_ids(...)` and `get_associated_people(...)`.
-- SDK: list-scoped opportunity resolution helpers `resolve(...)` and `resolve_all(...)`.
+- SDK: List-scoped opportunity resolution helpers `resolve(...)` and `resolve_all(...)`.
+- SDK: Async parity for company and person services.
+- SDK: Async parity for V1-only services.
+- SDK: Async list and list entry write helpers.
+- SDK: Pagination support for person resolution in `PersonService` and `AsyncPersonService`.
+- SDK: `client.clear_cache()` method for cache invalidation.
+- SDK: Field value changes service with `client.field_value_changes`.
+- SDK: Detailed exception handling for `ConflictError`, `UnsafeUrlError`, and `UnsupportedOperationError`.
+- SDK: Webhook `sent_at` timestamp validation.
+- SDK: Request pipeline with policies (read-only mode, transport injection).
+- SDK: `on_error` hook for error observability.
+- Inbound webhook parsing helpers: `parse_webhook(...)`, `dispatch_webhook(...)`, and `BodyRegistry`.
+- Claude Code plugin for SDK/CLI documentation and guidance.
 
 ### Changed
-- `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`), and `xaffinity list view` shows readable `valueType` values.
-- CLI: human/table output renders dict-shaped results as sections/tables (no JSON-looking panels) and hides pagination mechanics in expanded sections.
-- CLI: `--json` output now uses section-keyed `data` and `meta.pagination` (e.g. `data.lists`, `meta.pagination.lists.nextCursor`); pagination may be omitted when `--max-results` truncates mid-page to avoid unsafe resume tokens.
-- CLI: list-entry fields tables default to list-only fields; use `--list-entry-fields-scope all` for full payloads.
+- CLI: Enum fields now display human-readable names instead of integers (type, status, direction, actionType).
+- CLI: Datetimes render in local time with timezone info in column headers.
+- CLI: Human/table output renders dict-shaped results as sections/tables (no JSON-looking panels).
+- CLI: `--json` output now uses section-keyed `data` and `meta.pagination`.
+- CLI: List-entry fields tables default to list-only fields; use `--list-entry-fields-scope all` for full payloads.
+- CLI: Domain columns are now linkified in table output.
+- CLI: Output only pages when content would scroll.
+- `FieldValueType` is now V2-first and string-based (e.g. `dropdown-multi`, `ranked-dropdown`, `interaction`).
+- `ListEntry.entity` is now discriminated by `entity_type`.
+- Rate limit API unified across sync and async clients.
+
+### Fixed
+- SDK: `ListService.get()` now uses V1 API to return correct `list_size`.
+- CLI: JSON serialization now handles datetime objects correctly.
+- Sync entity file download `deadline_seconds` handling.
+- File downloads now use public services for company expansion pagination.
 
 ## 0.2.0 - 2025-12-17
 
