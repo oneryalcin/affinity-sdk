@@ -43,7 +43,7 @@ The Affinity Python SDK (`affinity` package) and CLI (`xaffinity`) provide acces
 
 - **Read-only mode**: Always use `--readonly` unless user explicitly requests writes
 - **JSON output**: Always include `--json` for structured, parseable output
-- **Filtering**: `--filter` works only on **custom fields**, not built-in properties (`name`, `email`, etc.)
+- **Filtering**: `--filter` works only on **custom fields**, not built-in properties (`name`, `email`, etc.). For `list export`, filtering is **client-side** (see Gotchas)
 - **Timezones**: API returns UTC. Convert to user's local timezone or state "UTC"
 
 **For Python scripts**: See [SDK_REFERENCE.md](SDK_REFERENCE.md) for SDK patterns, typed IDs, and async support.
@@ -91,6 +91,28 @@ Companies marked `global: true` cannot have their name/domain changed or be dele
 
 ### Field definitions cannot be created/updated via API
 Must use Affinity web UI to create or modify field definitions.
+
+### List entry filtering is client-side (performance tip)
+The Affinity API does **not** support server-side filtering on list entries. When you use `--filter` with `list export`, all entries are fetched first, then filtered locally.
+
+**Optimization:** If you need multiple different filtered views of the same list, fetch once and post-process:
+```bash
+# INEFFICIENT - 3 API round-trips fetching the same data:
+list export 123 --filter 'Status = "New"' --all --json > new.json
+list export 123 --filter 'Status = "Active"' --all --json > active.json
+list export 123 --filter 'Status = "Closed"' --all --json > closed.json
+
+# BETTER - 1 API call, then filter locally with jq:
+list export 123 --all --json > all.json
+jq '[.[] | select(.Status == "New")]' all.json > new.json
+jq '[.[] | select(.Status == "Active")]' all.json > active.json
+jq '[.[] | select(.Status == "Closed")]' all.json > closed.json
+
+# OR use a combined filter and split afterward:
+list export 123 --filter 'Status = "New" | Status = "Active"' --all --json > subset.json
+```
+
+For true server-side filtering, use **saved views** (`--saved-view`) configured in the Affinity web UI.
 
 ## CLI Quick Reference
 

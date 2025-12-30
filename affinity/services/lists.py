@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import builtins
 import re
+import warnings
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import urlsplit
@@ -17,6 +18,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ..exceptions import AffinityError
 from ..filters import FilterExpression
+from ..filters import parse as parse_filter
 from ..models.entities import (
     AffinityList,
     FieldMetadata,
@@ -391,6 +393,54 @@ class ListService:
         return _safe_model_validate(SavedView, data)
 
 
+def _entry_to_filter_dict(entry: ListEntryWithEntity) -> dict[str, Any]:
+    """
+    Convert a ListEntryWithEntity to a dict for client-side filter matching.
+
+    Extracts field values by name from the entity's fields_raw (V2 API format).
+    This allows FilterExpression.matches() to evaluate against field values.
+    """
+    result: dict[str, Any] = {}
+
+    # Extract field values from entity.fields_raw (V2 API format)
+    if entry.entity is not None:
+        fields_raw = getattr(entry.entity, "fields_raw", None)
+        if isinstance(fields_raw, builtins.list):
+            for field_obj in fields_raw:
+                if isinstance(field_obj, dict):
+                    field_name = field_obj.get("name")
+                    if field_name:
+                        value_wrapper = field_obj.get("value")
+                        if isinstance(value_wrapper, dict):
+                            data = value_wrapper.get("data")
+                            # For ranked-dropdown/dropdown, extract text value
+                            if isinstance(data, dict) and "text" in data:
+                                result[field_name] = data["text"]
+                            else:
+                                result[field_name] = data
+                        else:
+                            result[field_name] = value_wrapper
+
+    # Also add basic entity properties for filtering
+    if entry.entity is not None:
+        if hasattr(entry.entity, "name"):
+            result["name"] = entry.entity.name
+        if hasattr(entry.entity, "domain"):
+            result["domain"] = entry.entity.domain
+        if hasattr(entry.entity, "primary_email"):
+            result["primary_email"] = entry.entity.primary_email
+
+    return result
+
+
+# Warning message for client-side filtering
+_CLIENT_SIDE_FILTER_WARNING = (
+    "The Affinity V2 API does not support server-side filtering on list entries. "
+    "Filtering is being applied client-side after fetching data. "
+    "For large lists, consider using saved views instead (--saved-view)."
+)
+
+
 class ListEntryService:
     """
     Service for managing list entries (rows).
@@ -440,13 +490,25 @@ class ListEntryService:
         Args:
             field_ids: Specific field IDs to include
             field_types: Field types to include
-            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+            filter: Filter expression (applied client-side; API doesn't support it)
             limit: Maximum results per page
             cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list entries with entity data
+
+        Note:
+            The Affinity V2 API does not support server-side filtering on list entries.
+            When a filter is provided, it is applied client-side after fetching data.
+            For large lists, consider using saved views for server-side filtering.
         """
+        # Parse filter expression if provided
+        filter_expr: FilterExpression | None = None
+        if filter is not None:
+            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
+            # Emit warning about client-side filtering
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+
         if cursor is not None:
             if field_ids or field_types or filter is not None or limit is not None:
                 raise ValueError(
@@ -463,10 +525,7 @@ class ListEntryService:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
                 params["fieldTypes"] = [field_type.value for field_type in field_types]
-            if filter is not None:
-                filter_text = str(filter).strip()
-                if filter_text:
-                    params["filter"] = filter_text
+            # NOTE: filter is NOT sent to API - it doesn't support filtering
             if limit is not None:
                 params["limit"] = limit
 
@@ -475,8 +534,15 @@ class ListEntryService:
                 params=params or None,
             )
 
+        # Parse entries
+        entries = [_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])]
+
+        # Apply client-side filtering if filter was provided
+        if filter_expr is not None:
+            entries = [e for e in entries if filter_expr.matches(_entry_to_filter_dict(e))]
+
         return PaginatedResponse[ListEntryWithEntity](
-            data=[_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])],
+            data=entries,
             pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
@@ -520,24 +586,41 @@ class ListEntryService:
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
     ) -> Iterator[ListEntryWithEntity]:
-        """Iterate through all list entries with automatic pagination."""
+        """
+        Iterate through all list entries with automatic pagination.
+
+        Note:
+            The Affinity V2 API does not support server-side filtering on list entries.
+            When a filter is provided, it is applied client-side after fetching all data.
+            For large lists, consider using saved views for server-side filtering.
+        """
+        # Parse filter once for all pages
+        filter_expr: FilterExpression | None = None
+        if filter is not None:
+            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
+            # Emit warning once for the entire iteration
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
                 data = self._client.get_url(next_url)
+                entries = [
+                    _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
+                ]
                 return PaginatedResponse[ListEntryWithEntity](
-                    data=[
-                        _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
-                    ],
+                    data=entries,
                     pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
+            # First page - don't pass filter to list() to avoid duplicate warnings
             return self.list(
                 field_ids=field_ids,
                 field_types=field_types,
-                filter=filter,
             )
 
-        return PageIterator(fetch_page)
+        # Iterate through all pages, applying filter if provided
+        for entry in PageIterator(fetch_page):
+            if filter_expr is None or filter_expr.matches(_entry_to_filter_dict(entry)):
+                yield entry
 
     def iter(
         self,
@@ -1153,13 +1236,25 @@ class AsyncListEntryService:
         Args:
             field_ids: Specific field IDs to include
             field_types: Field types to include
-            filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
+            filter: Filter expression (applied client-side; API doesn't support it)
             limit: Maximum results per page
             cursor: Cursor to resume pagination (opaque; obtained from prior responses).
 
         Returns:
             Paginated list entries with entity data
+
+        Note:
+            The Affinity V2 API does not support server-side filtering on list entries.
+            When a filter is provided, it is applied client-side after fetching data.
+            For large lists, consider using saved views for server-side filtering.
         """
+        # Parse filter expression if provided
+        filter_expr: FilterExpression | None = None
+        if filter is not None:
+            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
+            # Emit warning about client-side filtering
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+
         if cursor is not None:
             if field_ids or field_types or filter is not None or limit is not None:
                 raise ValueError(
@@ -1176,10 +1271,7 @@ class AsyncListEntryService:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
                 params["fieldTypes"] = [field_type.value for field_type in field_types]
-            if filter is not None:
-                filter_text = str(filter).strip()
-                if filter_text:
-                    params["filter"] = filter_text
+            # NOTE: filter is NOT sent to API - it doesn't support filtering
             if limit is not None:
                 params["limit"] = limit
 
@@ -1187,8 +1279,16 @@ class AsyncListEntryService:
                 f"/lists/{self._list_id}/list-entries",
                 params=params or None,
             )
+
+        # Parse entries
+        entries = [_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])]
+
+        # Apply client-side filtering if filter was provided
+        if filter_expr is not None:
+            entries = [e for e in entries if filter_expr.matches(_entry_to_filter_dict(e))]
+
         return PaginatedResponse[ListEntryWithEntity](
-            data=[_safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])],
+            data=entries,
             pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
         )
 
@@ -1227,29 +1327,50 @@ class AsyncListEntryService:
             requested_cursor = next_cursor
             page = await self.list(cursor=next_cursor)
 
-    def all(
+    async def all(
         self,
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
     ) -> AsyncIterator[ListEntryWithEntity]:
-        """Iterate through all list entries with automatic pagination."""
+        """
+        Iterate through all list entries with automatic pagination.
+
+        Note:
+            The Affinity V2 API does not support server-side filtering on list entries.
+            When a filter is provided, it is applied client-side after fetching all data.
+            For large lists, consider using saved views for server-side filtering.
+        """
+        # Parse filter once for all pages
+        filter_expr: FilterExpression | None = None
+        if filter is not None:
+            filter_expr = parse_filter(filter) if isinstance(filter, str) else filter
+            # Emit warning once for the entire iteration
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         async def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
                 data = await self._client.get_url(next_url)
+                entries = [
+                    _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
+                ]
                 return PaginatedResponse[ListEntryWithEntity](
-                    data=[
-                        _safe_model_validate(ListEntryWithEntity, e) for e in data.get("data", [])
-                    ],
+                    data=entries,
                     pagination=_safe_model_validate(PaginationInfo, data.get("pagination", {})),
                 )
-            return await self.list(field_ids=field_ids, field_types=field_types, filter=filter)
+            # First page - don't pass filter to list() to avoid duplicate warnings
+            return await self.list(
+                field_ids=field_ids,
+                field_types=field_types,
+            )
 
-        return AsyncPageIterator(fetch_page)
+        # Iterate through all pages, applying filter if provided
+        async for entry in AsyncPageIterator(fetch_page):
+            if filter_expr is None or filter_expr.matches(_entry_to_filter_dict(entry)):
+                yield entry
 
-    def iter(
+    async def iter(
         self,
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
@@ -1261,7 +1382,8 @@ class AsyncListEntryService:
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+        async for entry in self.all(field_ids=field_ids, field_types=field_types, filter=filter):
+            yield entry
 
     # -------------------------------------------------------------------------
     # Membership helpers (V2 for read only)

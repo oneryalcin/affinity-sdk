@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import sys
+import warnings as stdlib_warnings
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -511,6 +512,14 @@ def list_export(
                 exit_code=2,
                 error_type="usage_error",
                 hint="For large exports, use streaming CSV output or the SDK with checkpointing.",
+            )
+
+        # Warn about client-side filtering (API doesn't support server-side filtering)
+        if filter_expr and not saved_view:
+            warnings.append(
+                "The Affinity API does not support server-side filtering on list entries. "
+                "Filtering is being applied client-side after fetching data. "
+                "For large lists, consider using saved views instead (--saved-view)."
             )
 
         # Warn if both --expand-all and --expand-max-results specified
@@ -1408,6 +1417,13 @@ def _iterate_list_entries(
     """
     Yield `(row_dict, next_cursor)` where `next_cursor` resumes at the next page (not per-row).
     """
+    # Suppress SDK's client-side filtering warning (CLI handles this warning itself)
+    stdlib_warnings.filterwarnings(
+        "ignore",
+        message=".*does not support server-side filtering.*",
+        category=UserWarning,
+    )
+
     fetched = 0
 
     entries = client.lists.entries(list_id)
