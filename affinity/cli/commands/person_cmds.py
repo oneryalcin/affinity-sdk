@@ -320,7 +320,7 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     "filter_expr",
     type=str,
     default=None,
-    help='V2 filter expression (e.g., \'field("Email").contains("@acme.com")\').',
+    help="V2 filter expression (e.g., 'Email =~ \"@acme.com\"').",
 )
 @click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
@@ -349,7 +349,7 @@ def person_ls(
     - `xaffinityperson ls`
     - `xaffinityperson ls --page-size 50`
     - `xaffinityperson ls --field-type enriched --all`
-    - `xaffinityperson ls --filter 'field("Email").contains("@acme.com")'`
+    - `xaffinity person ls --filter 'Email =~ "@acme.com"'`
     - `xaffinityperson ls --all --csv people.csv`
     - `xaffinityperson ls --all --csv people.csv --csv-bom`
     """

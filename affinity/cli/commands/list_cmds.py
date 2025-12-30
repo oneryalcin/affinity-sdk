@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import sys
 from contextlib import ExitStack
@@ -18,6 +19,7 @@ from affinity.types import (
     CompanyId,
     EnrichedFieldId,
     FieldId,
+    FieldType,
     ListEntryId,
     ListId,
     OpportunityId,
@@ -277,7 +279,7 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
 CsvHeaderMode = Literal["names", "ids"]
 
 
-ExpandChoice = Literal["people", "companies"]
+ExpandChoice = Literal["people", "companies", "opportunities"]
 CsvMode = Literal["flat", "nested"]
 ExpandOnError = Literal["raise", "skip"]
 
@@ -312,7 +314,7 @@ ExpandOnError = Literal["raise", "skip"]
     "--expand",
     "expand",
     multiple=True,
-    type=click.Choice(["people", "companies"]),
+    type=click.Choice(["people", "companies", "opportunities"]),
     help="Expand associated entities (repeatable). Uses V1 API.",
 )
 @click.option(
@@ -341,20 +343,35 @@ ExpandOnError = Literal["raise", "skip"]
     show_default=True,
     help="CSV expansion format: flat (one row per association) or nested (JSON arrays).",
 )
-# Phase 4 deferred options (not yet implemented)
+# Phase 4: --expand-fields and --expand-field-type for expanded entity fields
 @click.option(
     "--expand-fields",
     "expand_fields",
     multiple=True,
     type=str,
-    help="[Phase 4] Expand specific field values (not yet implemented).",
+    help="Include specific field by name or ID in expanded entities (repeatable).",
 )
 @click.option(
     "--expand-field-type",
     "expand_field_types",
     multiple=True,
-    type=click.Choice(["person", "company", "location", "interaction"]),
-    help="[Phase 4] Expand all fields of a given type (not yet implemented).",
+    type=click.Choice(["global", "enriched", "relationship-intelligence"], case_sensitive=False),
+    help="Include all fields of this type in expanded entities (repeatable).",
+)
+# Phase 5: --expand-filter and --expand-opportunities-list
+@click.option(
+    "--expand-filter",
+    "expand_filter",
+    type=str,
+    default=None,
+    help="Filter expanded entities (e.g., 'field=value' or 'field!=value').",
+)
+@click.option(
+    "--expand-opportunities-list",
+    "expand_opps_list",
+    type=str,
+    default=None,
+    help="Scope --expand opportunities to a specific list (id or name).",
 )
 @output_options
 @click.pass_obj
@@ -379,9 +396,12 @@ def list_export(
     expand_all: bool,
     expand_on_error: str,
     csv_mode: str,
-    # Phase 4 deferred options
+    # Phase 4 options
     expand_fields: tuple[str, ...],
     expand_field_types: tuple[str, ...],
+    # Phase 5 options
+    expand_filter: str | None,
+    expand_opps_list: str | None,
 ) -> None:
     """
     Export list entries to JSON or CSV.
@@ -399,21 +419,57 @@ def list_export(
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Phase 4 deferred options - fail early with clear message
-        if expand_fields:
+        # Parse and validate expand options early
+        expand_set = {e.strip().lower() for e in expand if e and e.strip()}
+        want_expand = len(expand_set) > 0
+
+        # Validate expand field options require --expand
+        if (expand_fields or expand_field_types) and not want_expand:
             raise CLIError(
-                "--expand-fields is not yet implemented (planned for Phase 4).",
+                "--expand-fields and --expand-field-type require --expand.",
                 exit_code=2,
                 error_type="usage_error",
                 hint="Use --expand people/companies to expand entity associations.",
             )
+
+        # Parse expand field types to FieldType enum
+        parsed_expand_field_types: list[FieldType] | None = None
         if expand_field_types:
+            parsed_expand_field_types = []
+            for ft in expand_field_types:
+                ft_lower = ft.strip().lower()
+                if ft_lower == "global":
+                    parsed_expand_field_types.append(FieldType.GLOBAL)
+                elif ft_lower == "enriched":
+                    parsed_expand_field_types.append(FieldType.ENRICHED)
+                elif ft_lower == "relationship-intelligence":
+                    parsed_expand_field_types.append(FieldType.RELATIONSHIP_INTELLIGENCE)
+
+        # Note: expand_fields will be validated and resolved after client is obtained
+        # to enable name→ID resolution via API lookup
+
+        # Validate --expand-filter requires --expand (Phase 5)
+        if expand_filter and not want_expand:
             raise CLIError(
-                "--expand-field-type is not yet implemented (planned for Phase 4).",
+                "--expand-filter requires --expand.",
                 exit_code=2,
                 error_type="usage_error",
-                hint="Use --expand people/companies to expand entity associations.",
+                hint="Use --expand people/companies/opportunities to expand entity associations.",
             )
+
+        # Validate --expand-opportunities-list requires --expand opportunities (Phase 5)
+        if expand_opps_list and "opportunities" not in expand_set:
+            raise CLIError(
+                "--expand-opportunities-list requires --expand opportunities.",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use --expand opportunities --expand-opportunities-list <list>.",
+            )
+
+        # Parse expand filter expression (Phase 5)
+        parsed_expand_filters: list[tuple[str, str, str]] | None = None
+        if expand_filter:
+            parsed_expand_filters = _parse_expand_filter(expand_filter)
 
         if saved_view and filter_expr:
             raise CLIError(
@@ -433,10 +489,6 @@ def list_export(
                 exit_code=2,
                 error_type="usage_error",
             )
-
-        # Parse and validate expand options
-        expand_set = {e.strip().lower() for e in expand if e and e.strip()}
-        want_expand = len(expand_set) > 0
 
         if want_expand and cursor:
             raise CLIError(
@@ -465,31 +517,68 @@ def list_export(
         )
         resolved: dict[str, Any] = dict(resolved_list.resolved)
 
-        # Validate expand options for list type (Phase 1: opportunity lists only)
+        # Validate expand options for list type
         if want_expand:
             valid_expand_for_type: dict[ListType, set[str]] = {
                 ListType.OPPORTUNITY: {"people", "companies"},
-                # Phase 2+: ListType.PERSON: {"companies"},
-                # Phase 2+: ListType.ORGANIZATION: {"people"},
+                ListType.PERSON: {"companies", "opportunities"},
+                ListType.ORGANIZATION: {"people", "opportunities"},
             }
             valid_for_this_type = valid_expand_for_type.get(list_type, set())
             invalid_expands = expand_set - valid_for_this_type
 
             if invalid_expands:
-                if list_type not in valid_expand_for_type:
-                    raise CLIError(
-                        f"--expand is not yet supported for {list_type.name.lower()} lists.",
-                        exit_code=2,
-                        error_type="usage_error",
-                        hint="Currently only opportunity lists support --expand.",
-                    )
                 raise CLIError(
                     f"--expand {', '.join(sorted(invalid_expands))} is not valid for "
                     f"{list_type.name.lower()} lists.",
                     exit_code=2,
                     error_type="usage_error",
                     details={"validExpand": sorted(valid_for_this_type)},
+                    hint=f"Valid values for {list_type.name.lower()} lists: "
+                    f"{', '.join(sorted(valid_for_this_type))}.",
                 )
+
+        # Validate and resolve --expand-fields (Phase 4 - Gap 4 fix)
+        # Uses API to fetch field metadata and validate field names/IDs
+        parsed_expand_fields: list[tuple[str, AnyFieldId]] | None = None
+        if expand_fields and want_expand:
+            parsed_expand_fields = _validate_and_resolve_expand_fields(
+                client=client,
+                expand_set=expand_set,
+                field_specs=expand_fields,
+            )
+
+        # Resolve --expand-opportunities-list if provided (Phase 5)
+        resolved_opps_list_id: ListId | None = None
+        if expand_opps_list and "opportunities" in expand_set:
+            resolved_opps_list = resolve_list_selector(client=client, selector=expand_opps_list)
+            # Validate it's an opportunity list
+            opps_list_type_value = resolved_opps_list.list.type
+            opps_list_type = (
+                ListType(opps_list_type_value)
+                if isinstance(opps_list_type_value, int)
+                else opps_list_type_value
+            )
+            if opps_list_type != ListType.OPPORTUNITY:
+                raise CLIError(
+                    f"--expand-opportunities-list must reference an opportunity list, "
+                    f"got {opps_list_type.name.lower()} list.",
+                    exit_code=2,
+                    error_type="usage_error",
+                )
+            resolved_opps_list_id = ListId(int(resolved_opps_list.list.id))
+            resolved["expandOpportunitiesList"] = {
+                "listId": int(resolved_opps_list_id),
+                "listName": resolved_opps_list.list.name,
+            }
+
+        # Warn about expensive --expand opportunities without scoping (Phase 5)
+        if "opportunities" in expand_set and resolved_opps_list_id is None:
+            warnings.append(
+                "Expanding opportunities without --expand-opportunities-list will search "
+                "all opportunity lists. This may be slow for large workspaces. "
+                "Consider using --expand-opportunities-list to scope the search."
+            )
 
         # Resolve columns/fields.
         field_meta = list_fields_for_list(client=client, list_id=list_id)
@@ -588,6 +677,17 @@ def list_export(
                 api_called=True,
             )
 
+        # Build expand field data structures from parsed_expand_fields
+        # - expand_field_ids: list of field IDs for API calls
+        # - field_id_to_display: dict mapping field ID (str) -> display name (original spec)
+        expand_field_ids: list[AnyFieldId] | None = None
+        field_id_to_display: dict[str, str] | None = None
+        if parsed_expand_fields:
+            expand_field_ids = [field_id for _, field_id in parsed_expand_fields]
+            field_id_to_display = {
+                str(field_id): original for original, field_id in parsed_expand_fields
+            }
+
         # Prepare CSV writing.
         csv_path_obj = Path(csv_path) if csv_path is not None else None
         want_csv = csv_path_obj is not None
@@ -600,6 +700,7 @@ def list_export(
             total: int | None,
             people_count: int,
             companies_count: int,
+            opportunities_count: int,
             expand_set: set[str],
         ) -> str:
             if total and total > 0:
@@ -613,6 +714,8 @@ def list_export(
                     parts.append(f"{people_count} people")
                 if "companies" in expand_set and companies_count > 0:
                     parts.append(f"{companies_count} companies")
+                if "opportunities" in expand_set and opportunities_count > 0:
+                    parts.append(f"{opportunities_count} opportunities")
                 if parts:
                     desc += ", " + " + ".join(parts)
             return desc
@@ -640,7 +743,7 @@ def list_export(
                 initial_desc = (
                     "Exporting"
                     if not want_expand
-                    else _format_progress_desc(0, entry_total, 0, 0, expand_set)
+                    else _format_progress_desc(0, entry_total, 0, 0, 0, expand_set)
                 )
                 task_id = progress.add_task(
                     initial_desc, total=max_results if max_results else None
@@ -666,7 +769,13 @@ def list_export(
 
                 # Add expansion columns if needed
                 if want_expand:
-                    header = _expand_csv_headers(base_header, expand_set, csv_mode)
+                    header = _expand_csv_headers(
+                        base_header,
+                        expand_set,
+                        csv_mode,
+                        expand_fields=parsed_expand_fields,
+                        header_mode=csv_header,
+                    )
                 else:
                     header = base_header
 
@@ -676,7 +785,11 @@ def list_export(
                 entries_with_truncated_assoc: list[int] = []
                 skipped_entries: list[int] = []
                 entries_with_large_nested_assoc: list[int] = []
-                csv_associations_fetched: dict[str, int] = {"people": 0, "companies": 0}
+                csv_associations_fetched: dict[str, int] = {
+                    "people": 0,
+                    "companies": 0,
+                    "opportunities": 0,
+                }
                 csv_entries_processed = 0
 
                 def iter_rows() -> Any:
@@ -723,14 +836,23 @@ def list_export(
                             yield expanded_row
                             continue
 
-                        # Fetch associations
-                        result = _fetch_opportunity_associations(
+                        # Fetch associations based on list type
+                        # For flat CSV mode, use prefixed field keys (person.X, company.X)
+                        # For nested CSV mode, use unprefixed keys in JSON arrays
+                        result = _fetch_associations(
                             client=client,
-                            opportunity_id=OpportunityId(entity_id),
+                            list_type=list_type,
+                            entity_id=entity_id,
                             expand_set=expand_set,
                             max_results=effective_expand_limit,
                             on_error=expand_on_error,
                             warnings=warnings,
+                            expand_field_types=parsed_expand_field_types,
+                            expand_field_ids=expand_field_ids,
+                            expand_filters=parsed_expand_filters,
+                            expand_opps_list_id=resolved_opps_list_id,
+                            field_id_to_display=field_id_to_display,
+                            prefix_fields=(csv_mode == "flat"),
                         )
 
                         if result is None:
@@ -738,10 +860,11 @@ def list_export(
                             skipped_entries.append(entity_id)
                             continue
 
-                        people, companies = result
+                        people, companies, opportunities = result
                         csv_entries_processed += 1
                         csv_associations_fetched["people"] += len(people)
                         csv_associations_fetched["companies"] += len(companies)
+                        csv_associations_fetched["opportunities"] += len(opportunities)
 
                         # Update progress description with association counts
                         if progress is not None and task_id is not None:
@@ -752,6 +875,7 @@ def list_export(
                                     entry_total,
                                     csv_associations_fetched["people"],
                                     csv_associations_fetched["companies"],
+                                    csv_associations_fetched["opportunities"],
                                     expand_set,
                                 ),
                             )
@@ -760,6 +884,7 @@ def list_export(
                         if effective_expand_limit is not None and (
                             len(people) >= effective_expand_limit
                             or len(companies) >= effective_expand_limit
+                            or len(opportunities) >= effective_expand_limit
                         ):
                             entries_with_truncated_assoc.append(entity_id)
 
@@ -778,6 +903,12 @@ def list_export(
                                     expanded_row["expandedEmail"] = person.get("primaryEmail") or ""
                                 if "companies" in expand_set:
                                     expanded_row["expandedDomain"] = ""
+                                if "opportunities" in expand_set:
+                                    expanded_row["expandedListId"] = ""
+                                # Copy prefixed field values (Phase 4)
+                                for key, val in person.items():
+                                    if key.startswith("person."):
+                                        expanded_row[key] = val if val is not None else ""
                                 rows_written += 1
                                 emitted_any = True
                                 if progress is not None and task_id is not None:
@@ -794,6 +925,30 @@ def list_export(
                                     expanded_row["expandedEmail"] = ""
                                 if "companies" in expand_set:
                                     expanded_row["expandedDomain"] = company.get("domain") or ""
+                                if "opportunities" in expand_set:
+                                    expanded_row["expandedListId"] = ""
+                                # Copy prefixed field values (Phase 4)
+                                for key, val in company.items():
+                                    if key.startswith("company."):
+                                        expanded_row[key] = val if val is not None else ""
+                                rows_written += 1
+                                emitted_any = True
+                                if progress is not None and task_id is not None:
+                                    progress.update(task_id, completed=rows_written)
+                                yield expanded_row
+
+                            # Emit opportunity rows (Phase 5)
+                            for opp in opportunities:
+                                expanded_row = dict(row)
+                                expanded_row["expandedType"] = "opportunity"
+                                expanded_row["expandedId"] = opp["id"]
+                                expanded_row["expandedName"] = opp.get("name") or ""
+                                if "people" in expand_set:
+                                    expanded_row["expandedEmail"] = ""
+                                if "companies" in expand_set:
+                                    expanded_row["expandedDomain"] = ""
+                                if "opportunities" in expand_set:
+                                    expanded_row["expandedListId"] = opp.get("listId") or ""
                                 rows_written += 1
                                 emitted_any = True
                                 if progress is not None and task_id is not None:
@@ -810,6 +965,8 @@ def list_export(
                                     expanded_row["expandedEmail"] = ""
                                 if "companies" in expand_set:
                                     expanded_row["expandedDomain"] = ""
+                                if "opportunities" in expand_set:
+                                    expanded_row["expandedListId"] = ""
                                 rows_written += 1
                                 if progress is not None and task_id is not None:
                                     progress.update(task_id, completed=rows_written)
@@ -817,7 +974,7 @@ def list_export(
 
                         else:
                             # Nested mode: JSON arrays in columns
-                            total_assoc = len(people) + len(companies)
+                            total_assoc = len(people) + len(companies) + len(opportunities)
                             if total_assoc > 100:
                                 entries_with_large_nested_assoc.append(entity_id)
                             expanded_row = dict(row)
@@ -827,6 +984,9 @@ def list_export(
                             if "companies" in expand_set:
                                 companies_json = json.dumps(companies) if companies else "[]"
                                 expanded_row["_expand_companies"] = companies_json
+                            if "opportunities" in expand_set:
+                                opps_json = json.dumps(opportunities) if opportunities else "[]"
+                                expanded_row["_expand_opportunities"] = opps_json
                             rows_written += 1
                             if progress is not None and task_id is not None:
                                 progress.update(task_id, completed=rows_written)
@@ -945,7 +1105,11 @@ def list_export(
             table_iter_state: dict[str, Any] = {}
             json_entries_with_truncated_assoc: list[int] = []
             json_skipped_entries: list[int] = []
-            associations_fetched: dict[str, int] = {"people": 0, "companies": 0}
+            associations_fetched: dict[str, int] = {
+                "people": 0,
+                "companies": 0,
+                "opportunities": 0,
+            }
 
             for row, page_next_cursor in _iterate_list_entries(
                 client=client,
@@ -978,20 +1142,30 @@ def list_export(
                         expanded_row["people"] = []
                     if "companies" in expand_set:
                         expanded_row["companies"] = []
+                    if "opportunities" in expand_set:
+                        expanded_row["opportunities"] = []
                     expanded_row["associations"] = "—"
                     rows.append(expanded_row)
                     if progress is not None and task_id is not None:
                         progress.update(task_id, completed=len(rows))
                     continue
 
-                # Fetch associations
-                result = _fetch_opportunity_associations(
+                # Fetch associations based on list type
+                # For JSON output, use unprefixed field keys in nested arrays
+                result = _fetch_associations(
                     client=client,
-                    opportunity_id=OpportunityId(entity_id),
+                    list_type=list_type,
+                    entity_id=entity_id,
                     expand_set=expand_set,
                     max_results=effective_expand_limit,
                     on_error=expand_on_error,
                     warnings=warnings,
+                    expand_field_types=parsed_expand_field_types,
+                    expand_field_ids=expand_field_ids,
+                    expand_filters=parsed_expand_filters,
+                    expand_opps_list_id=resolved_opps_list_id,
+                    field_id_to_display=field_id_to_display,
+                    prefix_fields=False,
                 )
 
                 if result is None:
@@ -999,18 +1173,20 @@ def list_export(
                     json_skipped_entries.append(entity_id)
                     continue
 
-                people, companies = result
+                people, companies, opportunities = result
 
                 # Check for truncation
                 if effective_expand_limit is not None and (
                     len(people) >= effective_expand_limit
                     or len(companies) >= effective_expand_limit
+                    or len(opportunities) >= effective_expand_limit
                 ):
                     json_entries_with_truncated_assoc.append(entity_id)
 
                 # Track counts
                 associations_fetched["people"] += len(people)
                 associations_fetched["companies"] += len(companies)
+                associations_fetched["opportunities"] += len(opportunities)
 
                 # Update progress description with association counts
                 if progress is not None and task_id is not None:
@@ -1021,6 +1197,7 @@ def list_export(
                             entry_total,
                             associations_fetched["people"],
                             associations_fetched["companies"],
+                            associations_fetched["opportunities"],
                             expand_set,
                         ),
                     )
@@ -1031,6 +1208,8 @@ def list_export(
                     expanded_row["people"] = people
                 if "companies" in expand_set:
                     expanded_row["companies"] = companies
+                if "opportunities" in expand_set:
+                    expanded_row["opportunities"] = opportunities
 
                 # Add associations summary for table mode
                 summary_parts = []
@@ -1049,6 +1228,16 @@ def list_export(
                         else:
                             label = " companies"
                         summary_parts.append(f"{cc}{label}")
+                if "opportunities" in expand_set:
+                    oc = len(opportunities)
+                    if oc > 0:
+                        if oc >= 100:
+                            label = "+ opps"
+                        elif oc == 1:
+                            label = " opp"
+                        else:
+                            label = " opps"
+                        summary_parts.append(f"{oc}{label}")
                 assoc_summary = ", ".join(summary_parts) if summary_parts else "—"
                 expanded_row["associations"] = assoc_summary
 
@@ -1287,6 +1476,76 @@ def _entry_to_row(
     return row
 
 
+def _person_to_expand_dict(
+    person: Any,
+    field_types: list[FieldType] | None = None,
+    field_ids: list[AnyFieldId] | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
+) -> dict[str, Any]:
+    """Convert a Person object to an expand dict, including field values if present.
+
+    Args:
+        field_id_to_display: Mapping from field ID to display name for --expand-fields
+        prefix_fields: If True, prefix field keys with "person." (for flat CSV mode).
+                      If False, use unprefixed display names (for nested JSON mode).
+    """
+    result: dict[str, Any] = {
+        "id": int(person.id),
+        "name": person.full_name,
+        "primaryEmail": person.primary_email or (person.emails[0] if person.emails else None),
+    }
+    # Include field values if requested and present
+    if (field_types or field_ids) and hasattr(person, "fields") and person.fields.requested:
+        for field_id, value in person.fields.data.items():
+            # Get display name from mapping, fallback to field_id
+            display_name = (
+                field_id_to_display.get(str(field_id), str(field_id))
+                if field_id_to_display
+                else str(field_id)
+            )
+            if prefix_fields:
+                result[f"person.{display_name}"] = value
+            else:
+                result[display_name] = value
+    return result
+
+
+def _company_to_expand_dict(
+    company: Any,
+    field_types: list[FieldType] | None = None,
+    field_ids: list[AnyFieldId] | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
+) -> dict[str, Any]:
+    """Convert a Company object to an expand dict, including field values if present.
+
+    Args:
+        field_id_to_display: Mapping from field ID to display name for --expand-fields
+        prefix_fields: If True, prefix field keys with "company." (for flat CSV mode).
+                      If False, use unprefixed display names (for nested JSON mode).
+    """
+    result: dict[str, Any] = {
+        "id": int(company.id),
+        "name": company.name,
+        "domain": company.domain,
+    }
+    # Include field values if requested and present
+    if (field_types or field_ids) and hasattr(company, "fields") and company.fields.requested:
+        for field_id, value in company.fields.data.items():
+            # Get display name from mapping, fallback to field_id
+            display_name = (
+                field_id_to_display.get(str(field_id), str(field_id))
+                if field_id_to_display
+                else str(field_id)
+            )
+            if prefix_fields:
+                result[f"company.{display_name}"] = value
+            else:
+                result[display_name] = value
+    return result
+
+
 def _fetch_opportunity_associations(
     client: Any,
     opportunity_id: OpportunityId,
@@ -1295,16 +1554,22 @@ def _fetch_opportunity_associations(
     max_results: int | None,
     on_error: str,
     warnings: list[str],
+    expand_field_types: list[FieldType] | None = None,
+    expand_field_ids: list[AnyFieldId] | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
     """
     Fetch people and/or companies associated with an opportunity.
 
     Returns:
         Tuple of (people_list, companies_list) where each list contains dicts with
-        id, name, primaryEmail/domain. Returns None if error occurred and on_error='skip'.
+        id, name, primaryEmail/domain, plus field values if expand_field_types/ids specified.
+        Returns None if error occurred and on_error='skip'.
     """
     want_people = "people" in expand_set
     want_companies = "companies" in expand_set
+    want_fields = bool(expand_field_types or expand_field_ids)
 
     people: list[dict[str, Any]] = []
     companies: list[dict[str, Any]] = []
@@ -1329,34 +1594,62 @@ def _fetch_opportunity_associations(
                     for cid in client.opportunities.get_associated_company_ids(opportunity_id)
                 ]
 
+        # Apply max_results limit to IDs before fetching
+        if max_results is not None and max_results >= 0:
+            person_ids = person_ids[:max_results]
+            company_ids = company_ids[:max_results]
+
         # Fetch people details
         if want_people and person_ids:
-            fetched_people = client.opportunities.get_associated_people(
-                opportunity_id, max_results=max_results
-            )
-            people = [
-                {
-                    "id": int(p.id),
-                    "name": p.full_name,
-                    # V1 API doesn't return primary_email, fall back to first email
-                    "primaryEmail": p.primary_email or (p.emails[0] if p.emails else None),
-                }
-                for p in fetched_people
-            ]
+            if want_fields:
+                # Use V2 API with field types to get field values
+                for pid in person_ids:
+                    person = client.persons.get(
+                        PersonId(pid),
+                        field_types=expand_field_types,
+                        field_ids=expand_field_ids,
+                    )
+                    people.append(
+                        _person_to_expand_dict(
+                            person,
+                            expand_field_types,
+                            expand_field_ids,
+                            field_id_to_display,
+                            prefix_fields,
+                        )
+                    )
+            else:
+                # Use existing V1 method for core fields only
+                fetched_people = client.opportunities.get_associated_people(
+                    opportunity_id, max_results=max_results
+                )
+                people = [_person_to_expand_dict(p) for p in fetched_people]
 
         # Fetch company details
         if want_companies and company_ids:
-            fetched_companies = client.opportunities.get_associated_companies(
-                opportunity_id, max_results=max_results
-            )
-            companies = [
-                {
-                    "id": int(c.id),
-                    "name": c.name,
-                    "domain": c.domain,
-                }
-                for c in fetched_companies
-            ]
+            if want_fields:
+                # Use V2 API with field types to get field values
+                for cid in company_ids:
+                    company = client.companies.get(
+                        CompanyId(cid),
+                        field_types=expand_field_types,
+                        field_ids=expand_field_ids,
+                    )
+                    companies.append(
+                        _company_to_expand_dict(
+                            company,
+                            expand_field_types,
+                            expand_field_ids,
+                            field_id_to_display,
+                            prefix_fields,
+                        )
+                    )
+            else:
+                # Use existing V1 method for core fields only
+                fetched_companies = client.opportunities.get_associated_companies(
+                    opportunity_id, max_results=max_results
+                )
+                companies = [_company_to_expand_dict(c) for c in fetched_companies]
 
     except Exception as e:
         if on_error == "skip":
@@ -1367,16 +1660,486 @@ def _fetch_opportunity_associations(
     return people, companies
 
 
+def _fetch_company_associations(
+    client: Any,
+    company_id: CompanyId,
+    *,
+    expand_set: set[str],
+    max_results: int | None,
+    on_error: str,
+    warnings: list[str],
+    expand_field_types: list[FieldType] | None = None,
+    expand_field_ids: list[AnyFieldId] | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """
+    Fetch people associated with a company.
+
+    For company lists, only 'people' expansion is valid.
+
+    Returns:
+        Tuple of (people_list, []) where people_list contains dicts with
+        id, name, primaryEmail, plus field values if expand_field_types/ids specified.
+        Returns None if error occurred and on_error='skip'.
+    """
+    want_people = "people" in expand_set
+    want_fields = bool(expand_field_types or expand_field_ids)
+
+    people: list[dict[str, Any]] = []
+
+    try:
+        if want_people:
+            # Get person IDs first
+            person_ids = client.companies.get_associated_person_ids(
+                company_id, max_results=max_results
+            )
+
+            if want_fields:
+                # Use V2 API with field types to get field values
+                for pid in person_ids:
+                    person = client.persons.get(
+                        pid,
+                        field_types=expand_field_types,
+                        field_ids=expand_field_ids,
+                    )
+                    people.append(
+                        _person_to_expand_dict(
+                            person,
+                            expand_field_types,
+                            expand_field_ids,
+                            field_id_to_display,
+                            prefix_fields,
+                        )
+                    )
+            else:
+                # Use existing V1 method for core fields only
+                fetched_people = client.companies.get_associated_people(
+                    company_id, max_results=max_results
+                )
+                people = [_person_to_expand_dict(p) for p in fetched_people]
+
+    except Exception as e:
+        if on_error == "skip":
+            warnings.append(f"Skipped expansion for company {int(company_id)}: {e}")
+            return None
+        raise
+
+    # Return (people, []) - companies is always empty for company list expansion
+    return people, []
+
+
+def _fetch_person_associations(
+    client: Any,
+    person_id: PersonId,
+    *,
+    expand_set: set[str],
+    max_results: int | None,
+    on_error: str,
+    warnings: list[str],
+    expand_field_types: list[FieldType] | None = None,
+    expand_field_ids: list[AnyFieldId] | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """
+    Fetch companies associated with a person.
+
+    For person lists, only 'companies' expansion is valid.
+    Note: V2 API doesn't return company_ids, so we use V1 fallback to get IDs.
+
+    Returns:
+        Tuple of ([], companies_list) where companies_list contains dicts with
+        id, name, domain, plus field values if expand_field_types/ids specified.
+        Returns None if error occurred and on_error='skip'.
+    """
+    want_companies = "companies" in expand_set
+    want_fields = bool(expand_field_types or expand_field_ids)
+
+    companies: list[dict[str, Any]] = []
+
+    try:
+        if want_companies:
+            # V1 fallback: fetch person via V1 API to get organization_ids
+            person_data = client._http.get(f"/persons/{person_id}", v1=True)
+            company_ids_raw = (
+                person_data.get("organization_ids") or person_data.get("organizationIds") or []
+            )
+            company_ids = [int(cid) for cid in company_ids_raw if cid is not None]
+
+            # Apply max_results limit
+            if max_results is not None and max_results >= 0:
+                company_ids = company_ids[:max_results]
+
+            if want_fields:
+                # Use V2 API with field types to get field values
+                for cid in company_ids:
+                    company = client.companies.get(
+                        CompanyId(cid),
+                        field_types=expand_field_types,
+                        field_ids=expand_field_ids,
+                    )
+                    companies.append(
+                        _company_to_expand_dict(
+                            company,
+                            expand_field_types,
+                            expand_field_ids,
+                            field_id_to_display,
+                            prefix_fields,
+                        )
+                    )
+            else:
+                # Fetch company details via V1 API (core fields only)
+                for cid in company_ids:
+                    company_data = client._http.get(f"/organizations/{cid}", v1=True)
+                    companies.append(
+                        {
+                            "id": cid,
+                            "name": company_data.get("name"),
+                            "domain": company_data.get("domain"),
+                        }
+                    )
+
+    except Exception as e:
+        if on_error == "skip":
+            warnings.append(f"Skipped expansion for person {int(person_id)}: {e}")
+            return None
+        raise
+
+    # Return ([], companies) - people is always empty for person list expansion
+    return [], companies
+
+
+def _fetch_associations(
+    client: Any,
+    list_type: ListType,
+    entity_id: int,
+    *,
+    expand_set: set[str],
+    max_results: int | None,
+    on_error: str,
+    warnings: list[str],
+    expand_field_types: list[FieldType] | None = None,
+    expand_field_ids: list[AnyFieldId] | None = None,
+    expand_filters: list[tuple[str, str, str]] | None = None,
+    expand_opps_list_id: ListId | None = None,
+    field_id_to_display: dict[str, str] | None = None,
+    prefix_fields: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """
+    Dispatch to the correct association fetcher based on list type.
+
+    Routes to:
+    - _fetch_opportunity_associations for opportunity lists
+    - _fetch_company_associations for company/organization lists
+    - _fetch_person_associations for person lists
+
+    Args:
+        field_id_to_display: Mapping from field ID to display name for --expand-fields
+        prefix_fields: If True, prefix field keys with entity type (for flat CSV mode).
+
+    Returns:
+        Tuple of (people_list, companies_list, opportunities_list).
+        Returns None if error occurred and on_error='skip'.
+    """
+    people: list[dict[str, Any]] = []
+    companies: list[dict[str, Any]] = []
+    opportunities: list[dict[str, Any]] = []
+
+    try:
+        if list_type == ListType.OPPORTUNITY:
+            result = _fetch_opportunity_associations(
+                client=client,
+                opportunity_id=OpportunityId(entity_id),
+                expand_set=expand_set,
+                max_results=max_results,
+                on_error=on_error,
+                warnings=warnings,
+                expand_field_types=expand_field_types,
+                expand_field_ids=expand_field_ids,
+                field_id_to_display=field_id_to_display,
+                prefix_fields=prefix_fields,
+            )
+            if result is None:
+                return None
+            people, companies = result
+
+        elif list_type == ListType.ORGANIZATION:
+            result = _fetch_company_associations(
+                client=client,
+                company_id=CompanyId(entity_id),
+                expand_set=expand_set,
+                max_results=max_results,
+                on_error=on_error,
+                warnings=warnings,
+                expand_field_types=expand_field_types,
+                expand_field_ids=expand_field_ids,
+                field_id_to_display=field_id_to_display,
+                prefix_fields=prefix_fields,
+            )
+            if result is None:
+                return None
+            people, _ = result
+
+            # Fetch opportunities if requested (Phase 5)
+            if "opportunities" in expand_set:
+                opportunities = _fetch_entity_opportunities(
+                    client=client,
+                    entity_type="company",
+                    entity_id=CompanyId(entity_id),
+                    opps_list_id=expand_opps_list_id,
+                    max_results=max_results,
+                    on_error=on_error,
+                    warnings=warnings,
+                )
+
+        elif list_type == ListType.PERSON:
+            result = _fetch_person_associations(
+                client=client,
+                person_id=PersonId(entity_id),
+                expand_set=expand_set,
+                max_results=max_results,
+                on_error=on_error,
+                warnings=warnings,
+                expand_field_types=expand_field_types,
+                expand_field_ids=expand_field_ids,
+                field_id_to_display=field_id_to_display,
+                prefix_fields=prefix_fields,
+            )
+            if result is None:
+                return None
+            _, companies = result
+
+            # Fetch opportunities if requested (Phase 5)
+            if "opportunities" in expand_set:
+                opportunities = _fetch_entity_opportunities(
+                    client=client,
+                    entity_type="person",
+                    entity_id=PersonId(entity_id),
+                    opps_list_id=expand_opps_list_id,
+                    max_results=max_results,
+                    on_error=on_error,
+                    warnings=warnings,
+                )
+
+        else:
+            raise ValueError(f"Unsupported list type for expansion: {list_type}")
+
+        # Apply expand filters (Phase 5)
+        if expand_filters:
+            people = _apply_expand_filter(people, expand_filters)
+            companies = _apply_expand_filter(companies, expand_filters)
+            opportunities = _apply_expand_filter(opportunities, expand_filters)
+
+        return people, companies, opportunities
+
+    except Exception as e:
+        if on_error == "skip":
+            warnings.append(f"Skipped expansion for entity {entity_id}: {e}")
+            return None
+        raise
+
+
+def _fetch_entity_opportunities(
+    client: Any,
+    entity_type: str,
+    entity_id: PersonId | CompanyId,
+    *,
+    opps_list_id: ListId | None,
+    max_results: int | None,
+    on_error: str,
+    warnings: list[str],
+) -> list[dict[str, Any]]:
+    """
+    Fetch opportunities associated with a person or company.
+
+    If opps_list_id is provided, only search that specific opportunity list.
+    Otherwise, search all accessible opportunity lists.
+
+    Returns list of opportunity dicts with id, name, listId.
+    """
+    opportunities: list[dict[str, Any]] = []
+
+    try:
+        # Get opportunity lists to search
+        if opps_list_id is not None:
+            opp_list_ids = [opps_list_id]
+        else:
+            # Fetch all opportunity lists the user has access to
+            opp_list_ids = []
+            for page in client.lists.pages():
+                for lst in page.data:
+                    if lst.type == ListType.OPPORTUNITY:
+                        opp_list_ids.append(ListId(int(lst.id)))
+
+        # Search each opportunity list for entries associated with this entity
+        for list_id in opp_list_ids:
+            entries = client.lists.entries(list_id)
+
+            # Fetch entries from this list and check associations
+            # Note: This is expensive as we need to check each entry's associations
+            for page in entries.pages(limit=100):
+                for entry in page.data:
+                    if entry.entity is None:
+                        continue
+
+                    opp_id = OpportunityId(int(entry.entity.id))
+
+                    # Check if this opportunity is associated with our entity
+                    try:
+                        assoc = client.opportunities.get_associations(opp_id)
+                        is_associated = False
+
+                        if entity_type == "person":
+                            person_ids = [int(pid) for pid in assoc.person_ids]
+                            is_associated = int(entity_id) in person_ids
+                        elif entity_type == "company":
+                            company_ids = [int(cid) for cid in assoc.company_ids]
+                            is_associated = int(entity_id) in company_ids
+
+                        if is_associated:
+                            opportunities.append(
+                                {
+                                    "id": int(opp_id),
+                                    "name": getattr(entry.entity, "name", None),
+                                    "listId": int(list_id),
+                                }
+                            )
+
+                            # Apply max results limit
+                            if max_results is not None and len(opportunities) >= max_results:
+                                return opportunities
+
+                    except Exception:
+                        # Skip opportunities we can't access
+                        continue
+
+                # Stop pagination if we have enough results
+                if max_results is not None and len(opportunities) >= max_results:
+                    break
+
+    except Exception as e:
+        if on_error == "skip":
+            warnings.append(f"Error fetching opportunities for {entity_type} {int(entity_id)}: {e}")
+        else:
+            raise
+
+    return opportunities
+
+
+def _validate_and_resolve_expand_fields(
+    client: Any,
+    expand_set: set[str],
+    field_specs: tuple[str, ...],
+) -> list[tuple[str, AnyFieldId]]:
+    """
+    Validate --expand-fields against available global/enriched fields.
+
+    Fetches field metadata for expanded entity types (person/company) and validates
+    that each field spec exists. Field specs can be:
+    - Field names (resolved to IDs via metadata lookup)
+    - Field IDs (validated against metadata)
+
+    Args:
+        client: Affinity client instance
+        expand_set: Set of expand types ("people", "companies")
+        field_specs: Tuple of field spec strings from --expand-fields
+
+    Returns:
+        List of (original_spec, resolved_field_id) tuples
+
+    Raises:
+        CLIError: If a field spec doesn't match any available field
+    """
+    # Build combined field lookup from person and company metadata
+    # Maps lowercase name -> (display_name, field_id) for name resolution
+    # Also stores field_id -> (display_name, field_id) for ID validation
+    name_to_field: dict[str, tuple[str, AnyFieldId]] = {}
+    id_to_field: dict[str, tuple[str, AnyFieldId]] = {}
+    all_field_names: set[str] = set()
+
+    if "people" in expand_set:
+        person_fields = client.persons.get_fields()
+        for f in person_fields:
+            name_lower = f.name.lower()
+            name_to_field[name_lower] = (f.name, f.id)
+            id_to_field[str(f.id)] = (f.name, f.id)
+            all_field_names.add(f.name)
+
+    if "companies" in expand_set:
+        company_fields = client.companies.get_fields()
+        for f in company_fields:
+            name_lower = f.name.lower()
+            # Only add if not already present (person fields take precedence)
+            if name_lower not in name_to_field:
+                name_to_field[name_lower] = (f.name, f.id)
+            if str(f.id) not in id_to_field:
+                id_to_field[str(f.id)] = (f.name, f.id)
+                all_field_names.add(f.name)
+
+    # Resolve each field spec
+    parsed: list[tuple[str, AnyFieldId]] = []
+    for spec in field_specs:
+        spec = spec.strip()
+        if not spec:
+            continue
+
+        # Try to match by field ID first (exact match)
+        if spec in id_to_field:
+            display_name, field_id = id_to_field[spec]
+            parsed.append((display_name, field_id))
+            continue
+
+        # Try to parse as FieldId format (field-123)
+        try:
+            field_id = FieldId(spec)
+            if str(field_id) in id_to_field:
+                display_name, _ = id_to_field[str(field_id)]
+                parsed.append((display_name, field_id))
+                continue
+            # Valid FieldId format but not found - try name lookup next
+        except ValueError:
+            pass
+
+        # Try to match by name (case-insensitive)
+        spec_lower = spec.lower()
+        if spec_lower in name_to_field:
+            display_name, field_id = name_to_field[spec_lower]
+            parsed.append((display_name, field_id))
+            continue
+
+        # Not found - raise error with helpful message
+        # Show a sample of available field names (up to 10)
+        sample_names = sorted(all_field_names)[:10]
+        hint_suffix = ", ..." if len(all_field_names) > 10 else ""
+        raise CLIError(
+            f"Unknown expand field: '{spec}'",
+            exit_code=2,
+            error_type="usage_error",
+            details={"availableFields": sorted(all_field_names)[:20]},
+            hint=f"Available fields include: {', '.join(sample_names)}{hint_suffix}",
+        )
+
+    return parsed
+
+
 def _expand_csv_headers(
     base_headers: list[str],
     expand_set: set[str],
     csv_mode: str = "flat",
+    expand_fields: list[tuple[str, AnyFieldId]] | None = None,
+    header_mode: CsvHeaderMode = "names",
 ) -> list[str]:
     """
     Add expansion columns to CSV headers.
 
-    Flat mode: expandedType, expandedId, expandedName, expandedEmail, expandedDomain
+    Flat mode: expandedType, expandedId, expandedName, expandedEmail, expandedDomain,
+               plus prefixed field columns (person.{name/id}, company.{name/id}) for --expand-fields
     Nested mode: _expand_people, _expand_companies (JSON arrays)
+
+    Args:
+        expand_fields: List of (original_spec, field_id) tuples
+        header_mode: "names" uses original spec, "ids" uses field ID
     """
     headers = list(base_headers)
     if csv_mode == "nested":
@@ -1385,6 +2148,8 @@ def _expand_csv_headers(
             headers.append("_expand_people")
         if "companies" in expand_set:
             headers.append("_expand_companies")
+        if "opportunities" in expand_set:
+            headers.append("_expand_opportunities")
     else:
         # Flat mode: add row-per-association columns
         headers.append("expandedType")
@@ -1394,7 +2159,99 @@ def _expand_csv_headers(
             headers.append("expandedEmail")
         if "companies" in expand_set:
             headers.append("expandedDomain")
+        if "opportunities" in expand_set:
+            headers.append("expandedListId")
+        # Add prefixed columns for --expand-fields (Phase 4)
+        if expand_fields:
+            for original_spec, field_id in expand_fields:
+                # Use original spec name for "names" mode, field ID for "ids" mode
+                display_name = original_spec if header_mode == "names" else str(field_id)
+                if "people" in expand_set:
+                    headers.append(f"person.{display_name}")
+                if "companies" in expand_set:
+                    headers.append(f"company.{display_name}")
     return headers
+
+
+def _parse_expand_filter(filter_expr: str) -> list[tuple[str, str, str]]:
+    """
+    Parse an expand filter expression.
+
+    Supports:
+    - field=value (exact match)
+    - field!=value (not equal)
+    - Multiple conditions separated by ',' or ';' (AND logic)
+
+    Returns list of tuples: (field_name, operator, value)
+    """
+    filters: list[tuple[str, str, str]] = []
+    # Split by comma or semicolon
+    parts = re.split(r"[,;]", filter_expr)
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Check for != first (before =)
+        if "!=" in part:
+            field, value = part.split("!=", 1)
+            filters.append((field.strip(), "!=", value.strip()))
+        elif "=" in part:
+            field, value = part.split("=", 1)
+            filters.append((field.strip(), "=", value.strip()))
+        else:
+            raise CLIError(
+                f"Invalid expand filter expression: '{part}'",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use 'field=value' or 'field!=value' syntax.",
+            )
+
+    return filters
+
+
+def _apply_expand_filter(
+    entities: list[dict[str, Any]],
+    filters: list[tuple[str, str, str]] | None,
+) -> list[dict[str, Any]]:
+    """
+    Apply filter expressions to a list of expanded entity dicts.
+
+    Filters are applied with AND logic - all conditions must match.
+    """
+    if not filters:
+        return entities
+
+    filtered: list[dict[str, Any]] = []
+    for entity in entities:
+        matches = True
+        for field_name, operator, value in filters:
+            # Check both the raw field name and common variations
+            entity_value = entity.get(field_name)
+            if entity_value is None:
+                # Try lowercase version
+                entity_value = entity.get(field_name.lower())
+            if entity_value is None:
+                # Try with entity type prefix
+                for prefix in ["person.", "company.", "opportunity."]:
+                    entity_value = entity.get(f"{prefix}{field_name}")
+                    if entity_value is not None:
+                        break
+
+            # Convert to string for comparison
+            entity_value_str = str(entity_value) if entity_value is not None else ""
+
+            if (operator == "=" and entity_value_str != value) or (
+                operator == "!=" and entity_value_str == value
+            ):
+                matches = False
+                break
+
+        if matches:
+            filtered.append(entity)
+
+    return filtered
 
 
 @list_group.group(name="entry", cls=RichGroup)

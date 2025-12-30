@@ -435,7 +435,7 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     "filter_expr",
     type=str,
     default=None,
-    help='V2 filter expression (e.g., \'field("Industry").equals("Software")\').',
+    help="V2 filter expression (e.g., 'Industry = \"Software\"').",
 )
 @click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
@@ -464,7 +464,7 @@ def company_ls(
     - `xaffinitycompany ls`
     - `xaffinitycompany ls --page-size 50`
     - `xaffinitycompany ls --field-type enriched --all`
-    - `xaffinitycompany ls --filter 'field("Industry").equals("Software")'`
+    - `xaffinity company ls --filter 'Industry = "Software"'`
     - `xaffinitycompany ls --all --csv companies.csv`
     - `xaffinitycompany ls --all --csv companies.csv --csv-bom`
     """
