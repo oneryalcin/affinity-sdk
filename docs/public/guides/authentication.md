@@ -29,6 +29,20 @@ from affinity.policies import Policies, WritePolicy
 client = Affinity.from_env(policies=Policies(write=WritePolicy.DENY))
 ```
 
+## CLI Authentication
+
+For the CLI, use the built-in setup commands:
+
+```bash
+# Check if a key is configured
+xaffinity config check-key
+
+# Set up a new key securely (hidden input)
+xaffinity config setup-key
+```
+
+See [CLI Authentication](../cli/index.md#authentication) for details.
+
 ## Next steps
 
 - [Getting started](../getting-started.md)

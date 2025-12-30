@@ -28,21 +28,42 @@ pip install "affinity-sdk[cli]"
 
 ## Authentication
 
-The CLI never makes “background” requests. It only calls the API for commands that require it.
+The CLI never makes "background" requests. It only calls the API for commands that require it.
 
-API key sources (highest precedence first):
+### Quick Setup
 
-1. `--api-key-file <path>` (use `-` to read from stdin)
-2. `--api-key-stdin` (alias for `--api-key-file -`)
-3. `AFFINITY_API_KEY`
-4. `api_key` in the config profile (discouraged for shared machines; the CLI warns on unsafe permissions where feasible)
+Check if a key is already configured:
 
-Optional local development: `.env` loading is **opt-in**:
+```bash
+xaffinity config check-key
+```
+
+Set up a new key securely (hidden input, not echoed):
+
+```bash
+xaffinity config setup-key
+```
+
+See [config check-key](commands.md#xaffinity-config-check-key) and [config setup-key](commands.md#xaffinity-config-setup-key) for details.
+
+### API Key Sources
+
+The CLI checks these sources in order (highest precedence first):
+
+1. `AFFINITY_API_KEY` environment variable
+2. `.env` file in current directory (requires `--dotenv` flag)
+3. `api_key` in user config file (`~/.config/xaffinity/config.toml`)
+
+### Using .env Files
+
+For project-specific keys, use `--dotenv` to load from `.env`:
 
 ```bash
 xaffinity --dotenv whoami
 xaffinity --dotenv --env-file ./dev.env whoami
 ```
+
+The `config setup-key --scope project` command creates a `.env` file and adds it to `.gitignore` automatically.
 
 ## Output contract
 
