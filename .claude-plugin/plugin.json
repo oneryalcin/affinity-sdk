@@ -1,7 +1,7 @@
 {
   "name": "affinity-sdk",
   "description": "Knowledge and commands for using the Affinity Python SDK and xaffinity CLI to query and manage Affinity CRM data",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "author": {
     "name": "Yaniv Golan"
   },
@@ -11,5 +11,5 @@
   "keywords": ["affinity", "crm", "sdk", "cli", "api"],
   "commands": ["./.claude-plugin/commands/"],
   "skills": ["./.claude-plugin/skills/"],
-  "hooks": ["./.claude-plugin/hooks/"]
+  "hooks": ["./.claude-plugin/hooks/hooks.json"]
 }
