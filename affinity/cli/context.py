@@ -452,7 +452,7 @@ def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
             str(exc),
             error_type="auth_error",
             exit_code=3,
-            hint="Check AFFINITY_API_KEY, or use --api-key-file / --api-key-stdin.",
+            hint="Run 'xaffinity config check-key' or 'xaffinity config setup-key' to configure.",
             details=_details_for_affinity_error(exc, verbosity=verbosity),
             cause=exc,
         )
