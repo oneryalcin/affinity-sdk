@@ -16,10 +16,16 @@ This MUST be your first action when handling any Affinity request. Do not skip t
 **If `"configured": true`** - Proceed with the user's request below.
 
 **If `"configured": false` or exit code 1** - Stop and help the user set up their API key:
+
 1. Tell them: "You need to configure an Affinity API key first."
 2. Direct them to get a key: Affinity → Settings → API → Generate New Key
-3. Run: `xaffinity config setup-key` (secure hidden input)
-4. Re-run the check to verify before proceeding
+3. **Tell them to run this command themselves** (do NOT run it for them):
+   ```
+   xaffinity config setup-key
+   ```
+4. Wait for them to confirm setup is complete, then re-run `check-key --json` to verify
+
+**IMPORTANT**: The `setup-key` command is interactive - it uses secure hidden input that only works in the user's terminal. Do NOT try to run it yourself. Just tell the user to run it.
 
 **SECURITY**: Never ask users to paste API keys in chat. The setup command keeps keys private.
 
