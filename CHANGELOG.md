@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.4.0 - 2025-12-30
+
+### Added
+- CLI: `config check-key` command to check if an API key is configured (checks environment, .env, and config.toml).
+- CLI: `config setup-key` command for secure API key configuration with hidden input, validation, and automatic .gitignore management.
+- CLI: `set-field`, `set-fields`, `unset-field` commands for person, company, opportunity, and list entry entities.
+- CLI: `list entry get` command with field metadata display.
+- CLI: Enhanced `--expand-filter` syntax with OR (`|`), AND (`&`), NOT (`!`), NULL checks (`=*`, `!=*`), and contains (`=~`).
+- SDK: `list_entries` field added to `Person` model.
+- SDK: Unified filter parser with `parse()` function and `matches()` method for client-side filter evaluation.
+
+### Changed
+- CLI: Authentication error hints now reference `config check-key` and `config setup-key` commands.
+- CLI: Authentication documentation updated with Quick Setup section.
+
+### Fixed
+- CLI: Default `--page-size` reduced from 200 to 100 to match Affinity API limit.
+- SDK: Async `merge()` parameter names corrected (`primaryCompanyId`/`duplicateCompanyId`).
+- SDK: Cache invalidation added to async create/update/delete in `CompanyService`.
+
+### Removed
+- CLI: Deprecated `field-value` and `field-value-changes` command groups removed (use entity-specific field commands instead).
+- CLI: Deprecated `update-field` and `batch-update` list entry commands removed (use `set-field`/`set-fields` instead).
+
 ## 0.3.0 - 2025-12-30
 
 ### Added
