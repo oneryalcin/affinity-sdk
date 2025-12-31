@@ -603,6 +603,11 @@ def list_export(
         )
         resolved: dict[str, Any] = dict(resolved_list.resolved)
 
+        # Extract resolved list name for CommandContext (string values only)
+        ctx_resolved: dict[str, str] | None = None
+        if resolved_list.list.name:
+            ctx_resolved = {"listId": resolved_list.list.name}
+
         # Build CommandContext upfront (used by all return paths)
         ctx_modifiers: dict[str, object] = {}
         if saved_view:
@@ -630,7 +635,7 @@ def list_export(
             name="list export",
             inputs={"listId": int(list_id)},
             modifiers=ctx_modifiers,
-            resolved=resolved if resolved else None,
+            resolved=ctx_resolved,
         )
 
         # Validate expand options for list type

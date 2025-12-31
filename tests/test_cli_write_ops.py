@@ -400,7 +400,7 @@ def test_relationship_strength_and_task(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     strengths = runner.invoke(
         cli,
-        ["--json", "relationship-strength", "get", "--external-id", "42"],
+        ["--json", "relationship-strength", "ls", "--external-id", "42"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert strengths.exit_code == 0

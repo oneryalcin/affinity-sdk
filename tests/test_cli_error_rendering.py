@@ -7,6 +7,7 @@ pytest.importorskip("rich")
 
 from click.testing import CliRunner
 
+from affinity.cli.config import LoadedConfig, ProfileConfig
 from affinity.cli.context import error_info_for_exception, normalize_exception
 from affinity.cli.main import cli
 from affinity.cli.render import RenderSettings, render_result
@@ -21,7 +22,18 @@ def test_resolve_url_parsed_before_api_key_required() -> None:
     assert "URL must start with http:// or https://" in result.output
 
 
-def test_missing_api_key_error_does_not_print_help_hint() -> None:
+def test_missing_api_key_error_does_not_print_help_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that missing API key error doesn't include unhelpful --help hint.
+
+    Mocks load_config to return empty config, preventing fallback to real config file.
+    """
+    # Return empty config with no API key
+    empty_config = LoadedConfig(default=ProfileConfig(), profiles={})
+    # Must patch in context module where load_config is imported
+    monkeypatch.setattr("affinity.cli.context.load_config", lambda _path: empty_config)
+
     runner = CliRunner()
     result = runner.invoke(cli, ["whoami"], env={"AFFINITY_API_KEY": ""})
     assert result.exit_code == 2

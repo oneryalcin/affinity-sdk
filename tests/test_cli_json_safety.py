@@ -39,7 +39,7 @@ The following CLI commands were fixed to use proper JSON serialization:
 
 5. **field_cmds.py** (1 location) - `affinity field ls` (line 32)
 6. **field_value_cmds.py** (1 location) - `affinity field-value ls` (line 20)
-7. **relationship_strength_cmds.py** (1 location) - `affinity relationship-strength get` (line 18)
+7. **relationship_strength_cmds.py** (1 location) - `affinity relationship-strength ls` (line 23)
 8. **task_cmds.py** (1 location) - `affinity task get` (line 17)
 9. **whoami_cmd.py** (1 location) - `affinity whoami` (line 17)
 
