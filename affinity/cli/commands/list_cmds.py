@@ -240,6 +240,11 @@ def list_create(
                 owner_id=owner_id,
             )
         )
+
+        # Invalidate list-related caches after creation
+        cache = ctx.session_cache
+        cache.invalidate_prefix("list_resolve_")
+
         payload = serialize_model_for_cli(created)
         return CommandOutput(data={"list": payload}, api_called=True)
 
@@ -264,10 +269,11 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
-        resolved = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         list_id = ListId(int(resolved.list.id))
-        fields = client.lists.get_fields(list_id)
-        views = list_all_saved_views(client=client, list_id=list_id)
+        fields = list_fields_for_list(client=client, list_id=list_id, cache=cache)
+        views = list_all_saved_views(client=client, list_id=list_id, cache=cache)
         data = {
             "list": serialize_model_for_cli(resolved.list),
             "fields": serialize_models_for_cli(fields),
@@ -532,7 +538,8 @@ def list_export(
         effective_expand_limit: int | None = None if expand_all else expand_max_results
 
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         list_id = ListId(int(resolved_list.list.id))
         # Note: AffinityModel uses use_enum_values=True, so list.type is an int
         list_type_value = resolved_list.list.type
@@ -575,7 +582,9 @@ def list_export(
         # Resolve --expand-opportunities-list if provided (Phase 5)
         resolved_opps_list_id: ListId | None = None
         if expand_opps_list and "opportunities" in expand_set:
-            resolved_opps_list = resolve_list_selector(client=client, selector=expand_opps_list)
+            resolved_opps_list = resolve_list_selector(
+                client=client, selector=expand_opps_list, cache=cache
+            )
             # Validate it's an opportunity list
             opps_list_type_value = resolved_opps_list.list.type
             opps_list_type = (
@@ -605,13 +614,13 @@ def list_export(
             )
 
         # Resolve columns/fields.
-        field_meta = list_fields_for_list(client=client, list_id=list_id)
+        field_meta = list_fields_for_list(client=client, list_id=list_id, cache=cache)
         field_by_id: dict[str, FieldMetadata] = {str(f.id): f for f in field_meta}
 
         selected_field_ids: list[str] = []
         if saved_view:
             view, view_resolved = resolve_saved_view(
-                client=client, list_id=list_id, selector=saved_view
+                client=client, list_id=list_id, selector=saved_view, cache=cache
             )
             resolved.update(view_resolved)
             selected_field_ids = list(view.field_ids)
@@ -853,6 +862,7 @@ def list_export(
                         field_by_id=field_by_id,
                         key_mode=csv_header,
                         state=csv_iter_state,
+                        cache=cache,
                     ):
                         next_cursor = page_next_cursor
 
@@ -1170,6 +1180,7 @@ def list_export(
                 field_by_id=field_by_id,
                 key_mode="names",
                 state=table_iter_state,
+                cache=cache,
             ):
                 next_cursor = page_next_cursor
 
@@ -1413,6 +1424,7 @@ def _iterate_list_entries(
     field_by_id: dict[str, FieldMetadata],
     key_mode: Literal["names", "ids"],
     state: dict[str, Any] | None = None,
+    cache: Any = None,
 ) -> Any:
     """
     Yield `(row_dict, next_cursor)` where `next_cursor` resumes at the next page (not per-row).
@@ -1433,7 +1445,9 @@ def _iterate_list_entries(
         if cursor:
             page = entries.list(cursor=cursor)
         else:
-            view, _ = resolve_saved_view(client=client, list_id=list_id, selector=saved_view)
+            view, _ = resolve_saved_view(
+                client=client, list_id=list_id, selector=saved_view, cache=cache
+            )
             page = entries.from_saved_view(view.id, limit=page_size)
 
         next_page_cursor = page.pagination.next_cursor
@@ -2291,7 +2305,8 @@ def list_entry_get(
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         entries = client.lists.entries(resolved_list.list.id)
         entry = entries.get(ListEntryId(entry_id))
         payload = serialize_model_for_cli(entry)
@@ -2362,7 +2377,8 @@ def list_entry_add(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _validate_entry_target(person_id, company_id)
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         entries = client.lists.entries(resolved_list.list.id)
 
         if person_id is not None:
@@ -2391,7 +2407,8 @@ def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> Non
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         entries = client.lists.entries(resolved_list.list.id)
         success = entries.delete(ListEntryId(entry_id))
         return CommandOutput(
@@ -2460,11 +2477,14 @@ def list_entry_set_field(
             )
 
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         resolved = dict(resolved_list.resolved)
 
         # Fetch field metadata
-        field_metadata = client.lists.get_fields(resolved_list.list.id)
+        field_metadata = list_fields_for_list(
+            client=client, list_id=resolved_list.list.id, cache=cache
+        )
         resolver = FieldResolver(field_metadata)
 
         target_field_id = (
@@ -2573,11 +2593,14 @@ def list_entry_set_fields(
             )
 
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         resolved = dict(resolved_list.resolved)
 
         # Fetch field metadata
-        field_metadata = client.lists.get_fields(resolved_list.list.id)
+        field_metadata = list_fields_for_list(
+            client=client, list_id=resolved_list.list.id, cache=cache
+        )
         resolver = FieldResolver(field_metadata)
 
         # Validate all field names - this raises on any invalid names
@@ -2650,11 +2673,14 @@ def list_entry_unset_field(
         validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
 
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         resolved = dict(resolved_list.resolved)
 
         # Fetch field metadata
-        field_metadata = client.lists.get_fields(resolved_list.list.id)
+        field_metadata = list_fields_for_list(
+            client=client, list_id=resolved_list.list.id, cache=cache
+        )
         resolver = FieldResolver(field_metadata)
 
         target_field_id = (

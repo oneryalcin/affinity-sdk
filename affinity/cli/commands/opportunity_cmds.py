@@ -487,7 +487,8 @@ def opportunity_create(
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
-        resolved_list = resolve_list_selector(client=client, selector=list_selector)
+        cache = ctx.session_cache
+        resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         if resolved_list.list.type != ListType.OPPORTUNITY:
             raise CLIError(
                 "List is not an opportunity list.",

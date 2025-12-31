@@ -87,6 +87,91 @@ These options can be used with any command:
 - `--json` / `--output json`: emit machine-readable `CommandResult` JSON to stdout.
 - `--trace`: emit request/response/error trace lines to stderr (safe redaction). Recommended with `--no-progress` for long-running commands.
 - `--beta`: enable beta endpoints (required for merge commands).
+- `--session-cache <dir>`: enable session caching using the specified directory.
+- `--no-cache`: disable session caching for this command.
+
+## Pipeline Optimization
+
+When running multiple CLI commands in a pipeline, you can enable session caching to avoid redundant API calls for metadata like field definitions and list resolution.
+
+### Using session commands
+
+```bash
+# Start a session (creates temp cache directory)
+export AFFINITY_SESSION_CACHE=$(xaffinity session start)
+
+# Run your commands - metadata is cached across invocations
+xaffinity list export "My List" --format json > entries.json
+xaffinity field ls --list-id 12345
+xaffinity person get 12345
+
+# Check session status
+xaffinity session status
+
+# End session (cleanup)
+xaffinity session end
+unset AFFINITY_SESSION_CACHE
+```
+
+### Best practice for scripts (with automatic cleanup)
+
+```bash
+#!/bin/bash
+export AFFINITY_SESSION_CACHE=$(xaffinity session start) || exit 1
+trap 'xaffinity session end; unset AFFINITY_SESSION_CACHE' EXIT
+
+# Your commands here - cleanup happens automatically on exit, error, or Ctrl+C
+xaffinity list export "My List" | jq '.entries[]' | xaffinity person get
+```
+
+### Quick one-liner pattern (subshell)
+
+For simple pipelines, use a subshell - the session dir is cleaned up by TTL:
+
+```bash
+(
+  export AFFINITY_SESSION_CACHE=$(xaffinity session start)
+  xaffinity list export "My List" | xaffinity person get
+)
+```
+
+### Cache behavior
+
+- Cache is scoped to your API key (multi-tenant safe)
+- Default TTL is 10 minutes (configurable via `AFFINITY_SESSION_CACHE_TTL`)
+- Cache is file-based in the specified directory
+- `session end` is idempotent - safe to call multiple times
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `AFFINITY_SESSION_CACHE` | Directory for session cache files |
+| `AFFINITY_SESSION_CACHE_TTL` | Cache TTL in seconds (default: 600) |
+
+### Session commands
+
+| Command | Description |
+|---------|-------------|
+| `xaffinity session start` | Create session cache, output path |
+| `xaffinity session end` | Clean up session cache directory |
+| `xaffinity session status` | Show cache stats (entries, size, age) |
+
+### Debugging
+
+Use `--trace` to see cache hit/miss information:
+
+```bash
+xaffinity --trace list export "My List"
+# trace #+ cache hit: list_fields_12345
+# trace #- cache miss: saved_views_12345
+```
+
+Use `--no-cache` to bypass session cache:
+
+```bash
+xaffinity --no-cache list export "My List"
+```
 
 ## Identity
 

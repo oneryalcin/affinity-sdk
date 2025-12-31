@@ -9,6 +9,7 @@ The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as a
 - **JSON Output**: All commands support `--json` for programmatic use ([Scripting Guide](scripting.md))
 - **Pagination**: Fetch all pages with `--all` or control page size with `--page-size`
 - **Name Resolution**: Use names instead of IDs for lists, fields, and entities
+- **Session Caching**: Share metadata across pipeline commands with `session start/end` ([Pipeline Optimization](commands.md#pipeline-optimization))
 
 See [Commands Reference](commands.md) for complete command documentation.
 
@@ -77,6 +78,16 @@ The `config setup-key --scope project` command creates a `.env` file and adds it
 ## Performance
 
 The CLI enables SDK in-memory caching for cacheable metadata requests (e.g., field metadata) automatically.
+
+For pipelines running multiple commands, use **session caching** to share metadata across invocations:
+
+```bash
+export AFFINITY_SESSION_CACHE=$(xaffinity session start)
+xaffinity list export "My List" | xaffinity person get
+xaffinity session end
+```
+
+See [Pipeline Optimization](commands.md#pipeline-optimization) for details.
 
 ## Progress + quiet mode
 

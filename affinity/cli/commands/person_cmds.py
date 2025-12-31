@@ -882,6 +882,7 @@ def person_get(
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
+        cache = ctx.session_cache
         person_id, resolved = _resolve_person_selector(client=client, selector=person_selector)
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
@@ -1069,7 +1070,7 @@ def person_get(
                         resolved.update({"list": {"input": list_selector, "listId": int(list_id)}})
                     else:
                         resolved_list_obj = resolve_list_selector(
-                            client=client, selector=list_selector
+                            client=client, selector=list_selector, cache=cache
                         )
                         list_id = ListId(int(resolved_list_obj.list.id))
                         resolved.update(resolved_list_obj.resolved)

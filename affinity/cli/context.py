@@ -53,6 +53,7 @@ from .errors import CLIError
 from .logging import set_redaction_api_key
 from .paths import CliPaths, get_paths
 from .results import CommandMeta, CommandResult, ErrorInfo
+from .session_cache import SessionCache, SessionCacheConfig
 
 OutputFormat = Literal["table", "json"]
 
@@ -110,6 +111,9 @@ class CLIContext:
     _paths: CliPaths = field(default_factory=get_paths)
     _loaded_config: LoadedConfig | None = None
     _client: Affinity | None = None
+    _session_cache_config: SessionCacheConfig = field(default_factory=SessionCacheConfig)
+    _session_cache: SessionCache | None = None
+    _no_cache: bool = False
 
     def load_dotenv_if_requested(self) -> None:
         try:
@@ -263,11 +267,33 @@ class CLIContext:
             on_event=on_event,
         )
 
+    @property
+    def session_cache(self) -> SessionCache:
+        """Get or create session cache."""
+        if self._no_cache:
+            # Return a disabled cache instance
+            config = SessionCacheConfig()
+            config.enabled = False
+            return SessionCache(config, trace=self.trace)
+        if self._session_cache is None:
+            self._session_cache = SessionCache(self._session_cache_config, trace=self.trace)
+        return self._session_cache
+
+    def init_session_cache(self, settings: ClientSettings) -> None:
+        """Initialize session cache with tenant hash from resolved settings.
+
+        Called after client settings are resolved but before client creation.
+        Uses settings.api_key (public) rather than client internals.
+        """
+        if self._session_cache_config.enabled and not self._no_cache:
+            self._session_cache_config.set_tenant_hash(settings.api_key)
+
     def get_client(self, *, warnings: list[str]) -> Affinity:
         if self._client is not None:
             return self._client
 
         settings = self.resolve_client_settings(warnings=warnings)
+        self.init_session_cache(settings)
 
         self._client = Affinity(
             api_key=settings.api_key,

@@ -114,6 +114,14 @@ def field_create(
                 is_required=required,
             )
         )
+
+        # Invalidate field-related caches
+        cache = ctx.session_cache
+        cache.invalidate_prefix("list_fields_")
+        cache.invalidate_prefix("person_fields_")
+        cache.invalidate_prefix("company_fields_")
+        cache.invalidate_prefix("fields_v1_")
+
         payload = _field_payload(created)
         return CommandOutput(data={"field": payload}, api_called=True)
 
@@ -130,6 +138,14 @@ def field_delete(ctx: CLIContext, field_id: str) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.fields.delete(FieldId(field_id))
+
+        # Invalidate field-related caches
+        cache = ctx.session_cache
+        cache.invalidate_prefix("list_fields_")
+        cache.invalidate_prefix("person_fields_")
+        cache.invalidate_prefix("company_fields_")
+        cache.invalidate_prefix("fields_v1_")
+
         return CommandOutput(data={"success": success}, api_called=True)
 
     run_command(ctx, command="field delete", fn=fn)

@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.4.9 - 2025-12-31
+
+### Added
+- CLI: Session caching for pipeline optimization via `AFFINITY_SESSION_CACHE` environment variable.
+- CLI: `session start/end/status` commands for managing session cache lifecycle.
+- CLI: `--session-cache` and `--no-cache` global flags for cache control.
+- CLI: Cache hit/miss visibility with `--trace` flag.
+- CLI: `config check-key --json` now includes `pattern` field showing key source.
+- SDK: Client-side filtering for list entries (V2 API does not support server-side filtering).
+
+### Changed
+- CLI: `--filter` on list entry commands now applies client-side with warning (V2 API limitation).
+- CLI: Removed `--opportunity-id` from `list entry add` (opportunities are created atomically via `opportunity create --list-id`).
+
+### Fixed
+- SDK: Client-side filter parsing handles whitespace-only and unparseable filters gracefully.
+- CLI: `--filter` on list entries now returns proper field values (V2 API format).
 
 ## 0.4.0 - 2025-12-30
 

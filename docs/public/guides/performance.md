@@ -92,3 +92,15 @@ client.clear_cache()
 ### Cache isolation
 
 Cache is isolated per API key and base URL combination, so multiple clients with different credentials won't share cached data.
+
+### CLI session caching
+
+For CLI pipelines, use session caching to share metadata across invocations:
+
+```bash
+export AFFINITY_SESSION_CACHE=$(xaffinity session start)
+xaffinity list export "My List" | xaffinity person get
+xaffinity session end
+```
+
+See [CLI Pipeline Optimization](../cli/commands.md#pipeline-optimization) for details.

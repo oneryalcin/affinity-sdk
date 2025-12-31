@@ -1,5 +1,20 @@
 # Scripting
 
+## Session caching for pipelines
+
+When running multiple CLI commands in a pipeline, enable session caching to avoid redundant API calls:
+
+```bash
+#!/bin/bash
+export AFFINITY_SESSION_CACHE=$(xaffinity session start) || exit 1
+trap 'xaffinity session end; unset AFFINITY_SESSION_CACHE' EXIT
+
+# Commands share cached metadata (field definitions, list resolution)
+xaffinity list export "My List" | xaffinity person get
+```
+
+See [Pipeline Optimization](commands.md#pipeline-optimization) for details.
+
 ## JSON output
 
 Use `--json` for machine-readable output:

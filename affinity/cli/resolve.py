@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from affinity import Affinity
 from affinity.exceptions import NotFoundError
@@ -9,6 +9,9 @@ from affinity.models.entities import AffinityList, FieldMetadata, SavedView
 from affinity.types import ListId, SavedViewId
 
 from .errors import CLIError
+
+if TYPE_CHECKING:
+    from .session_cache import SessionCache
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,12 +28,26 @@ def resolve_list_selector(
     *,
     client: Affinity,
     selector: str,
+    cache: SessionCache | None = None,
 ) -> ResolvedList:
+    """Resolve list by name/ID with optional session cache support."""
     selector = selector.strip()
+
+    # ID lookups don't benefit from name resolution cache
     if _looks_int(selector):
         list_id = ListId(int(selector))
         lst = client.lists.get(list_id)
         return ResolvedList(list=lst, resolved={"list": {"input": selector, "listId": int(lst.id)}})
+
+    cache_key = f"list_resolve_{selector.lower()}_any"
+
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, AffinityList)
+        if cached is not None:
+            return ResolvedList(
+                list=cached,
+                resolved={"list": {"input": selector, "listId": int(cached.id), "cached": True}},
+            )
 
     matches = client.lists.resolve_all(name=selector)
     if not matches:
@@ -52,7 +69,12 @@ def resolve_list_selector(
                 ],
             },
         )
+
     lst = matches[0]
+
+    if cache and cache.enabled:
+        cache.set(cache_key, lst)
+
     return ResolvedList(list=lst, resolved={"list": {"input": selector, "listId": int(lst.id)}})
 
 
@@ -61,6 +83,7 @@ def resolve_saved_view(
     client: Affinity,
     list_id: ListId,
     selector: str,
+    cache: SessionCache | None = None,
 ) -> tuple[SavedView, dict[str, Any]]:
     selector = selector.strip()
     if _looks_int(selector):
@@ -82,7 +105,7 @@ def resolve_saved_view(
             }
         }
 
-    views = list_all_saved_views(client=client, list_id=list_id)
+    views = list_all_saved_views(client=client, list_id=list_id, cache=cache)
     exact = [v for v in views if v.name.lower() == selector.lower()]
     if not exact:
         raise CLIError(
@@ -106,9 +129,94 @@ def resolve_saved_view(
     return v, {"savedView": {"input": selector, "savedViewId": int(v.id), "name": v.name}}
 
 
-def list_all_saved_views(*, client: Affinity, list_id: ListId) -> list[SavedView]:
-    return list(client.lists.saved_views_all(list_id))
+def list_all_saved_views(
+    *,
+    client: Affinity,
+    list_id: ListId,
+    cache: SessionCache | None = None,
+) -> list[SavedView]:
+    """Get saved views for a list with optional session cache support.
+
+    Note: This caches the full list of saved views. If the fetch is
+    interrupted mid-pagination, the cache won't be populated.
+    """
+    cache_key = f"saved_views_{list_id}"
+
+    if cache and cache.enabled:
+        cached = cache.get_list(cache_key, SavedView)
+        if cached is not None:
+            return cached
+
+    # Eagerly evaluate paginated iterator to cache complete list
+    # Note: If pagination is interrupted (e.g., network error), no partial
+    # result is cached - the next call will retry from scratch
+    views = list(client.lists.saved_views_all(list_id))
+
+    if cache and cache.enabled:
+        cache.set(cache_key, views)
+
+    return views
 
 
-def list_fields_for_list(*, client: Affinity, list_id: ListId) -> list[FieldMetadata]:
-    return client.lists.get_fields(list_id)
+def list_fields_for_list(
+    *,
+    client: Affinity,
+    list_id: ListId,
+    cache: SessionCache | None = None,
+) -> list[FieldMetadata]:
+    """Get list fields with optional session cache support."""
+    cache_key = f"list_fields_{list_id}"
+
+    if cache and cache.enabled:
+        cached = cache.get_list(cache_key, FieldMetadata)
+        if cached is not None:
+            return cached
+
+    fields = client.lists.get_fields(list_id)
+
+    if cache and cache.enabled:
+        cache.set(cache_key, fields)
+
+    return fields
+
+
+def get_person_fields(
+    *,
+    client: Affinity,
+    cache: SessionCache | None = None,
+) -> list[FieldMetadata]:
+    """Get global person fields with optional session cache support."""
+    cache_key = "person_fields_global"
+
+    if cache and cache.enabled:
+        cached = cache.get_list(cache_key, FieldMetadata)
+        if cached is not None:
+            return cached
+
+    fields = client.persons.get_fields()
+
+    if cache and cache.enabled:
+        cache.set(cache_key, fields)
+
+    return fields
+
+
+def get_company_fields(
+    *,
+    client: Affinity,
+    cache: SessionCache | None = None,
+) -> list[FieldMetadata]:
+    """Get global company fields with optional session cache support."""
+    cache_key = "company_fields_global"
+
+    if cache and cache.enabled:
+        cached = cache.get_list(cache_key, FieldMetadata)
+        if cached is not None:
+            return cached
+
+    fields = client.companies.get_fields()
+
+    if cache and cache.enabled:
+        cache.set(cache_key, fields)
+
+    return fields

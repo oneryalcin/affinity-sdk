@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -74,6 +75,13 @@ from .paths import get_paths
     "--log-file", type=click.Path(dir_okay=False), default=None, help="Override log file path."
 )
 @click.option("--no-log-file", is_flag=True, help="Disable file logging explicitly.")
+@click.option(
+    "--session-cache",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Enable session caching using the specified directory.",
+)
+@click.option("--no-cache", is_flag=True, help="Disable session caching.")
 @click.version_option(version=affinity.__version__, prog_name="xaffinity")
 @click.pass_context
 def cli(
@@ -97,6 +105,8 @@ def cli(
     trace: bool,
     log_file: str | None,
     no_log_file: bool,
+    session_cache: str | None,
+    no_cache: bool,
 ) -> None:
     if click_ctx.invoked_subcommand is None:
         # No args: show help; no network calls.
@@ -115,6 +125,11 @@ def cli(
     paths = get_paths()
     effective_log_file = Path(log_file) if log_file else paths.log_file
     enable_log_file = not no_log_file
+
+    # Set session cache environment variable if --session-cache flag is passed
+    # This ensures SessionCacheConfig picks up the value via its standard environment check
+    if session_cache:
+        os.environ["AFFINITY_SESSION_CACHE"] = session_cache
 
     click_ctx.obj = CLIContext(
         output=out,  # type: ignore[arg-type]
@@ -136,6 +151,10 @@ def cli(
         enable_log_file=enable_log_file,
         _paths=paths,
     )
+
+    # Set no_cache flag on context
+    if no_cache:
+        click_ctx.obj._no_cache = True
 
     click_ctx.call_on_close(click_ctx.obj.close)
 
@@ -163,6 +182,7 @@ from .commands.relationship_strength_cmds import (  # noqa: E402
 )
 from .commands.reminder_cmds import reminder_group as _reminder_group  # noqa: E402
 from .commands.resolve_url_cmd import resolve_url_cmd as _resolve_url_cmd  # noqa: E402
+from .commands.session_cmds import session_group as _session_group  # noqa: E402
 from .commands.task_cmds import task_group as _task_group  # noqa: E402
 from .commands.version_cmd import version_cmd as _version_cmd  # noqa: E402
 from .commands.whoami_cmd import whoami_cmd as _whoami_cmd  # noqa: E402
@@ -181,4 +201,5 @@ cli.add_command(_reminder_group)
 cli.add_command(_interaction_group)
 cli.add_command(_field_group)
 cli.add_command(_relationship_strength_group)
+cli.add_command(_session_group)
 cli.add_command(_task_group)
