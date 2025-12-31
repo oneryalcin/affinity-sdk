@@ -28,7 +28,7 @@ from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
-from ..results import Artifact
+from ..results import Artifact, CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
@@ -123,6 +123,27 @@ def opportunity_ls(
                 error_type="usage_error",
             )
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+        if csv_path:
+            ctx_modifiers["csv"] = csv_path
+        if csv_bom:
+            ctx_modifiers["csvBom"] = True
+
+        cmd_context = CommandContext(
+            name="opportunity ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         rows: list[dict[str, object]] = []
         first_page = True
 
@@ -159,9 +180,7 @@ def opportunity_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if (
@@ -177,6 +196,7 @@ def opportunity_ls(
                             }
                         return CommandOutput(
                             data={"opportunities": rows[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -184,6 +204,7 @@ def opportunity_ls(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"opportunities": rows},
+                        context=cmd_context,
                         pagination=(
                             {
                                 "opportunities": {
@@ -213,6 +234,7 @@ def opportunity_ls(
                     "csv": csv_ref,
                     "rowsWritten": write_result.rows_written,
                 },
+                context=cmd_context,
                 artifacts=[
                     Artifact(
                         type="csv",
@@ -226,7 +248,12 @@ def opportunity_ls(
                 api_called=True,
             )
 
-        return CommandOutput(data={"opportunities": rows}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"opportunities": rows},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="opportunity ls", fn=fn)
 
@@ -292,6 +319,23 @@ def opportunity_get(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         opportunity_id, resolved = _resolve_opportunity_selector(selector=opportunity_selector)
+
+        # Build CommandContext for opportunity get
+        ctx_modifiers: dict[str, object] = {}
+        if details:
+            ctx_modifiers["details"] = True
+        if expand:
+            ctx_modifiers["expand"] = list(expand)
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="opportunity get",
+            inputs={"selector": opportunity_selector},
+            modifiers=ctx_modifiers,
+        )
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
 
@@ -443,6 +487,7 @@ def opportunity_get(
 
         return CommandOutput(
             data=data,
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -509,8 +554,31 @@ def opportunity_create(
         created = client.opportunities.create(data)
         payload = serialize_model_for_cli(created)
 
+        # Build CommandContext for opportunity create
+        ctx_modifiers: dict[str, object] = {"name": name}
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+        if company_ids:
+            ctx_modifiers["companyIds"] = list(company_ids)
+
+        # Extract resolved list name for context
+        ctx_resolved: dict[str, str] | None = None
+        list_resolved = resolved_list.resolved.get("list", {})
+        if isinstance(list_resolved, dict):
+            list_name = list_resolved.get("entityName")
+            if list_name:
+                ctx_resolved = {"listId": str(list_name)}
+
+        cmd_context = CommandContext(
+            name="opportunity create",
+            inputs={"listId": int(resolved_list.list.id)},
+            modifiers=ctx_modifiers,
+            resolved=ctx_resolved,
+        )
+
         return CommandOutput(
             data={"opportunity": payload},
+            context=cmd_context,
             resolved=resolved_list.resolved,
             api_called=True,
         )
@@ -579,8 +647,24 @@ def opportunity_update(
             source="id",
         )
 
+        # Build CommandContext for opportunity update
+        ctx_modifiers: dict[str, object] = {}
+        if name:
+            ctx_modifiers["name"] = name
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+        if company_ids:
+            ctx_modifiers["companyIds"] = list(company_ids)
+
+        cmd_context = CommandContext(
+            name="opportunity update",
+            inputs={"opportunityId": opportunity_id},
+            modifiers=ctx_modifiers,
+        )
+
         return CommandOutput(
             data={"opportunity": payload},
+            context=cmd_context,
             resolved={"opportunity": resolved.to_dict()},
             api_called=True,
         )
@@ -614,8 +698,15 @@ def opportunity_delete(
             source="id",
         )
 
+        cmd_context = CommandContext(
+            name="opportunity delete",
+            inputs={"opportunityId": opportunity_id},
+            modifiers={},
+        )
+
         return CommandOutput(
             data={"opportunityId": opportunity_id, "success": success},
+            context=cmd_context,
             resolved={"opportunity": resolved.to_dict()},
             api_called=True,
         )
@@ -672,6 +763,25 @@ def opportunity_files_dump(
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if out_dir:
+            ctx_modifiers["outDir"] = out_dir
+        if overwrite:
+            ctx_modifiers["overwrite"] = True
+        if concurrency != 4:
+            ctx_modifiers["concurrency"] = concurrency
+        if page_size != 100:
+            ctx_modifiers["pageSize"] = page_size
+        if max_files is not None:
+            ctx_modifiers["maxFiles"] = max_files
+
+        cmd_context = CommandContext(
+            name="opportunity files dump",
+            inputs={"opportunityId": opportunity_id},
+            modifiers=ctx_modifiers,
+        )
+
         return asyncio.run(
             dump_entity_files_bundle(
                 ctx=ctx,
@@ -684,6 +794,7 @@ def opportunity_files_dump(
                 default_dirname=f"affinity-opportunity-{opportunity_id}-files",
                 manifest_entity={"type": "opportunity", "opportunityId": opportunity_id},
                 files_list_kwargs={"opportunity_id": OpportunityId(opportunity_id)},
+                context=cmd_context,
             )
         )
 
@@ -764,8 +875,15 @@ def opportunity_files_upload(
                     }
                 )
 
+        cmd_context = CommandContext(
+            name="opportunity files upload",
+            inputs={"opportunityId": opportunity_id},
+            modifiers={"files": list(file_paths)},
+        )
+
         return CommandOutput(
             data={"uploads": results, "opportunityId": opportunity_id},
+            context=cmd_context,
             api_called=True,
         )
 
@@ -911,8 +1029,28 @@ def opportunity_set_field(
         )
 
         payload = serialize_model_for_cli(created)
+
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if append:
+            ctx_modifiers["append"] = True
+
+        cmd_context = CommandContext(
+            name="opportunity set-field",
+            inputs={"opportunityId": opportunity_id},
+            modifiers=ctx_modifiers,
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         return CommandOutput(
             data={"fieldValue": payload},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -1003,8 +1141,18 @@ def opportunity_set_fields(
 
         resolved["fieldsUpdated"] = len(results)
 
+        cmd_context = CommandContext(
+            name="opportunity set-fields",
+            inputs={"opportunityId": opportunity_id},
+            modifiers={},
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         return CommandOutput(
             data={"fieldValues": results},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -1079,6 +1227,26 @@ def opportunity_unset_field(
         resolved["fieldId"] = target_field_id
         resolved["fieldName"] = resolver.get_field_name(target_field_id)
 
+        # Build CommandContext upfront (used for all return paths)
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value:
+            ctx_modifiers["value"] = value
+        if unset_all:
+            ctx_modifiers["allValues"] = True
+
+        cmd_context = CommandContext(
+            name="opportunity unset-field",
+            inputs={"opportunityId": opportunity_id},
+            modifiers=ctx_modifiers,
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         # Get existing field values
         existing_values = client.field_values.list(opportunity_id=OpportunityId(opportunity_id))
         existing_for_field = find_field_values_for_field(
@@ -1092,6 +1260,7 @@ def opportunity_unset_field(
             warnings.append(f"Field '{field_label}' has no values on this opportunity.")
             return CommandOutput(
                 data={"deleted": 0},
+                context=cmd_context,
                 resolved=resolved,
                 api_called=True,
             )
@@ -1139,6 +1308,7 @@ def opportunity_unset_field(
 
         return CommandOutput(
             data={"deleted": deleted_count},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )

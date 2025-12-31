@@ -15,6 +15,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ._v1_parsing import parse_choice, parse_iso_datetime
 
@@ -178,6 +179,45 @@ def reminder_ls(
         first_page = True
         page_token = cursor
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if person_id is not None:
+            ctx_modifiers["personId"] = person_id
+        if company_id is not None:
+            ctx_modifiers["companyId"] = company_id
+        if opportunity_id is not None:
+            ctx_modifiers["opportunityId"] = opportunity_id
+        if creator_id is not None:
+            ctx_modifiers["creatorId"] = creator_id
+        if owner_id is not None:
+            ctx_modifiers["ownerId"] = owner_id
+        if completer_id is not None:
+            ctx_modifiers["completerId"] = completer_id
+        if reminder_type:
+            ctx_modifiers["type"] = reminder_type
+        if reset_type:
+            ctx_modifiers["resetType"] = reset_type
+        if status:
+            ctx_modifiers["status"] = status
+        if due_before:
+            ctx_modifiers["dueBefore"] = due_before
+        if due_after:
+            ctx_modifiers["dueAfter"] = due_after
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="reminder ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         parsed_type = parse_choice(reminder_type, _REMINDER_TYPE_MAP, label="reminder type")
         parsed_reset = parse_choice(reset_type, _REMINDER_RESET_MAP, label="reset type")
         parsed_status = parse_choice(status, _REMINDER_STATUS_MAP, label="status")
@@ -239,9 +279,7 @@ def reminder_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if page.next_page_token and not stopped_mid_page:
@@ -253,6 +291,7 @@ def reminder_ls(
                             }
                         return CommandOutput(
                             data={"reminders": results[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -264,7 +303,10 @@ def reminder_ls(
                         else None
                     )
                     return CommandOutput(
-                        data={"reminders": results}, pagination=pagination, api_called=True
+                        data={"reminders": results},
+                        context=cmd_context,
+                        pagination=pagination,
+                        api_called=True,
                     )
                 first_page = False
 
@@ -272,7 +314,12 @@ def reminder_ls(
                 if not page_token:
                     break
 
-        return CommandOutput(data={"reminders": results}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"reminders": results},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="reminder ls", fn=fn)
 
@@ -287,7 +334,18 @@ def reminder_get(ctx: CLIContext, reminder_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         reminder = client.reminders.get(ReminderIdType(reminder_id))
-        return CommandOutput(data={"reminder": _reminder_payload(reminder)}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="reminder get",
+            inputs={"reminderId": reminder_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"reminder": _reminder_payload(reminder)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="reminder get", fn=fn)
 
@@ -356,7 +414,38 @@ def reminder_create(
                 else None,
             )
         )
-        return CommandOutput(data={"reminder": _reminder_payload(reminder)}, api_called=True)
+
+        # Build CommandContext for reminder create
+        ctx_modifiers: dict[str, object] = {
+            "ownerId": owner_id,
+            "type": reminder_type,
+        }
+        if content:
+            ctx_modifiers["content"] = content
+        if due_date:
+            ctx_modifiers["dueDate"] = due_date
+        if reset_type:
+            ctx_modifiers["resetType"] = reset_type
+        if reminder_days is not None:
+            ctx_modifiers["reminderDays"] = reminder_days
+        if person_id is not None:
+            ctx_modifiers["personId"] = person_id
+        if company_id is not None:
+            ctx_modifiers["companyId"] = company_id
+        if opportunity_id is not None:
+            ctx_modifiers["opportunityId"] = opportunity_id
+
+        cmd_context = CommandContext(
+            name="reminder create",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"reminder": _reminder_payload(reminder)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="reminder create", fn=fn)
 
@@ -430,7 +519,37 @@ def reminder_update(
                 is_completed=is_completed,
             ),
         )
-        return CommandOutput(data={"reminder": _reminder_payload(reminder)}, api_called=True)
+
+        # Build CommandContext for reminder update
+        ctx_modifiers: dict[str, object] = {}
+        if owner_id is not None:
+            ctx_modifiers["ownerId"] = owner_id
+        if reminder_type:
+            ctx_modifiers["type"] = reminder_type
+        if content:
+            ctx_modifiers["content"] = content
+        if due_date:
+            ctx_modifiers["dueDate"] = due_date
+        if reset_type:
+            ctx_modifiers["resetType"] = reset_type
+        if reminder_days is not None:
+            ctx_modifiers["reminderDays"] = reminder_days
+        if completed:
+            ctx_modifiers["completed"] = True
+        if not_completed:
+            ctx_modifiers["notCompleted"] = True
+
+        cmd_context = CommandContext(
+            name="reminder update",
+            inputs={"reminderId": reminder_id},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"reminder": _reminder_payload(reminder)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="reminder update", fn=fn)
 
@@ -445,6 +564,17 @@ def reminder_delete(ctx: CLIContext, reminder_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.reminders.delete(ReminderIdType(reminder_id))
-        return CommandOutput(data={"success": success}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="reminder delete",
+            inputs={"reminderId": reminder_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"success": success},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="reminder delete", fn=fn)

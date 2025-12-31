@@ -5,6 +5,7 @@ from affinity.models.secondary import MergeTask
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..options import output_options
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 
@@ -29,7 +30,14 @@ def task_get(ctx: CLIContext, task_url: str) -> None:
         client = ctx.get_client(warnings=warnings)
         task = client.tasks.get(task_url)
         payload = _task_payload(task)
-        return CommandOutput(data={"task": payload}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="task get",
+            inputs={"taskUrl": task_url},
+            modifiers={},
+        )
+
+        return CommandOutput(data={"task": payload}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="task get", fn=fn)
 
@@ -78,6 +86,22 @@ def task_wait(
             max_poll_interval=max_poll_interval,
         )
         payload = _task_payload(task)
-        return CommandOutput(data={"task": payload}, api_called=True)
+
+        # Build CommandContext - only include non-default modifiers
+        ctx_modifiers: dict[str, object] = {}
+        if timeout != 300.0:
+            ctx_modifiers["timeout"] = timeout
+        if poll_interval != 2.0:
+            ctx_modifiers["pollInterval"] = poll_interval
+        if max_poll_interval != 30.0:
+            ctx_modifiers["maxPollInterval"] = max_poll_interval
+
+        cmd_context = CommandContext(
+            name="task wait",
+            inputs={"taskUrl": task_url},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(data={"task": payload}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="task wait", fn=fn)

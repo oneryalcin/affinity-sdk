@@ -714,6 +714,35 @@ xaffinity field create --name "Stage" --entity-type opportunity --value-type dro
 xaffinity field delete field-123
 ```
 
+### `xaffinity field history`
+
+Show field value change history for a specific field on an entity (V1).
+
+```
+xaffinity field history FIELD_ID [OPTIONS]
+```
+
+Arguments:
+
+- `FIELD_ID` (required): Field ID (e.g., `field-123`). Use `field ls --list-id LIST` to find IDs.
+
+Options:
+
+- `--person-id <id>`: Filter by person
+- `--company-id <id>`: Filter by company
+- `--opportunity-id <id>`: Filter by opportunity
+- `--list-entry-id <id>`: Filter by list entry
+- `--action-type <type>`: Filter by action (`create`, `update`, `delete`)
+- `--max-results <n>`: Limit number of results
+
+Exactly one entity selector is required.
+
+```bash
+xaffinity field history field-123 --person-id 456
+xaffinity field history field-123 --company-id 789 --action-type update
+xaffinity --json field history field-123 --list-entry-id 101 --max-results 20
+```
+
 ## Field Values
 
 ### `xaffinity field-value ls`
@@ -739,29 +768,6 @@ xaffinity field-value update 555 --value-json '\"Active\"'
 
 ```bash
 xaffinity field-value delete 555
-```
-
-## Field Value Changes
-
-### `xaffinity field-value-changes ls`
-
-List field value change history for a specific field on an entity (V1).
-
-Options:
-
-- `--field-id <id>` (required): Field ID (e.g. `field-123`)
-- `--person-id <id>`: Filter by person
-- `--company-id <id>`: Filter by company
-- `--opportunity-id <id>`: Filter by opportunity
-- `--list-entry-id <id>`: Filter by list entry
-- `--action-type <type>`: Filter by action (`create`, `update`, `delete`)
-
-Exactly one entity selector (`--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id`) is required.
-
-```bash
-xaffinity field-value-changes ls --field-id field-123 --person-id 456
-xaffinity field-value-changes ls --field-id field-123 --company-id 789 --action-type update
-xaffinity --json field-value-changes ls --field-id field-123 --list-entry-id 101
 ```
 
 ## Relationship Strengths

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-from affinity.models.entities import FieldCreate, FieldMetadata
+from affinity.models.entities import FieldCreate, FieldMetadata, FieldValueChange
 from affinity.models.types import EntityType, FieldValueType
-from affinity.types import FieldId, ListId
+from affinity.types import (
+    CompanyId,
+    FieldId,
+    FieldValueChangeAction,
+    ListEntryId,
+    ListId,
+    OpportunityId,
+    PersonId,
+)
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._v1_parsing import parse_choice
@@ -28,9 +37,83 @@ _ENTITY_TYPE_MAP = {
 
 _VALUE_TYPE_MAP = {ft.value: ft for ft in FieldValueType}
 
+_ACTION_TYPE_MAP = {
+    "create": FieldValueChangeAction.CREATE,
+    "delete": FieldValueChangeAction.DELETE,
+    "update": FieldValueChangeAction.UPDATE,
+}
+
+_ACTION_TYPE_NAMES = {
+    FieldValueChangeAction.CREATE: "create",
+    FieldValueChangeAction.DELETE: "delete",
+    FieldValueChangeAction.UPDATE: "update",
+}
+
 
 def _field_payload(field: FieldMetadata) -> dict[str, object]:
     return serialize_model_for_cli(field)
+
+
+def _field_value_change_payload(item: FieldValueChange) -> dict[str, object]:
+    """Convert FieldValueChange to CLI output format."""
+    # Display enum name instead of integer (consistent with interaction_cmds.py)
+    action_name = _ACTION_TYPE_NAMES.get(
+        FieldValueChangeAction(item.action_type),
+        str(item.action_type),
+    )
+
+    # Flatten changer name for table display
+    changer_name = None
+    if item.changer:
+        first = item.changer.first_name or ""
+        last = item.changer.last_name or ""
+        changer_name = f"{first} {last}".strip() or None
+
+    return {
+        "id": int(item.id),
+        "fieldId": str(item.field_id),
+        "entityId": item.entity_id,
+        "listEntryId": int(item.list_entry_id) if item.list_entry_id else None,
+        "actionType": action_name,
+        "value": item.value,
+        "changedAt": item.changed_at,
+        "changerName": changer_name,
+        "changer": serialize_model_for_cli(item.changer) if item.changer else None,
+    }
+
+
+def _validate_exactly_one_selector(
+    person_id: int | None,
+    company_id: int | None,
+    opportunity_id: int | None,
+    list_entry_id: int | None,
+) -> None:
+    """Validate that exactly one entity selector is provided."""
+    selectors = {
+        "--person-id": person_id,
+        "--company-id": company_id,
+        "--opportunity-id": opportunity_id,
+        "--list-entry-id": list_entry_id,
+    }
+    provided = [name for name, value in selectors.items() if value is not None]
+
+    if len(provided) == 1:
+        return
+
+    if len(provided) == 0:
+        raise CLIError(
+            "Exactly one entity selector is required: "
+            "--person-id, --company-id, --opportunity-id, or --list-entry-id.\n"
+            "Example: xaffinity field history field-123 --person-id 456",
+            error_type="usage_error",
+            exit_code=2,
+        )
+
+    raise CLIError(
+        f"Only one entity selector allowed, but got {len(provided)}: {', '.join(provided)}",
+        error_type="usage_error",
+        exit_code=2,
+    )
 
 
 @field_group.command(name="ls", cls=RichCommand)
@@ -59,7 +142,21 @@ def field_ls(
             entity_type=parsed_type,
         )
         payload = [_field_payload(field) for field in fields]
-        return CommandOutput(data={"fields": payload}, api_called=True)
+
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if list_id is not None:
+            ctx_modifiers["listId"] = list_id
+        if entity_type:
+            ctx_modifiers["entityType"] = entity_type
+
+        cmd_context = CommandContext(
+            name="field ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(data={"fields": payload}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="field ls", fn=fn)
 
@@ -123,7 +220,28 @@ def field_create(
         cache.invalidate_prefix("fields_v1_")
 
         payload = _field_payload(created)
-        return CommandOutput(data={"field": payload}, api_called=True)
+
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {
+            "entityType": entity_type,
+            "valueType": value_type,
+        }
+        if list_id is not None:
+            ctx_modifiers["listId"] = list_id
+        if allows_multiple:
+            ctx_modifiers["allowsMultiple"] = True
+        if list_specific:
+            ctx_modifiers["listSpecific"] = True
+        if required:
+            ctx_modifiers["required"] = True
+
+        cmd_context = CommandContext(
+            name="field create",
+            inputs={"name": name},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(data={"field": payload}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="field create", fn=fn)
 
@@ -146,6 +264,105 @@ def field_delete(ctx: CLIContext, field_id: str) -> None:
         cache.invalidate_prefix("company_fields_")
         cache.invalidate_prefix("fields_v1_")
 
-        return CommandOutput(data={"success": success}, api_called=True)
+        cmd_context = CommandContext(
+            name="field delete",
+            inputs={"fieldId": field_id},
+            modifiers={},
+        )
+
+        return CommandOutput(data={"success": success}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="field delete", fn=fn)
+
+
+@field_group.command(name="history", cls=RichCommand)
+@click.argument("field_id")
+@click.option("--person-id", type=int, default=None, help="Filter by person ID.")
+@click.option("--company-id", type=int, default=None, help="Filter by company ID.")
+@click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity ID.")
+@click.option("--list-entry-id", type=int, default=None, help="Filter by list entry ID.")
+@click.option(
+    "--action-type",
+    type=click.Choice(["create", "update", "delete"]),
+    default=None,
+    help="Filter by action type.",
+)
+@click.option("--max-results", type=int, default=None, help="Limit number of results.")
+@output_options
+@click.pass_obj
+def field_history(
+    ctx: CLIContext,
+    *,
+    field_id: str,
+    person_id: int | None,
+    company_id: int | None,
+    opportunity_id: int | None,
+    list_entry_id: int | None,
+    action_type: str | None,
+    max_results: int | None,
+) -> None:
+    """Show field value change history (V1).
+
+    FIELD_ID is the field identifier (e.g., 'field-123').
+    Use 'xaffinity field ls --list-id LIST' to find field IDs.
+
+    Exactly one entity selector is required.
+
+    Examples:
+
+    - `xaffinity field history field-123 --person-id 456`
+
+    - `xaffinity field history field-260415 --list-entry-id 789 --action-type update`
+
+    - `xaffinity field history field-123 --company-id 100 --max-results 10`
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        _validate_exactly_one_selector(person_id, company_id, opportunity_id, list_entry_id)
+
+        client = ctx.get_client(warnings=warnings)
+        changes = client.field_value_changes.list(
+            field_id=FieldId(field_id),
+            person_id=PersonId(person_id) if person_id is not None else None,
+            company_id=CompanyId(company_id) if company_id is not None else None,
+            opportunity_id=OpportunityId(opportunity_id) if opportunity_id is not None else None,
+            list_entry_id=ListEntryId(list_entry_id) if list_entry_id is not None else None,
+            action_type=_ACTION_TYPE_MAP[action_type] if action_type else None,
+        )
+
+        # Apply client-side max_results limit
+        if max_results is not None:
+            changes = changes[:max_results]
+
+        payload = [_field_value_change_payload(item) for item in changes]
+
+        # Build CommandContext for richer output metadata
+        # Per spec: required params are inputs, optional params are modifiers
+        # fieldId and exactly one entity selector are required → both are inputs
+        inputs: dict[str, object] = {"fieldId": field_id}
+        if person_id is not None:
+            inputs["personId"] = person_id
+        elif company_id is not None:
+            inputs["companyId"] = company_id
+        elif opportunity_id is not None:
+            inputs["opportunityId"] = opportunity_id
+        elif list_entry_id is not None:
+            inputs["listEntryId"] = list_entry_id
+
+        modifiers: dict[str, object] = {}
+        if action_type is not None:
+            modifiers["actionType"] = action_type
+        if max_results is not None:
+            modifiers["maxResults"] = max_results
+
+        cmd_context = CommandContext(
+            name="field history",
+            inputs=inputs,
+            modifiers=modifiers,
+        )
+
+        return CommandOutput(
+            data={"fieldValueChanges": payload}, context=cmd_context, api_called=True
+        )
+
+    run_command(ctx, command="field history", fn=fn)

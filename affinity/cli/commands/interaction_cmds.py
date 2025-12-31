@@ -14,6 +14,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ._v1_parsing import parse_choice, parse_iso_datetime
 
@@ -97,6 +98,31 @@ def interaction_ls(
         first_page = True
         page_token = cursor
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if interaction_type:
+            ctx_modifiers["type"] = interaction_type
+        if start_time:
+            ctx_modifiers["startTime"] = start_time
+        if end_time:
+            ctx_modifiers["endTime"] = end_time
+        if person_id is not None:
+            ctx_modifiers["personId"] = person_id
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="interaction ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         parsed_type = parse_choice(
             interaction_type,
             _INTERACTION_TYPE_MAP,
@@ -146,9 +172,7 @@ def interaction_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if page.next_page_token and not stopped_mid_page:
@@ -160,6 +184,7 @@ def interaction_ls(
                             }
                         return CommandOutput(
                             data={"interactions": results[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -176,7 +201,10 @@ def interaction_ls(
                         else None
                     )
                     return CommandOutput(
-                        data={"interactions": results}, pagination=pagination, api_called=True
+                        data={"interactions": results},
+                        context=cmd_context,
+                        pagination=pagination,
+                        api_called=True,
                     )
                 first_page = False
 
@@ -184,7 +212,12 @@ def interaction_ls(
                 if not page_token:
                     break
 
-        return CommandOutput(data={"interactions": results}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"interactions": results},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="interaction ls", fn=fn)
 
@@ -213,8 +246,17 @@ def interaction_get(ctx: CLIContext, interaction_id: int, *, interaction_type: s
             raise CLIError("Missing interaction type.", error_type="usage_error", exit_code=2)
         client = ctx.get_client(warnings=warnings)
         interaction = client.interactions.get(InteractionId(interaction_id), parsed_type)
+
+        cmd_context = CommandContext(
+            name="interaction get",
+            inputs={"interactionId": interaction_id},
+            modifiers={"type": interaction_type},
+        )
+
         return CommandOutput(
-            data={"interaction": _interaction_payload(interaction)}, api_called=True
+            data={"interaction": _interaction_payload(interaction)},
+            context=cmd_context,
+            api_called=True,
         )
 
     run_command(ctx, command="interaction get", fn=fn)
@@ -278,8 +320,26 @@ def interaction_create(
                 direction=parsed_direction,
             )
         )
+
+        # Build CommandContext for interaction create
+        ctx_modifiers: dict[str, object] = {
+            "type": interaction_type,
+            "personIds": list(person_ids),
+            "date": date,
+        }
+        if direction:
+            ctx_modifiers["direction"] = direction
+
+        cmd_context = CommandContext(
+            name="interaction create",
+            inputs={"type": interaction_type},
+            modifiers=ctx_modifiers,
+        )
+
         return CommandOutput(
-            data={"interaction": _interaction_payload(interaction)}, api_called=True
+            data={"interaction": _interaction_payload(interaction)},
+            context=cmd_context,
+            api_called=True,
         )
 
     run_command(ctx, command="interaction create", fn=fn)
@@ -348,8 +408,28 @@ def interaction_update(
                 direction=parsed_direction,
             ),
         )
+
+        # Build CommandContext for interaction update
+        ctx_modifiers: dict[str, object] = {"type": interaction_type}
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+        if content:
+            ctx_modifiers["content"] = content
+        if date:
+            ctx_modifiers["date"] = date
+        if direction:
+            ctx_modifiers["direction"] = direction
+
+        cmd_context = CommandContext(
+            name="interaction update",
+            inputs={"interactionId": interaction_id},
+            modifiers=ctx_modifiers,
+        )
+
         return CommandOutput(
-            data={"interaction": _interaction_payload(interaction)}, api_called=True
+            data={"interaction": _interaction_payload(interaction)},
+            context=cmd_context,
+            api_called=True,
         )
 
     run_command(ctx, command="interaction update", fn=fn)
@@ -379,6 +459,17 @@ def interaction_delete(ctx: CLIContext, interaction_id: int, *, interaction_type
             raise CLIError("Missing interaction type.", error_type="usage_error", exit_code=2)
         client = ctx.get_client(warnings=warnings)
         success = client.interactions.delete(InteractionId(interaction_id), parsed_type)
-        return CommandOutput(data={"success": success}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="interaction delete",
+            inputs={"interactionId": interaction_id},
+            modifiers={"type": interaction_type},
+        )
+
+        return CommandOutput(
+            data={"success": success},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="interaction delete", fn=fn)

@@ -40,7 +40,7 @@ def test_cli_config_path_json_after_subcommand() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["ok"] is True
-    assert payload["command"] == "config path"
+    assert payload["command"]["name"] == "config path"
     assert "path" in payload["data"]
 
 
@@ -57,7 +57,7 @@ def test_cli_completion_json_emits_command_result() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["ok"] is True
-    assert payload["command"] == "completion"
+    assert payload["command"]["name"] == "completion"
     assert payload["data"]["shell"] == "bash"
     assert "_XAFFINITY_COMPLETE" in payload["data"]["script"]
 

@@ -22,7 +22,7 @@ from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
-from ..results import Artifact
+from ..results import Artifact, CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
@@ -132,9 +132,7 @@ def _fetch_v2_collection(
 
     if truncated_mid_page and effective_cap is not None:
         warnings.append(
-            f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
-            "to avoid skipping items. Re-run with a higher --max-results "
-            "or with --all."
+            f"{section} limited to {effective_cap:,} items. Use --all to fetch all results."
         )
     elif isinstance(next_url, str) and next_url:
         pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
@@ -205,6 +203,29 @@ def person_search(
         results: list[dict[str, object]] = []
         first_page = True
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if with_interaction_dates:
+            ctx_modifiers["withInteractionDates"] = True
+        if with_interaction_persons:
+            ctx_modifiers["withInteractionPersons"] = True
+        if with_opportunities:
+            ctx_modifiers["withOpportunities"] = True
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="person search",
+            inputs={"query": query},
+            modifiers=ctx_modifiers,
+        )
+
         show_progress = (
             ctx.progress != "never"
             and not ctx.quiet
@@ -243,12 +264,11 @@ def person_search(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         return CommandOutput(
                             data={"persons": results[:max_results]},
+                            context=cmd_context,
                             pagination={
                                 "persons": {
                                     "nextCursor": page.next_page_token,
@@ -263,6 +283,7 @@ def person_search(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"persons": results},
+                        context=cmd_context,
                         pagination={
                             "persons": {"nextCursor": page.next_page_token, "prevCursor": None}
                         }
@@ -272,7 +293,12 @@ def person_search(
                     )
                 first_page = False
 
-        return CommandOutput(data={"persons": results}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"persons": results},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="person search", fn=fn)
 
@@ -364,6 +390,29 @@ def person_ls(
                 error_type="usage_error",
             )
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+        if field_ids:
+            ctx_modifiers["fieldIds"] = list(field_ids)
+        if field_types:
+            ctx_modifiers["fieldTypes"] = list(field_types)
+        if filter_expr:
+            ctx_modifiers["filter"] = filter_expr
+
+        cmd_context = CommandContext(
+            name="person ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         parsed_field_types = _parse_field_types(field_types)
         parsed_field_ids: list[FieldId] | None = (
             [FieldId(fid) for fid in field_ids] if field_ids else None
@@ -411,9 +460,7 @@ def person_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if (
@@ -429,6 +476,7 @@ def person_ls(
                             }
                         return CommandOutput(
                             data={"persons": rows[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -436,6 +484,7 @@ def person_ls(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"persons": rows},
+                        context=cmd_context,
                         pagination=(
                             {
                                 "persons": {
@@ -465,6 +514,7 @@ def person_ls(
                     "csv": csv_ref,
                     "rowsWritten": write_result.rows_written,
                 },
+                context=cmd_context,
                 artifacts=[
                     Artifact(
                         type="csv",
@@ -478,7 +528,12 @@ def person_ls(
                 api_called=True,
             )
 
-        return CommandOutput(data={"persons": rows}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"persons": rows},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="person ls", fn=fn)
 
@@ -1316,8 +1371,57 @@ def person_get(
                 # Field metadata is optional - continue without names if fetch fails
                 pass
 
+        # Build CommandContext for structured output
+        ctx_inputs: dict[str, Any] = {}
+        ctx_modifiers: dict[str, Any] = {}
+        ctx_resolved: dict[str, str] = {}
+
+        # Determine if selector or ID was used
+        raw_selector = person_selector.strip()
+        if raw_selector.isdigit():
+            ctx_inputs["personId"] = int(person_id)
+        else:
+            ctx_inputs["selector"] = raw_selector
+
+        # Build modifiers from non-default options
+        if expand_set:
+            ctx_modifiers["expand"] = sorted(expand_set)
+        if fields:
+            ctx_modifiers["fields"] = list(fields)
+        if field_types:
+            ctx_modifiers["fieldTypes"] = list(field_types)
+        if all_fields:
+            ctx_modifiers["allFields"] = True
+        if no_fields:
+            ctx_modifiers["noFields"] = True
+        if list_selector:
+            ctx_modifiers["list"] = list_selector
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        # Resolve person name from response
+        if isinstance(person_payload, dict):
+            first = person_payload.get("firstName", "")
+            last = person_payload.get("lastName", "")
+            name = f"{first} {last}".strip()
+            if name:
+                if "personId" in ctx_inputs:
+                    ctx_resolved["personId"] = name
+                elif "selector" in ctx_inputs:
+                    ctx_resolved["selector"] = name
+
+        context = CommandContext(
+            name="person get",
+            inputs=ctx_inputs,
+            modifiers=ctx_modifiers,
+            resolved=ctx_resolved if ctx_resolved else None,
+        )
+
         return CommandOutput(
             data=data,
+            context=context,
             pagination=pagination or None,
             resolved=resolved,
             api_called=True,
@@ -1367,6 +1471,25 @@ def person_files_dump(
     """Download all files attached to a person."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if out_dir:
+            ctx_modifiers["outDir"] = out_dir
+        if overwrite:
+            ctx_modifiers["overwrite"] = True
+        if concurrency != 4:
+            ctx_modifiers["concurrency"] = concurrency
+        if page_size != 100:
+            ctx_modifiers["pageSize"] = page_size
+        if max_files is not None:
+            ctx_modifiers["maxFiles"] = max_files
+
+        cmd_context = CommandContext(
+            name="person files dump",
+            inputs={"personId": person_id},
+            modifiers=ctx_modifiers,
+        )
+
         return asyncio.run(
             dump_entity_files_bundle(
                 ctx=ctx,
@@ -1379,6 +1502,7 @@ def person_files_dump(
                 default_dirname=f"affinity-person-{person_id}-files",
                 manifest_entity={"type": "person", "personId": person_id},
                 files_list_kwargs={"person_id": PersonId(person_id)},
+                context=cmd_context,
             )
         )
 
@@ -1459,8 +1583,15 @@ def person_files_upload(
                     }
                 )
 
+        cmd_context = CommandContext(
+            name="person files upload",
+            inputs={"personId": person_id},
+            modifiers={"files": list(file_paths)},
+        )
+
         return CommandOutput(
             data={"uploads": results, "personId": person_id},
+            context=cmd_context,
             api_called=True,
         )
 
@@ -1506,7 +1637,27 @@ def person_create(
             )
         )
         payload = serialize_model_for_cli(created)
-        return CommandOutput(data={"person": payload}, api_called=True)
+
+        ctx_modifiers: dict[str, object] = {
+            "firstName": first_name,
+            "lastName": last_name,
+        }
+        if emails:
+            ctx_modifiers["emails"] = list(emails)
+        if company_ids:
+            ctx_modifiers["companyIds"] = list(company_ids)
+
+        cmd_context = CommandContext(
+            name="person create",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"person": payload},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="person create", fn=fn)
 
@@ -1560,7 +1711,28 @@ def person_update(
             ),
         )
         payload = serialize_model_for_cli(updated)
-        return CommandOutput(data={"person": payload}, api_called=True)
+
+        ctx_modifiers: dict[str, object] = {}
+        if first_name:
+            ctx_modifiers["firstName"] = first_name
+        if last_name:
+            ctx_modifiers["lastName"] = last_name
+        if emails:
+            ctx_modifiers["emails"] = list(emails)
+        if company_ids:
+            ctx_modifiers["companyIds"] = list(company_ids)
+
+        cmd_context = CommandContext(
+            name="person update",
+            inputs={"personId": person_id},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"person": payload},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="person update", fn=fn)
 
@@ -1575,7 +1747,18 @@ def person_delete(ctx: CLIContext, person_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.persons.delete(PersonId(person_id))
-        return CommandOutput(data={"success": success}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="person delete",
+            inputs={"personId": person_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"success": success},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="person delete", fn=fn)
 
@@ -1595,7 +1778,23 @@ def person_merge(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         task_url = client.persons.merge(PersonId(primary_id), PersonId(duplicate_id))
-        return CommandOutput(data={"taskUrl": task_url}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="person merge",
+            inputs={"primaryId": primary_id, "duplicateId": duplicate_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={
+                "survivingId": primary_id,
+                "mergedId": duplicate_id,
+                "affinityUrl": f"https://app.affinity.co/persons/{primary_id}",
+                "taskUrl": task_url,
+            },
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="person merge", fn=fn)
 
@@ -1717,9 +1916,31 @@ def person_set_field(
         )
 
         payload = serialize_model_for_cli(created)
+
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value is not None:
+            ctx_modifiers["value"] = value
+        if value_json is not None:
+            ctx_modifiers["valueJson"] = value_json
+        if append:
+            ctx_modifiers["append"] = True
+
+        cmd_context = CommandContext(
+            name="person set-field",
+            inputs={"personId": person_id},
+            modifiers=ctx_modifiers,
+            resolved=resolved if resolved else None,
+        )
+
         return CommandOutput(
             data={"fieldValue": payload},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 
@@ -1799,9 +2020,17 @@ def person_set_fields(
 
         resolved["fieldsUpdated"] = len(results)
 
+        cmd_context = CommandContext(
+            name="person set-fields",
+            inputs={"personId": person_id},
+            modifiers={},
+            resolved=resolved if resolved else None,
+        )
+
         return CommandOutput(
             data={"fieldValues": results},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 
@@ -1864,6 +2093,24 @@ def person_unset_field(
         resolved["fieldId"] = target_field_id
         resolved["fieldName"] = resolver.get_field_name(target_field_id)
 
+        # Build CommandContext upfront (used by both return paths)
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value is not None:
+            ctx_modifiers["value"] = value
+        if unset_all:
+            ctx_modifiers["allValues"] = True
+
+        cmd_context = CommandContext(
+            name="person unset-field",
+            inputs={"personId": person_id},
+            modifiers=ctx_modifiers,
+            resolved=resolved if resolved else None,
+        )
+
         # Get existing field values
         existing_values = client.field_values.list(person_id=PersonId(person_id))
         existing_for_field = find_field_values_for_field(
@@ -1879,6 +2126,7 @@ def person_unset_field(
             return CommandOutput(
                 data={"deleted": 0},
                 resolved=resolved,
+                context=cmd_context,
                 api_called=True,
             )
 
@@ -1926,6 +2174,7 @@ def person_unset_field(
         return CommandOutput(
             data={"deleted": deleted_count},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 

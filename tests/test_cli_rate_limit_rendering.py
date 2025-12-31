@@ -6,7 +6,7 @@ pytest.importorskip("rich_click")
 pytest.importorskip("rich")
 
 from affinity.cli.render import RenderSettings, render_result
-from affinity.cli.results import CommandMeta, CommandResult
+from affinity.cli.results import CommandContext, CommandMeta, CommandResult
 from affinity.models.rate_limit_snapshot import RateLimitSnapshot
 
 
@@ -17,7 +17,7 @@ def test_rate_limit_footer_is_human_friendly(capsys: pytest.CaptureFixture[str])
     )
     result = CommandResult(
         ok=True,
-        command="version",
+        command=CommandContext(name="version"),
         data={"version": "0.0.0"},
         artifacts=[],
         warnings=[],

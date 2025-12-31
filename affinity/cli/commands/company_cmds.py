@@ -22,7 +22,7 @@ from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
-from ..results import Artifact
+from ..results import Artifact, CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import dump_entity_files_bundle
@@ -132,9 +132,7 @@ def _fetch_v2_collection(
 
     if truncated_mid_page and effective_cap is not None:
         warnings.append(
-            f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
-            "to avoid skipping items. Re-run with a higher --max-results "
-            "or with --all."
+            f"{section} limited to {effective_cap:,} items. Use --all to fetch all results."
         )
     elif isinstance(next_url, str) and next_url:
         pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
@@ -247,9 +245,7 @@ def _fetch_v2_collection_sdk(
 
     if truncated_mid_page and effective_cap is not None:
         warnings.append(
-            f"{section} truncated at {effective_cap:,} items; resume cursor omitted "
-            "to avoid skipping items. Re-run with a higher --max-results "
-            "or with --all."
+            f"{section} limited to {effective_cap:,} items. Use --all to fetch all results."
         )
     elif isinstance(next_url, str) and next_url:
         pagination[section] = {"nextCursor": next_url, "prevCursor": prev_url}
@@ -320,6 +316,29 @@ def company_search(
         results: list[dict[str, object]] = []
         first_page = True
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+        if with_interaction_dates:
+            ctx_modifiers["withInteractionDates"] = True
+        if with_interaction_persons:
+            ctx_modifiers["withInteractionPersons"] = True
+        if with_opportunities:
+            ctx_modifiers["withOpportunities"] = True
+
+        cmd_context = CommandContext(
+            name="company search",
+            inputs={"query": query},
+            modifiers=ctx_modifiers,
+        )
+
         show_progress = (
             ctx.progress != "never"
             and not ctx.quiet
@@ -358,12 +377,11 @@ def company_search(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         return CommandOutput(
                             data={"companies": results[:max_results]},
+                            context=cmd_context,
                             pagination={
                                 "companies": {
                                     "nextCursor": page.next_page_token,
@@ -378,6 +396,7 @@ def company_search(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"companies": results},
+                        context=cmd_context,
                         pagination={
                             "companies": {"nextCursor": page.next_page_token, "prevCursor": None}
                         }
@@ -387,7 +406,12 @@ def company_search(
                     )
                 first_page = False
 
-        return CommandOutput(data={"companies": results}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"companies": results},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="company search", fn=fn)
 
@@ -479,6 +503,33 @@ def company_ls(
                 error_type="usage_error",
             )
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+        if field_ids:
+            ctx_modifiers["fieldIds"] = list(field_ids)
+        if field_types:
+            ctx_modifiers["fieldTypes"] = list(field_types)
+        if filter_expr:
+            ctx_modifiers["filter"] = filter_expr
+        if csv_path:
+            ctx_modifiers["csv"] = csv_path
+        if csv_bom:
+            ctx_modifiers["csvBom"] = True
+
+        cmd_context = CommandContext(
+            name="company ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         parsed_field_types = _parse_field_types(field_types)
         parsed_field_ids: list[FieldId] | None = (
             [FieldId(fid) for fid in field_ids] if field_ids else None
@@ -526,9 +577,7 @@ def company_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if (
@@ -544,6 +593,7 @@ def company_ls(
                             }
                         return CommandOutput(
                             data={"companies": rows[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -551,6 +601,7 @@ def company_ls(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"companies": rows},
+                        context=cmd_context,
                         pagination=(
                             {
                                 "companies": {
@@ -580,6 +631,7 @@ def company_ls(
                     "csv": csv_ref,
                     "rowsWritten": write_result.rows_written,
                 },
+                context=cmd_context,
                 artifacts=[
                     Artifact(
                         type="csv",
@@ -593,7 +645,12 @@ def company_ls(
                 api_called=True,
             )
 
-        return CommandOutput(data={"companies": rows}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"companies": rows},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="company ls", fn=fn)
 
@@ -907,6 +964,25 @@ def company_files_dump(
     """Download all files attached to a company."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if out_dir:
+            ctx_modifiers["outDir"] = out_dir
+        if overwrite:
+            ctx_modifiers["overwrite"] = True
+        if concurrency != 4:
+            ctx_modifiers["concurrency"] = concurrency
+        if page_size != 100:
+            ctx_modifiers["pageSize"] = page_size
+        if max_files is not None:
+            ctx_modifiers["maxFiles"] = max_files
+
+        cmd_context = CommandContext(
+            name="company files dump",
+            inputs={"companyId": company_id},
+            modifiers=ctx_modifiers,
+        )
+
         return asyncio.run(
             dump_entity_files_bundle(
                 ctx=ctx,
@@ -919,6 +995,7 @@ def company_files_dump(
                 default_dirname=f"affinity-company-{company_id}-files",
                 manifest_entity={"type": "company", "companyId": company_id},
                 files_list_kwargs={"company_id": CompanyId(company_id)},
+                context=cmd_context,
             )
         )
 
@@ -999,8 +1076,15 @@ def company_files_upload(
                     }
                 )
 
+        cmd_context = CommandContext(
+            name="company files upload",
+            inputs={"companyId": company_id},
+            modifiers={"files": list(file_paths)},
+        )
+
         return CommandOutput(
             data={"uploads": results, "companyId": company_id},
+            context=cmd_context,
             api_called=True,
         )
 
@@ -1138,6 +1222,46 @@ def company_get(
         client = ctx.get_client(warnings=warnings)
         cache = ctx.session_cache
         company_id, resolved = _resolve_company_selector(client=client, selector=company_selector)
+
+        # Build CommandContext for company get
+        ctx_modifiers: dict[str, object] = {}
+        if fields:
+            ctx_modifiers["fields"] = list(fields)
+        if field_types:
+            ctx_modifiers["fieldTypes"] = list(field_types)
+        if all_fields:
+            ctx_modifiers["allFields"] = True
+        if no_fields:
+            ctx_modifiers["noFields"] = True
+        if expand:
+            ctx_modifiers["expand"] = list(expand)
+        if list_selector:
+            ctx_modifiers["list"] = list_selector
+        if list_entry_fields:
+            ctx_modifiers["listEntryFields"] = list(list_entry_fields)
+        if show_list_entry_fields:
+            ctx_modifiers["showListEntryFields"] = True
+        if list_entry_fields_scope != "list-only":
+            ctx_modifiers["listEntryFieldsScope"] = list_entry_fields_scope
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        # Extract resolved company name if available for context
+        ctx_resolved: dict[str, str] | None = None
+        company_resolved = resolved.get("company", {})
+        if isinstance(company_resolved, dict):
+            entity_name = company_resolved.get("entityName")
+            if entity_name:
+                ctx_resolved = {"selector": str(entity_name)}
+
+        cmd_context = CommandContext(
+            name="company get",
+            inputs={"selector": company_selector},
+            modifiers=ctx_modifiers,
+            resolved=ctx_resolved,
+        )
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
         effective_list_entry_fields = tuple(list_entry_fields)
@@ -1643,6 +1767,7 @@ def company_get(
 
         return CommandOutput(
             data=data,
+            context=cmd_context,
             pagination=pagination or None,
             resolved=resolved,
             api_called=True,
@@ -1682,7 +1807,24 @@ def company_create(
             )
         )
         payload = serialize_model_for_cli(created)
-        return CommandOutput(data={"company": payload}, api_called=True)
+
+        ctx_modifiers: dict[str, object] = {"name": name}
+        if domain:
+            ctx_modifiers["domain"] = domain
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+
+        cmd_context = CommandContext(
+            name="company create",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"company": payload},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="company create", fn=fn)
 
@@ -1728,7 +1870,26 @@ def company_update(
             ),
         )
         payload = serialize_model_for_cli(updated)
-        return CommandOutput(data={"company": payload}, api_called=True)
+
+        ctx_modifiers: dict[str, object] = {}
+        if name:
+            ctx_modifiers["name"] = name
+        if domain:
+            ctx_modifiers["domain"] = domain
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+
+        cmd_context = CommandContext(
+            name="company update",
+            inputs={"companyId": company_id},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"company": payload},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="company update", fn=fn)
 
@@ -1743,7 +1904,18 @@ def company_delete(ctx: CLIContext, company_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.companies.delete(CompanyId(company_id))
-        return CommandOutput(data={"success": success}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="company delete",
+            inputs={"companyId": company_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"success": success},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="company delete", fn=fn)
 
@@ -1766,7 +1938,23 @@ def company_merge(
             CompanyId(primary_id),
             CompanyId(duplicate_id),
         )
-        return CommandOutput(data={"taskUrl": task_url}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="company merge",
+            inputs={"primaryId": primary_id, "duplicateId": duplicate_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={
+                "survivingId": primary_id,
+                "mergedId": duplicate_id,
+                "affinityUrl": f"https://app.affinity.co/companies/{primary_id}",
+                "taskUrl": task_url,
+            },
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="company merge", fn=fn)
 
@@ -1887,9 +2075,31 @@ def company_set_field(
         )
 
         payload = serialize_model_for_cli(created)
+
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value is not None:
+            ctx_modifiers["value"] = value
+        if value_json is not None:
+            ctx_modifiers["valueJson"] = value_json
+        if append:
+            ctx_modifiers["append"] = True
+
+        cmd_context = CommandContext(
+            name="company set-field",
+            inputs={"companyId": company_id},
+            modifiers=ctx_modifiers,
+            resolved=resolved if resolved else None,
+        )
+
         return CommandOutput(
             data={"fieldValue": payload},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 
@@ -1968,9 +2178,17 @@ def company_set_fields(
 
         resolved["fieldsUpdated"] = len(results)
 
+        cmd_context = CommandContext(
+            name="company set-fields",
+            inputs={"companyId": company_id},
+            modifiers={},
+            resolved=resolved if resolved else None,
+        )
+
         return CommandOutput(
             data={"fieldValues": results},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 
@@ -2033,6 +2251,24 @@ def company_unset_field(
         resolved["fieldId"] = target_field_id
         resolved["fieldName"] = resolver.get_field_name(target_field_id)
 
+        # Build CommandContext upfront (used by both return paths)
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value is not None:
+            ctx_modifiers["value"] = value
+        if unset_all:
+            ctx_modifiers["allValues"] = True
+
+        cmd_context = CommandContext(
+            name="company unset-field",
+            inputs={"companyId": company_id},
+            modifiers=ctx_modifiers,
+            resolved=resolved if resolved else None,
+        )
+
         # Get existing field values
         existing_values = client.field_values.list(company_id=CompanyId(company_id))
         existing_for_field = find_field_values_for_field(
@@ -2048,6 +2284,7 @@ def company_unset_field(
             return CommandOutput(
                 data={"deleted": 0},
                 resolved=resolved,
+                context=cmd_context,
                 api_called=True,
             )
 
@@ -2095,6 +2332,7 @@ def company_unset_field(
         return CommandOutput(
             data={"deleted": deleted_count},
             resolved=resolved,
+            context=cmd_context,
             api_called=True,
         )
 

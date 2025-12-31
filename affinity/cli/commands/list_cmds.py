@@ -39,7 +39,7 @@ from ..resolve import (
     resolve_list_selector,
     resolve_saved_view,
 )
-from ..results import Artifact
+from ..results import Artifact, CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli, serialize_models_for_cli
 from ._v1_parsing import parse_json_value
@@ -101,6 +101,25 @@ def list_ls(
                 error_type="usage_error",
             )
 
+        # Build CommandContext upfront for all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if list_type:
+            ctx_modifiers["type"] = list_type
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="list ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         pages = client.lists.pages(limit=page_size, cursor=cursor)
         rows: list[dict[str, object]] = []
         first_page = True
@@ -148,9 +167,7 @@ def list_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if (
@@ -166,6 +183,7 @@ def list_ls(
                             }
                         return CommandOutput(
                             data={"lists": rows[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -173,6 +191,7 @@ def list_ls(
                 if first_page and not all_pages and max_results is None:
                     return CommandOutput(
                         data={"lists": rows},
+                        context=cmd_context,
                         pagination=(
                             {
                                 "lists": {
@@ -187,7 +206,12 @@ def list_ls(
                     )
                 first_page = False
 
-        return CommandOutput(data={"lists": rows}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"lists": rows},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="list ls", fn=fn)
 
@@ -245,8 +269,21 @@ def list_create(
         cache = ctx.session_cache
         cache.invalidate_prefix("list_resolve_")
 
+        # Build CommandContext for list create
+        ctx_modifiers: dict[str, object] = {"name": name, "type": list_type}
+        if is_public:
+            ctx_modifiers["isPublic"] = True
+        if owner_id is not None:
+            ctx_modifiers["ownerId"] = owner_id
+
+        cmd_context = CommandContext(
+            name="list create",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         payload = serialize_model_for_cli(created)
-        return CommandOutput(data={"list": payload}, api_called=True)
+        return CommandOutput(data={"list": payload}, context=cmd_context, api_called=True)
 
     run_command(ctx, command="list create", fn=fn)
 
@@ -274,12 +311,30 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
         list_id = ListId(int(resolved.list.id))
         fields = list_fields_for_list(client=client, list_id=list_id, cache=cache)
         views = list_all_saved_views(client=client, list_id=list_id, cache=cache)
+
+        # Extract resolved list name for context
+        ctx_resolved: dict[str, str] | None = None
+        list_resolved = resolved.resolved.get("list", {})
+        if isinstance(list_resolved, dict):
+            list_name = list_resolved.get("entityName")
+            if list_name:
+                ctx_resolved = {"selector": str(list_name)}
+
+        cmd_context = CommandContext(
+            name="list view",
+            inputs={"selector": list_selector},
+            modifiers={},
+            resolved=ctx_resolved,
+        )
+
         data = {
             "list": serialize_model_for_cli(resolved.list),
             "fields": serialize_models_for_cli(fields),
             "savedViews": serialize_models_for_cli(views),
         }
-        return CommandOutput(data=data, resolved=resolved.resolved, api_called=True)
+        return CommandOutput(
+            data=data, context=cmd_context, resolved=resolved.resolved, api_called=True
+        )
 
     run_command(ctx, command="list view", fn=fn)
 
@@ -548,6 +603,36 @@ def list_export(
         )
         resolved: dict[str, Any] = dict(resolved_list.resolved)
 
+        # Build CommandContext upfront (used by all return paths)
+        ctx_modifiers: dict[str, object] = {}
+        if saved_view:
+            ctx_modifiers["savedView"] = saved_view
+        if fields:
+            ctx_modifiers["fields"] = list(fields)
+        if filter_expr:
+            ctx_modifiers["filter"] = filter_expr
+        if page_size != 200:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["all"] = True
+        if csv_path:
+            ctx_modifiers["csv"] = csv_path
+        if expand:
+            ctx_modifiers["expand"] = list(expand)
+        if dry_run:
+            ctx_modifiers["dryRun"] = True
+
+        cmd_context = CommandContext(
+            name="list export",
+            inputs={"listId": int(list_id)},
+            modifiers=ctx_modifiers,
+            resolved=resolved if resolved else None,
+        )
+
         # Validate expand options for list type
         if want_expand:
             valid_expand_for_type: dict[ListType, set[str]] = {
@@ -727,6 +812,7 @@ def list_export(
                 data["warnings"] = dry_run_warnings
             return CommandOutput(
                 data=data,
+                context=cmd_context,
                 resolved=resolved,
                 columns=columns,
                 api_called=True,
@@ -1121,12 +1207,11 @@ def list_export(
                     }
                 if csv_iter_state.get("truncatedMidPage") is True:
                     warnings.append(
-                        "Results truncated mid-page; resume cursor omitted "
-                        "to avoid skipping items. Re-run with a higher "
-                        "--max-results or without it to paginate safely."
+                        "Results limited by --max-results. Use --all to fetch all results."
                     )
                 return CommandOutput(
                     data=csv_data,
+                    context=cmd_context,
                     artifacts=[
                         Artifact(
                             type="csv",
@@ -1303,11 +1388,7 @@ def list_export(
                     progress.update(task_id, completed=len(rows))
 
             if table_iter_state.get("truncatedMidPage") is True:
-                warnings.append(
-                    "Results truncated mid-page; resume cursor omitted "
-                    "to avoid skipping items. Re-run with a higher "
-                    "--max-results or without it to paginate safely."
-                )
+                warnings.append("Results limited by --max-results. Use --all to fetch all results.")
 
             # Add truncation warning for JSON output
             if json_entries_with_truncated_assoc:
@@ -1343,6 +1424,7 @@ def list_export(
 
             return CommandOutput(
                 data=output_data,
+                context=cmd_context,
                 pagination={"rows": {"nextCursor": next_cursor, "prevCursor": None}}
                 if next_cursor
                 else None,
@@ -2330,8 +2412,24 @@ def list_entry_get(
                 # Field metadata is optional - continue without names if fetch fails
                 pass
 
+        # Extract resolved list name for context
+        ctx_resolved: dict[str, str] | None = None
+        list_resolved = resolved_list.resolved.get("list", {})
+        if isinstance(list_resolved, dict):
+            list_name = list_resolved.get("entityName")
+            if list_name:
+                ctx_resolved = {"listId": str(list_name)}
+
+        cmd_context = CommandContext(
+            name="list entry get",
+            inputs={"listId": int(resolved_list.list.id), "entryId": entry_id},
+            modifiers={},
+            resolved=ctx_resolved,
+        )
+
         return CommandOutput(
             data={"listEntry": payload},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -2387,9 +2485,34 @@ def list_entry_add(
             assert company_id is not None
             created = entries.add_company(CompanyId(company_id), creator_id=creator_id)
 
+        # Build CommandContext for list entry add
+        ctx_modifiers: dict[str, object] = {}
+        if person_id is not None:
+            ctx_modifiers["personId"] = person_id
+        if company_id is not None:
+            ctx_modifiers["companyId"] = company_id
+        if creator_id is not None:
+            ctx_modifiers["creatorId"] = creator_id
+
+        # Extract resolved list name for context
+        ctx_resolved: dict[str, str] | None = None
+        list_resolved = resolved_list.resolved.get("list", {})
+        if isinstance(list_resolved, dict):
+            list_name = list_resolved.get("entityName")
+            if list_name:
+                ctx_resolved = {"listId": str(list_name)}
+
+        cmd_context = CommandContext(
+            name="list entry add",
+            inputs={"listId": int(resolved_list.list.id)},
+            modifiers=ctx_modifiers,
+            resolved=ctx_resolved,
+        )
+
         payload = serialize_model_for_cli(created)
         return CommandOutput(
             data={"listEntry": payload},
+            context=cmd_context,
             resolved=resolved_list.resolved,
             api_called=True,
         )
@@ -2411,8 +2534,25 @@ def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> Non
         resolved_list = resolve_list_selector(client=client, selector=list_selector, cache=cache)
         entries = client.lists.entries(resolved_list.list.id)
         success = entries.delete(ListEntryId(entry_id))
+
+        # Extract resolved list name for context
+        ctx_resolved: dict[str, str] | None = None
+        list_resolved = resolved_list.resolved.get("list", {})
+        if isinstance(list_resolved, dict):
+            list_name = list_resolved.get("entityName")
+            if list_name:
+                ctx_resolved = {"listId": str(list_name)}
+
+        cmd_context = CommandContext(
+            name="list entry delete",
+            inputs={"listId": int(resolved_list.list.id), "entryId": entry_id},
+            modifiers={},
+            resolved=ctx_resolved,
+        )
+
         return CommandOutput(
             data={"success": success},
+            context=cmd_context,
             resolved=resolved_list.resolved,
             api_called=True,
         )
@@ -2537,8 +2677,27 @@ def list_entry_set_field(
         result = entries.update_field_value(ListEntryId(entry_id), parsed_field_id, parsed_value)
         payload = serialize_model_for_cli(result)
 
+        # Build CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if append:
+            ctx_modifiers["append"] = True
+
+        cmd_context = CommandContext(
+            name="list entry set-field",
+            inputs={"listSelector": list_selector, "entryId": entry_id},
+            modifiers=ctx_modifiers,
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         return CommandOutput(
             data={"fieldValue": payload},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -2621,8 +2780,18 @@ def list_entry_set_fields(
 
         resolved["fieldsUpdated"] = len(resolved_updates)
 
+        cmd_context = CommandContext(
+            name="list entry set-fields",
+            inputs={"listSelector": list_selector, "entryId": entry_id},
+            modifiers={},
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         return CommandOutput(
             data={"fieldUpdates": payload},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )
@@ -2691,6 +2860,26 @@ def list_entry_unset_field(
         resolved["fieldId"] = target_field_id
         resolved["fieldName"] = resolver.get_field_name(target_field_id)
 
+        # Build CommandContext upfront (used for all return paths)
+        ctx_modifiers: dict[str, object] = {}
+        if field_name:
+            ctx_modifiers["field"] = field_name
+        if field_id:
+            ctx_modifiers["fieldId"] = field_id
+        if value:
+            ctx_modifiers["value"] = value
+        if unset_all:
+            ctx_modifiers["allValues"] = True
+
+        cmd_context = CommandContext(
+            name="list entry unset-field",
+            inputs={"listSelector": list_selector, "entryId": entry_id},
+            modifiers=ctx_modifiers,
+            resolved={k: str(v) for k, v in resolved.items() if v is not None}
+            if resolved
+            else None,
+        )
+
         # Get existing field values
         existing_values = client.field_values.list(list_entry_id=ListEntryId(entry_id))
         existing_for_field = find_field_values_for_field(
@@ -2704,6 +2893,7 @@ def list_entry_unset_field(
             warnings.append(f"Field '{field_label}' has no values on this list entry.")
             return CommandOutput(
                 data={"deleted": 0},
+                context=cmd_context,
                 resolved=resolved,
                 api_called=True,
             )
@@ -2751,6 +2941,7 @@ def list_entry_unset_field(
 
         return CommandOutput(
             data={"deleted": deleted_count},
+            context=cmd_context,
             resolved=resolved,
             api_called=True,
         )

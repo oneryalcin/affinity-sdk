@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from affinity.cli.context import error_info_for_exception, normalize_exception
 from affinity.cli.main import cli
 from affinity.cli.render import RenderSettings, render_result
-from affinity.cli.results import CommandMeta, CommandResult, ErrorInfo
+from affinity.cli.results import CommandContext, CommandMeta, CommandResult, ErrorInfo
 from affinity.exceptions import ErrorDiagnostics, ValidationError
 
 
@@ -32,7 +32,7 @@ def test_missing_api_key_error_does_not_print_help_hint() -> None:
 def test_ambiguous_resolution_renders_match_table(capsys: pytest.CaptureFixture[str]) -> None:
     result = CommandResult(
         ok=False,
-        command="list export",
+        command=CommandContext(name="list export"),
         data=None,
         artifacts=[],
         warnings=[],
@@ -76,7 +76,7 @@ def test_error_info_includes_hint_and_renders(capsys: pytest.CaptureFixture[str]
 
     result = CommandResult(
         ok=False,
-        command="list export",
+        command=CommandContext(name="list export"),
         data=None,
         artifacts=[],
         warnings=[],

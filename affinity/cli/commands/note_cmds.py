@@ -14,6 +14,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..errors import CLIError
 from ..options import output_options
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ._v1_parsing import parse_choice, parse_iso_datetime
 
@@ -103,6 +104,31 @@ def note_ls(
         opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None
         creator_id_value = UserId(creator_id) if creator_id is not None else None
 
+        # Build CommandContext upfront for use in all return paths
+        ctx_modifiers: dict[str, object] = {}
+        if person_id is not None:
+            ctx_modifiers["personId"] = person_id
+        if company_id is not None:
+            ctx_modifiers["companyId"] = company_id
+        if opportunity_id is not None:
+            ctx_modifiers["opportunityId"] = opportunity_id
+        if creator_id is not None:
+            ctx_modifiers["creatorId"] = creator_id
+        if page_size is not None:
+            ctx_modifiers["pageSize"] = page_size
+        if cursor is not None:
+            ctx_modifiers["cursor"] = cursor
+        if max_results is not None:
+            ctx_modifiers["maxResults"] = max_results
+        if all_pages:
+            ctx_modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="note ls",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
         show_progress = (
             ctx.progress != "never"
             and not ctx.quiet
@@ -143,9 +169,7 @@ def note_ls(
                         stopped_mid_page = idx < (len(page.data) - 1)
                         if stopped_mid_page:
                             warnings.append(
-                                "Results truncated mid-page; resume cursor omitted "
-                                "to avoid skipping items. Re-run with a higher "
-                                "--max-results or without it to paginate safely."
+                                "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
                         if page.next_page_token and not stopped_mid_page:
@@ -154,6 +178,7 @@ def note_ls(
                             }
                         return CommandOutput(
                             data={"notes": results[:max_results]},
+                            context=cmd_context,
                             pagination=pagination,
                             api_called=True,
                         )
@@ -165,7 +190,10 @@ def note_ls(
                         else None
                     )
                     return CommandOutput(
-                        data={"notes": results}, pagination=pagination, api_called=True
+                        data={"notes": results},
+                        context=cmd_context,
+                        pagination=pagination,
+                        api_called=True,
                     )
                 first_page = False
 
@@ -173,7 +201,12 @@ def note_ls(
                 if not page_token:
                     break
 
-        return CommandOutput(data={"notes": results}, pagination=None, api_called=True)
+        return CommandOutput(
+            data={"notes": results},
+            context=cmd_context,
+            pagination=None,
+            api_called=True,
+        )
 
     run_command(ctx, command="note ls", fn=fn)
 
@@ -192,7 +225,18 @@ def note_get(ctx: CLIContext, note_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         note = client.notes.get(NoteId(note_id))
-        return CommandOutput(data={"note": _note_payload(note)}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="note get",
+            inputs={"noteId": note_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"note": _note_payload(note)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="note get", fn=fn)
 
@@ -280,7 +324,34 @@ def note_create(
                 created_at=created_at_value,
             )
         )
-        return CommandOutput(data={"note": _note_payload(note)}, api_called=True)
+
+        ctx_modifiers: dict[str, object] = {}
+        if note_type:
+            ctx_modifiers["type"] = note_type
+        if person_ids:
+            ctx_modifiers["personIds"] = list(person_ids)
+        if company_ids:
+            ctx_modifiers["companyIds"] = list(company_ids)
+        if opportunity_ids:
+            ctx_modifiers["opportunityIds"] = list(opportunity_ids)
+        if parent_id:
+            ctx_modifiers["parentId"] = parent_id
+        if creator_id is not None:
+            ctx_modifiers["creatorId"] = creator_id
+        if created_at:
+            ctx_modifiers["createdAt"] = created_at
+
+        cmd_context = CommandContext(
+            name="note create",
+            inputs={},
+            modifiers=ctx_modifiers,
+        )
+
+        return CommandOutput(
+            data={"note": _note_payload(note)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="note create", fn=fn)
 
@@ -296,7 +367,18 @@ def note_update(ctx: CLIContext, note_id: int, *, content: str) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         note = client.notes.update(NoteId(note_id), NoteUpdate(content=content))
-        return CommandOutput(data={"note": _note_payload(note)}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="note update",
+            inputs={"noteId": note_id},
+            modifiers={"content": content},
+        )
+
+        return CommandOutput(
+            data={"note": _note_payload(note)},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="note update", fn=fn)
 
@@ -311,6 +393,17 @@ def note_delete(ctx: CLIContext, note_id: int) -> None:
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         success = client.notes.delete(NoteId(note_id))
-        return CommandOutput(data={"success": success}, api_called=True)
+
+        cmd_context = CommandContext(
+            name="note delete",
+            inputs={"noteId": note_id},
+            modifiers={},
+        )
+
+        return CommandOutput(
+            data={"success": success},
+            context=cmd_context,
+            api_called=True,
+        )
 
     run_command(ctx, command="note delete", fn=fn)

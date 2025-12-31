@@ -18,12 +18,13 @@ from .context import (
     normalize_exception,
 )
 from .render import RenderSettings, render_result
-from .results import Artifact, CommandResult
+from .results import Artifact, CommandContext, CommandResult
 
 
 @dataclass(frozen=True, slots=True)
 class CommandOutput:
     data: Any | None = None
+    context: CommandContext | None = None  # Structured command context
     artifacts: list[Artifact] | None = None
     warnings: list[str] | None = None
     pagination: dict[str, Any] | None = None
@@ -110,9 +111,12 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
         if rate_limit is None and out.api_called and ctx._client is not None:
             rate_limit = ctx._client.rate_limits.snapshot()
 
+        # Use provided context or create minimal one from command name
+        cmd_context = out.context or CommandContext(name=command)
+
         result = build_result(
             ok=True,
-            command=command,
+            command=cmd_context,
             started_at=started,
             data=out.data,
             artifacts=out.artifacts,
@@ -137,9 +141,12 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
             except Exception:
                 rate_limit = None
 
+        # Create minimal context for error case
+        cmd_context = CommandContext(name=command)
+
         result = build_result(
             ok=False,
-            command=command,
+            command=cmd_context,
             started_at=started,
             data=None,
             artifacts=None,

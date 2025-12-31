@@ -40,7 +40,7 @@ def test_company_get_by_id_minimal(respx_mock: respx.MockRouter) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["ok"] is True
-    assert payload["command"] == "company get"
+    assert payload["command"]["name"] == "company get"
     assert payload["data"]["company"]["id"] == 123
     assert payload["meta"]["resolved"]["company"]["source"] == "id"
 

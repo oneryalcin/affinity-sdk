@@ -171,16 +171,36 @@ def _rate_limit_footer(snapshot: RateLimitSnapshot) -> str:
 
     if not parts:
         return ""
-    return "Rate limit: " + " | ".join(parts)
+    return "# Rate limit: " + " | ".join(parts)
 
 
 def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
-    table = Table(show_header=True, header_style="bold")
+    table = Table(show_header=True, header_style="bold", expand=True)
     if not rows:
         table.add_column("result")
         table.add_row("No results")
         return table
-    columns = list(rows[0].keys())
+
+    # Columns likely to contain long content - move to end and give more space
+    _LONG_COLUMNS = {
+        "dropdownoptions",
+        "dropdown_options",
+        "domains",
+        "emails",
+        "description",
+        "notes",
+        "content",
+        "fields",
+        "body",
+        "subject",
+        "snippet",
+    }
+
+    raw_columns = list(rows[0].keys())
+    # Partition into regular and long columns, preserving relative order
+    regular_cols = [c for c in raw_columns if c.lower() not in _LONG_COLUMNS]
+    long_cols = [c for c in raw_columns if c.lower() in _LONG_COLUMNS]
+    columns = regular_cols + long_cols
 
     def maybe_urlify_domain(value: str) -> str:
         value = value.strip()
@@ -240,15 +260,18 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
             datetime_show_seconds[col] = show_seconds
 
     for col in columns:
+        is_long = col.lower() in _LONG_COLUMNS
+        # Give long columns more space (ratio=3 means 3x the space of ratio=1)
+        col_ratio = 3 if is_long else 1
         if col in datetime_columns:
             offsets = datetime_offsets.get(col, set())
             if len(offsets) == 1:
                 offset_str = format_utc_offset(next(iter(offsets)))
-                table.add_column(f"{col} (local, {offset_str})")
+                table.add_column(f"{col} (local, {offset_str})", ratio=col_ratio)
             else:
-                table.add_column(f"{col} (local)")
+                table.add_column(f"{col} (local)", ratio=col_ratio)
         else:
-            table.add_column(col)
+            table.add_column(col, ratio=col_ratio)
 
     def format_cell(*, row: dict[str, Any], column: str, value: Any) -> str:
         if value is None:
@@ -554,6 +577,43 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
 
                 if column_lower == "fields":
                     return summarize_field_items(dict_items)
+
+                # Try to extract text/name values from list of dicts (e.g. dropdownOptions)
+                # Color dots for dropdown options (maps to DropdownOptionColor enum)
+                _COLOR_DOTS = {
+                    0: "⚪",  # DEFAULT
+                    1: "🔵",  # BLUE
+                    2: "🟢",  # GREEN
+                    3: "🟡",  # YELLOW
+                    4: "🟠",  # ORANGE
+                    5: "🔴",  # RED
+                    6: "🟣",  # PURPLE
+                    7: "⚫",  # GRAY
+                }
+                texts: list[str] = []
+                for item in dict_items:
+                    text = item.get("text")
+                    if isinstance(text, str) and text.strip():
+                        color = item.get("color")
+                        dot = _COLOR_DOTS.get(color, "") if isinstance(color, int) else ""
+                        texts.append(f"{dot}{text.strip()}" if dot else text.strip())
+                        continue
+                    name = item.get("name")
+                    if isinstance(name, str) and name.strip():
+                        texts.append(name.strip())
+                        continue
+                    first = item.get("firstName")
+                    last = item.get("lastName")
+                    if isinstance(first, str) or isinstance(last, str):
+                        display = " ".join(
+                            p.strip() for p in [first, last] if isinstance(p, str) and p.strip()
+                        ).strip()
+                        if display:
+                            texts.append(display)
+                            continue
+                if texts:
+                    return truncate(", ".join(texts))
+
                 return f"list ({len(dict_items):,} items)"
 
             return f"list ({len(value):,} items)"
@@ -670,6 +730,20 @@ def _format_scalar_value(*, key: str | None, value: Any) -> str:
             return ""
         return text if "://" in text else f"https://{text}"
     return str(value)
+
+
+def _is_simple_scalar_dict(obj: dict[str, Any]) -> bool:
+    """Check if a dict contains only simple scalar values (no nested structures)."""
+    return all(not isinstance(v, (list, dict)) for v in obj.values())
+
+
+def _simple_kv_text(obj: dict[str, Any]) -> Text:
+    """Render a simple scalar dict as plain text lines (not a table)."""
+    lines: list[str] = []
+    for k, v in obj.items():
+        formatted = _format_scalar_value(key=str(k), value=v)
+        lines.append(f"{_humanize_title(k)}: {formatted}")
+    return Text("\n".join(lines))
 
 
 def _kv_table(obj: dict[str, Any]) -> Table:
@@ -840,6 +914,13 @@ def _render_object_section(
     renderables: list[Any] = []
     if title:
         renderables.append(Text(_humanize_title(title), style="bold"))
+
+    # Use simple text output for dicts with only scalar values (no nested structures)
+    # This is cleaner for commands like `files dump` that output simple summaries
+    if _is_simple_scalar_dict(obj):
+        renderables.append(_simple_kv_text(scalar_summary))
+        return Group(*renderables) if len(renderables) > 1 else renderables[0]
+
     renderables.append(_kv_table(scalar_summary))
     kv_index = len(renderables) - 1
 
@@ -1137,7 +1218,7 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
             stderr.print(f"{title}: {result.error.message}")
             _render_error_details(
                 stderr=stderr,
-                command=result.command,
+                command=result.command.name,
                 error_type=result.error.type,
                 message=result.error.message,
                 hint=result.error.hint,
@@ -1149,28 +1230,51 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
             stderr.print("Error")
         return 0
 
+    # Display context header if available
+    context_header = result.command.format_header()
+    if context_header and not settings.quiet:
+        stdout.print(Text(context_header, style="bold"))
+
     renderable: Any
-    if result.command == "version" and isinstance(result.data, dict):
+    if result.command.name == "version" and isinstance(result.data, dict):
         renderable = Text(result.data.get("version", ""), style="bold")
-    elif result.command == "config path" and isinstance(result.data, dict):
+    elif result.command.name == "config path" and isinstance(result.data, dict):
         renderable = Text(str(result.data.get("path", "")))
-    elif result.command == "config init" and isinstance(result.data, dict):
+    elif result.command.name == "config init" and isinstance(result.data, dict):
         renderable = Panel.fit(Text(f"Initialized config at {result.data.get('path', '')}"))
-    elif result.command == "resolve-url" and isinstance(result.data, dict):
+    elif result.command.name == "resolve-url" and isinstance(result.data, dict):
         renderable = Text(
             f"{result.data.get('type')} {result.data.get('canonicalUrl', '')}".strip()
         )
-    elif result.command == "whoami" and isinstance(result.data, dict):
+    elif result.command.name == "whoami" and isinstance(result.data, dict):
         tenant = (
             result.data.get("tenant", {}) if isinstance(result.data.get("tenant"), dict) else {}
         )
         user = result.data.get("user", {}) if isinstance(result.data.get("user"), dict) else {}
-        title = tenant.get("name") or "Affinity"
-        body = (
-            f"{user.get('firstName', '')} {user.get('lastName', '') or ''}\n"
-            f"{user.get('emailAddress', '')}"
-        )
-        renderable = Panel.fit(Text(body.strip()), title=str(title))
+        tenant_name = tenant.get("name") or ""
+        tenant_id = tenant.get("id")
+        first = user.get("firstName", "") or ""
+        last = user.get("lastName", "") or ""
+        email = user.get("emailAddress", "") or ""
+        user_id = user.get("id")
+        name = f"{first} {last}".strip()
+        # Simple text output: "Name <email>" with optional tenant on separate line
+        lines = []
+        if tenant_name:
+            lines.append(tenant_name)
+        if name and email:
+            lines.append(f"{name} <{email}>")
+        elif name:
+            lines.append(name)
+        elif email:
+            lines.append(email)
+        # With -v, show IDs (useful for scripting)
+        if settings.verbosity >= 1:
+            if user_id is not None:
+                lines.append(f"User ID: {user_id}")
+            if tenant_id is not None:
+                lines.append(f"Tenant ID: {tenant_id}")
+        renderable = Text("\n".join(lines)) if lines else Text("OK")
     else:
         renderable = _render_human_data(
             data=result.data,
@@ -1186,7 +1290,7 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
         else:
             stdout.print(renderable)
 
-    if result.meta.rate_limit is not None:
+    if result.meta.rate_limit is not None and not settings.quiet:
         footer = _rate_limit_footer(result.meta.rate_limit)
         if footer:
             stdout.print(footer)

@@ -52,7 +52,7 @@ from .config import LoadedConfig, ProfileConfig, config_file_permission_warnings
 from .errors import CLIError
 from .logging import set_redaction_api_key
 from .paths import CliPaths, get_paths
-from .results import CommandMeta, CommandResult, ErrorInfo
+from .results import CommandContext, CommandMeta, CommandResult, ErrorInfo
 from .session_cache import SessionCache, SessionCacheConfig
 
 OutputFormat = Literal["table", "json"]
@@ -713,7 +713,7 @@ def error_info_for_exception(exc: Exception, *, verbosity: int = 0) -> ErrorInfo
 def build_result(
     *,
     ok: bool,
-    command: str,
+    command: CommandContext,
     started_at: float,
     data: Any | None,
     artifacts: list[Any] | None = None,

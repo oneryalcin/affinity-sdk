@@ -13,6 +13,7 @@ from ..context import CLIContext
 from ..csv_utils import sanitize_filename
 from ..errors import CLIError
 from ..progress import ProgressManager, ProgressSettings
+from ..results import CommandContext
 from ..runner import CommandOutput
 
 
@@ -38,6 +39,7 @@ async def dump_entity_files_bundle(
     default_dirname: str,
     manifest_entity: dict[str, Any],
     files_list_kwargs: dict[str, Any],
+    context: CommandContext | None = None,
 ) -> CommandOutput:
     """
     Download all files for a single entity into a folder bundle with a manifest.
@@ -210,6 +212,7 @@ async def dump_entity_files_bundle(
     }
     return CommandOutput(
         data=data,
+        context=context,
         warnings=warnings,
         api_called=True,
         rate_limit=rate_limit_snapshot,
