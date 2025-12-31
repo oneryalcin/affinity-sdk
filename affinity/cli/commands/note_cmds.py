@@ -232,8 +232,20 @@ def note_get(ctx: CLIContext, note_id: int) -> None:
             modifiers={},
         )
 
+        payload = _note_payload(note)
+
+        # For table display, separate content from metadata for better readability
+        if ctx.output != "json":
+            content = payload.pop("content", None)
+            data: dict[str, object] = {"note": payload}
+            if content:
+                # Use _text marker for clean text rendering without "Value:" wrapper
+                data["Content"] = {"_text": content}
+        else:
+            data = {"note": payload}
+
         return CommandOutput(
-            data={"note": _note_payload(note)},
+            data=data,
             context=cmd_context,
             api_called=True,
         )
