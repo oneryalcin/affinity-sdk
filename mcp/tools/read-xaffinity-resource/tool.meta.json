@@ -1,0 +1,18 @@
+{
+  "name": "read-xaffinity-resource",
+  "description": "Read an xaffinity:// resource by URI. Available resources: xaffinity://me (current user), xaffinity://me/person-id (user's person ID), xaffinity://interaction-enums (interaction type/direction enums)",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "uri": {
+        "type": "string",
+        "description": "The xaffinity:// resource URI to read (e.g., xaffinity://me, xaffinity://me/person-id, xaffinity://interaction-enums)"
+      }
+    },
+    "required": ["uri"]
+  },
+  "timeoutSecs": 15,
+  "annotations": {
+    "readOnlyHint": true
+  }
+}

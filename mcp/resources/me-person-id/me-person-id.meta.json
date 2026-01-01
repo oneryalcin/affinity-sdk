@@ -2,5 +2,6 @@
   "name": "xaffinity-me-person-id",
   "description": "Current user's person ID in Affinity (cached for efficient interaction logging)",
   "uri": "xaffinity://me/person-id",
-  "mimeType": "application/json"
+  "mimeType": "application/json",
+  "provider": "xaffinity"
 }

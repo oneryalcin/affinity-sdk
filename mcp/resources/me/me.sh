@@ -4,7 +4,7 @@ set -euo pipefail
 
 source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 
-cli_args=(--output json --quiet)
+cli_args=(--json)
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
 
 # Get current user (whoami)

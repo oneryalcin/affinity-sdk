@@ -2,7 +2,7 @@
 # server.d/policy.sh - Tool execution policies for xaffinity MCP Server
 
 # Read-only tools (safe for any context)
-AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions"
+AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions read-xaffinity-resource"
 
 # Write tools (require full access)
 AFFINITY_MCP_TOOLS_WRITE="set-workflow-status update-workflow-fields add-note log-interaction"

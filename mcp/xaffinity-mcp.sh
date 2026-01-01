@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MCPBASH_PROJECT_ROOT="${SCRIPT_DIR}"
 
 # Framework version (pinned)
-FRAMEWORK_VERSION="${MCPBASH_VERSION:-v0.8.3}"
+FRAMEWORK_VERSION="${MCPBASH_VERSION:-v0.8.4}"
 
 # Framework location precedence:
 # 1. Vendored: ${SCRIPT_DIR}/mcp-bash-framework/bin/mcp-bash
@@ -91,7 +91,7 @@ if [[ -z "$FRAMEWORK" ]]; then
 fi
 
 # Tool allowlist (read-only vs full access)
-AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions"
+AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions read-xaffinity-resource"
 AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} set-workflow-status update-workflow-fields add-note log-interaction"
 
 if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
