@@ -5,7 +5,7 @@
   "author": {
     "name": "Yaniv Golan"
   },
-  "homepage": "https://github.com/yaniv-golan/affinity-sdk",
+  "homepage": "https://yaniv-golan.github.io/affinity-sdk/",
   "repository": "https://github.com/yaniv-golan/affinity-sdk",
   "license": "MIT",
   "keywords": [
@@ -19,5 +19,6 @@
     "xaffinity": {
       "command": "${CLAUDE_PLUGIN_ROOT}/xaffinity-mcp.sh"
     }
-  }
+  },
+  "skills": ["./skills"]
 }

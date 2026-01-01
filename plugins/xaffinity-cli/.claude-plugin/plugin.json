@@ -1,0 +1,22 @@
+{
+  "name": "xaffinity-cli",
+  "description": "Command-line interface for Affinity CRM - search, export, filter, and manage CRM data via xaffinity commands",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yaniv Golan"
+  },
+  "homepage": "https://yaniv-golan.github.io/affinity-sdk/",
+  "repository": "https://github.com/yaniv-golan/affinity-sdk",
+  "license": "MIT",
+  "keywords": [
+    "affinity",
+    "crm",
+    "cli",
+    "xaffinity",
+    "export",
+    "csv"
+  ],
+  "skills": ["./skills"],
+  "commands": ["./commands/affinity-help.md"],
+  "hooks": ["./hooks/hooks.json"]
+}
