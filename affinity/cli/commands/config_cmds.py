@@ -3,8 +3,12 @@ from __future__ import annotations
 import getpass
 import os
 import re
+import sys
 from contextlib import suppress
 from pathlib import Path
+
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..config import config_init_template
@@ -209,7 +213,7 @@ def _validate_key(api_key: str, warnings: list[str]) -> bool:
         return False
 
 
-def _store_in_dotenv(api_key: str, *, force: bool, warnings: list[str]) -> CommandOutput:
+def _store_in_dotenv(api_key: str, *, warnings: list[str]) -> CommandOutput:
     """Store API key in .env file in current directory."""
     env_path = Path(".env")
     gitignore_path = Path(".gitignore")
@@ -231,12 +235,6 @@ def _store_in_dotenv(api_key: str, *, force: bool, warnings: list[str]) -> Comma
     # Update or append
     new_line = f"AFFINITY_API_KEY={api_key}"
     if key_line_index is not None:
-        if not force:
-            # Edge case: .env has AFFINITY_API_KEY but user didn't use --dotenv,
-            # so _find_existing_key() didn't detect it. Warn that we're overwriting.
-            # Note: We still overwrite because the user already confirmed they want
-            # to set up a new key (or force=False would have been handled earlier).
-            warnings.append("Existing AFFINITY_API_KEY in .env was overwritten.")
         lines[key_line_index] = new_line
     else:
         # Add blank line separator if file has content
@@ -271,9 +269,7 @@ def _store_in_dotenv(api_key: str, *, force: bool, warnings: list[str]) -> Comma
     )
 
 
-def _store_in_config(
-    ctx: CLIContext, api_key: str, *, force: bool, warnings: list[str]
-) -> CommandOutput:
+def _store_in_config(ctx: CLIContext, api_key: str) -> CommandOutput:
     """Store API key in user config.toml."""
     config_path = ctx.paths.config_path
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -309,8 +305,6 @@ def _store_in_config(
         if key_line_index is not None:
             # Update existing key
             lines[key_line_index] = f'api_key = "{escaped_key}"'
-            if not force:
-                warnings.append("Existing api_key in config was overwritten.")
         elif default_section_index is not None:
             # Add key after [default] section header
             lines.insert(default_section_index + 1, f'api_key = "{escaped_key}"')
@@ -409,15 +403,23 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
     """
 
     def fn(_ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Helper to print only for human output
+        human_output = ctx.output != "json"
+        console = Console(file=sys.stderr, force_terminal=None) if human_output else None
+
+        def echo(msg: str = "", style: str | None = None) -> None:
+            if console:
+                console.print(msg, style=style, highlight=False)
+
         # Check for existing key using full resolution chain
         key_found, source = _find_existing_key(ctx)
         if key_found and not force:
             # Key exists - confirm overwrite
-            click.echo(f"An API key is already configured (source: {source}).")
+            echo(f"An API key is already configured [dim](source: {source})[/dim].")
             if not click.confirm("Do you want to configure a new key?", default=False):
                 # For human output, show clean message and exit
-                if ctx.output != "json":
-                    click.echo("Keeping existing key.")
+                if human_output:
+                    echo("Keeping existing key.", style="dim")
                     raise click.exceptions.Exit(0)
                 return CommandOutput(
                     data={"key_stored": False, "reason": "existing_key_kept"},
@@ -425,13 +427,15 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
                 )
 
         # Get the API key securely
-        click.echo("\nEnter your Affinity API key.")
-        click.echo("(Input is hidden - nothing will appear as you type)")
-        click.echo(
-            "Get your key from: https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys\n"
+        echo()
+        echo("[bold]Enter your Affinity API key.[/bold]")
+        echo(
+            "Get your key from: [link=https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys]"
+            "https://support.affinity.co/s/article/How-to-Create-and-Manage-API-Keys[/link]"
         )
-
-        api_key = getpass.getpass(prompt="API Key: ").strip()
+        echo()
+        echo("[dim](Input is hidden - nothing will appear as you type)[/dim]")
+        api_key = getpass.getpass(prompt="API Key: " if human_output else "").strip()
         if not api_key:
             raise CLIError("No API key provided.", exit_code=2, error_type="usage_error")
 
@@ -447,18 +451,19 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
         # Determine scope (simplified prompt - just 1 or 2)
         chosen_scope = scope
         if chosen_scope is None:
-            click.echo("\nWhere should the key be stored?")
-            click.echo("  [1] project - .env file in current directory (for this project only)")
-            click.echo("  [2] user    - User config file (for all projects)")
-            choice = click.prompt("Choice (1 or 2)", type=click.Choice(["1", "2"]))
+            echo()
+            echo("[bold]Where should the key be stored?[/bold]")
+            echo("  [cyan]1[/cyan]  project — .env in current directory [dim](this project)[/dim]")
+            echo("  [cyan]2[/cyan]  user    — User config file [dim](all projects)[/dim]")
+            choice = click.prompt("Choice", type=click.Choice(["1", "2"]))
             chosen_scope = "project" if choice == "1" else "user"
 
         # Store the key
         try:
             if chosen_scope == "project":
-                result = _store_in_dotenv(api_key, force=force, warnings=warnings)
+                result = _store_in_dotenv(api_key, warnings=warnings)
             else:
-                result = _store_in_config(ctx, api_key, force=force, warnings=warnings)
+                result = _store_in_config(ctx, api_key)
         except PermissionError as e:
             raise CLIError(
                 f"Permission denied writing to file: {e}. Check directory permissions.",
@@ -475,8 +480,17 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
         # Validate key if requested
         validated = False
         if validate:
-            click.echo("\nValidating key against Affinity API...")
-            validated = _validate_key(api_key, warnings)
+            if console:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    progress.add_task("Validating key against Affinity API...", total=None)
+                    validated = _validate_key(api_key, warnings)
+            else:
+                validated = _validate_key(api_key, warnings)
             # Need to create a new CommandOutput with validated field
             # result.data is always set by _store_in_dotenv/_store_in_config
             assert result.data is not None
@@ -485,21 +499,37 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
                 api_called=False,
             )
             if validated:
-                click.echo("✓ Key validated successfully")
+                echo("[green]✓ Key validated successfully[/green]")
             else:
                 warnings.append("Key stored but validation failed - check key is correct")
 
         # Show usage hint based on scope
+        echo()
         if chosen_scope == "project":
-            click.echo("\nTo use the key, run commands with --dotenv flag:")
-            click.echo("  xaffinity --dotenv whoami")
+            echo("Key stored. To use it, run commands with [bold]--dotenv[/bold] flag:")
+            echo("  [dim]xaffinity --dotenv whoami[/dim]")
         else:
-            click.echo("\nKey stored in user config. Test with:")
-            click.echo("  xaffinity whoami")
+            echo("Key stored in user config. Test with:")
+            echo("  [dim]xaffinity whoami[/dim]")
 
         # Clear key reference (minimal security benefit but good practice)
         del api_key
 
         return result
+
+    # For human output, bypass run_command to avoid rendering the data dict
+    # (we already printed our own messages above)
+    if ctx.output != "json":
+        warnings: list[str] = []
+        try:
+            result = fn(ctx, warnings)
+        except CLIError as e:
+            click.echo(f"Error: {e.message}", err=True)
+            raise click.exceptions.Exit(e.exit_code) from e
+        # Emit any warnings that were collected
+        if warnings and not ctx.quiet:
+            for w in warnings:
+                click.echo(f"Warning: {w}", err=True)
+        raise click.exceptions.Exit(result.exit_code)
 
     run_command(ctx, command="config setup-key", fn=fn)
