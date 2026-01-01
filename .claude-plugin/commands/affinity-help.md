@@ -1,3 +1,9 @@
+---
+name: affinity-help
+description: Show quick reference for using the Affinity Python SDK and xaffinity CLI
+allowed-tools: []
+---
+
 Show a quick reference for using the Affinity Python SDK and xaffinity CLI.
 
 ## IMPORTANT: Read-Only by Default

@@ -11,6 +11,11 @@
       "name": "affinity-sdk",
       "source": "./",
       "description": "Knowledge and commands for using the Affinity Python SDK and xaffinity CLI to query and manage Affinity CRM data"
+    },
+    {
+      "name": "xaffinity-mcp",
+      "source": "../mcp/.claude-plugin/",
+      "description": "MCP server for Affinity CRM with workflow tools and relationship intelligence"
     }
   ]
 }

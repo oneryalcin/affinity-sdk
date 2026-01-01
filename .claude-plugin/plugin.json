@@ -16,12 +16,12 @@
     "api"
   ],
   "commands": [
-    "./.claude-plugin/commands/"
+    "./commands/"
   ],
   "skills": [
-    "./.claude-plugin/skills/"
+    "./skills/"
   ],
   "hooks": [
-    "./.claude-plugin/hooks/hooks.json"
+    "./hooks/hooks.json"
   ]
 }
