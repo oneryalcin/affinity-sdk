@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# lib/common.sh - Common utilities for Affinity MCP tools
+
+# Source cache utilities
+source "${MCPBASH_PROJECT_ROOT}/lib/cache.sh"
+
+# Build CLI base arguments from XAFFINITY_CLI_PATTERN
+# The pattern from check-key looks like: "xaffinity --dotenv --readonly <command> --json"
+# We extract flags before <command> and after <command>
+build_cli_base_args() {
+    local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
+
+    # Extract pre-command flags (everything between "xaffinity" and "<command>")
+    local pre_flags=$(echo "$pattern" | sed -E 's/^xaffinity\s+(.*)--readonly\s+<command>.*$/\1--readonly/' | tr -s ' ')
+
+    # Extract post-command flags (everything after "<command>")
+    local post_flags=$(echo "$pattern" | sed -E 's/.*<command>\s*(.*)$/\1/' | tr -s ' ')
+
+    # Return the pre-flags (we'll append command-specific flags)
+    # Post-flags like --json are typically added per-tool
+    echo "$pre_flags"
+}
+
+# Run xaffinity with correct flags from check-key pattern
+# Usage: run_xaffinity <subcommand> [args...]
+# Example: run_xaffinity person ls --query "John"
+run_xaffinity() {
+    local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
+    local needs_dotenv=false
+
+    # Check if pattern includes --dotenv
+    if [[ "$pattern" == *"--dotenv"* ]]; then
+        needs_dotenv=true
+    fi
+
+    # Build command
+    local cmd=(xaffinity)
+    [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
+    cmd+=("$@")
+
+    "${cmd[@]}"
+}
+
+# Run xaffinity in readonly mode (respects dotenv from check-key)
+# Usage: run_xaffinity_readonly <subcommand> [args...]
+run_xaffinity_readonly() {
+    local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
+    local needs_dotenv=false
+
+    if [[ "$pattern" == *"--dotenv"* ]]; then
+        needs_dotenv=true
+    fi
+
+    local cmd=(xaffinity)
+    [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
+    cmd+=(--readonly)
+    cmd+=("$@")
+
+    "${cmd[@]}"
+}
+
+# Fetch or retrieve cached workflow config for a list
+# Returns the full workflow config schema: {list, statusField, savedViews, fieldIndex}
+# Usage: get_or_fetch_workflow_config <list_id>
+get_or_fetch_workflow_config() {
+    local list_id="$1"
+
+    # Try cache first
+    if cached=$(get_workflow_config_cached "$list_id" 2>/dev/null); then
+        echo "$cached"
+        return 0
+    fi
+
+    # Cache miss - fetch and compute the workflow config schema
+    local cli_base_args=(--output json --quiet)
+    [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_base_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
+
+    # Fetch list metadata
+    local list_data
+    list_data=$(run_xaffinity_readonly list get "$list_id" "${cli_base_args[@]}" 2>/dev/null | jq -c '.data // {}')
+    local list_name=$(echo "$list_data" | jq -r '.name // "Unknown"')
+    local list_type=$(echo "$list_data" | jq -r '.type // "unknown"')
+
+    # Fetch fields for this list
+    local fields_data
+    fields_data=$(run_xaffinity_readonly field ls --list-id "$list_id" "${cli_base_args[@]}" 2>/dev/null | jq -c '.data.fields // []')
+
+    # Find Status field (ranked dropdown with name containing "status")
+    local status_field
+    status_field=$(echo "$fields_data" | jq -c '
+        [.[] | select(
+            (.name | ascii_downcase | contains("status")) and
+            .valueType == "ranked-dropdown"
+        )] | first // null
+    ')
+
+    local status_field_output="null"
+    if [[ "$status_field" != "null" ]]; then
+        local field_id=$(echo "$status_field" | jq -r '.id')
+        local field_name=$(echo "$status_field" | jq -r '.name')
+        local options=$(echo "$status_field" | jq -c '.dropdownOptions // []')
+        status_field_output=$(jq -n \
+            --arg fid "$field_id" \
+            --arg fname "$field_name" \
+            --argjson opts "$options" \
+            '{fieldId: $fid, name: $fname, options: $opts}'
+        )
+    fi
+
+    # Fetch saved views
+    local saved_views
+    saved_views=$(echo "$list_data" | jq -c '.savedViews // []' | jq -c 'map({viewId: .id, name: .name})')
+
+    # Build field index (for field name resolution)
+    local field_index
+    field_index=$(echo "$fields_data" | jq -c 'map({fieldId: .id, name: .name, valueType: .valueType, scope: .scope})')
+
+    # Compose result
+    local result
+    result=$(jq -n \
+        --argjson listId "$list_id" \
+        --arg listName "$list_name" \
+        --arg listType "$list_type" \
+        --argjson statusField "$status_field_output" \
+        --argjson savedViews "$saved_views" \
+        --argjson fieldIndex "$field_index" \
+        '{
+            list: {listId: $listId, name: $listName, type: $listType},
+            statusField: $statusField,
+            savedViews: $savedViews,
+            fieldIndex: $fieldIndex
+        }'
+    )
+
+    # Cache the result
+    set_workflow_config_cached "$list_id" "$result" 2>/dev/null || true
+
+    echo "$result"
+}
+
+# Resolve a list by name or ID
+# Usage: resolve_list <name_or_id>
+# Returns: list ID
+resolve_list() {
+    local name_or_id="$1"
+
+    # If it looks like an ID, return it
+    if [[ "$name_or_id" =~ ^[0-9]+$ ]]; then
+        echo "$name_or_id"
+        return 0
+    fi
+
+    # Search by name
+    local result
+    result=$(run_xaffinity_readonly list ls --output json --quiet \
+        ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>/dev/null)
+
+    local list_id
+    list_id=$(echo "$result" | jq -r --arg name "$name_or_id" \
+        '.data.lists[] | select(.name == $name) | .id' | head -1)
+
+    if [[ -n "$list_id" ]]; then
+        echo "$list_id"
+        return 0
+    fi
+
+    return 1
+}

@@ -1,0 +1,6 @@
+{
+  "name": "xaffinity-interaction-enums",
+  "description": "Enumeration values for interaction types and directions used by log-interaction tool",
+  "uri": "xaffinity://interaction-enums",
+  "mimeType": "application/json"
+}

@@ -1,0 +1,18 @@
+You just exchanged messages with ${personName} via ${channel}.
+
+Please log this interaction using the log-interaction tool:
+- Type: chat_message
+- Direction: ${direction}
+- Subject: ${subject}
+- Body/Notes: ${content}
+
+Steps:
+1. Use find-entities to get the person ID for ${personName}
+2. Use log-interaction to record the message exchange
+3. If there are action items or follow-ups, use add-note to capture them
+
+Message details:
+- Channel: ${channel}
+- Direction: ${direction}
+- Subject: ${subject}
+- Content summary: ${content}

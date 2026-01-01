@@ -1,0 +1,18 @@
+You just completed a phone call with ${personName}.
+
+Please log this call using the log-interaction tool:
+- Type: call
+- Direction: ${direction}
+- Subject: ${subject}
+- Body/Notes: ${notes}
+
+Steps:
+1. Use find-entities to get the person ID for ${personName}
+2. Use log-interaction to record the call
+3. If there are important follow-ups, use add-note to capture them
+
+Call details:
+- Direction: ${direction}
+- Subject: ${subject}
+- Duration: ${duration}
+- Notes: ${notes}

@@ -1,0 +1,16 @@
+You are conducting a pipeline review for the "${listName}" list.
+
+Please:
+1. Use get-list-workflow-config to understand the pipeline structure and status options
+2. Use get-workflow-view to fetch current items in the pipeline
+3. For each item, identify:
+   - Time in current stage
+   - Recent activity (last interaction/note)
+   - Any stale deals that need attention
+   - Next actions needed
+
+Provide a summary organized by pipeline stage, highlighting:
+- **Healthy deals** - Active and progressing
+- **At risk** - Stale or lacking activity
+- **Quick wins** - Close to conversion
+- **Recommendations** - Suggested next steps for each at-risk item

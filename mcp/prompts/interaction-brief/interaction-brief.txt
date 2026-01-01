@@ -1,0 +1,12 @@
+You need a quick interaction history brief for ${entityName}.
+
+Please:
+1. Use find-entities to locate ${entityName}
+2. Use get-interactions to fetch recent interactions (last ${limit})
+3. Summarize the interaction history:
+   - Total interactions by type (calls, meetings, emails)
+   - Most recent interaction date and type
+   - Who from your team has been in contact
+   - Frequency of communication
+
+Provide a concise summary suitable for quick reference before a meeting or call.

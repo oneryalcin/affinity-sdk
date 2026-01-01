@@ -1,0 +1,16 @@
+You are preparing a briefing for a meeting or interaction with ${entityName}.
+
+Use the get-entity-dossier tool to gather comprehensive information about this person/company including:
+- Basic details and background
+- Relationship strength score
+- Recent interactions and notes
+- Current list memberships and workflow status
+
+Then synthesize this into a concise briefing that includes:
+1. **Key Context** - Who they are and their relevance
+2. **Relationship Status** - How well we know them and who knows them best
+3. **Recent Activity** - Latest interactions and notes
+4. **Current Pipeline Position** - Where they are in any workflows
+5. **Suggested Talking Points** - Topics to discuss based on history
+
+Keep the briefing focused and actionable for the upcoming ${meetingType}.

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "framework": {
+    "name": "mcp-bash",
+    "minVersion": "0.8.3"
+  },
+  "dependencies": [
+    {
+      "name": "bash",
+      "minVersion": "3.2.0",
+      "check": "bash --version | head -1"
+    },
+    {
+      "name": "jq",
+      "minVersion": "1.6",
+      "check": "jq --version"
+    },
+    {
+      "name": "xaffinity",
+      "minVersion": "0.4.7",
+      "check": "xaffinity --version",
+      "installHint": "pip install affinity-python-sdk"
+    }
+  ],
+  "fixHints": {
+    "install": "./xaffinity-mcp.sh install",
+    "doctor": "./xaffinity-mcp.sh doctor --fix"
+  }
+}

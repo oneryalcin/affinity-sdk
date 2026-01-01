@@ -1,0 +1,27 @@
+{
+  "name": "log-interaction-and-update-workflow",
+  "description": "Log an interaction and optionally update the workflow status for a contact",
+  "arguments": {
+    "type": "object",
+    "required": ["personName", "interactionType", "summary"],
+    "properties": {
+      "personName": {
+        "type": "string",
+        "description": "Name of the person you interacted with"
+      },
+      "interactionType": {
+        "type": "string",
+        "enum": ["call", "meeting", "email", "chat_message", "in_person"],
+        "description": "Type of interaction"
+      },
+      "subject": {
+        "type": "string",
+        "description": "Subject or title for the interaction"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Summary of what was discussed or happened"
+      }
+    }
+  }
+}

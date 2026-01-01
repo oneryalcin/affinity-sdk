@@ -1,0 +1,19 @@
+{
+  "name": "prepare-briefing",
+  "description": "Prepare a comprehensive briefing for a meeting or interaction with a person or company",
+  "arguments": {
+    "type": "object",
+    "required": ["entityName"],
+    "properties": {
+      "entityName": {
+        "type": "string",
+        "description": "Name of the person or company to prepare briefing for"
+      },
+      "meetingType": {
+        "type": "string",
+        "default": "meeting",
+        "description": "Type of meeting (e.g., 'initial call', 'follow-up', 'demo')"
+      }
+    }
+  }
+}

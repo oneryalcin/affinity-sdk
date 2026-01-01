@@ -1,0 +1,14 @@
+You need to change the workflow status for ${entityName} on the "${listName}" list to "${newStatus}".
+
+Please:
+1. Use find-entities to locate the entity by name
+2. Use find-lists to find the list (if not using list ID)
+3. Use resolve-workflow-item to find the list entry ID
+4. Use get-list-workflow-config to verify the status value is valid
+5. Use set-workflow-status to make the change
+
+If there's a reason for the status change, also:
+- Use add-note to document why the status changed
+- Log any recent interaction that prompted this change
+
+Reason for status change (if provided): ${reason}

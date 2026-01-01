@@ -1,0 +1,45 @@
+{
+  "name": "get-entity-dossier",
+  "description": "Get a comprehensive dossier for a person, company, or opportunity including details, relationship strength, recent interactions, notes, and list memberships.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "entity": {
+        "type": "object",
+        "description": "Entity reference object",
+        "properties": {
+          "type": {"enum": ["person", "company", "opportunity"]},
+          "id": {"type": "integer"}
+        }
+      },
+      "entityId": {
+        "type": "integer",
+        "description": "Entity ID (alternative to entity object)"
+      },
+      "entityType": {
+        "type": "string",
+        "enum": ["person", "company", "opportunity"],
+        "description": "Entity type (used with entityId)"
+      },
+      "includeInteractions": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include recent interactions"
+      },
+      "includeNotes": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include recent notes"
+      },
+      "includeLists": {
+        "type": "boolean",
+        "default": true,
+        "description": "Include list memberships"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": true
+  },
+  "timeoutSecs": 45
+}

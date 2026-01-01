@@ -1,0 +1,23 @@
+{
+  "name": "xaffinity-mcp",
+  "description": "MCP server for Affinity CRM - structured workflow tools, relationship intelligence, and pipeline management",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yaniv Golan"
+  },
+  "homepage": "https://github.com/yaniv-golan/affinity-sdk",
+  "repository": "https://github.com/yaniv-golan/affinity-sdk",
+  "license": "MIT",
+  "keywords": [
+    "affinity",
+    "crm",
+    "mcp",
+    "workflow",
+    "pipeline"
+  ],
+  "mcpServers": {
+    "xaffinity": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/xaffinity-mcp.sh"
+    }
+  }
+}

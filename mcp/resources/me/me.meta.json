@@ -1,0 +1,6 @@
+{
+  "name": "xaffinity-me",
+  "description": "Current authenticated user information from Affinity",
+  "uri": "xaffinity://me",
+  "mimeType": "application/json"
+}

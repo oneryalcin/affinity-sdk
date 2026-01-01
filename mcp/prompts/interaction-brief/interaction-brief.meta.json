@@ -1,0 +1,19 @@
+{
+  "name": "interaction-brief",
+  "description": "Get a quick summary of interaction history with a contact",
+  "arguments": {
+    "type": "object",
+    "required": ["entityName"],
+    "properties": {
+      "entityName": {
+        "type": "string",
+        "description": "Name of the person or company"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 10,
+        "description": "Number of recent interactions to include"
+      }
+    }
+  }
+}

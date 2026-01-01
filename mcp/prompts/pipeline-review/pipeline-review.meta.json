@@ -1,0 +1,14 @@
+{
+  "name": "pipeline-review",
+  "description": "Conduct a comprehensive pipeline review for a workflow list",
+  "arguments": {
+    "type": "object",
+    "required": ["listName"],
+    "properties": {
+      "listName": {
+        "type": "string",
+        "description": "Name of the pipeline list to review"
+      }
+    }
+  }
+}

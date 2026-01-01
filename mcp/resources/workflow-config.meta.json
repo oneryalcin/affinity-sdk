@@ -1,0 +1,7 @@
+{
+  "name": "xaffinity-workflow-config",
+  "title": "Workflow Configuration",
+  "description": "Workflow configuration for a specific list including status field options and saved views",
+  "uriTemplate": "xaffinity://workflow-config/{listId}",
+  "mimeType": "application/json"
+}

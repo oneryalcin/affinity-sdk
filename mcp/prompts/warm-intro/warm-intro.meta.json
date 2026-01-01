@@ -1,0 +1,18 @@
+{
+  "name": "warm-intro",
+  "description": "Find warm introduction paths to a target person through shared connections",
+  "arguments": {
+    "type": "object",
+    "required": ["targetName"],
+    "properties": {
+      "targetName": {
+        "type": "string",
+        "description": "Name of the person you want an introduction to"
+      },
+      "context": {
+        "type": "string",
+        "description": "Context for why you want the introduction (optional)"
+      }
+    }
+  }
+}

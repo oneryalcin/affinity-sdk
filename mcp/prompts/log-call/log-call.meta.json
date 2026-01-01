@@ -1,0 +1,32 @@
+{
+  "name": "log-call",
+  "description": "Quickly log a phone call with a contact",
+  "arguments": {
+    "type": "object",
+    "required": ["personName"],
+    "properties": {
+      "personName": {
+        "type": "string",
+        "description": "Name of the person you called"
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["incoming", "outgoing"],
+        "default": "outgoing",
+        "description": "Whether you called them or they called you"
+      },
+      "subject": {
+        "type": "string",
+        "description": "Brief subject or topic of the call"
+      },
+      "duration": {
+        "type": "string",
+        "description": "Approximate duration of the call"
+      },
+      "notes": {
+        "type": "string",
+        "description": "Notes about what was discussed"
+      }
+    }
+  }
+}

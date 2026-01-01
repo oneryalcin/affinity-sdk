@@ -1,0 +1,7 @@
+{
+  "name": "xaffinity-saved-views",
+  "title": "Saved Views",
+  "description": "Saved views available for a specific list",
+  "uriTemplate": "xaffinity://saved-views/{listId}",
+  "mimeType": "application/json"
+}

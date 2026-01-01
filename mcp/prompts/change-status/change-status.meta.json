@@ -1,0 +1,26 @@
+{
+  "name": "change-status",
+  "description": "Change the workflow status for an entity on a list with proper documentation",
+  "arguments": {
+    "type": "object",
+    "required": ["entityName", "listName", "newStatus"],
+    "properties": {
+      "entityName": {
+        "type": "string",
+        "description": "Name of the person, company, or opportunity"
+      },
+      "listName": {
+        "type": "string",
+        "description": "Name of the pipeline list"
+      },
+      "newStatus": {
+        "type": "string",
+        "description": "New status value to set"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Reason for the status change (optional)"
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+You need to find a warm introduction path to ${targetName}.
+
+Please:
+1. Use find-entities to locate ${targetName} in the CRM
+2. Use get-relationship-insights to analyze:
+   - Current relationship strength with ${targetName}
+   - Shared connections between your team and ${targetName}
+   - Recent activity showing who on your team has interacted with them
+
+3. If shared connections exist:
+   - Identify the best connector (highest relationship strength)
+   - Show recent interaction history with the connector
+   - Draft a request for introduction
+
+4. Provide recommendations:
+   - Best path for a warm intro
+   - Talking points based on shared context
+   - Any recent news or activity to reference
+
+Context for the introduction: ${context}
