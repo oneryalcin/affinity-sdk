@@ -64,8 +64,8 @@ check_key_output=$(xaffinity config check-key --json 2>/dev/null) || {
     exit 1
 }
 
-# Parse check-key output
-configured=$(echo "$check_key_output" | jq -r '.configured // false')
+# Parse check-key output (data is nested under .data in JSON response)
+configured=$(echo "$check_key_output" | jq -r '.data.configured // false')
 if [[ "$configured" != "true" ]]; then
     echo "Error: Affinity API key not configured." >&2
     echo "" >&2
@@ -81,7 +81,7 @@ fi
 #   "xaffinity --dotenv --readonly <command> --json"  (dotenv mode)
 #   "xaffinity --readonly <command> --json"           (keychain mode)
 # Export for tool scripts to use when invoking xaffinity
-export XAFFINITY_CLI_PATTERN=$(echo "$check_key_output" | jq -r '.pattern')
+export XAFFINITY_CLI_PATTERN=$(echo "$check_key_output" | jq -r '.data.pattern')
 
 # Find and run framework
 FRAMEWORK=$(find_framework)
