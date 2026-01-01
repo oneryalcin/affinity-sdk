@@ -8,7 +8,8 @@
 [![Typed](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy-lang.org/)
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-orange.svg)](https://docs.pydantic.dev/)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/dev/guides/claude-code-plugin/)
+[![MCP](https://img.shields.io/badge/MCP-server-green.svg)](https://yaniv-golan.github.io/affinity-sdk/mcp/)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugins-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugins/)
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
@@ -51,16 +52,34 @@ pipx install "affinity-sdk[cli]"
 
 CLI docs: https://yaniv-golan.github.io/affinity-sdk/cli/
 
-### Claude Code Plugin
+### MCP Server
 
-If you use [Claude Code](https://claude.ai/code), install the plugin for automatic SDK/CLI knowledge:
+Connect any MCP-compatible AI tool to Affinity CRM:
+
+- Claude Desktop, ChatGPT Desktop, Cursor, Windsurf, VS Code + Copilot, Zed, and more
+
+Features: entity search, relationship intelligence, workflow management, interaction logging, meeting prep.
+
+MCP docs: https://yaniv-golan.github.io/affinity-sdk/mcp/
+
+### Claude Code Plugins
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), install plugins for SDK/CLI knowledge:
 
 ```bash
 /plugin marketplace add yaniv-golan/affinity-sdk
-/plugin install affinity-sdk@affinity-sdk
+/plugin install sdk@xaffinity   # SDK patterns
+/plugin install cli@xaffinity   # CLI patterns + /affinity-help
 ```
 
-Plugin docs: https://yaniv-golan.github.io/affinity-sdk/dev/guides/claude-code-plugin/
+Plugin docs: https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugins/
+
+## Documentation
+
+- [Full documentation](https://yaniv-golan.github.io/affinity-sdk/)
+- [MCP Server](https://yaniv-golan.github.io/affinity-sdk/mcp/)
+- [CLI Reference](https://yaniv-golan.github.io/affinity-sdk/cli/)
+- [API Reference](https://yaniv-golan.github.io/affinity-sdk/reference/client/)
 
 ## Quick Start
 
