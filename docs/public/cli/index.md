@@ -13,6 +13,17 @@ The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as a
 
 See [Commands Reference](commands.md) for complete command documentation.
 
+## Claude Integration
+
+Using Claude Code? Install the CLI plugin for AI-assisted usage:
+
+```bash
+/plugin marketplace add yaniv-golan/affinity-sdk
+/plugin install cli@xaffinity
+```
+
+This teaches Claude CLI patterns and provides the `/affinity-help` quick reference command. See [Claude integrations](../guides/claude-code-plugin.md) for all available plugins.
+
 ## Install
 
 Recommended for end-users:

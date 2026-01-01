@@ -27,6 +27,7 @@ with Affinity(api_key="your-api-key") as client:
 - [Getting started](getting-started.md)
 - [Examples](examples.md)
 - [CLI](cli/index.md)
+- [Claude integrations](guides/claude-code-plugin.md) - AI-assisted development
 - [Troubleshooting](troubleshooting.md)
 - [Guides](guides/authentication.md)
 - [API reference](reference/client.md)
