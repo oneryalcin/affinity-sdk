@@ -13,9 +13,14 @@ if [[ -z "${AFFINITY_MCP_ENV_SOURCED:-}" ]]; then
         exec 3>&1 4>&2 1>/dev/null 2>&1
     fi
 
-    # Source appropriate profile
+    # Source appropriate profiles (both login and interactive for full PATH setup)
+    # zsh: .zprofile (login) + .zshrc (interactive, often has pyenv/nvm/etc.)
+    # bash: .bash_profile or .profile
     if [[ -f "$HOME/.zprofile" ]]; then
         source "$HOME/.zprofile" 2>/dev/null || true
+    fi
+    if [[ -f "$HOME/.zshrc" ]]; then
+        source "$HOME/.zshrc" 2>/dev/null || true
     elif [[ -f "$HOME/.bash_profile" ]]; then
         source "$HOME/.bash_profile" 2>/dev/null || true
     elif [[ -f "$HOME/.profile" ]]; then
