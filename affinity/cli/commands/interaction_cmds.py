@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import sys
 from contextlib import ExitStack
+from datetime import datetime, timedelta, timezone
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.secondary import Interaction, InteractionCreate, InteractionUpdate
 from affinity.models.types import InteractionDirection, InteractionType
-from affinity.types import InteractionId, PersonId
+from affinity.types import CompanyId, InteractionId, OpportunityId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
@@ -64,6 +65,7 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
 @interaction_group.command(name="ls", cls=RichCommand)
 @click.option(
     "--type",
+    "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
     default=None,
@@ -72,10 +74,14 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
 @click.option("--start-time", type=str, default=None, help="Start time (ISO-8601).")
 @click.option("--end-time", type=str, default=None, help="End time (ISO-8601).")
 @click.option("--person-id", type=int, default=None, help="Filter by person id.")
-@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--company-id", type=int, default=None, help="Filter by company id.")
+@click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity id.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
 def interaction_ls(
@@ -85,14 +91,44 @@ def interaction_ls(
     start_time: str | None,
     end_time: str | None,
     person_id: int | None,
+    company_id: int | None,
+    opportunity_id: int | None,
     page_size: int | None,
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
-    """List interactions (v1)."""
+    """List interactions."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        nonlocal start_time, end_time
+
+        # Validate that at least one entity ID is provided
+        entity_count = sum(1 for x in [person_id, company_id, opportunity_id] if x is not None)
+        if entity_count == 0:
+            raise CLIError(
+                "At least one of --person-id, --company-id, or --opportunity-id is required.",
+                error_type="usage_error",
+                exit_code=2,
+            )
+        if entity_count > 1:
+            raise CLIError(
+                "Only one of --person-id, --company-id, or --opportunity-id can be specified.",
+                error_type="usage_error",
+                exit_code=2,
+            )
+
+        # Apply smart date defaults if no date filters provided
+        if not start_time and not end_time:
+            now = datetime.now(timezone.utc)
+            start_time = (now - timedelta(days=7)).isoformat()
+            end_time = now.isoformat()
+            if not ctx.quiet:
+                click.echo(
+                    "Note: Using default date range: last 7 days (API max: 1 year)",
+                    err=True,
+                )
+
         client = ctx.get_client(warnings=warnings)
         results: list[dict[str, object]] = []
         first_page = True
@@ -108,6 +144,10 @@ def interaction_ls(
             ctx_modifiers["endTime"] = end_time
         if person_id is not None:
             ctx_modifiers["personId"] = person_id
+        if company_id is not None:
+            ctx_modifiers["companyId"] = company_id
+        if opportunity_id is not None:
+            ctx_modifiers["opportunityId"] = opportunity_id
         if page_size is not None:
             ctx_modifiers["pageSize"] = page_size
         if cursor is not None:
@@ -131,6 +171,8 @@ def interaction_ls(
         start_value = parse_iso_datetime(start_time, label="start-time") if start_time else None
         end_value = parse_iso_datetime(end_time, label="end-time") if end_time else None
         person_id_value = PersonId(person_id) if person_id is not None else None
+        company_id_value = CompanyId(company_id) if company_id is not None else None
+        opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None
 
         show_progress = (
             ctx.progress != "never"
@@ -160,6 +202,8 @@ def interaction_ls(
                     start_time=start_value,
                     end_time=end_value,
                     person_id=person_id_value,
+                    company_id=company_id_value,
+                    opportunity_id=opportunity_id_value,
                     page_size=page_size,
                     page_token=page_token,
                 )
@@ -226,15 +270,25 @@ def interaction_ls(
 @click.argument("interaction_id", type=int)
 @click.option(
     "--type",
+    "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
     required=True,
-    help="Interaction type (meeting, call, chat-message, email).",
+    help="Interaction type (required by API).",
 )
 @output_options
 @click.pass_obj
 def interaction_get(ctx: CLIContext, interaction_id: int, *, interaction_type: str) -> None:
-    """Get an interaction by id (v1)."""
+    """Get an interaction by id.
+
+    The --type flag is required because the Affinity API stores interactions
+    in type-specific tables.
+
+    Examples:
+
+    - `xaffinity interaction get 123 --type meeting`
+    - `xaffinity interaction get 456 -t email`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_type = parse_choice(
@@ -265,10 +319,11 @@ def interaction_get(ctx: CLIContext, interaction_id: int, *, interaction_type: s
 @interaction_group.command(name="create", cls=RichCommand)
 @click.option(
     "--type",
+    "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
     required=True,
-    help="Interaction type (meeting, call, chat-message, email).",
+    help="Interaction type (required).",
 )
 @click.option("--person-id", "person_ids", multiple=True, type=int, help="Person id.")
 @click.option("--content", type=str, required=True, help="Interaction content.")
@@ -290,7 +345,7 @@ def interaction_create(
     date: str,
     direction: str | None,
 ) -> None:
-    """Create an interaction (v1)."""
+    """Create an interaction."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         if not person_ids:
@@ -349,10 +404,11 @@ def interaction_create(
 @click.argument("interaction_id", type=int)
 @click.option(
     "--type",
+    "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
     required=True,
-    help="Interaction type (meeting, call, chat-message, email).",
+    help="Interaction type (required by API).",
 )
 @click.option("--person-id", "person_ids", multiple=True, type=int, help="Person id.")
 @click.option("--content", type=str, default=None, help="Interaction content.")
@@ -375,7 +431,7 @@ def interaction_update(
     date: str | None,
     direction: str | None,
 ) -> None:
-    """Update an interaction (v1)."""
+    """Update an interaction."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_type = parse_choice(
@@ -439,15 +495,16 @@ def interaction_update(
 @click.argument("interaction_id", type=int)
 @click.option(
     "--type",
+    "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
     required=True,
-    help="Interaction type (meeting, call, chat-message, email).",
+    help="Interaction type (required by API).",
 )
 @output_options
 @click.pass_obj
 def interaction_delete(ctx: CLIContext, interaction_id: int, *, interaction_type: str) -> None:
-    """Delete an interaction (v1)."""
+    """Delete an interaction."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_type = parse_choice(

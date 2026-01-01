@@ -132,7 +132,7 @@ def field_ls(
     list_id: int | None,
     entity_type: str | None,
 ) -> None:
-    """List fields (V1)."""
+    """List fields."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -192,7 +192,7 @@ def field_create(
     list_specific: bool,
     required: bool,
 ) -> None:
-    """Create a field (V1 write path)."""
+    """Create a field."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_entity_type = parse_choice(entity_type, _ENTITY_TYPE_MAP, label="entity type")
@@ -251,7 +251,7 @@ def field_create(
 @output_options
 @click.pass_obj
 def field_delete(ctx: CLIContext, field_id: str) -> None:
-    """Delete a field (V1 write path)."""
+    """Delete a field."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -287,7 +287,7 @@ def field_delete(ctx: CLIContext, field_id: str) -> None:
     default=None,
     help="Filter by action type.",
 )
-@click.option("--max-results", type=int, default=None, help="Limit number of results.")
+@click.option("--max-results", "-n", type=int, default=None, help="Limit number of results.")
 @output_options
 @click.pass_obj
 def field_history(
@@ -301,7 +301,7 @@ def field_history(
     action_type: str | None,
     max_results: int | None,
 ) -> None:
-    """Show field value change history (V1).
+    """Show field value change history.
 
     FIELD_ID is the field identifier (e.g., 'field-123').
     Use 'xaffinity field ls --list-id LIST' to find field IDs.

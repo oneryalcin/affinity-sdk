@@ -389,11 +389,18 @@ class InteractionService:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> V1PaginatedResponse[Interaction]:
         """
         Get interactions with optional filtering.
+
+        The Affinity API requires:
+        - type: Interaction type (meeting, call, email, chat)
+        - start_time and end_time: Date range (max 1 year)
+        - One entity ID: person_id, company_id, or opportunity_id
 
         Returns V1 paginated response with `data` and `next_page_token`.
         """
@@ -406,6 +413,10 @@ class InteractionService:
             params["end_time"] = end_time.isoformat()
         if person_id:
             params["person_id"] = int(person_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
+        if opportunity_id:
+            params["opportunity_id"] = int(opportunity_id)
         if page_size:
             params["page_size"] = page_size
         if page_token:
@@ -1577,6 +1588,8 @@ class AsyncInteractionService:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> V1PaginatedResponse[Interaction]:
@@ -1589,6 +1602,10 @@ class AsyncInteractionService:
             params["end_time"] = end_time.isoformat()
         if person_id:
             params["person_id"] = int(person_id)
+        if company_id:
+            params["organization_id"] = int(company_id)
+        if opportunity_id:
+            params["opportunity_id"] = int(opportunity_id)
         if page_size:
             params["page_size"] = page_size
         if page_token:

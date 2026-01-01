@@ -66,10 +66,12 @@ def _note_payload(note: Note) -> dict[str, object]:
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
 @click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity id.")
 @click.option("--creator-id", type=int, default=None, help="Filter by creator id.")
-@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
 def note_ls(
@@ -89,9 +91,9 @@ def note_ls(
 
     Examples:
 
-    - `xaffinitynote ls --person-id 12345`
-    - `xaffinitynote ls --company-id 67890 --all`
-    - `xaffinitynote ls --creator-id 111 --max-results 50`
+    - `xaffinity note ls --person-id 12345`
+    - `xaffinity note ls --company-id 67890 --all`
+    - `xaffinity note ls --creator-id 111 --max-results 50`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -219,7 +221,7 @@ def note_get(ctx: CLIContext, note_id: int) -> None:
     """
     Get a note by id.
 
-    Example: `xaffinitynote get 12345`
+    Example: `xaffinity note get 12345`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -304,8 +306,8 @@ def note_create(
 
     Examples:
 
-    - `xaffinitynote create --content "Meeting notes" --person-id 12345`
-    - `xaffinitynote create --content "<b>Summary</b>" --type html --company-id 67890`
+    - `xaffinity note create --content "Meeting notes" --person-id 12345`
+    - `xaffinity note create --content "<b>Summary</b>" --type html --company-id 67890`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -374,7 +376,7 @@ def note_create(
 @output_options
 @click.pass_obj
 def note_update(ctx: CLIContext, note_id: int, *, content: str) -> None:
-    """Update a note (v1)."""
+    """Update a note."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -400,7 +402,7 @@ def note_update(ctx: CLIContext, note_id: int, *, content: str) -> None:
 @output_options
 @click.pass_obj
 def note_delete(ctx: CLIContext, note_id: int) -> None:
-    """Delete a note (v1)."""
+    """Delete a note."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

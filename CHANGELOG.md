@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- CLI: `list view` renamed to `list get` for consistency with other entity commands.
+- CLI: `--completed/--not-completed` boolean flag pattern for `reminder update` (replaces separate flags).
+- CLI: Removed API version mentions from help text (implementation detail).
+- CLI: `interaction ls` now requires an entity ID (`--person-id`, `--company-id`, or `--opportunity-id`) and defaults to last 7 days with visible warning (API max: 1 year).
+- CLI: Unified `person field`, `company field`, `opportunity field` commands replace `set-field`, `set-fields`, and `unset-field` commands. New syntax: `--set FIELD VALUE`, `--unset FIELD`, `--json '{...}'`, `--get FIELD`.
+
+### Removed
+- CLI: `person set-field`, `person set-fields`, `person unset-field` commands (use `person field` instead).
+- CLI: `company set-field`, `company set-fields`, `company unset-field` commands (use `company field` instead).
+- CLI: `opportunity set-field`, `opportunity set-fields`, `opportunity unset-field` commands (use `opportunity field` instead).
+
+### Added
+- CLI: Top-level `entry` command group as shorthand for `list entry` (e.g., `xaffinity entry get` instead of `xaffinity list entry get`).
+- CLI: `--query` / `-q` flag for `person ls`, `company ls`, and `opportunity ls` to enable free-text search (V1 API).
+- CLI: `--company-id` and `--opportunity-id` options for `interaction ls`.
+- CLI: `-A` short flag for `--all` on all paginated list commands.
+- CLI: `-n` short flag for `--max-results` on all commands with result limits.
+- CLI: `-s` short flag for `--page-size` on all pagination commands.
+- CLI: `-t` short flag for `--type` on interaction commands.
+- SDK: `OpportunityService.search()`, `search_pages()`, `search_all()` methods for V1 opportunity search.
+- SDK: Async versions of opportunity search methods in `AsyncOpportunityService`.
+- SDK: `InteractionService.list()` now accepts `company_id` and `opportunity_id` parameters.
+
+### Fixed
+- CLI: Help text formatting - added missing spaces in command examples (~78 instances).
+- CLI: Improved `--cursor` help text explaining incompatibility with `--page-size`.
+- CLI: Clarified `--csv` help text to indicate it writes to file while stdout format is unchanged.
+
 ## 0.4.8 - 2025-12-31
 
 ### Added

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.entities import Company, CompanyCreate, CompanyUpdate
+from affinity.models.pagination import PaginatedResponse, V1PaginatedResponse
 from affinity.models.types import EnrichedFieldId, FieldId
 from affinity.types import CompanyId, FieldType, ListId, PersonId
 
@@ -260,10 +261,12 @@ def company_group() -> None:
 
 @company_group.command(name="search", cls=RichCommand)
 @click.argument("query")
-@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @click.option(
     "--with-interaction-dates",
     is_flag=True,
@@ -306,9 +309,9 @@ def company_search(
 
     Examples:
 
-    - `xaffinitycompany search longevitix`
-    - `xaffinitycompany search longevitix.co`
-    - `xaffinitycompany search longevitix --with-interaction-dates`
+    - `xaffinity company search longevitix`
+    - `xaffinity company search longevitix.co`
+    - `xaffinity company search longevitix --with-interaction-dates`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -436,10 +439,12 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
 
 
 @company_group.command(name="ls", cls=RichCommand)
-@click.option("--page-size", type=int, default=None, help="Page size (limit).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N items total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N items total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @click.option(
     "--field",
     "field_ids",
@@ -459,9 +464,16 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     "filter_expr",
     type=str,
     default=None,
-    help="V2 filter expression (e.g., 'Industry = \"Software\"').",
+    help="Filter expression (e.g., 'Industry = \"Software\"').",
 )
-@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
+@click.option(
+    "--query",
+    "-q",
+    type=str,
+    default=None,
+    help="Free-text search term. Cannot combine with --filter.",
+)
+@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
 @output_options
 @click.pass_obj
@@ -475,22 +487,25 @@ def company_ls(
     field_ids: tuple[str, ...],
     field_types: tuple[str, ...],
     filter_expr: str | None,
+    query: str | None,
     csv_path: str | None,
     csv_bom: bool,
 ) -> None:
     """
-    List companies with V2 pagination.
+    List companies.
 
-    Supports field selection, field types, and V2 filter expressions.
+    Supports field selection, field types, and filter expressions.
+    Use --query for free-text search.
 
     Examples:
 
-    - `xaffinitycompany ls`
-    - `xaffinitycompany ls --page-size 50`
-    - `xaffinitycompany ls --field-type enriched --all`
+    - `xaffinity company ls`
+    - `xaffinity company ls --page-size 50`
+    - `xaffinity company ls --field-type enriched --all`
     - `xaffinity company ls --filter 'Industry = "Software"'`
-    - `xaffinitycompany ls --all --csv companies.csv`
-    - `xaffinitycompany ls --all --csv companies.csv --csv-bom`
+    - `xaffinity company ls --query "Acme" --all`
+    - `xaffinity company ls --all --csv companies.csv`
+    - `xaffinity company ls --all --csv companies.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -501,6 +516,20 @@ def company_ls(
                 "--cursor cannot be combined with --page-size.",
                 exit_code=2,
                 error_type="usage_error",
+            )
+
+        if query is not None and filter_expr is not None:
+            raise CLIError(
+                "--query cannot be combined with --filter (different APIs).",
+                exit_code=2,
+                error_type="usage_error",
+                hint="Use --query for free-text search or --filter for structured filtering.",
+            )
+
+        if query is not None and (field_ids or field_types):
+            warnings.append(
+                "--query search does not support --field or --field-type. "
+                "These options are ignored."
             )
 
         # Build CommandContext upfront for all return paths
@@ -519,6 +548,8 @@ def company_ls(
             ctx_modifiers["fieldTypes"] = list(field_types)
         if filter_expr:
             ctx_modifiers["filter"] = filter_expr
+        if query:
+            ctx_modifiers["query"] = query
         if csv_path:
             ctx_modifiers["csv"] = csv_path
         if csv_bom:
@@ -537,6 +568,7 @@ def company_ls(
 
         rows: list[dict[str, object]] = []
         first_page = True
+        use_v1_search = query is not None
 
         show_progress = (
             ctx.progress != "never"
@@ -544,13 +576,23 @@ def company_ls(
             and (ctx.progress == "always" or sys.stderr.isatty())
         )
 
-        pages_iter = client.companies.pages(
-            field_ids=parsed_field_ids,
-            field_types=parsed_field_types,
-            filter=filter_expr,
-            limit=page_size,
-            cursor=cursor,
-        )
+        # Use V1 search when --query is provided, otherwise V2 list
+        pages_iter: Iterator[V1PaginatedResponse[Company]] | Iterator[PaginatedResponse[Company]]
+        if use_v1_search:
+            assert query is not None
+            pages_iter = client.companies.search_pages(
+                query,
+                page_size=page_size,
+                page_token=cursor,
+            )
+        else:
+            pages_iter = client.companies.pages(
+                field_ids=parsed_field_ids,
+                field_types=parsed_field_types,
+                filter=filter_expr,
+                limit=page_size,
+                cursor=cursor,
+            )
 
         with ExitStack() as stack:
             progress: Progress | None = None
@@ -569,6 +611,14 @@ def company_ls(
                 task_id = progress.add_task("Fetching", total=max_results)
 
             for page in pages_iter:
+                # Get next cursor/token based on API type
+                if hasattr(page, "next_page_token"):
+                    next_cursor = page.next_page_token
+                    prev_cursor = None  # V1 doesn't have prev cursor
+                else:
+                    next_cursor = page.pagination.next_cursor
+                    prev_cursor = page.pagination.prev_cursor
+
                 for idx, company in enumerate(page.data):
                     rows.append(_company_ls_row(company))
                     if progress and task_id is not None:
@@ -580,15 +630,11 @@ def company_ls(
                                 "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
-                        if (
-                            page.pagination.next_cursor
-                            and not stopped_mid_page
-                            and page.pagination.next_cursor != cursor
-                        ):
+                        if next_cursor and not stopped_mid_page and next_cursor != cursor:
                             pagination = {
                                 "companies": {
-                                    "nextCursor": page.pagination.next_cursor,
-                                    "prevCursor": page.pagination.prev_cursor,
+                                    "nextCursor": next_cursor,
+                                    "prevCursor": prev_cursor,
                                 }
                             }
                         return CommandOutput(
@@ -605,11 +651,11 @@ def company_ls(
                         pagination=(
                             {
                                 "companies": {
-                                    "nextCursor": page.pagination.next_cursor,
-                                    "prevCursor": page.pagination.prev_cursor,
+                                    "nextCursor": next_cursor,
+                                    "prevCursor": prev_cursor,
                                 }
                             }
-                            if page.pagination.next_cursor
+                            if next_cursor
                             else None
                         ),
                         api_called=True,
@@ -781,7 +827,7 @@ def _resolve_company_by_domain(*, client: Any, domain: str) -> CompanyId:
             f'Company not found for domain "{domain}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `xaffinitycompany search "{domain}"` to explore matches.',
+            hint=f'Run `xaffinity company search "{domain}"` to explore matches.',
             details={"domain": domain},
         )
     if len(matches) > 1:
@@ -822,7 +868,7 @@ def _resolve_company_by_name(*, client: Any, name: str) -> CompanyId:
             f'Company not found for name "{name}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `xaffinitycompany search "{name}"` to explore matches.',
+            hint=f'Run `xaffinity company search "{name}"` to explore matches.',
             details={"name": name},
         )
     if len(matches) > 1:
@@ -888,7 +934,7 @@ def _resolve_company_field_ids(
             f'Unknown field: "{text}"',
             exit_code=2,
             error_type="usage_error",
-            hint="Tip: run `xaffinitycompany get <id> --all-fields --json` and inspect "
+            hint="Tip: run `xaffinity company get <id> --all-fields --json` and inspect "
             "`data.company.fields[*].id` / `data.company.fields[*].name`.",
             details={"field": text},
         )
@@ -1025,8 +1071,8 @@ def company_files_upload(
 
     Examples:
 
-    - `xaffinitycompany files upload 123 --file doc.pdf`
-    - `xaffinitycompany files upload 123 --file a.pdf --file b.pdf`
+    - `xaffinity company files upload 123 --file doc.pdf`
+    - `xaffinity company files upload 123 --file a.pdf --file b.pdf`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -1210,12 +1256,12 @@ def company_get(
 
     Examples:
 
-    - `xaffinitycompany get 223384905`
-    - `xaffinitycompany get https://mydomain.affinity.com/companies/223384905`
-    - `xaffinitycompany get domain:acme.com`
-    - `xaffinitycompany get name:"Acme Inc"`
-    - `xaffinitycompany get 223384905 --expand list-entries --list "Portfolio"`
-    - `xaffinitycompany get 223384905 --json  # Full data, ignores field filters`
+    - `xaffinity company get 223384905`
+    - `xaffinity company get https://mydomain.affinity.com/companies/223384905`
+    - `xaffinity company get domain:acme.com`
+    - `xaffinity company get name:"Acme Inc"`
+    - `xaffinity company get 223384905 --expand list-entries --list "Portfolio"`
+    - `xaffinity company get 223384905 --json  # Full data, ignores field filters`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -1364,7 +1410,7 @@ def company_get(
                         exit_code=2,
                         error_type="usage_error",
                         hint=(
-                            "Tip: run `xaffinitylist view <list>` to discover list-entry field IDs."
+                            "Tip: run `xaffinity list get <list>` to discover list-entry field IDs."
                         ),
                         details={"field": spec},
                     )
@@ -1609,7 +1655,7 @@ def company_get(
                             exit_code=2,
                             error_type="usage_error",
                             hint=(
-                                "Tip: run `xaffinitylist view <list>` and inspect "
+                                "Tip: run `xaffinity list get <list>` and inspect "
                                 "`data.fields[*].id` / `data.fields[*].name`."
                             ),
                             details={"field": raw},
@@ -1795,7 +1841,7 @@ def company_create(
     domain: str | None,
     person_ids: tuple[int, ...],
 ) -> None:
-    """Create a company (V1 write path)."""
+    """Create a company."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -1850,7 +1896,7 @@ def company_update(
     domain: str | None,
     person_ids: tuple[int, ...],
 ) -> None:
-    """Update a company (V1 write path)."""
+    """Update a company."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         if not (name or domain or person_ids):
@@ -1899,7 +1945,7 @@ def company_update(
 @output_options
 @click.pass_obj
 def company_delete(ctx: CLIContext, company_id: int) -> None:
-    """Delete a company (V1 write path)."""
+    """Delete a company."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -1959,37 +2005,62 @@ def company_merge(
     run_command(ctx, command="company merge", fn=fn)
 
 
-@company_group.command(name="set-field", cls=RichCommand)
+@company_group.command(name="field", cls=RichCommand)
 @click.argument("company_id", type=int)
-@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Industry').")
-@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
-@click.option("--value", help="Value to set (string).")
-@click.option("--value-json", help="Value to set (JSON).")
-@click.option("--append", is_flag=True, help="Append to multi-value field instead of replacing.")
+@click.option(
+    "--set",
+    "set_values",
+    nargs=2,
+    multiple=True,
+    metavar="FIELD VALUE",
+    help="Set field value (repeatable). Use two args: FIELD VALUE.",
+)
+@click.option(
+    "--unset",
+    "unset_fields",
+    multiple=True,
+    metavar="FIELD",
+    help="Unset field (repeatable). Removes all values for the field.",
+)
+@click.option(
+    "--json",
+    "json_input",
+    type=str,
+    help="JSON object of field:value pairs to set.",
+)
+@click.option(
+    "--get",
+    "get_fields",
+    multiple=True,
+    metavar="FIELD",
+    help="Get specific field values (repeatable).",
+)
 @output_options
 @click.pass_obj
-def company_set_field(
+def company_field(
     ctx: CLIContext,
     company_id: int,
     *,
-    field_name: str | None,
-    field_id: str | None,
-    value: str | None,
-    value_json: str | None,
-    append: bool,
+    set_values: tuple[tuple[str, str], ...],
+    unset_fields: tuple[str, ...],
+    json_input: str | None,
+    get_fields: tuple[str, ...],
 ) -> None:
     """
-    Set a field value on a company.
+    Manage company field values.
 
-    Use --field for field name resolution or --field-id for direct field ID.
-    Use --append for multi-value fields to add without replacing existing values.
+    Unified command for getting, setting, and unsetting field values.
+    For field names with spaces, use quotes.
 
     Examples:
 
-    - `xaffinity company set-field 123 --field Industry --value "Software"`
-    - `xaffinity company set-field 123 --field-id field-260415 --value "Active"`
-    - `xaffinity company set-field 123 --field Tags --value "Enterprise" --append`
+    - `xaffinity company field 123 --set Industry "Technology"`
+    - `xaffinity company field 123 --set Industry "Tech" --set Size "Large"`
+    - `xaffinity company field 123 --unset Industry`
+    - `xaffinity company field 123 --json '{"Industry": "Tech", "Size": "Large"}'`
+    - `xaffinity company field 123 --get Industry --get Size`
     """
+    import json as json_module
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         from affinity.models.entities import FieldValueCreate
@@ -1999,341 +2070,162 @@ def company_set_field(
             FieldResolver,
             fetch_field_metadata,
             find_field_values_for_field,
-            validate_field_option_mutual_exclusion,
         )
-        from ._v1_parsing import parse_json_value
 
-        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
+        # Validate: at least one operation must be specified
+        has_set = bool(set_values) or bool(json_input)
+        has_unset = bool(unset_fields)
+        has_get = bool(get_fields)
 
-        if value is None and value_json is None:
+        if not has_set and not has_unset and not has_get:
             raise CLIError(
-                "Provide --value or --value-json.",
+                "Provide at least one of --set, --unset, --json, or --get.",
                 exit_code=2,
                 error_type="usage_error",
             )
-        if value is not None and value_json is not None:
+
+        # Validate: --get is exclusive (can't mix read with write)
+        if has_get and (has_set or has_unset):
             raise CLIError(
-                "Use only one of --value or --value-json.",
+                "--get cannot be combined with --set, --unset, or --json.",
                 exit_code=2,
                 error_type="usage_error",
             )
 
         client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Fetch field metadata and resolve field
         field_metadata = fetch_field_metadata(client=client, entity_type="company")
         resolver = FieldResolver(field_metadata)
 
-        target_field_id = (
-            field_id
-            if field_id
-            else resolver.resolve_field_name_or_id(field_name or "", context="field")
-        )
-        resolved["fieldId"] = target_field_id
-        resolved["fieldName"] = resolver.get_field_name(target_field_id)
+        results: dict[str, Any] = {}
 
-        # Check if field allows multiple values
-        field_allows_multiple = False
-        for fm in field_metadata:
-            if str(fm.id) == target_field_id:
-                field_allows_multiple = fm.allows_multiple
-                break
+        # Build modifiers for CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if set_values:
+            ctx_modifiers["set"] = [list(sv) for sv in set_values]
+        if unset_fields:
+            ctx_modifiers["unset"] = list(unset_fields)
+        if json_input:
+            ctx_modifiers["json"] = json_input
+        if get_fields:
+            ctx_modifiers["get"] = list(get_fields)
 
-        # If not appending and field has existing values, delete them first
-        if not append:
+        # Handle --get: read field values
+        if has_get:
+            existing_values = client.field_values.list(company_id=CompanyId(company_id))
+            field_results: dict[str, Any] = {}
+
+            for field_name in get_fields:
+                target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+                field_values = find_field_values_for_field(
+                    field_values=[serialize_model_for_cli(v) for v in existing_values],
+                    field_id=target_field_id,
+                )
+                resolved_name = resolver.get_field_name(target_field_id) or field_name
+                if field_values:
+                    if len(field_values) == 1:
+                        field_results[resolved_name] = field_values[0].get("value")
+                    else:
+                        field_results[resolved_name] = [fv.get("value") for fv in field_values]
+                else:
+                    field_results[resolved_name] = None
+
+            results["fields"] = field_results
+
+            cmd_context = CommandContext(
+                name="company field",
+                inputs={"companyId": company_id},
+                modifiers=ctx_modifiers,
+            )
+
+            return CommandOutput(
+                data=results,
+                context=cmd_context,
+                api_called=True,
+            )
+
+        # Handle --set and --json: set field values
+        set_operations: list[tuple[str, Any]] = []
+
+        # Collect from --set options
+        for field_name, value in set_values:
+            set_operations.append((field_name, value))
+
+        # Collect from --json
+        if json_input:
+            try:
+                json_data = json_module.loads(json_input)
+                if not isinstance(json_data, dict):
+                    raise CLIError(
+                        "--json must be a JSON object.",
+                        exit_code=2,
+                        error_type="usage_error",
+                    )
+                for field_name, value in json_data.items():
+                    set_operations.append((field_name, value))
+            except json_module.JSONDecodeError as e:
+                raise CLIError(
+                    f"Invalid JSON: {e}",
+                    exit_code=2,
+                    error_type="usage_error",
+                ) from e
+
+        # Execute set operations
+        created_values: list[dict[str, Any]] = []
+        for field_name, value in set_operations:
+            target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+
+            # Check for existing values and delete them first (replace behavior)
             existing_values = client.field_values.list(company_id=CompanyId(company_id))
             existing_for_field = find_field_values_for_field(
                 field_values=[serialize_model_for_cli(v) for v in existing_values],
                 field_id=target_field_id,
             )
-            if existing_for_field:
-                if not field_allows_multiple:
-                    # Single-value field: delete existing value
-                    for fv in existing_for_field:
-                        fv_id = fv.get("id")
-                        if fv_id:
-                            client.field_values.delete(fv_id)
-                else:
-                    # Multi-value field without --append: error
-                    field_label = resolved["fieldName"] or target_field_id
-                    raise CLIError(
-                        f"Field '{field_label}' has {len(existing_for_field)} value(s). "
-                        "Use --append to add, or unset-field first.",
-                        exit_code=2,
-                        error_type="usage_error",
-                    )
+            for fv in existing_for_field:
+                fv_id = fv.get("id")
+                if fv_id:
+                    client.field_values.delete(fv_id)
 
-        # Create the field value
-        parsed_value = value if value_json is None else parse_json_value(value_json, label="value")
-        created = client.field_values.create(
-            FieldValueCreate(
-                field_id=FieldIdType(target_field_id),
-                entity_id=company_id,
-                value=parsed_value,
-            )
-        )
-
-        payload = serialize_model_for_cli(created)
-
-        # Build CommandContext
-        ctx_modifiers: dict[str, object] = {}
-        if field_name:
-            ctx_modifiers["field"] = field_name
-        if field_id:
-            ctx_modifiers["fieldId"] = field_id
-        if value is not None:
-            ctx_modifiers["value"] = value
-        if value_json is not None:
-            ctx_modifiers["valueJson"] = value_json
-        if append:
-            ctx_modifiers["append"] = True
-
-        cmd_context = CommandContext(
-            name="company set-field",
-            inputs={"companyId": company_id},
-            modifiers=ctx_modifiers,
-            resolved=resolved if resolved else None,
-        )
-
-        return CommandOutput(
-            data={"fieldValue": payload},
-            resolved=resolved,
-            context=cmd_context,
-            api_called=True,
-        )
-
-    run_command(ctx, command="company set-field", fn=fn)
-
-
-@company_group.command(name="set-fields", cls=RichCommand)
-@click.argument("company_id", type=int)
-@click.option(
-    "--updates-json",
-    required=True,
-    help='JSON object of field name/ID -> value pairs (e.g. \'{"Industry": "Tech"}\').',
-)
-@output_options
-@click.pass_obj
-def company_set_fields(
-    ctx: CLIContext,
-    company_id: int,
-    *,
-    updates_json: str,
-) -> None:
-    """
-    Set multiple field values on a company at once.
-
-    Field names are resolved case-insensitively. Field IDs can also be used.
-    All field names are validated before any updates are applied.
-
-    Examples:
-
-    - `xaffinity company set-fields 123 --updates-json '{"Industry": "Tech"}'`
-    """
-
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        from affinity.models.entities import FieldValueCreate
-        from affinity.types import FieldId as FieldIdType
-
-        from ..field_utils import FieldResolver, fetch_field_metadata
-        from ._v1_parsing import parse_json_value
-
-        parsed = parse_json_value(updates_json, label="updates-json")
-        if not isinstance(parsed, dict):
-            raise CLIError(
-                "--updates-json must be a JSON object.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        if not parsed:
-            raise CLIError(
-                "--updates-json cannot be empty.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Fetch field metadata and resolve ALL field names first
-        field_metadata = fetch_field_metadata(client=client, entity_type="company")
-        resolver = FieldResolver(field_metadata)
-
-        # Validate all field names - this raises on any invalid names
-        resolved_updates, _ = resolver.resolve_all_field_names_or_ids(parsed, context="field")
-
-        # Create field values
-        results: list[dict[str, Any]] = []
-        for fid, field_value in resolved_updates.items():
+            # Create new value
             created = client.field_values.create(
                 FieldValueCreate(
-                    field_id=FieldIdType(fid),
+                    field_id=FieldIdType(target_field_id),
                     entity_id=company_id,
-                    value=field_value,
+                    value=value,
                 )
             )
-            results.append(serialize_model_for_cli(created))
+            created_values.append(serialize_model_for_cli(created))
 
-        resolved["fieldsUpdated"] = len(results)
+        # Handle --unset: remove field values
+        deleted_count = 0
+        for field_name in unset_fields:
+            target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+            existing_values = client.field_values.list(company_id=CompanyId(company_id))
+            existing_for_field = find_field_values_for_field(
+                field_values=[serialize_model_for_cli(v) for v in existing_values],
+                field_id=target_field_id,
+            )
+            for fv in existing_for_field:
+                fv_id = fv.get("id")
+                if fv_id:
+                    client.field_values.delete(fv_id)
+                    deleted_count += 1
 
-        cmd_context = CommandContext(
-            name="company set-fields",
-            inputs={"companyId": company_id},
-            modifiers={},
-            resolved=resolved if resolved else None,
-        )
-
-        return CommandOutput(
-            data={"fieldValues": results},
-            resolved=resolved,
-            context=cmd_context,
-            api_called=True,
-        )
-
-    run_command(ctx, command="company set-fields", fn=fn)
-
-
-@company_group.command(name="unset-field", cls=RichCommand)
-@click.argument("company_id", type=int)
-@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Industry').")
-@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
-@click.option("--value", help="Specific value to unset (for multi-value fields).")
-@click.option("--all-values", "unset_all", is_flag=True, help="Unset all values for field.")
-@output_options
-@click.pass_obj
-def company_unset_field(
-    ctx: CLIContext,
-    company_id: int,
-    *,
-    field_name: str | None,
-    field_id: str | None,
-    value: str | None,
-    unset_all: bool,
-) -> None:
-    """
-    Unset a field value from a company.
-
-    For multi-value fields, use --value to remove a specific value or
-    --all-values to remove all values.
-
-    Examples:
-
-    - `xaffinity company unset-field 123 --field Industry`
-    - `xaffinity company unset-field 123 --field Tags --value "Enterprise"`
-    - `xaffinity company unset-field 123 --field Tags --all-values`
-    """
-
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        from ..field_utils import (
-            FieldResolver,
-            fetch_field_metadata,
-            find_field_values_for_field,
-            format_value_for_comparison,
-            validate_field_option_mutual_exclusion,
-        )
-
-        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
-
-        client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Fetch field metadata and resolve field
-        field_metadata = fetch_field_metadata(client=client, entity_type="company")
-        resolver = FieldResolver(field_metadata)
-
-        target_field_id = (
-            field_id
-            if field_id
-            else resolver.resolve_field_name_or_id(field_name or "", context="field")
-        )
-        resolved["fieldId"] = target_field_id
-        resolved["fieldName"] = resolver.get_field_name(target_field_id)
-
-        # Build CommandContext upfront (used by both return paths)
-        ctx_modifiers: dict[str, object] = {}
-        if field_name:
-            ctx_modifiers["field"] = field_name
-        if field_id:
-            ctx_modifiers["fieldId"] = field_id
-        if value is not None:
-            ctx_modifiers["value"] = value
-        if unset_all:
-            ctx_modifiers["allValues"] = True
+        # Build result
+        if created_values:
+            results["created"] = created_values
+        if deleted_count > 0:
+            results["deleted"] = deleted_count
 
         cmd_context = CommandContext(
-            name="company unset-field",
+            name="company field",
             inputs={"companyId": company_id},
             modifiers=ctx_modifiers,
-            resolved=resolved if resolved else None,
         )
-
-        # Get existing field values
-        existing_values = client.field_values.list(company_id=CompanyId(company_id))
-        existing_for_field = find_field_values_for_field(
-            field_values=[serialize_model_for_cli(v) for v in existing_values],
-            field_id=target_field_id,
-        )
-
-        if not existing_for_field:
-            # Idempotent - success with warning
-            warnings.append(
-                f"Field '{resolved['fieldName'] or target_field_id}' has no values on this company."
-            )
-            return CommandOutput(
-                data={"deleted": 0},
-                resolved=resolved,
-                context=cmd_context,
-                api_called=True,
-            )
-
-        # Determine which values to delete
-        to_delete: list[dict[str, Any]] = []
-
-        if len(existing_for_field) == 1:
-            # Single value: delete it (no flags needed)
-            to_delete = existing_for_field
-        elif unset_all:
-            # Multi-value with --all-values: delete all
-            to_delete = existing_for_field
-        elif value is not None:
-            # Multi-value with --value: find matching value
-            value_str = value.strip()
-            for fv in existing_for_field:
-                fv_value = fv.get("value")
-                if format_value_for_comparison(fv_value) == value_str:
-                    to_delete.append(fv)
-                    break
-            if not to_delete:
-                field_label = resolved["fieldName"] or target_field_id
-                raise CLIError(
-                    f"Value '{value}' not found for field '{field_label}'.",
-                    exit_code=2,
-                    error_type="not_found",
-                )
-        else:
-            # Multi-value without --value or --all-values: error
-            raise CLIError(
-                f"Field has {len(existing_for_field)} values. "
-                "Use --value to unset a specific value, or --all-values to unset all.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        # Delete the field values
-        deleted_count = 0
-        for fv in to_delete:
-            fv_id = fv.get("id")
-            if fv_id:
-                client.field_values.delete(fv_id)
-                deleted_count += 1
 
         return CommandOutput(
-            data={"deleted": deleted_count},
-            resolved=resolved,
+            data=results,
             context=cmd_context,
             api_called=True,
         )
 
-    run_command(ctx, command="company unset-field", fn=fn)
+    run_command(ctx, command="company field", fn=fn)

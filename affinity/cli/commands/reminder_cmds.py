@@ -146,10 +146,12 @@ def _validate_single_entity(
 )
 @click.option("--due-before", type=str, default=None, help="Due before (ISO-8601).")
 @click.option("--due-after", type=str, default=None, help="Due after (ISO-8601).")
-@click.option("--page-size", type=int, default=None, help="Page size (max 500).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
 def reminder_ls(
@@ -171,7 +173,7 @@ def reminder_ls(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
-    """List reminders (v1)."""
+    """List reminders."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -329,7 +331,7 @@ def reminder_ls(
 @output_options
 @click.pass_obj
 def reminder_get(ctx: CLIContext, reminder_id: int) -> None:
-    """Get a reminder by id (v1)."""
+    """Get a reminder by id."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -386,7 +388,7 @@ def reminder_create(
     company_id: int | None,
     opportunity_id: int | None,
 ) -> None:
-    """Create a reminder (v1)."""
+    """Create a reminder."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _ = warnings
@@ -469,8 +471,9 @@ def reminder_create(
     help="Reset type for recurring reminders.",
 )
 @click.option("--reminder-days", type=int, default=None, help="Days before due date to remind.")
-@click.option("--completed", is_flag=True, help="Mark reminder as completed.")
-@click.option("--not-completed", is_flag=True, help="Mark reminder as not completed.")
+@click.option(
+    "--completed/--not-completed", "is_completed", default=None, help="Set completion status."
+)
 @output_options
 @click.pass_obj
 def reminder_update(
@@ -483,28 +486,14 @@ def reminder_update(
     due_date: str | None,
     reset_type: str | None,
     reminder_days: int | None,
-    completed: bool,
-    not_completed: bool,
+    is_completed: bool | None,
 ) -> None:
-    """Update a reminder (v1)."""
+    """Update a reminder."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        if completed and not_completed:
-            raise CLIError(
-                "--completed and --not-completed cannot be used together.",
-                error_type="usage_error",
-                exit_code=2,
-            )
-
         parsed_type = parse_choice(reminder_type, _REMINDER_TYPE_MAP, label="reminder type")
         parsed_reset = parse_choice(reset_type, _REMINDER_RESET_MAP, label="reset type")
         due_date_value = parse_iso_datetime(due_date, label="due-date") if due_date else None
-
-        is_completed: bool | None = None
-        if completed:
-            is_completed = True
-        if not_completed:
-            is_completed = False
 
         client = ctx.get_client(warnings=warnings)
         reminder = client.reminders.update(
@@ -534,10 +523,8 @@ def reminder_update(
             ctx_modifiers["resetType"] = reset_type
         if reminder_days is not None:
             ctx_modifiers["reminderDays"] = reminder_days
-        if completed:
-            ctx_modifiers["completed"] = True
-        if not_completed:
-            ctx_modifiers["notCompleted"] = True
+        if is_completed is not None:
+            ctx_modifiers["completed"] = is_completed
 
         cmd_context = CommandContext(
             name="reminder update",
@@ -559,7 +546,7 @@ def reminder_update(
 @output_options
 @click.pass_obj
 def reminder_delete(ctx: CLIContext, reminder_id: int) -> None:
-    """Delete a reminder (v1)."""
+    """Delete a reminder."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

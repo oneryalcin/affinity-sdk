@@ -65,10 +65,12 @@ def _parse_list_type(value: str | None) -> ListType | None:
 
 @list_group.command(name="ls", cls=RichCommand)
 @click.option("--type", "list_type", type=str, default=None, help="Filter by list type.")
-@click.option("--page-size", type=int, default=None, help="Page size (limit).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N items total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N items total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
 def list_ls(
@@ -85,9 +87,9 @@ def list_ls(
 
     Examples:
 
-    - `xaffinitylist ls`
-    - `xaffinitylist ls --type person`
-    - `xaffinitylist ls --type company --all`
+    - `xaffinity list ls`
+    - `xaffinity list ls --type person`
+    - `xaffinity list ls --type company --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -241,8 +243,8 @@ def list_create(
 
     Examples:
 
-    - `xaffinitylist create --name "Prospects" --type company`
-    - `xaffinitylist create --name "Candidates" --type person --public`
+    - `xaffinity list create --name "Prospects" --type company`
+    - `xaffinity list create --name "Candidates" --type person --public`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -288,20 +290,20 @@ def list_create(
     run_command(ctx, command="list create", fn=fn)
 
 
-@list_group.command(name="view", cls=RichCommand)
+@list_group.command(name="get", cls=RichCommand)
 @click.argument("list_selector")
 @output_options
 @click.pass_obj
-def list_view(ctx: CLIContext, list_selector: str) -> None:
+def list_get(ctx: CLIContext, list_selector: str) -> None:
     """
-    View list details, fields, and saved views.
+    Get list details, fields, and saved views.
 
     LIST_SELECTOR can be a list id or exact list name.
 
     Examples:
 
-    - `xaffinitylist view 12345`
-    - `xaffinitylist view "Pipeline"`
+    - `xaffinity list get 12345`
+    - `xaffinity list get "Pipeline"`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -321,7 +323,7 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
                 ctx_resolved = {"selector": str(list_name)}
 
         cmd_context = CommandContext(
-            name="list view",
+            name="list get",
             inputs={"selector": list_selector},
             modifiers={},
             resolved=ctx_resolved,
@@ -336,7 +338,7 @@ def list_view(ctx: CLIContext, list_selector: str) -> None:
             data=data, context=cmd_context, resolved=resolved.resolved, api_called=True
         )
 
-    run_command(ctx, command="list view", fn=fn)
+    run_command(ctx, command="list get", fn=fn)
 
 
 CsvHeaderMode = Literal["names", "ids"]
@@ -359,12 +361,14 @@ ExpandOnError = Literal["raise", "skip"]
     help="Filter expression (mutually exclusive with --saved-view).",
 )
 @click.option(
-    "--page-size", type=int, default=100, show_default=True, help="Page size (limit, max 100)."
+    "--page-size", "-s", type=int, default=100, show_default=True, help="Page size (max 100)."
 )
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N rows total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all rows.")
-@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV.")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N rows total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all rows.")
+@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
 @click.option(
     "--csv-header",
     type=click.Choice(["names", "ids"]),
@@ -380,7 +384,7 @@ ExpandOnError = Literal["raise", "skip"]
     "expand",
     multiple=True,
     type=click.Choice(["people", "companies", "opportunities"]),
-    help="Expand associated entities (repeatable). Uses V1 API.",
+    help="Expand associated entities (repeatable).",
 )
 @click.option(
     "--expand-max-results",
@@ -475,12 +479,12 @@ def list_export(
 
     Examples:
 
-    - `xaffinitylist export "Pipeline" --all`
-    - `xaffinitylist export 12345 --csv pipeline.csv --all`
-    - `xaffinitylist export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
-    - `xaffinitylist export "Pipeline" --field Status --field "Deal Size" --all`
-    - `xaffinitylist export "Pipeline" --expand people --all --csv opps-with-people.csv`
-    - `xaffinitylist export "Pipeline" --expand people --expand companies --all`
+    - `xaffinity list export "Pipeline" --all`
+    - `xaffinity list export 12345 --csv pipeline.csv --all`
+    - `xaffinity list export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
+    - `xaffinity list export "Pipeline" --field Status --field "Deal Size" --all`
+    - `xaffinity list export "Pipeline" --expand people --all --csv opps-with-people.csv`
+    - `xaffinity list export "Pipeline" --expand people --expand companies --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -807,7 +811,9 @@ def list_export(
                         dry_run_warnings.append(
                             f"Large export ({entry_count} entries) may take 10-15 minutes or more."
                         )
-                dry_run_warnings.append("Expansion uses V1 API which is slower than V2.")
+                dry_run_warnings.append(
+                    "Expansion of related entities may be slower for large datasets."
+                )
                 if effective_expand_limit is not None:
                     dry_run_warnings.append(
                         f"Using --expand-max-results {effective_expand_limit} (default). "
@@ -2471,7 +2477,7 @@ def list_entry_add(
     company_id: int | None,
     creator_id: int | None,
 ) -> None:
-    """Add a person or company to a list (V1 write path).
+    """Add a person or company to a list.
 
     Note: Opportunities cannot be added to lists this way. Use 'opportunity create --list-id'
     instead, which creates both the opportunity and its list entry atomically.
@@ -2531,7 +2537,7 @@ def list_entry_add(
 @output_options
 @click.pass_obj
 def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> None:
-    """Delete a list entry (V1 write path)."""
+    """Delete a list entry."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

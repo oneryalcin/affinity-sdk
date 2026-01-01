@@ -533,15 +533,15 @@ xaffinity list create --name "Dealflow" --type opportunity --private
 xaffinity list create --name "People" --type person --public --owner-id 42
 ```
 
-### `xaffinity list view <list>`
+### `xaffinity list get <list>`
 
 Accepts a list ID or an exact list name.
 
 The Fields table includes a `valueType` column using V2 string types (e.g., `dropdown-multi`, `ranked-dropdown`).
 
 ```bash
-xaffinity list view 123
-xaffinity list view "My Pipeline" --json
+xaffinity list get 123
+xaffinity list get "My Pipeline" --json
 ```
 
 ### `xaffinity list export <list>`
@@ -564,6 +564,14 @@ xaffinity list export 123 --csv out.csv --csv-bom
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.
+
+### List Entry Commands
+
+**Shorthand:** All `list entry` commands are also available as top-level `entry` commands:
+```bash
+xaffinity entry get 123 456          # Same as: xaffinity list entry get 123 456
+xaffinity entry set-field 123 456 ...  # Same as: xaffinity list entry set-field 123 456 ...
+```
 
 ### `xaffinity list entry add <list>`
 

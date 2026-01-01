@@ -19,7 +19,13 @@ from ..models.entities import (
     OpportunityUpdate,
     Person,
 )
-from ..models.pagination import AsyncPageIterator, PageIterator, PaginatedResponse, PaginationInfo
+from ..models.pagination import (
+    AsyncPageIterator,
+    PageIterator,
+    PaginatedResponse,
+    PaginationInfo,
+    V1PaginatedResponse,
+)
 from ..models.types import CompanyId, ListId, OpportunityId, PersonId
 from .lists import AsyncListEntryService, ListEntryService
 
@@ -169,6 +175,96 @@ class OpportunityService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all()
+
+    # =========================================================================
+    # Search (V1 API)
+    # =========================================================================
+
+    def search(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> V1PaginatedResponse[Opportunity]:
+        """
+        Search for opportunities by name.
+
+        Uses V1 API for search functionality.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Pagination token
+
+        Returns:
+            V1PaginatedResponse with opportunities and next_page_token
+        """
+        params: dict[str, Any] = {}
+        if term:
+            params["term"] = term
+        if page_size:
+            params["page_size"] = page_size
+        if page_token:
+            params["page_token"] = page_token
+
+        data = self._client.get("/opportunities", params=params, v1=True)
+        items = [Opportunity.model_validate(o) for o in data.get("opportunities", [])]
+        return V1PaginatedResponse[Opportunity](
+            data=items,
+            next_page_token=data.get("next_page_token"),
+        )
+
+    def search_pages(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> Iterator[V1PaginatedResponse[Opportunity]]:
+        """
+        Iterate V1 opportunity-search result pages.
+
+        Useful for scripts that need checkpoint/resume via `next_page_token`.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            V1PaginatedResponse[Opportunity] for each page
+        """
+        requested_token = page_token
+        page = self.search(term, page_size=page_size, page_token=page_token)
+        while True:
+            yield page
+            next_token = page.next_page_token
+            if not next_token or next_token == requested_token:
+                return
+            requested_token = next_token
+            page = self.search(term, page_size=page_size, page_token=next_token)
+
+    def search_all(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> Iterator[Opportunity]:
+        """
+        Iterate all V1 opportunity-search results with automatic pagination.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            Each Opportunity individually
+        """
+        for page in self.search_pages(term, page_size=page_size, page_token=page_token):
+            yield from page.data
 
     def resolve(
         self,
@@ -695,6 +791,97 @@ class AsyncOpportunityService:
         Alias for `all()` (FR-006 public contract).
         """
         return self.all()
+
+    # =========================================================================
+    # Search (V1 API)
+    # =========================================================================
+
+    async def search(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> V1PaginatedResponse[Opportunity]:
+        """
+        Search for opportunities by name.
+
+        Uses V1 API for search functionality.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Pagination token
+
+        Returns:
+            V1PaginatedResponse with opportunities and next_page_token
+        """
+        params: dict[str, Any] = {}
+        if term:
+            params["term"] = term
+        if page_size:
+            params["page_size"] = page_size
+        if page_token:
+            params["page_token"] = page_token
+
+        data = await self._client.get("/opportunities", params=params, v1=True)
+        items = [Opportunity.model_validate(o) for o in data.get("opportunities", [])]
+        return V1PaginatedResponse[Opportunity](
+            data=items,
+            next_page_token=data.get("next_page_token"),
+        )
+
+    async def search_pages(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> AsyncIterator[V1PaginatedResponse[Opportunity]]:
+        """
+        Iterate V1 opportunity-search result pages.
+
+        Useful for scripts that need checkpoint/resume via `next_page_token`.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            V1PaginatedResponse[Opportunity] for each page
+        """
+        requested_token = page_token
+        page = await self.search(term, page_size=page_size, page_token=page_token)
+        while True:
+            yield page
+            next_token = page.next_page_token
+            if not next_token or next_token == requested_token:
+                return
+            requested_token = next_token
+            page = await self.search(term, page_size=page_size, page_token=next_token)
+
+    async def search_all(
+        self,
+        term: str | None = None,
+        *,
+        page_size: int | None = None,
+        page_token: str | None = None,
+    ) -> AsyncIterator[Opportunity]:
+        """
+        Iterate all V1 opportunity-search results with automatic pagination.
+
+        Args:
+            term: Search term (matches opportunity name). If None, returns all.
+            page_size: Results per page (max 500)
+            page_token: Resume from this pagination token
+
+        Yields:
+            Each Opportunity individually
+        """
+        async for page in self.search_pages(term, page_size=page_size, page_token=page_token):
+            for opp in page.data:
+                yield opp
 
     async def resolve(
         self,

@@ -31,7 +31,7 @@ def relationship_strength_ls(
     external_id: int,
     internal_id: int | None,
 ) -> None:
-    """List relationship strengths (V1)."""
+    """List relationship strengths."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

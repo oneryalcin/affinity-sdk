@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from rich.progress import (
 )
 
 from affinity.models.entities import Opportunity, OpportunityCreate, OpportunityUpdate
+from affinity.models.pagination import PaginatedResponse, V1PaginatedResponse
 from affinity.models.types import ListType
 from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 
@@ -84,11 +86,20 @@ def _resolve_opportunity_selector(
 
 
 @opportunity_group.command(name="ls", cls=RichCommand)
-@click.option("--page-size", type=int, default=None, help="Page size (limit).")
-@click.option("--cursor", type=str, default=None, help="Resume from a prior cursor.")
-@click.option("--max-results", type=int, default=None, help="Stop after N items total.")
-@click.option("--all", "all_pages", is_flag=True, help="Fetch all pages.")
-@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write CSV output.")
+@click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
+@click.option(
+    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
+)
+@click.option("--max-results", "-n", type=int, default=None, help="Stop after N items total.")
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option(
+    "--query",
+    "-q",
+    type=str,
+    default=None,
+    help="Free-text search term.",
+)
+@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
 @output_options
 @click.pass_obj
@@ -99,18 +110,22 @@ def opportunity_ls(
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
+    query: str | None,
     csv_path: str | None,
     csv_bom: bool,
 ) -> None:
     """
-    List opportunities (basic v2 representation).
+    List opportunities.
+
+    Use --query for free-text search.
 
     Examples:
-    - `xaffinityopportunity ls`
-    - `xaffinityopportunity ls --page-size 200`
-    - `xaffinityopportunity ls --cursor <cursor>`
-    - `xaffinityopportunity ls --all --csv opportunities.csv`
-    - `xaffinityopportunity ls --all --csv opportunities.csv --csv-bom`
+    - `xaffinity opportunity ls`
+    - `xaffinity opportunity ls --page-size 200`
+    - `xaffinity opportunity ls --query "Series A" --all`
+    - `xaffinity opportunity ls --cursor <cursor>`
+    - `xaffinity opportunity ls --all --csv opportunities.csv`
+    - `xaffinity opportunity ls --all --csv opportunities.csv --csv-bom`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -133,6 +148,8 @@ def opportunity_ls(
             ctx_modifiers["maxResults"] = max_results
         if all_pages:
             ctx_modifiers["allPages"] = True
+        if query:
+            ctx_modifiers["query"] = query
         if csv_path:
             ctx_modifiers["csv"] = csv_path
         if csv_bom:
@@ -146,6 +163,7 @@ def opportunity_ls(
 
         rows: list[dict[str, object]] = []
         first_page = True
+        use_v1_search = query is not None
 
         show_progress = (
             ctx.progress != "never"
@@ -153,7 +171,19 @@ def opportunity_ls(
             and (ctx.progress == "always" or sys.stderr.isatty())
         )
 
-        pages_iter = client.opportunities.pages(limit=page_size, cursor=cursor)
+        # Use V1 search when --query is provided, otherwise V2 list
+        pages_iter: (
+            Iterator[V1PaginatedResponse[Opportunity]] | Iterator[PaginatedResponse[Opportunity]]
+        )
+        if use_v1_search:
+            assert query is not None
+            pages_iter = client.opportunities.search_pages(
+                query,
+                page_size=page_size,
+                page_token=cursor,
+            )
+        else:
+            pages_iter = client.opportunities.pages(limit=page_size, cursor=cursor)
 
         with ExitStack() as stack:
             progress: Progress | None = None
@@ -172,6 +202,14 @@ def opportunity_ls(
                 task_id = progress.add_task("Fetching", total=max_results)
 
             for page in pages_iter:
+                # Get next cursor/token based on API type
+                if hasattr(page, "next_page_token"):
+                    next_cursor = page.next_page_token
+                    prev_cursor = None  # V1 doesn't have prev cursor
+                else:
+                    next_cursor = page.pagination.next_cursor
+                    prev_cursor = page.pagination.prev_cursor
+
                 for idx, opportunity in enumerate(page.data):
                     rows.append(_opportunity_ls_row(opportunity))
                     if progress and task_id is not None:
@@ -183,15 +221,11 @@ def opportunity_ls(
                                 "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
-                        if (
-                            page.pagination.next_cursor
-                            and not stopped_mid_page
-                            and page.pagination.next_cursor != cursor
-                        ):
+                        if next_cursor and not stopped_mid_page and next_cursor != cursor:
                             pagination = {
                                 "opportunities": {
-                                    "nextCursor": page.pagination.next_cursor,
-                                    "prevCursor": page.pagination.prev_cursor,
+                                    "nextCursor": next_cursor,
+                                    "prevCursor": prev_cursor,
                                 }
                             }
                         return CommandOutput(
@@ -208,11 +242,11 @@ def opportunity_ls(
                         pagination=(
                             {
                                 "opportunities": {
-                                    "nextCursor": page.pagination.next_cursor,
-                                    "prevCursor": page.pagination.prev_cursor,
+                                    "nextCursor": next_cursor,
+                                    "prevCursor": prev_cursor,
                                 }
                             }
-                            if page.pagination.next_cursor
+                            if next_cursor
                             else None
                         ),
                         api_called=True,
@@ -280,7 +314,7 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
     "expand",
     multiple=True,
     type=click.Choice(["people", "companies"]),
-    help="Include related data (repeatable). Uses V1 API for associations.",
+    help="Include related data (repeatable).",
 )
 @click.option(
     "--max-results",
@@ -309,11 +343,11 @@ def opportunity_get(
     Get an opportunity by id or URL.
 
     Examples:
-    - `xaffinityopportunity get 123`
-    - `xaffinityopportunity get https://mydomain.affinity.com/opportunities/123`
-    - `xaffinityopportunity get 123 --details`
-    - `xaffinityopportunity get 123 --expand people`
-    - `xaffinityopportunity get 123 --expand people --expand companies`
+    - `xaffinity opportunity get 123`
+    - `xaffinity opportunity get https://mydomain.affinity.com/opportunities/123`
+    - `xaffinity opportunity get 123 --details`
+    - `xaffinity opportunity get 123 --expand people`
+    - `xaffinity opportunity get 123 --expand people --expand companies`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -526,8 +560,8 @@ def opportunity_create(
     Create a new opportunity.
 
     Examples:
-    - `xaffinityopportunity create --name "Series A" --list "Dealflow"`
-    - `xaffinityopportunity create --name "Series A" --list 123 --person-id 1 --company-id 2`
+    - `xaffinity opportunity create --name "Series A" --list "Dealflow"`
+    - `xaffinity opportunity create --name "Series A" --list 123 --person-id 1 --company-id 2`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -617,8 +651,8 @@ def opportunity_update(
     Update an opportunity (replaces association arrays when provided).
 
     Examples:
-    - `xaffinityopportunity update 123 --name "Series A (Closed)"`
-    - `xaffinityopportunity update 123 --person-id 1 --person-id 2`
+    - `xaffinity opportunity update 123 --name "Series A (Closed)"`
+    - `xaffinity opportunity update 123 --person-id 1 --person-id 2`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -684,7 +718,7 @@ def opportunity_delete(
     Delete an opportunity.
 
     Example:
-    - `xaffinityopportunity delete 123`
+    - `xaffinity opportunity delete 123`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -824,8 +858,8 @@ def opportunity_files_upload(
 
     Examples:
 
-    - `xaffinityopportunity files upload 123 --file doc.pdf`
-    - `xaffinityopportunity files upload 123 --file a.pdf --file b.pdf`
+    - `xaffinity opportunity files upload 123 --file doc.pdf`
+    - `xaffinity opportunity files upload 123 --file a.pdf --file b.pdf`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -902,42 +936,62 @@ def _get_opportunity_list_id(*, client: Any, opportunity_id: int) -> int:
     return int(opp.list_id)
 
 
-@opportunity_group.command(name="set-field", cls=RichCommand)
+@opportunity_group.command(name="field", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
-@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Status').")
-@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
-@click.option("--value", help="Value to set (string).")
-@click.option("--value-json", help="Value to set (JSON).")
-@click.option("--append", is_flag=True, help="Append to multi-value field instead of replacing.")
+@click.option(
+    "--set",
+    "set_values",
+    nargs=2,
+    multiple=True,
+    metavar="FIELD VALUE",
+    help="Set field value (repeatable). Use two args: FIELD VALUE.",
+)
+@click.option(
+    "--unset",
+    "unset_fields",
+    multiple=True,
+    metavar="FIELD",
+    help="Unset field (repeatable). Removes all values for the field.",
+)
+@click.option(
+    "--json",
+    "json_input",
+    type=str,
+    help="JSON object of field:value pairs to set.",
+)
+@click.option(
+    "--get",
+    "get_fields",
+    multiple=True,
+    metavar="FIELD",
+    help="Get specific field values (repeatable).",
+)
 @output_options
 @click.pass_obj
-def opportunity_set_field(
+def opportunity_field(
     ctx: CLIContext,
     opportunity_id: int,
     *,
-    field_name: str | None,
-    field_id: str | None,
-    value: str | None,
-    value_json: str | None,
-    append: bool,
+    set_values: tuple[tuple[str, str], ...],
+    unset_fields: tuple[str, ...],
+    json_input: str | None,
+    get_fields: tuple[str, ...],
 ) -> None:
     """
-    Set a field value on an opportunity.
+    Manage opportunity field values.
 
-    The list_id is automatically detected from the opportunity.
-    Use --field for field name resolution or --field-id for direct field ID.
-    Use --append for multi-value fields to add without replacing existing values.
+    Unified command for getting, setting, and unsetting field values.
+    For field names with spaces, use quotes.
 
     Examples:
 
-    - `xaffinity opportunity set-field 123 --field Status --value "Active"`
-    - `xaffinity opportunity set-field 123 --field-id field-260415 --value "High"`
-    - `xaffinity opportunity set-field 123 --field Tags --value "Priority" --append`
+    - `xaffinity opportunity field 123 --set Status "Active"`
+    - `xaffinity opportunity field 123 --set Status "Active" --set Stage "Negotiation"`
+    - `xaffinity opportunity field 123 --unset Status`
+    - `xaffinity opportunity field 123 --json '{"Status": "Active", "Stage": "Negotiation"}'`
+    - `xaffinity opportunity field 123 --get Status --get Stage`
     """
-
-    from ..errors import CLIError
-    from ..runner import CommandOutput, run_command
-    from ..serialization import serialize_model_for_cli
+    import json as json_module
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         from affinity.models.entities import FieldValueCreate
@@ -947,370 +1001,162 @@ def opportunity_set_field(
             FieldResolver,
             fetch_field_metadata,
             find_field_values_for_field,
-            validate_field_option_mutual_exclusion,
         )
-        from ._v1_parsing import parse_json_value
 
-        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
+        # Validate: at least one operation must be specified
+        has_set = bool(set_values) or bool(json_input)
+        has_unset = bool(unset_fields)
+        has_get = bool(get_fields)
 
-        if value is None and value_json is None:
+        if not has_set and not has_unset and not has_get:
             raise CLIError(
-                "Provide --value or --value-json.",
+                "Provide at least one of --set, --unset, --json, or --get.",
                 exit_code=2,
                 error_type="usage_error",
             )
-        if value is not None and value_json is not None:
+
+        # Validate: --get is exclusive (can't mix read with write)
+        if has_get and (has_set or has_unset):
             raise CLIError(
-                "Use only one of --value or --value-json.",
+                "--get cannot be combined with --set, --unset, or --json.",
                 exit_code=2,
                 error_type="usage_error",
             )
 
         client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Get opportunity's list_id
-        list_id = _get_opportunity_list_id(client=client, opportunity_id=opportunity_id)
-        resolved["listId"] = list_id
-
-        # Fetch field metadata from the opportunity's list
-        field_metadata = fetch_field_metadata(
-            client=client, entity_type="opportunity", list_id=list_id
-        )
+        field_metadata = fetch_field_metadata(client=client, entity_type="opportunity")
         resolver = FieldResolver(field_metadata)
 
-        target_field_id = (
-            field_id
-            if field_id
-            else resolver.resolve_field_name_or_id(field_name or "", context="field")
-        )
-        resolved["fieldId"] = target_field_id
-        resolved["fieldName"] = resolver.get_field_name(target_field_id)
+        results: dict[str, Any] = {}
 
-        # Check if field allows multiple values
-        field_allows_multiple = False
-        for fm in field_metadata:
-            if str(fm.id) == target_field_id:
-                field_allows_multiple = fm.allows_multiple
-                break
+        # Build modifiers for CommandContext
+        ctx_modifiers: dict[str, object] = {}
+        if set_values:
+            ctx_modifiers["set"] = [list(sv) for sv in set_values]
+        if unset_fields:
+            ctx_modifiers["unset"] = list(unset_fields)
+        if json_input:
+            ctx_modifiers["json"] = json_input
+        if get_fields:
+            ctx_modifiers["get"] = list(get_fields)
 
-        # If not appending and field has existing values, delete them first
-        if not append:
+        # Handle --get: read field values
+        if has_get:
+            existing_values = client.field_values.list(opportunity_id=OpportunityId(opportunity_id))
+            field_results: dict[str, Any] = {}
+
+            for field_name in get_fields:
+                target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+                field_values = find_field_values_for_field(
+                    field_values=[serialize_model_for_cli(v) for v in existing_values],
+                    field_id=target_field_id,
+                )
+                resolved_name = resolver.get_field_name(target_field_id) or field_name
+                if field_values:
+                    if len(field_values) == 1:
+                        field_results[resolved_name] = field_values[0].get("value")
+                    else:
+                        field_results[resolved_name] = [fv.get("value") for fv in field_values]
+                else:
+                    field_results[resolved_name] = None
+
+            results["fields"] = field_results
+
+            cmd_context = CommandContext(
+                name="opportunity field",
+                inputs={"opportunityId": opportunity_id},
+                modifiers=ctx_modifiers,
+            )
+
+            return CommandOutput(
+                data=results,
+                context=cmd_context,
+                api_called=True,
+            )
+
+        # Handle --set and --json: set field values
+        set_operations: list[tuple[str, Any]] = []
+
+        # Collect from --set options
+        for field_name, value in set_values:
+            set_operations.append((field_name, value))
+
+        # Collect from --json
+        if json_input:
+            try:
+                json_data = json_module.loads(json_input)
+                if not isinstance(json_data, dict):
+                    raise CLIError(
+                        "--json must be a JSON object.",
+                        exit_code=2,
+                        error_type="usage_error",
+                    )
+                for field_name, value in json_data.items():
+                    set_operations.append((field_name, value))
+            except json_module.JSONDecodeError as e:
+                raise CLIError(
+                    f"Invalid JSON: {e}",
+                    exit_code=2,
+                    error_type="usage_error",
+                ) from e
+
+        # Execute set operations
+        created_values: list[dict[str, Any]] = []
+        for field_name, value in set_operations:
+            target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+
+            # Check for existing values and delete them first (replace behavior)
             existing_values = client.field_values.list(opportunity_id=OpportunityId(opportunity_id))
             existing_for_field = find_field_values_for_field(
                 field_values=[serialize_model_for_cli(v) for v in existing_values],
                 field_id=target_field_id,
             )
-            if existing_for_field:
-                if not field_allows_multiple:
-                    # Single-value field: delete existing value
-                    for fv in existing_for_field:
-                        fv_id = fv.get("id")
-                        if fv_id:
-                            client.field_values.delete(fv_id)
-                else:
-                    # Multi-value field without --append: error
-                    field_label = resolved["fieldName"] or target_field_id
-                    raise CLIError(
-                        f"Field '{field_label}' has {len(existing_for_field)} value(s). "
-                        "Use --append to add, or unset-field first.",
-                        exit_code=2,
-                        error_type="usage_error",
-                    )
+            for fv in existing_for_field:
+                fv_id = fv.get("id")
+                if fv_id:
+                    client.field_values.delete(fv_id)
 
-        # Create the field value
-        parsed_value = value if value_json is None else parse_json_value(value_json, label="value")
-        created = client.field_values.create(
-            FieldValueCreate(
-                field_id=FieldIdType(target_field_id),
-                entity_id=opportunity_id,
-                value=parsed_value,
-            )
-        )
-
-        payload = serialize_model_for_cli(created)
-
-        # Build CommandContext
-        ctx_modifiers: dict[str, object] = {}
-        if field_name:
-            ctx_modifiers["field"] = field_name
-        if field_id:
-            ctx_modifiers["fieldId"] = field_id
-        if append:
-            ctx_modifiers["append"] = True
-
-        cmd_context = CommandContext(
-            name="opportunity set-field",
-            inputs={"opportunityId": opportunity_id},
-            modifiers=ctx_modifiers,
-            resolved={k: str(v) for k, v in resolved.items() if v is not None}
-            if resolved
-            else None,
-        )
-
-        return CommandOutput(
-            data={"fieldValue": payload},
-            context=cmd_context,
-            resolved=resolved,
-            api_called=True,
-        )
-
-    run_command(ctx, command="opportunity set-field", fn=fn)
-
-
-@opportunity_group.command(name="set-fields", cls=RichCommand)
-@click.argument("opportunity_id", type=int)
-@click.option(
-    "--updates-json",
-    required=True,
-    help='JSON object of field name/ID -> value pairs (e.g. \'{"Status": "Active"}\').',
-)
-@output_options
-@click.pass_obj
-def opportunity_set_fields(
-    ctx: CLIContext,
-    opportunity_id: int,
-    *,
-    updates_json: str,
-) -> None:
-    """
-    Set multiple field values on an opportunity at once.
-
-    The list_id is automatically detected from the opportunity.
-    Field names are resolved case-insensitively. Field IDs can also be used.
-    All field names are validated before any updates are applied.
-
-    Examples:
-
-    - `xaffinity opportunity set-fields 123 --updates-json '{"Status": "Active"}'`
-    """
-
-    from ..errors import CLIError
-    from ..runner import CommandOutput, run_command
-    from ..serialization import serialize_model_for_cli
-
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        from affinity.models.entities import FieldValueCreate
-        from affinity.types import FieldId as FieldIdType
-
-        from ..field_utils import FieldResolver, fetch_field_metadata
-        from ._v1_parsing import parse_json_value
-
-        parsed = parse_json_value(updates_json, label="updates-json")
-        if not isinstance(parsed, dict):
-            raise CLIError(
-                "--updates-json must be a JSON object.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        if not parsed:
-            raise CLIError(
-                "--updates-json cannot be empty.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Get opportunity's list_id
-        list_id = _get_opportunity_list_id(client=client, opportunity_id=opportunity_id)
-        resolved["listId"] = list_id
-
-        # Fetch field metadata from the opportunity's list
-        field_metadata = fetch_field_metadata(
-            client=client, entity_type="opportunity", list_id=list_id
-        )
-        resolver = FieldResolver(field_metadata)
-
-        # Validate all field names - this raises on any invalid names
-        resolved_updates, _ = resolver.resolve_all_field_names_or_ids(parsed, context="field")
-
-        # Create field values
-        results: list[dict[str, Any]] = []
-        for fid, field_value in resolved_updates.items():
+            # Create new value
             created = client.field_values.create(
                 FieldValueCreate(
-                    field_id=FieldIdType(fid),
+                    field_id=FieldIdType(target_field_id),
                     entity_id=opportunity_id,
-                    value=field_value,
+                    value=value,
                 )
             )
-            results.append(serialize_model_for_cli(created))
+            created_values.append(serialize_model_for_cli(created))
 
-        resolved["fieldsUpdated"] = len(results)
+        # Handle --unset: remove field values
+        deleted_count = 0
+        for field_name in unset_fields:
+            target_field_id = resolver.resolve_field_name_or_id(field_name, context="field")
+            existing_values = client.field_values.list(opportunity_id=OpportunityId(opportunity_id))
+            existing_for_field = find_field_values_for_field(
+                field_values=[serialize_model_for_cli(v) for v in existing_values],
+                field_id=target_field_id,
+            )
+            for fv in existing_for_field:
+                fv_id = fv.get("id")
+                if fv_id:
+                    client.field_values.delete(fv_id)
+                    deleted_count += 1
 
-        cmd_context = CommandContext(
-            name="opportunity set-fields",
-            inputs={"opportunityId": opportunity_id},
-            modifiers={},
-            resolved={k: str(v) for k, v in resolved.items() if v is not None}
-            if resolved
-            else None,
-        )
-
-        return CommandOutput(
-            data={"fieldValues": results},
-            context=cmd_context,
-            resolved=resolved,
-            api_called=True,
-        )
-
-    run_command(ctx, command="opportunity set-fields", fn=fn)
-
-
-@opportunity_group.command(name="unset-field", cls=RichCommand)
-@click.argument("opportunity_id", type=int)
-@click.option("-f", "--field", "field_name", help="Field name (e.g. 'Status').")
-@click.option("--field-id", help="Field ID (e.g. 'field-260415').")
-@click.option("--value", help="Specific value to unset (for multi-value fields).")
-@click.option("--all-values", "unset_all", is_flag=True, help="Unset all values for field.")
-@output_options
-@click.pass_obj
-def opportunity_unset_field(
-    ctx: CLIContext,
-    opportunity_id: int,
-    *,
-    field_name: str | None,
-    field_id: str | None,
-    value: str | None,
-    unset_all: bool,
-) -> None:
-    """
-    Unset a field value from an opportunity.
-
-    The list_id is automatically detected from the opportunity.
-    For multi-value fields, use --value to remove a specific value or
-    --all-values to remove all values.
-
-    Examples:
-
-    - `xaffinity opportunity unset-field 123 --field Status`
-    - `xaffinity opportunity unset-field 123 --field Tags --value "Priority"`
-    - `xaffinity opportunity unset-field 123 --field Tags --all-values`
-    """
-
-    from ..errors import CLIError
-    from ..runner import CommandOutput, run_command
-    from ..serialization import serialize_model_for_cli
-
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        from ..field_utils import (
-            FieldResolver,
-            fetch_field_metadata,
-            find_field_values_for_field,
-            format_value_for_comparison,
-            validate_field_option_mutual_exclusion,
-        )
-
-        validate_field_option_mutual_exclusion(field=field_name, field_id=field_id)
-
-        client = ctx.get_client(warnings=warnings)
-        resolved: dict[str, Any] = {}
-
-        # Get opportunity's list_id
-        list_id = _get_opportunity_list_id(client=client, opportunity_id=opportunity_id)
-        resolved["listId"] = list_id
-
-        # Fetch field metadata from the opportunity's list
-        field_metadata = fetch_field_metadata(
-            client=client, entity_type="opportunity", list_id=list_id
-        )
-        resolver = FieldResolver(field_metadata)
-
-        target_field_id = (
-            field_id
-            if field_id
-            else resolver.resolve_field_name_or_id(field_name or "", context="field")
-        )
-        resolved["fieldId"] = target_field_id
-        resolved["fieldName"] = resolver.get_field_name(target_field_id)
-
-        # Build CommandContext upfront (used for all return paths)
-        ctx_modifiers: dict[str, object] = {}
-        if field_name:
-            ctx_modifiers["field"] = field_name
-        if field_id:
-            ctx_modifiers["fieldId"] = field_id
-        if value:
-            ctx_modifiers["value"] = value
-        if unset_all:
-            ctx_modifiers["allValues"] = True
+        # Build result
+        if created_values:
+            results["created"] = created_values
+        if deleted_count > 0:
+            results["deleted"] = deleted_count
 
         cmd_context = CommandContext(
-            name="opportunity unset-field",
+            name="opportunity field",
             inputs={"opportunityId": opportunity_id},
             modifiers=ctx_modifiers,
-            resolved={k: str(v) for k, v in resolved.items() if v is not None}
-            if resolved
-            else None,
         )
-
-        # Get existing field values
-        existing_values = client.field_values.list(opportunity_id=OpportunityId(opportunity_id))
-        existing_for_field = find_field_values_for_field(
-            field_values=[serialize_model_for_cli(v) for v in existing_values],
-            field_id=target_field_id,
-        )
-
-        if not existing_for_field:
-            # Idempotent - success with warning
-            field_label = resolved["fieldName"] or target_field_id
-            warnings.append(f"Field '{field_label}' has no values on this opportunity.")
-            return CommandOutput(
-                data={"deleted": 0},
-                context=cmd_context,
-                resolved=resolved,
-                api_called=True,
-            )
-
-        # Determine which values to delete
-        to_delete: list[dict[str, Any]] = []
-
-        if len(existing_for_field) == 1:
-            # Single value: delete it (no flags needed)
-            to_delete = existing_for_field
-        elif unset_all:
-            # Multi-value with --all-values: delete all
-            to_delete = existing_for_field
-        elif value is not None:
-            # Multi-value with --value: find matching value
-            value_str = value.strip()
-            for fv in existing_for_field:
-                fv_value = fv.get("value")
-                if format_value_for_comparison(fv_value) == value_str:
-                    to_delete.append(fv)
-                    break
-            if not to_delete:
-                field_label = resolved["fieldName"] or target_field_id
-                raise CLIError(
-                    f"Value '{value}' not found for field '{field_label}'.",
-                    exit_code=2,
-                    error_type="not_found",
-                )
-        else:
-            # Multi-value without --value or --all-values: error
-            raise CLIError(
-                f"Field has {len(existing_for_field)} values. "
-                "Use --value to unset a specific value, or --all-values to unset all.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
-        # Delete the field values
-        deleted_count = 0
-        for fv in to_delete:
-            fv_id = fv.get("id")
-            if fv_id:
-                client.field_values.delete(fv_id)
-                deleted_count += 1
 
         return CommandOutput(
-            data={"deleted": deleted_count},
+            data=results,
             context=cmd_context,
-            resolved=resolved,
             api_called=True,
         )
 
-    run_command(ctx, command="opportunity unset-field", fn=fn)
+    run_command(ctx, command="opportunity field", fn=fn)

@@ -274,7 +274,7 @@ def test_interaction_ls_minimal(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "interaction", "ls"],
+        ["--json", "-q", "interaction", "ls", "--person-id", "1"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0

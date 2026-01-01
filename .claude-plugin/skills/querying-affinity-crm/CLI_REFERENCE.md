@@ -137,8 +137,8 @@ xaffinity company delete 456
 xaffinity list ls
 
 # Get list details
-xaffinity list view 789
-xaffinity list view 'name:"Deal Pipeline"'
+xaffinity list get 789
+xaffinity list get 'name:"Deal Pipeline"'
 
 # Get list fields
 xaffinity list fields 789
@@ -170,6 +170,26 @@ xaffinity list export LIST_ID --expand people \
 See [LIST_EXPORT_EXPAND.md](LIST_EXPORT_EXPAND.md) for detailed options: CSV modes, field expansion, association limits, error handling.
 
 See [Filtering](#filtering) section for filter syntax reference.
+
+### List Entries
+
+Work with rows within a list. The `entry` top-level command is shorthand for `list entry`:
+
+```bash
+# Get a list entry (both forms work identically)
+xaffinity entry get 789 12345
+xaffinity list entry get 789 12345
+
+# Add entry to a list
+xaffinity entry add 789 --person-id 123
+
+# Modify field values
+xaffinity entry set-field 789 12345 --field Status --value Active
+xaffinity entry unset-field 789 12345 --field Status
+
+# Delete entry
+xaffinity entry delete 789 12345
+```
 
 ## Opportunities
 
@@ -335,8 +355,10 @@ xaffinity person ls --json --all | jq -r '.data.persons[] | [.id, .name, .primar
 
 ## CSV Export
 
+The `--csv` flag writes data to a file while leaving stdout format unchanged (table by default, or JSON with `--json`):
+
 ```bash
-# Basic export
+# Basic export (writes to file, shows table on stdout)
 xaffinity person ls --all --csv people.csv
 xaffinity company ls --all --csv companies.csv
 xaffinity opportunity ls --all --csv opps.csv
@@ -344,6 +366,11 @@ xaffinity list export 123 --all --csv entries.csv
 
 # Excel-compatible (UTF-8 BOM)
 xaffinity person ls --all --csv people.csv --csv-bom
+
+# JSON on stdout + CSV to file
+xaffinity person ls --all --csv people.csv --json
 ```
 
-**Note**: `--csv` requires `--all` to fetch all pages.
+**Notes:**
+- `--csv` requires `--all` to fetch all pages
+- `--csv` writes to file; stdout format is controlled by `--output` or `--json`
