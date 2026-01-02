@@ -8,7 +8,8 @@
 [![Typed](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy-lang.org/)
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-orange.svg)](https://docs.pydantic.dev/)
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/)
-[![MCP](https://img.shields.io/badge/MCP-server-green.svg)](https://yaniv-golan.github.io/affinity-sdk/mcp/)
+[![MCP](https://img.shields.io/badge/MCP-server-green?logo=modelcontextprotocol)](https://yaniv-golan.github.io/affinity-sdk/mcp/)
+[![MCP Bash Framework](https://img.shields.io/badge/MCP-MCP_Bash_Framework-green?logo=modelcontextprotocol)](https://github.com/yaniv-golan/mcp-bash-framework)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugins-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugins/)
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
