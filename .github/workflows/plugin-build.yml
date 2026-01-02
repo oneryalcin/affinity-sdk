@@ -1,0 +1,62 @@
+name: Build MCP Plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - '!mcp/.claude-plugin/xaffinity-mcp-plugin.zip'
+      - '!mcp/.claude-plugin/VERSION'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build MCP plugin ZIP
+        run: make -C mcp plugin
+
+      - name: Verify plugin structure
+        run: |
+          make -C mcp verify
+          test -f mcp/.claude-plugin/xaffinity-mcp.sh
+          test -f mcp/.claude-plugin/plugin.json
+          test -f mcp/.claude-plugin/xaffinity-mcp-plugin.zip
+          test -f mcp/.claude-plugin/VERSION
+          echo "Plugin structure validated"
+
+      - name: Test extraction
+        run: |
+          cd mcp/.claude-plugin
+          mkdir -p .mcp-extracted
+          unzip -q xaffinity-mcp-plugin.zip -d .mcp-extracted
+          test -x .mcp-extracted/xaffinity-mcp.sh
+          # Verify version file was extracted
+          test -f .mcp-extracted/VERSION
+          rm -rf .mcp-extracted
+          echo "Extraction test passed"
+
+      - name: Commit plugin bundle
+        run: |
+          # Skip if last commit was from this action (belt-and-suspenders with path exclusions)
+          if git log -1 --pretty=%B | grep -q "\[skip ci\]"; then
+            echo "Skipping - last commit was from CI"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mcp/.claude-plugin/xaffinity-mcp-plugin.zip mcp/.claude-plugin/VERSION
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build: update MCP plugin bundle [skip ci]"
+            git push
+          fi

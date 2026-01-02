@@ -1,56 +1,37 @@
-name: Plugin Release
+name: Release MCP Plugin
 
 on:
   push:
     tags: ["plugin-v*.*.*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., plugin-v1.0.0)'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build MCP plugin
-        run: make -C mcp plugin
-
-      - name: Verify plugin structure
-        run: |
-          test -f mcp/.claude-plugin/xaffinity-mcp.sh
-          test -f mcp/.claude-plugin/plugin.json
-          test -d mcp/.claude-plugin/tools
-          test -d mcp/.claude-plugin/prompts
-          test -d mcp/.claude-plugin/resources
-          echo "Plugin structure validated"
-
-      - name: Create plugin archive
-        run: |
-          cd mcp/.claude-plugin
-          zip -r ../../xaffinity-mcp-plugin.zip .
-
-      - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
         with:
-          name: xaffinity-mcp-plugin
-          path: xaffinity-mcp-plugin.zip
-          if-no-files-found: error
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
-  release:
-    runs-on: ubuntu-latest
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/plugin-v')
-    steps:
-      - name: Download plugin artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: xaffinity-mcp-plugin
+      - name: Verify plugin bundle exists
+        run: |
+          test -f mcp/.claude-plugin/xaffinity-mcp-plugin.zip || {
+            echo "Error: Plugin ZIP not found. Run 'make plugin' and commit first." >&2
+            exit 1
+          }
+          echo "Plugin version: $(cat mcp/.claude-plugin/VERSION)"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: xaffinity-mcp-plugin.zip
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: mcp/.claude-plugin/xaffinity-mcp-plugin.zip
           generate_release_notes: true
-          name: MCP Plugin ${{ github.ref_name }}
+          name: MCP Plugin ${{ github.event.inputs.tag || github.ref_name }}
