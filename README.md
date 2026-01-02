@@ -20,16 +20,34 @@ Maintainer: GitHub: `yaniv-golan`
 
 Documentation: https://yaniv-golan.github.io/affinity-sdk/
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage Examples](#usage-examples)
+- [Type System](#type-system)
+- [API Coverage](#api-coverage)
+- [Configuration](#configuration)
+- [Error Handling](#error-handling)
+- [Async Support](#async-support)
+- [Development](#development)
+
 ## Features
 
-- **V2 terminology** - Uses `Company` (not `Organization`) throughout for consistency with Affinity's latest API
-- **Strong typing** - Full Pydantic V2 models with typed ID classes (`PersonId`, `CompanyId`, `ListId`, etc.)
+- **Complete API coverage** - Full V1 + V2 support with smart routing
+- **CLI included** - Scriptable command-line interface for automation
+- **Strong typing** - Full Pydantic V2 models with typed ID classes
 - **No magic numbers** - Comprehensive enums for all API constants
 - **Automatic pagination** - Iterator support for seamless pagination
-- **Smart API routing** - Uses V2 API for reads, V1 for writes (V2 doesn't support all operations yet)
 - **Rate limit handling** - Automatic retry with exponential backoff
 - **Response caching** - Optional caching for field metadata
 - **Both sync and async** - Full support for both patterns
+
+### AI Integrations
+
+- **Claude Code plugins** - SDK and CLI knowledge for AI-assisted development
+- **MCP Server** - Connect any MCP-compatible AI tool to Affinity
 
 ## Installation
 
