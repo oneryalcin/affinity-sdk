@@ -1,6 +1,6 @@
 # MCP Server
 
-The xaffinity MCP server connects any MCP-compatible AI tool to Affinity CRM.
+The xaffinity MCP server connects desktop AI tools to Affinity CRM.
 
 ## Compatible Clients
 
@@ -14,7 +14,7 @@ MCP (Model Context Protocol) is an open standard. This server works with:
 - **VS Code + GitHub Copilot**
 - **Continue** (open-source AI assistant)
 - **JetBrains IDEs** (via MCP support)
-- Any application implementing the [MCP specification](https://modelcontextprotocol.io/)
+- Any desktop application supporting [MCP stdio transport](https://modelcontextprotocol.io/)
 
 ## Features
 
@@ -96,7 +96,7 @@ Add to your MCP settings:
 
 ### Generic MCP Client
 
-Any MCP client can connect using:
+Any MCP client supporting stdio transport can connect using:
 
 ```json
 {

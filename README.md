@@ -47,7 +47,7 @@ Documentation: https://yaniv-golan.github.io/affinity-sdk/
 ### AI Integrations
 
 - **Claude Code plugins** - SDK and CLI knowledge for AI-assisted development
-- **MCP Server** - Connect any MCP-compatible AI tool to Affinity
+- **MCP Server** - Connect desktop AI tools to Affinity
 
 ## Installation
 

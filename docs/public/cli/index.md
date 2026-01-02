@@ -17,7 +17,7 @@ See [Commands Reference](commands.md) for complete command documentation.
 
 ### MCP Server
 
-Connect any MCP-compatible AI tool (Claude Desktop, Cursor, Windsurf, VS Code + Copilot) to Affinity. See [MCP Server](../mcp/index.md).
+Connect desktop AI tools (Claude Desktop, Cursor, Windsurf, VS Code + Copilot) to Affinity. See [MCP Server](../mcp/index.md).
 
 ### Claude Code
 
