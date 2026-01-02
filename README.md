@@ -73,7 +73,7 @@ CLI docs: https://yaniv-golan.github.io/affinity-sdk/cli/
 
 ### MCP Server
 
-Connect any MCP-compatible AI tool to Affinity CRM:
+Connect desktop AI tools to Affinity CRM:
 
 - Claude Desktop, ChatGPT Desktop, Cursor, Windsurf, VS Code + Copilot, Zed, and more
 
