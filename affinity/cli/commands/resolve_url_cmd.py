@@ -71,7 +71,7 @@ def _parse_affinity_url(url: str) -> ResolvedUrl:
 
 
 @click.command(name="resolve-url", cls=RichCommand)
-@click.argument("url")
+@click.argument("url", type=str)
 @output_options
 @click.pass_obj
 def resolve_url_cmd(ctx: CLIContext, url: str) -> None:

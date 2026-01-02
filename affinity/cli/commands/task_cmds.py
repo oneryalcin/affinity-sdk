@@ -20,7 +20,7 @@ def _task_payload(task: MergeTask) -> dict[str, object]:
 
 
 @task_group.command(name="get", cls=RichCommand)
-@click.argument("task_url")
+@click.argument("task_url", type=str)
 @output_options
 @click.pass_obj
 def task_get(ctx: CLIContext, task_url: str) -> None:
@@ -43,7 +43,7 @@ def task_get(ctx: CLIContext, task_url: str) -> None:
 
 
 @task_group.command(name="wait", cls=RichCommand)
-@click.argument("task_url")
+@click.argument("task_url", type=str)
 @click.option(
     "--timeout",
     type=float,

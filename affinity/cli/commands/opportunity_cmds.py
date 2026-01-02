@@ -302,7 +302,7 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
 
 
 @opportunity_group.command(name="get", cls=RichCommand)
-@click.argument("opportunity_selector")
+@click.argument("opportunity_selector", type=str)
 @click.option(
     "--details",
     "details",

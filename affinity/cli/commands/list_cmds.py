@@ -291,7 +291,7 @@ def list_create(
 
 
 @list_group.command(name="get", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @output_options
 @click.pass_obj
 def list_get(ctx: CLIContext, list_selector: str) -> None:
@@ -350,7 +350,7 @@ ExpandOnError = Literal["raise", "skip"]
 
 
 @list_group.command(name="export", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.option("--saved-view", type=str, default=None, help="Saved view id or name.")
 @click.option("--field", "fields", type=str, multiple=True, help="Field name or id (repeatable).")
 @click.option(
@@ -2376,7 +2376,7 @@ def list_entry_group() -> None:
 
 
 @list_entry_group.command(name="get", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
 @output_options
 @click.pass_obj
@@ -2463,7 +2463,7 @@ def _validate_entry_target(
 
 
 @list_entry_group.command(name="add", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.option("--person-id", type=int, default=None, help="Person id to add.")
 @click.option("--company-id", type=int, default=None, help="Company id to add.")
 @click.option("--creator-id", type=int, default=None, help="Creator id override.")
@@ -2532,7 +2532,7 @@ def list_entry_add(
 
 
 @list_entry_group.command(name="delete", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
 @output_options
 @click.pass_obj
@@ -2572,7 +2572,7 @@ def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> Non
 
 
 @list_entry_group.command(name="set-field", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
 @click.option("-f", "--field", "field_name", help="Field name (e.g. 'Status').")
 @click.option("--field-id", help="Field ID (e.g. 'field-260415').")
@@ -2717,7 +2717,7 @@ def list_entry_set_field(
 
 
 @list_entry_group.command(name="set-fields", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
 @click.option(
     "--updates-json",
@@ -2811,7 +2811,7 @@ def list_entry_set_fields(
 
 
 @list_entry_group.command(name="unset-field", cls=RichCommand)
-@click.argument("list_selector")
+@click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
 @click.option("-f", "--field", "field_name", help="Field name (e.g. 'Status').")
 @click.option("--field-id", help="Field ID (e.g. 'field-260415').")

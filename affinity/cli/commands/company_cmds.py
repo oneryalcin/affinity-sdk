@@ -260,7 +260,7 @@ def company_group() -> None:
 
 
 @company_group.command(name="search", cls=RichCommand)
-@click.argument("query")
+@click.argument("query", type=str)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
@@ -1138,7 +1138,7 @@ def company_files_upload(
 
 
 @company_group.command(name="get", cls=RichCommand)
-@click.argument("company_selector")
+@click.argument("company_selector", type=str)
 @click.option(
     "-f",
     "--field",

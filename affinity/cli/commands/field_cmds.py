@@ -247,7 +247,7 @@ def field_create(
 
 
 @field_group.command(name="delete", cls=RichCommand)
-@click.argument("field_id")
+@click.argument("field_id", type=str)
 @output_options
 @click.pass_obj
 def field_delete(ctx: CLIContext, field_id: str) -> None:
@@ -276,7 +276,7 @@ def field_delete(ctx: CLIContext, field_id: str) -> None:
 
 
 @field_group.command(name="history", cls=RichCommand)
-@click.argument("field_id")
+@click.argument("field_id", type=str)
 @click.option("--person-id", type=int, default=None, help="Filter by person ID.")
 @click.option("--company-id", type=int, default=None, help="Filter by company ID.")
 @click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity ID.")

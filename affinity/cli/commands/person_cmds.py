@@ -147,7 +147,7 @@ def person_group() -> None:
 
 
 @person_group.command(name="search", cls=RichCommand)
-@click.argument("query")
+@click.argument("query", type=str)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
@@ -855,7 +855,7 @@ def _resolve_person_field_ids(
 
 
 @person_group.command(name="get", cls=RichCommand)
-@click.argument("person_selector")
+@click.argument("person_selector", type=str)
 @click.option(
     "-f",
     "--field",
