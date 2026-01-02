@@ -429,7 +429,7 @@ def _redact_external_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
-_URL_IN_TEXT_RE = re.compile(r"https?://[^\\s\"']+")
+_URL_IN_TEXT_RE = re.compile(r"https?://[^\s\"']+")
 
 
 def _safe_body_preview(content: bytes, *, api_key: str, external: bool) -> str:

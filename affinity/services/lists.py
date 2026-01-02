@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
 
 
-_LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\\d+)/saved-views(?:/|$)")
+_LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\d+)/saved-views(?:/|$)")
 
 T = TypeVar("T", bound=BaseModel)
 
