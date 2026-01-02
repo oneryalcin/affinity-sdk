@@ -114,6 +114,43 @@ AFFINITY_SESSION_CACHE_TTL=300 ./xaffinity-mcp.sh
 MCPBASH_LOG_LEVEL=debug ./xaffinity-mcp.sh
 ```
 
+### Claude Code Plugin
+
+The MCP server is also available as a Claude Code plugin, distributed via the repository's own marketplace (`.claude-plugin/marketplace.json`). For standalone MCP server usage with other clients, see the main [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/mcp/).
+
+The plugin files must be assembled before publishing:
+
+#### Build the plugin
+
+```bash
+make plugin
+```
+
+This copies the MCP server files into `.claude-plugin/`:
+- `xaffinity-mcp.sh`, `xaffinity-mcp-env.sh`
+- `tools/`, `prompts/`, `resources/`, `lib/`
+- `completions/`, `providers/`, `scripts/`, `server.d/`
+
+#### Clean build artifacts
+
+```bash
+make clean
+```
+
+#### Plugin structure
+
+```
+.claude-plugin/
+├── plugin.json          # Plugin manifest (checked in)
+├── skills/              # Claude Code skills (checked in)
+├── xaffinity-mcp.sh     # MCP server (copied by make)
+├── tools/               # MCP tools (copied by make)
+├── prompts/             # MCP prompts (copied by make)
+└── ...                  # Other MCP files (copied by make)
+```
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md#mcp-plugin-development) for release instructions.
+
 ## License
 
 See the main repository license.

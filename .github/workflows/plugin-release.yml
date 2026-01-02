@@ -1,0 +1,56 @@
+name: Plugin Release
+
+on:
+  push:
+    tags: ["plugin-v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MCP plugin
+        run: make -C mcp plugin
+
+      - name: Verify plugin structure
+        run: |
+          test -f mcp/.claude-plugin/xaffinity-mcp.sh
+          test -f mcp/.claude-plugin/plugin.json
+          test -d mcp/.claude-plugin/tools
+          test -d mcp/.claude-plugin/prompts
+          test -d mcp/.claude-plugin/resources
+          echo "Plugin structure validated"
+
+      - name: Create plugin archive
+        run: |
+          cd mcp/.claude-plugin
+          zip -r ../../xaffinity-mcp-plugin.zip .
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xaffinity-mcp-plugin
+          path: xaffinity-mcp-plugin.zip
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/plugin-v')
+    steps:
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: xaffinity-mcp-plugin
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: xaffinity-mcp-plugin.zip
+          generate_release_notes: true
+          name: MCP Plugin ${{ github.ref_name }}

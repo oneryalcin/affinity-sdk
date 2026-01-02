@@ -61,11 +61,43 @@ We recommend enabling pre-commit hooks:
 pre-commit install
 ```
 
+### MCP Plugin Development
+
+The MCP server (built on the `xaffinity` CLI) is also available as a Claude Code plugin. For standalone MCP server usage, see the [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/mcp/).
+
+The plugin is distributed via the repository's own marketplace (`.claude-plugin/marketplace.json`). The plugin source files live in `mcp/` but must be assembled into `mcp/.claude-plugin/` before publishing.
+
+#### Building the plugin
+
+```bash
+cd mcp
+make plugin
+```
+
+This copies the MCP server files (`xaffinity-mcp.sh`, `tools/`, `prompts/`, etc.) into `.claude-plugin/`. The copied files are git-ignored.
+
+#### CI validation
+
+The `mcp-plugin` job in `.github/workflows/ci.yml` automatically builds and validates the plugin structure on every push/PR.
+
+#### Releasing the plugin
+
+Plugin releases use a separate tag format (`plugin-vX.Y.Z`):
+
+```bash
+cd mcp
+make plugin                    # Build the plugin
+git tag -a plugin-v1.0.1 -m "Plugin v1.0.1"
+git push origin plugin-v1.0.1
+```
+
+The `.github/workflows/plugin-release.yml` workflow creates a GitHub Release with the plugin archive.
+
 ### Releasing (maintainers)
 
 This repo uses PyPI trusted publishing (OIDC) via `.github/workflows/release.yml`.
 
-Release steps:
+#### SDK Release steps
 
 1. Update version in `pyproject.toml` and add release notes (e.g., `CHANGELOG.md`).
 2. Run quality checks locally:
