@@ -9,9 +9,10 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Determine install location
 if [[ -n "${MCPBASH_HOME:-}" ]]; then
-    echo "MCPBASH_HOME is set - using user-managed installation at ${MCPBASH_HOME}"
-    echo "Skipping auto-install. Ensure framework >= ${FRAMEWORK_VERSION} is installed."
-    exit 0
+    echo "MCPBASH_HOME is set - refusing to modify user-managed installation" >&2
+    echo "Location: ${MCPBASH_HOME}" >&2
+    echo "To proceed: unset MCPBASH_HOME or upgrade manually" >&2
+    exit 3  # Policy refusal (aligned with mcp-bash 0.9.1)
 fi
 
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/mcp-bash"
@@ -23,16 +24,24 @@ echo "Installing MCP Bash Framework ${FRAMEWORK_VERSION}..."
 mkdir -p "$(dirname "$INSTALL_DIR")"
 mkdir -p "$(dirname "$LAUNCHER_PATH")"
 
-# Clone or update framework
+# Clone or update framework using secure fetch pattern
+# (avoids downloading untrusted code before verification - see mcp-bash 0.9.1 docs)
+FRAMEWORK_REPO="https://github.com/yaniv-golan/mcp-bash-framework.git"
+
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     echo "Updating existing installation..."
     cd "$INSTALL_DIR"
-    git fetch origin
-    git checkout "${FRAMEWORK_VERSION}"
+    git -c fetch.fsckobjects=true fetch origin "${FRAMEWORK_VERSION}"
+    git checkout FETCH_HEAD
 else
     echo "Fresh installation..."
     rm -rf "$INSTALL_DIR"
-    git clone --branch "${FRAMEWORK_VERSION}" --depth 1 https://github.com/yaniv-golan/mcp-bash-framework.git "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    git init "$INSTALL_DIR"
+    git -C "$INSTALL_DIR" remote add origin "$FRAMEWORK_REPO"
+    # Secure fetch: only downloads the specific ref, validates git objects
+    git -C "$INSTALL_DIR" -c fetch.fsckobjects=true fetch --depth 1 origin "${FRAMEWORK_VERSION}"
+    git -C "$INSTALL_DIR" checkout FETCH_HEAD
 fi
 
 # Create launcher symlink

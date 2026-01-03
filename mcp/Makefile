@@ -36,7 +36,7 @@ MCP_DIRS := \
 # Default target: build both MCPB bundle and plugin ZIP
 all: mcpb plugin
 
-# Build MCPB bundle using mcp-bash framework (requires mcp-bash 0.9.0+)
+# Build MCPB bundle using mcp-bash framework (requires mcp-bash 0.9.1+)
 mcpb:
 	@echo "Building MCPB bundle..."
 	@mkdir -p "$(MCPB_OUTPUT_DIR)"
@@ -106,7 +106,7 @@ help:
 	@echo "Available targets:"
 	@echo ""
 	@echo "  MCPB (preferred for MCP clients):"
-	@echo "    mcpb          - Build MCPB bundle (requires mcp-bash 0.9.0+)"
+	@echo "    mcpb          - Build MCPB bundle (requires mcp-bash 0.9.1+)"
 	@echo "    mcpb-validate - Validate MCPB configuration"
 	@echo ""
 	@echo "  Claude Code Plugin:"

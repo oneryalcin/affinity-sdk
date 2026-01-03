@@ -25,7 +25,7 @@ jobs:
       - name: Install mcp-bash framework
         run: |
           curl -fsSL https://raw.githubusercontent.com/yaniv-golan/mcp-bash-framework/main/install.sh | \
-            bash -s -- --version v0.9.0 --yes
+            bash -s -- --version v0.9.1 --yes
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Verify mcp-bash installation
