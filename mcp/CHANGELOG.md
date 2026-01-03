@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **get-entity-dossier**: Fixed `relationship-strength get` (doesn't exist) → `relationship-strength ls --external-id`
 - **get-entity-dossier**: Fixed entity data extraction path (`.data` → `.data.person`/`.data.company`/`.data.opportunity`)
+- **get-entity-dossier**: Fixed interaction fetching - now queries all types (Affinity API limitation)
 - **get-relationship-insights**: Fixed relationship-strength command usage
 - **get-interactions**: Now queries all interaction types (email, meeting, call, chat-message) when no type specified, due to Affinity API limitation
 - **get-interactions**: Fixed null participant handling in jq transformation
