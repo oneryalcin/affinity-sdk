@@ -1,0 +1,120 @@
+# Versioning Policy
+
+This document defines how versions are managed across the affinity-api-x repository.
+
+## Overview
+
+| Component | Version Source | Versioning |
+|-----------|----------------|------------|
+| SDK + CLI | `pyproject.toml` | Single source of truth, SemVer |
+| SDK Plugin | Auto-synced | Matches SDK version |
+| CLI Plugin | Auto-synced | Matches SDK version |
+| MCP Server | `mcp/VERSION` | Independent, declares CLI compatibility |
+
+## Semantic Versioning Rules
+
+We follow [SemVer 2.0.0](https://semver.org/). Given version `MAJOR.MINOR.PATCH`:
+
+### When to Bump MAJOR (breaking change)
+- Removing or renaming a public SDK class/method
+- Changing CLI command names or required arguments
+- Changing JSON output structure in incompatible ways
+- Removing CLI flags or options
+
+### When to Bump MINOR (new feature, backwards-compatible)
+- Adding new SDK classes/methods
+- Adding new CLI commands or optional flags
+- Adding new fields to JSON output (additive)
+- Performance improvements with no API changes
+
+### When to Bump PATCH (bug fix, backwards-compatible)
+- Fixing bugs without changing the API
+- Documentation improvements
+- Internal refactoring with no external impact
+
+## Pre-1.0 Versioning (Current State)
+
+**SDK is currently at 0.x.y** — per [SemVer spec item 4](https://semver.org/#spec-item-4):
+> *"Major version zero (0.y.z) is for initial development. Anything MAY change at any time."*
+
+This means:
+- MINOR bumps (0.6 → 0.7) MAY include breaking changes
+- PATCH bumps (0.6.5 → 0.6.6) should be backwards-compatible
+- MCP must track CLI minor version for compatibility
+
+## CLI Changes That Affect MCP
+
+The MCP server shells out to CLI commands. These changes require MCP updates:
+
+| CLI Change | MCP Impact | Action Required |
+|------------|------------|-----------------|
+| New command added | None | Optional: add MCP tool |
+| New optional flag | None | Optional: use new flag |
+| JSON output field added | None | Backwards-compatible |
+| JSON output field removed | **Breaking** | Update MCP, bump COMPATIBILITY |
+| JSON output structure changed | **Breaking** | Update MCP, bump COMPATIBILITY |
+| Command renamed | **Breaking** | Update MCP, bump COMPATIBILITY |
+| Required flag added | **Breaking** | Update MCP, bump COMPATIBILITY |
+
+## How to Bump Versions
+
+### SDK Version Bump
+
+1. Update version in `pyproject.toml`
+2. Run pre-commit (syncs plugin versions automatically)
+3. Update `CHANGELOG.md` with changes
+4. If CLI output changed: check MCP compatibility
+5. Commit and tag: `git tag v0.6.6`
+
+### MCP Version Bump
+
+1. Update `mcp/VERSION`
+2. Update `mcp/.claude-plugin/plugin.json` version field
+3. If CLI requirements changed: update `mcp/COMPATIBILITY`
+4. Update `mcp/CHANGELOG.md`
+5. Commit and tag: `git tag plugin-v1.1.0`
+
+## Testing MCP Compatibility
+
+Before releasing a CLI change that modifies JSON output:
+
+```bash
+# 1. Build and install the new CLI locally
+pip install -e .
+
+# 2. Run MCP tools manually to verify they still work
+cd mcp
+./xaffinity-mcp.sh validate
+
+# 3. Test specific tools
+source lib/common.sh
+run_xaffinity_readonly person ls --query "test" --output json --quiet
+```
+
+## Version File Locations
+
+| File | Purpose | Updated By |
+|------|---------|------------|
+| `pyproject.toml` | SDK/CLI version | Manual |
+| `plugins/affinity-sdk/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
+| `plugins/xaffinity-cli/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
+| `mcp/VERSION` | MCP distribution version | Manual |
+| `mcp/COMPATIBILITY` | CLI version requirements | Manual |
+| `mcp/.claude-plugin/plugin.json` | MCP plugin version | Manual |
+| `mcp/FRAMEWORK_VERSION` | MCP-bash framework version | Manual |
+
+## Release Checklist
+
+### SDK Release (vX.Y.Z)
+- [ ] Version bumped in `pyproject.toml`
+- [ ] Pre-commit ran (plugin versions synced)
+- [ ] `CHANGELOG.md` updated
+- [ ] If CLI output changed: MCP tested and COMPATIBILITY checked
+- [ ] Tag pushed: `git tag vX.Y.Z && git push --tags`
+
+### MCP Release (plugin-vX.Y.Z)
+- [ ] Version bumped in `mcp/VERSION`
+- [ ] `mcp/.claude-plugin/plugin.json` version updated
+- [ ] `mcp/COMPATIBILITY` CLI requirements verified
+- [ ] `mcp/CHANGELOG.md` updated
+- [ ] Tag pushed: `git tag plugin-vX.Y.Z && git push --tags`

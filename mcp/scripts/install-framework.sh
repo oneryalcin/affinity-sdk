@@ -2,7 +2,7 @@
 # scripts/install-framework.sh - Framework installer with verification
 set -euo pipefail
 
-FRAMEWORK_VERSION="${1:-v0.8.3}"
+FRAMEWORK_VERSION="${1:-v$(cat "$(dirname "$0")/../FRAMEWORK_VERSION")}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"

@@ -50,6 +50,7 @@ repos:
       - id: sync-plugin-version
         name: Sync plugin version with SDK
         entry: python tools/sync_plugin_version.py
-        language: system
-        files: ^(pyproject\.toml|\.claude-plugin/plugin\.json)$
+        language: python
+        files: ^(pyproject\.toml|plugins/.*/\.claude-plugin/plugin\.json)$
         pass_filenames: false
+        additional_dependencies: ['tomli']

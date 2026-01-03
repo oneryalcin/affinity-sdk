@@ -5,8 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MCPBASH_PROJECT_ROOT="${SCRIPT_DIR}"
 
-# Framework version (pinned)
-FRAMEWORK_VERSION="${MCPBASH_VERSION:-v0.8.4}"
+# Framework version - read from FRAMEWORK_VERSION file, allow env override
+FRAMEWORK_VERSION="${MCPBASH_VERSION:-v$(cat "${SCRIPT_DIR}/FRAMEWORK_VERSION")}"
 
 # Framework location precedence:
 # 1. Vendored: ${SCRIPT_DIR}/mcp-bash-framework/bin/mcp-bash
@@ -51,6 +51,40 @@ case "${1:-}" in
         exec "$FRAMEWORK" validate --project-root "${SCRIPT_DIR}" "$@"
         ;;
 esac
+
+# Source CLI compatibility requirements and verify CLI version
+source "${SCRIPT_DIR}/COMPATIBILITY"
+
+CLI_VERSION=$(xaffinity version --output json 2>/dev/null | jq -r '.data.version // empty') || true
+
+if [[ -z "$CLI_VERSION" ]]; then
+    echo "Error: Could not detect xaffinity CLI version." >&2
+    echo "Ensure xaffinity is installed: pip install affinity-sdk" >&2
+    exit 1
+fi
+
+# Version comparison function (portable: works on macOS and Linux)
+# Returns 0 (success) if v1 >= v2
+version_gte() {
+    local v1="$1" v2="$2"
+    # v1 >= v2 means v2 should come first (or equal) when sorted
+    [ "$v2" = "$(printf '%s\n%s' "$v1" "$v2" | sort -V | head -1)" ] 2>/dev/null && return 0
+    # Fallback for systems without sort -V (some minimal containers, old BSD)
+    local IFS='.'
+    local i v1_parts=($v1) v2_parts=($v2)
+    for ((i=0; i<${#v2_parts[@]}; i++)); do
+        [[ ${v1_parts[i]:-0} -lt ${v2_parts[i]:-0} ]] && return 1
+        [[ ${v1_parts[i]:-0} -gt ${v2_parts[i]:-0} ]] && return 0
+    done
+    return 0
+}
+
+if ! version_gte "$CLI_VERSION" "$CLI_MIN_VERSION"; then
+    echo "Error: xaffinity CLI version $CLI_VERSION is too old." >&2
+    echo "MCP server requires CLI >= $CLI_MIN_VERSION" >&2
+    echo "Run: pip install --upgrade affinity-sdk" >&2
+    exit 1
+fi
 
 # Check API key configuration using xaffinity config check-key
 # This detects keychain, dotenv, or env var configuration and returns the CLI pattern to use

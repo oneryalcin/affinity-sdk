@@ -1,0 +1,60 @@
+name: Version Consistency Check
+
+on:
+  pull_request:  # Run on ALL PRs - the check is fast and catches edge cases
+  push:
+    branches: [main]  # Ensure main is always validated
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract SDK version
+        id: sdk
+        run: |
+          SDK_VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
+          echo "version=$SDK_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check SDK plugin version matches
+        run: |
+          PLUGIN_VERSION=$(jq -r '.version' plugins/affinity-sdk/.claude-plugin/plugin.json)
+          if [ "$PLUGIN_VERSION" != "${{ steps.sdk.outputs.version }}" ]; then
+            echo "::error::SDK plugin version ($PLUGIN_VERSION) != SDK version (${{ steps.sdk.outputs.version }})"
+            exit 1
+          fi
+
+      - name: Check CLI plugin version matches
+        run: |
+          PLUGIN_VERSION=$(jq -r '.version' plugins/xaffinity-cli/.claude-plugin/plugin.json)
+          if [ "$PLUGIN_VERSION" != "${{ steps.sdk.outputs.version }}" ]; then
+            echo "::error::CLI plugin version ($PLUGIN_VERSION) != SDK version (${{ steps.sdk.outputs.version }})"
+            exit 1
+          fi
+
+      - name: Check MCP CLI compatibility
+        shell: bash
+        run: |
+          source mcp/COMPATIBILITY
+          SDK_MINOR=$(echo "${{ steps.sdk.outputs.version }}" | cut -d. -f1-2)
+          MIN_MINOR=$(echo "$CLI_MIN_VERSION" | cut -d. -f1-2)
+          # SDK minor version should be >= CLI_MIN_VERSION minor
+          if [ "$(printf '%s\n%s' "$MIN_MINOR" "$SDK_MINOR" | sort -V | head -1)" != "$MIN_MINOR" ]; then
+            echo "::error::SDK version ${{ steps.sdk.outputs.version }} is below MCP minimum ($CLI_MIN_VERSION)"
+            exit 1
+          fi
+
+      - name: Check framework version consistency
+        run: |
+          # Verify FRAMEWORK_VERSION file exists and is valid
+          if [ ! -f mcp/FRAMEWORK_VERSION ]; then
+            echo "::error::mcp/FRAMEWORK_VERSION file not found"
+            exit 1
+          fi
+          VERSION=$(cat mcp/FRAMEWORK_VERSION | tr -d 'v')
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format in FRAMEWORK_VERSION: $VERSION"
+            exit 1
+          fi
+          echo "Framework version: $VERSION"

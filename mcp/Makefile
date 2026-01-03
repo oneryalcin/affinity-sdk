@@ -12,7 +12,8 @@ MCP_FILES := \
 	xaffinity-mcp.sh \
 	xaffinity-mcp-env.sh \
 	VERSION \
-	.mcp-bash-version
+	FRAMEWORK_VERSION \
+	COMPATIBILITY
 
 # MCP server directories to include in ZIP
 MCP_DIRS := \
@@ -48,7 +49,8 @@ plugin: clean
 #   xaffinity-mcp.sh
 #   xaffinity-mcp-env.sh
 #   VERSION
-#   .mcp-bash-version
+#   FRAMEWORK_VERSION
+#   COMPATIBILITY
 #   tools/
 #   prompts/
 #   ...
