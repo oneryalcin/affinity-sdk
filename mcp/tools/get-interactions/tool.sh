@@ -48,7 +48,7 @@ else
     wait
 
     # Merge and sort by date
-    all_interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse | .[:'"$limit"']')
+    all_interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse | .[:'"$limit"']' || echo "[]")
 fi
 
 interactions="$all_interactions"

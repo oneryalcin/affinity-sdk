@@ -29,29 +29,48 @@ if [[ "$target_type" == "person" ]]; then
     target_strength=$(run_xaffinity_readonly relationship-strength ls --external-id "$target_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
 
+# Helper to fetch all interaction types for a person
+fetch_all_interactions() {
+    local person_id="$1"
+    local max_results="$2"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+
+    for itype in email meeting call chat-message; do
+        (
+            result=$(run_xaffinity_readonly interaction ls --person-id "$person_id" --type "$itype" --max-results "$max_results" "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
+            echo "$result" | jq -c '.data.interactions // []' > "$tmp_dir/$itype.json"
+        ) &
+    done
+    wait
+
+    cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse' || echo "[]"
+    rm -rf "$tmp_dir"
+}
+
 # Get shared connections (people who know both source and target)
 shared_connections="[]"
 intro_paths="[]"
 
 if [[ "$source_id" != "null" && -n "$source_id" ]]; then
-    # Get source's interactions to find common contacts
-    source_interactions=$(run_xaffinity_readonly interaction ls --person-id "$source_id" --max-results 100 "${cli_args[@]}" 2>/dev/null | jq -c '.data.interactions // []' || echo "[]")
+    # Get source's interactions to find common contacts (Affinity API requires type)
+    source_interactions=$(fetch_all_interactions "$source_id" 100)
 
     # Get target's interactions
-    target_interactions=$(run_xaffinity_readonly interaction ls --person-id "$target_id" --max-results 100 "${cli_args[@]}" 2>/dev/null | jq -c '.data.interactions // []' || echo "[]")
+    target_interactions=$(fetch_all_interactions "$target_id" 100)
 
     # Find overlapping person IDs (potential intro paths)
-    source_contacts=$(echo "$source_interactions" | jq -c '[.[].participants[].personId] | unique')
-    target_contacts=$(echo "$target_interactions" | jq -c '[.[].participants[].personId] | unique')
+    source_contacts=$(echo "$source_interactions" | jq -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
+    target_contacts=$(echo "$target_interactions" | jq -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
 
     shared_connections=$(jq -n \
         --argjson source "$source_contacts" \
         --argjson target "$target_contacts" \
-        '[$source[] as $s | $target[] | select(. == $s)] | unique | .[:10]')
+        '[$source[] as $s | $target[] | select(. == $s)] | unique | .[:10]' || echo "[]")
 fi
 
-# Get target's recent activity summary
-recent_interactions=$(run_xaffinity_readonly interaction ls --person-id "$target_id" --max-results 5 "${cli_args[@]}" 2>/dev/null | jq -c '.data.interactions // []' || echo "[]")
+# Get target's recent activity summary (Affinity API requires type)
+recent_interactions=$(fetch_all_interactions "$target_id" 5)
 
 mcp_emit_json "$(jq -n \
     --arg targetType "$target_type" \

@@ -61,7 +61,7 @@ done
 wait
 
 # Merge results from all entity types
-all_matches=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add // [] | .[:'"$limit"']')
+all_matches=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add // [] | .[:'"$limit"']' || echo "[]")
 
 # Generate human-readable summary
 count=$(echo "$all_matches" | jq 'length')

@@ -30,13 +30,13 @@ cli_args=(--output json --quiet)
 
 case "$entity_type" in
     person)
-        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.person // {}')
+        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.person // {}' || echo '{}')
         ;;
     company)
-        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.company // {}')
+        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.company // {}' || echo '{}')
         ;;
     opportunity)
-        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.opportunity // {}')
+        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.opportunity // {}' || echo '{}')
         ;;
 esac
 
