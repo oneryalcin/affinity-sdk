@@ -7,10 +7,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Typed](https://img.shields.io/badge/typed-mypy-blue.svg)](https://mypy-lang.org/)
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-orange.svg)](https://docs.pydantic.dev/)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/)
-[![MCP](https://img.shields.io/badge/MCP-server-green?logo=modelcontextprotocol)](https://yaniv-golan.github.io/affinity-sdk/mcp/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://yaniv-golan.github.io/affinity-sdk/latest/)
+[![MCP](https://img.shields.io/badge/MCP-server-green?logo=modelcontextprotocol)](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/)
 [![MCP Bash Framework](https://img.shields.io/badge/MCP-MCP_Bash_Framework-green?logo=modelcontextprotocol)](https://github.com/yaniv-golan/mcp-bash-framework)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugins-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugins/)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugins-blueviolet.svg)](https://yaniv-golan.github.io/affinity-sdk/latest/guides/claude-code-plugins/)
 
 A modern, strongly-typed Python wrapper for the [Affinity CRM API](https://api-docs.affinity.co/).
 
@@ -18,7 +18,7 @@ Disclaimer: This is an unofficial community project and is not affiliated with, 
 
 Maintainer: GitHub: `yaniv-golan`
 
-Documentation: https://yaniv-golan.github.io/affinity-sdk/
+Documentation: https://yaniv-golan.github.io/affinity-sdk/latest/
 
 ## Table of Contents
 
@@ -69,7 +69,7 @@ Optional: install the CLI:
 pipx install "affinity-sdk[cli]"
 ```
 
-CLI docs: https://yaniv-golan.github.io/affinity-sdk/cli/
+CLI docs: https://yaniv-golan.github.io/affinity-sdk/latest/cli/
 
 ### MCP Server
 
@@ -79,7 +79,7 @@ Connect desktop AI tools to Affinity CRM:
 
 Features: entity search, relationship intelligence, workflow management, interaction logging, meeting prep.
 
-MCP docs: https://yaniv-golan.github.io/affinity-sdk/mcp/
+MCP docs: https://yaniv-golan.github.io/affinity-sdk/latest/mcp/
 
 ### Claude Code Plugins
 
@@ -91,14 +91,14 @@ If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), instal
 /plugin install cli@xaffinity   # CLI patterns + /affinity-help
 ```
 
-Plugin docs: https://yaniv-golan.github.io/affinity-sdk/guides/claude-code-plugins/
+Plugin docs: https://yaniv-golan.github.io/affinity-sdk/latest/guides/claude-code-plugins/
 
 ## Documentation
 
-- [Full documentation](https://yaniv-golan.github.io/affinity-sdk/)
-- [MCP Server](https://yaniv-golan.github.io/affinity-sdk/mcp/)
-- [CLI Reference](https://yaniv-golan.github.io/affinity-sdk/cli/)
-- [API Reference](https://yaniv-golan.github.io/affinity-sdk/reference/client/)
+- [Full documentation](https://yaniv-golan.github.io/affinity-sdk/latest/)
+- [MCP Server](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/)
+- [CLI Reference](https://yaniv-golan.github.io/affinity-sdk/latest/cli/)
+- [API Reference](https://yaniv-golan.github.io/affinity-sdk/latest/reference/client/)
 
 ## Quick Start
 

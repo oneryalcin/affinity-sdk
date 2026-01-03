@@ -116,7 +116,7 @@ MCPBASH_LOG_LEVEL=debug ./xaffinity-mcp.sh
 
 ### Claude Code Plugin
 
-The MCP server is also available as a Claude Code plugin, distributed via the repository's own marketplace (`.claude-plugin/marketplace.json`). For standalone MCP server usage with other clients, see the main [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/mcp/).
+The MCP server is also available as a Claude Code plugin, distributed via the repository's own marketplace (`.claude-plugin/marketplace.json`). For standalone MCP server usage with other clients, see the main [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/).
 
 The plugin files must be assembled before publishing:
 

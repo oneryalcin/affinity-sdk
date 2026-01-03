@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## 0.6.7 - 2026-01-03
+
+### Changed
+- Docs: Updated all documentation links to use versioned `/latest/` URLs for reliable navigation.
+
 ## 0.6.6 - 2026-01-03
 
 ### Fixed

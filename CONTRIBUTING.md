@@ -63,7 +63,7 @@ pre-commit install
 
 ### MCP Plugin Development
 
-The MCP server (built on the `xaffinity` CLI) is also available as a Claude Code plugin. For standalone MCP server usage, see the [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/mcp/).
+The MCP server (built on the `xaffinity` CLI) is also available as a Claude Code plugin. For standalone MCP server usage, see the [MCP documentation](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/).
 
 The plugin is distributed via the repository's own marketplace (`.claude-plugin/marketplace.json`). The plugin source files live in `mcp/` but must be assembled into `mcp/.claude-plugin/` before publishing.
 

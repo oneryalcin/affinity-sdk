@@ -285,4 +285,4 @@ client = Affinity(api_key="key", max_retries=5)
 
 ## Documentation
 
-- Full SDK docs: https://yaniv-golan.github.io/affinity-sdk/
+- Full SDK docs: https://yaniv-golan.github.io/affinity-sdk/latest/

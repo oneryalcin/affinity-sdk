@@ -53,4 +53,4 @@ xaffinity --readonly person ls --json --all | jq '.data.persons[]'
 
 - CLI help: `xaffinity --help`
 - Command help: `xaffinity <command> --help` (e.g., `xaffinity person --help`)
-- SDK docs: https://yaniv-golan.github.io/affinity-sdk/
+- SDK docs: https://yaniv-golan.github.io/affinity-sdk/latest/

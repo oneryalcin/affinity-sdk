@@ -157,4 +157,4 @@ pip install "affinity-sdk[cli]"
 ## Documentation
 
 - Full CLI reference: `xaffinity --help`
-- SDK docs: https://yaniv-golan.github.io/affinity-sdk/
+- SDK docs: https://yaniv-golan.github.io/affinity-sdk/latest/
