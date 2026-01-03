@@ -22,7 +22,9 @@
   },
   "annotations": {
     "readOnlyHint": false,
-    "idempotentHint": true
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
   },
   "timeoutSecs": 30
 }

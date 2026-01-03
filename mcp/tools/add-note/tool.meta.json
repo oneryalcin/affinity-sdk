@@ -33,7 +33,9 @@
     }
   },
   "annotations": {
-    "readOnlyHint": false
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": true
   },
   "timeoutSecs": 15
 }

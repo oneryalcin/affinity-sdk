@@ -10,7 +10,7 @@ list_id="$(mcp_args_get '.listId // null')"
 list_name="$(mcp_args_get '.listName // null')"
 view_id="$(mcp_args_get '.viewId // null')"
 view_name="$(mcp_args_get '.viewName // null')"
-limit="$(mcp_args_get '.limit // 50')"
+limit="$(mcp_args_int '.limit' 50 1 500)"
 
 # Resolve list
 if [[ "$list_id" == "null" || -z "$list_id" ]]; then

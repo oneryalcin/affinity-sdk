@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.4] - 2026-01-03
 
 ### Added
+- **Progress reporting**: Long-running tools now report progress via mcp-bash SDK
+  - `get-entity-dossier`: Reports progress for each data collection step
+  - `get-relationship-insights`: Reports progress for connection analysis
+  - `find-entities`: Reports progress for parallel search operations
+  - Supports client cancellation via `mcp_is_cancelled` checks
+- **Tool annotations**: All tools now include MCP 2025-03-26 annotations
+  - `readOnlyHint`: Distinguishes read vs write operations
+  - `destructiveHint`: Write tools marked as non-destructive (updates, not deletes)
+  - `openWorldHint`: All tools interact with external Affinity API
+  - `idempotentHint`: Status/field update tools are idempotent
+- **Health checks**: Added `server.d/health-checks.sh` for startup validation
+  - Verifies `xaffinity` CLI is available
+- **Typed argument helpers**: Tools now use mcp-bash typed argument helpers
+  - `mcp_args_bool` for boolean parameters with proper defaults
+  - `mcp_args_int` for integer parameters with min/max validation
+- **JSON tool compatibility**: All tools now use `MCPBASH_JSON_TOOL_BIN` (jq or gojq)
+- **Automatic retry**: CLI calls use `mcp_with_retry` for transient failure handling (3 attempts, exponential backoff)
 - **Debug mode**: Comprehensive logging for debugging MCP tool invocations
   - Set `MCPBASH_LOG_LEVEL=debug` or `XAFFINITY_DEBUG=true` to enable
   - Logs CLI command execution with exit codes and output sizes
@@ -19,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Tools now use structured logging via mcp-bash SDK (`mcp_log_debug`, `mcp_log_info`, etc.)
 - CLI wrapper functions log command execution in debug mode (args redacted for security)
+- Multi-step tools now use `mcp_progress` for visibility into operation status
 
 ## [1.0.3] - 2026-01-03
 

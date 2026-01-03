@@ -5,6 +5,14 @@
 source "${MCPBASH_PROJECT_ROOT}/lib/cache.sh"
 
 # ==============================================================================
+# JSON Tool Wrapper
+# ==============================================================================
+# Use mcp-bash's JSON tool (jq or gojq) for all JSON processing.
+# This respects MCPBASH_JSON_TOOL setting and works with either implementation.
+
+jq() { "${MCPBASH_JSON_TOOL_BIN:-jq}" "$@"; }
+
+# ==============================================================================
 # Logging Helpers
 # ==============================================================================
 # These wrap mcp-bash SDK logging with xaffinity-specific context.
@@ -86,6 +94,7 @@ build_cli_base_args() {
 # Usage: run_xaffinity <subcommand> [args...]
 # Example: run_xaffinity person ls --query "John"
 # Note: --quiet is a global option, so we detect and move it to the right position
+# Uses mcp_with_retry for transient failure handling (3 attempts, 0.5s base delay)
 run_xaffinity() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
@@ -112,13 +121,15 @@ run_xaffinity() {
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     cmd+=("${filtered_args[@]}")
 
-    "${cmd[@]}"
+    # Execute with retry for transient failures
+    mcp_with_retry 3 0.5 -- "${cmd[@]}"
 }
 
 # Run xaffinity in readonly mode (respects dotenv from check-key)
 # Usage: run_xaffinity_readonly <subcommand> [args...]
 # Note: --quiet is a global option, so we detect and move it to the right position
 # Logs command execution in debug mode (args are not logged for security)
+# Uses mcp_with_retry for transient failure handling (3 attempts, 0.5s base delay)
 run_xaffinity_readonly() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
@@ -149,9 +160,9 @@ run_xaffinity_readonly() {
     # Log command start in debug mode
     xaffinity_log_debug "cli" "executing: xaffinity --readonly $subcommand ..."
 
-    # Execute and capture result
+    # Execute with retry for transient failures (3 attempts, 0.5s base delay)
     local output exit_code=0
-    output=$("${cmd[@]}") || exit_code=$?
+    output=$(mcp_with_retry 3 0.5 -- "${cmd[@]}") || exit_code=$?
 
     # Log result in debug mode
     local output_bytes=${#output}

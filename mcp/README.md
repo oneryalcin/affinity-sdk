@@ -15,7 +15,7 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 ### Prerequisites
 
 - Bash 3.2+
-- jq 1.6+
+- jq 1.6+ or gojq (auto-detected via `MCPBASH_JSON_TOOL`)
 - xaffinity CLI (`pip install affinity-python-sdk`)
 - Configured Affinity API key (`xaffinity config setup-key`)
 

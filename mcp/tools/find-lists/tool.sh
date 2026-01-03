@@ -8,7 +8,7 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 # Extract arguments
 query="$(mcp_args_get '.query // ""')"
 list_type="$(mcp_args_get '.type // null')"
-limit="$(mcp_args_get '.limit // 20')"
+limit="$(mcp_args_int '.limit' 20 1 100)"
 
 # Fetch all lists
 result=$(run_xaffinity_readonly list ls --output json --quiet \

@@ -11,7 +11,7 @@ entity_json="$(mcp_args_get '.entity // null')"
 entity_type="$(mcp_args_get '.entityType // null')"
 entity_id="$(mcp_args_get '.entityId // null')"
 interaction_type="$(mcp_args_get '.type // null')"
-limit="$(mcp_args_get '.limit // 20')"
+limit="$(mcp_args_int '.limit' 20 1 100)"
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then

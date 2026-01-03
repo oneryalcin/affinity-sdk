@@ -8,7 +8,7 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 # Extract arguments
 list_id="$(mcp_args_require '.listId' 'listId is required')"
 list_entry_id="$(mcp_args_require '.listEntryId' 'listEntryId is required')"
-limit="$(mcp_args_get '.limit // 20')"
+limit="$(mcp_args_int '.limit' 20 1 100)"
 
 cli_args=(--output json --quiet)
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
