@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## 0.6.6 - 2026-01-03
+
 ### Fixed
 - SDK: Regex patterns in `lists.py` and `http.py` were double-escaped, matching literal `\d` instead of digits.
 
