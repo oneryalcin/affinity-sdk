@@ -57,7 +57,7 @@ def _parse_list_type(value: str | None) -> ListType | None:
     if value in {"person", "people"}:
         return ListType.PERSON
     if value in {"company", "companies", "organization", "org"}:
-        return ListType.ORGANIZATION
+        return ListType.COMPANY
     if value in {"opportunity", "opp"}:
         return ListType.OPPORTUNITY
     raise CLIError(f"Unknown list type: {value}", exit_code=2, error_type="usage_error")
@@ -647,7 +647,7 @@ def list_export(
             valid_expand_for_type: dict[ListType, set[str]] = {
                 ListType.OPPORTUNITY: {"people", "companies"},
                 ListType.PERSON: {"companies", "opportunities"},
-                ListType.ORGANIZATION: {"people", "opportunities"},
+                ListType.COMPANY: {"people", "opportunities"},
             }
             valid_for_this_type = valid_expand_for_type.get(list_type, set())
             invalid_expands = expand_set - valid_for_this_type
@@ -2061,7 +2061,7 @@ def _fetch_associations(
                 return None
             people, companies = result
 
-        elif list_type == ListType.ORGANIZATION:
+        elif list_type == ListType.COMPANY:
             result = _fetch_company_associations(
                 client=client,
                 company_id=CompanyId(entity_id),

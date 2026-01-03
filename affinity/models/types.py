@@ -259,8 +259,11 @@ class ListType(OpenIntEnum):
     """Type of entities a list can contain."""
 
     PERSON = 0
-    ORGANIZATION = 1  # Company in V2 terminology
+    COMPANY = 1
     OPPORTUNITY = 8
+
+    # V1 compatibility alias - prefer COMPANY in new code
+    ORGANIZATION = COMPANY
 
     @classmethod
     def _missing_(cls, value: object) -> OpenIntEnum:
@@ -270,7 +273,7 @@ class ListType(OpenIntEnum):
             if text in ("person", "people"):
                 return cls.PERSON
             if text in ("company", "organization", "organisation"):
-                return cls.ORGANIZATION
+                return cls.COMPANY
             if text in ("opportunity", "opportunities"):
                 return cls.OPPORTUNITY
         return super()._missing_(value)

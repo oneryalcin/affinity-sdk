@@ -189,8 +189,10 @@ class TestEnums:
     def test_list_type_values(self) -> None:
         """Test ListType enum values match API."""
         assert ListType.PERSON == 0
-        assert ListType.ORGANIZATION == 1
+        assert ListType.COMPANY == 1
         assert ListType.OPPORTUNITY == 8
+        # V1 compatibility alias
+        assert ListType.ORGANIZATION == ListType.COMPANY
 
     def test_person_type_values(self) -> None:
         """Test PersonType enum values match API."""
@@ -377,7 +379,7 @@ class TestAffinityListModel:
         """Test list type enum is parsed correctly."""
         for type_int, expected in [
             (0, ListType.PERSON),
-            (1, ListType.ORGANIZATION),
+            (1, ListType.COMPANY),
             (8, ListType.OPPORTUNITY),
         ]:
             data = {"id": 1, "name": "Test", "type": type_int, "public": False, "ownerId": 1}

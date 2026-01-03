@@ -456,7 +456,7 @@ def test_list_export_expand_invalid_on_company_list(
     assert result.exit_code == 2
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
-    assert "not valid for organization lists" in payload["error"]["message"]
+    assert "not valid for company lists" in payload["error"]["message"]
     assert payload["error"]["details"]["validExpand"] == ["opportunities", "people"]
 
 
