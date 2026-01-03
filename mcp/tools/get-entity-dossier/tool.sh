@@ -30,20 +30,20 @@ cli_args=(--output json --quiet)
 
 case "$entity_type" in
     person)
-        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data // {}')
+        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.person // {}')
         ;;
     company)
-        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data // {}')
+        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.company // {}')
         ;;
     opportunity)
-        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data // {}')
+        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.opportunity // {}')
         ;;
 esac
 
 # Get relationship strength if person
 relationship_data="null"
 if [[ "$entity_type" == "person" ]]; then
-    relationship_data=$(run_xaffinity_readonly relationship-strength get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data // null' || echo "null")
+    relationship_data=$(run_xaffinity_readonly relationship-strength ls --external-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
 
 # Get interactions if requested

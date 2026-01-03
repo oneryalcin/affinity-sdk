@@ -26,7 +26,7 @@ cli_args=(--output json --quiet)
 # Get relationship strength for target
 target_strength="null"
 if [[ "$target_type" == "person" ]]; then
-    target_strength=$(run_xaffinity_readonly relationship-strength get "$target_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data // null' || echo "null")
+    target_strength=$(run_xaffinity_readonly relationship-strength ls --external-id "$target_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
 
 # Get shared connections (people who know both source and target)

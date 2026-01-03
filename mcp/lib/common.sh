@@ -24,37 +24,64 @@ build_cli_base_args() {
 # Run xaffinity with correct flags from check-key pattern
 # Usage: run_xaffinity <subcommand> [args...]
 # Example: run_xaffinity person ls --query "John"
+# Note: --quiet is a global option, so we detect and move it to the right position
 run_xaffinity() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
+    local needs_quiet=false
 
     # Check if pattern includes --dotenv
     if [[ "$pattern" == *"--dotenv"* ]]; then
         needs_dotenv=true
     fi
 
-    # Build command
+    # Check for --quiet in arguments and filter it out
+    local filtered_args=()
+    for arg in "$@"; do
+        if [[ "$arg" == "--quiet" || "$arg" == "-q" ]]; then
+            needs_quiet=true
+        else
+            filtered_args+=("$arg")
+        fi
+    done
+
+    # Build command with global options first
     local cmd=(xaffinity)
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
-    cmd+=("$@")
+    [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
+    cmd+=("${filtered_args[@]}")
 
     "${cmd[@]}"
 }
 
 # Run xaffinity in readonly mode (respects dotenv from check-key)
 # Usage: run_xaffinity_readonly <subcommand> [args...]
+# Note: --quiet is a global option, so we detect and move it to the right position
 run_xaffinity_readonly() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
+    local needs_quiet=false
 
     if [[ "$pattern" == *"--dotenv"* ]]; then
         needs_dotenv=true
     fi
 
+    # Check for --quiet in arguments and filter it out
+    local filtered_args=()
+    for arg in "$@"; do
+        if [[ "$arg" == "--quiet" || "$arg" == "-q" ]]; then
+            needs_quiet=true
+        else
+            filtered_args+=("$arg")
+        fi
+    done
+
+    # Build command with global options first
     local cmd=(xaffinity)
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     cmd+=(--readonly)
-    cmd+=("$@")
+    [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
+    cmd+=("${filtered_args[@]}")
 
     "${cmd[@]}"
 }

@@ -5,6 +5,20 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-01-03
+
+### Fixed
+- **get-entity-dossier**: Fixed `relationship-strength get` (doesn't exist) → `relationship-strength ls --external-id`
+- **get-entity-dossier**: Fixed entity data extraction path (`.data` → `.data.person`/`.data.company`/`.data.opportunity`)
+- **get-relationship-insights**: Fixed relationship-strength command usage
+- **get-interactions**: Now queries all interaction types (email, meeting, call, chat-message) when no type specified, due to Affinity API limitation
+- **get-interactions**: Fixed null participant handling in jq transformation
+- **lib/common.sh**: Fixed `--quiet` flag positioning (must be global option before subcommand)
+
+### Added
+- Test harness using `mcp-bash run-tool` with dry-run validation and live API tests
+- `.env.test` configuration pattern for private test data (gitignored)
+
 ## [1.0.2] - 2026-01-03
 
 ### Added

@@ -3,3 +3,8 @@
 
 # MCPB bundle output directory
 dist/
+
+# Test configuration (contains user-specific entity IDs)
+# Note: .env.test.example is tracked, but .env.test is ignored
+test/.env.test
+!test/.env.test.example
