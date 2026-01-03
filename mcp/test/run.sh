@@ -226,9 +226,12 @@ else
         skip_test "get-interactions (person)" "set TEST_PERSON_ID in .env.test"
     fi
 
-    # Company tests - skipped due to V2 API ID mismatch with search results
-    # TODO: Fix company ID resolution between search and get APIs
-    skip_test "get-entity-dossier (company)" "V2 API ID mismatch"
+    # Company tests (requires valid company ID from .env.test)
+    if [[ -n "${TEST_COMPANY_ID}" ]]; then
+        run_test "get-entity-dossier" '{"entityId":"'"${TEST_COMPANY_ID}"'","entityType":"company","includeInteractions":true,"includeLists":true}' "company dossier"
+    else
+        skip_test "get-entity-dossier (company)" "set TEST_COMPANY_ID in .env.test"
+    fi
 
     # List-based tests (requires valid list ID from .env.test)
     if [[ -n "${TEST_LIST_ID}" ]]; then

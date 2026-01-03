@@ -5,13 +5,11 @@ on:
     branches: [main]
     paths:
       - 'mcp/**'
-      - '!mcp/.claude-plugin/xaffinity-mcp-plugin.zip'
-      - '!mcp/.claude-plugin/VERSION'
       - '!mcp/dist/**'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -89,27 +87,11 @@ jobs:
           rm -rf "$EXTRACT_DIR"
           echo "MCPB bundle test completed"
 
-      - name: Commit plugin bundle
-        run: |
-          # Skip if last commit was from this action
-          if git log -1 --pretty=%B | grep -q "\[skip ci\]"; then
-            echo "Skipping - last commit was from CI"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mcp/.claude-plugin/xaffinity-mcp-plugin.zip mcp/.claude-plugin/VERSION
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "build: update MCP plugin bundle [skip ci]"
-            git push
-          fi
-
-      - name: Upload MCPB bundle artifact
+      - name: Upload plugin artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: mcpb-bundle
-          path: mcp/dist/*.mcpb
+          name: mcp-plugin
+          path: |
+            mcp/.claude-plugin/xaffinity-mcp-plugin.zip
+            mcp/dist/*.mcpb
           retention-days: 30
