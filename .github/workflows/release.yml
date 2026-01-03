@@ -15,7 +15,7 @@ on:
           - testpypi
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -176,3 +176,38 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           attestations: true
+
+  github-release:
+    runs-on: ubuntu-latest
+    needs: [validate, publish]
+    if: ${{ needs.validate.outputs.publish_target == 'pypi' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog for version
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${{ needs.validate.outputs.version_tag }}"
+          # Extract changelog section for this version
+          CHANGELOG=$(awk "/^## ${VERSION//./\\.} -/,/^## [0-9]/" CHANGELOG.md | head -n -1 | tail -n +2)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release ${VERSION}"
+          fi
+          # Write to file to preserve formatting
+          echo "$CHANGELOG" > release_notes.md
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate.outputs.tag_name }}
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag_name }}
+          name: SDK ${{ needs.validate.outputs.tag_name }}
+          body_path: release_notes.md
+          files: dist/*
+          fail_on_unmatched_files: true
