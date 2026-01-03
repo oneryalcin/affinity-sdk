@@ -17,8 +17,12 @@ if [[ "$target_entity_json" != "null" ]]; then
     target_type=$(echo "$target_entity_json" | jq -r '.type')
     target_id=$(echo "$target_entity_json" | jq -r '.id')
 elif [[ "$target_id" == "null" || -z "$target_id" ]]; then
+    xaffinity_log_error "get-relationship-insights" "missing required target entity"
     mcp_fail_invalid_args "Either targetEntity or targetId is required"
 fi
+
+# Log tool invocation
+xaffinity_log_debug "get-relationship-insights" "target_type=$target_type target_id=$target_id source_id=${source_id:-none}"
 
 cli_args=(--output json --quiet)
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
@@ -71,6 +75,11 @@ fi
 
 # Get target's recent activity summary (Affinity API requires type)
 recent_interactions=$(fetch_all_interactions "$target_id" 5)
+
+# Log completion stats
+shared_count=$(echo "$shared_connections" | jq 'length')
+recent_count=$(echo "$recent_interactions" | jq 'length')
+xaffinity_log_debug "get-relationship-insights" "completed shared_connections=$shared_count recent_interactions=$recent_count"
 
 mcp_emit_json "$(jq -n \
     --arg targetType "$target_type" \

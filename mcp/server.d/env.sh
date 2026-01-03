@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 # server.d/env.sh - Environment setup for xaffinity MCP Server
+#
+# ==============================================================================
+# Debug Mode Configuration
+# ==============================================================================
+# Enable debug logging by setting these environment variables:
+#
+#   MCPBASH_LOG_LEVEL=debug     # Enable mcp-bash framework debug logging
+#   XAFFINITY_DEBUG=true        # Enable xaffinity-specific debug logging
+#   MCPBASH_LOG_VERBOSE=true    # Show paths in logs (security warning: exposes paths)
+#   MCPBASH_TRACE_TOOLS=true    # Enable shell tracing (set -x) for tools
+#
+# Example: Run MCP server in full debug mode:
+#   MCPBASH_LOG_LEVEL=debug XAFFINITY_DEBUG=true ./run-server.sh
+#
+# Example: Test a single tool with debug logging:
+#   MCPBASH_LOG_LEVEL=debug mcp-bash run-tool find-entities --args '{"query":"test"}' --verbose
+#
+# ==============================================================================
 
 # Create session cache on server startup
 if [[ -z "${AFFINITY_SESSION_CACHE:-}" ]]; then
@@ -11,7 +29,31 @@ fi
 # Default cache TTL (10 minutes for MCP context)
 export AFFINITY_SESSION_CACHE_TTL="${AFFINITY_SESSION_CACHE_TTL:-600}"
 
-# Enable tracing in debug mode
+# ==============================================================================
+# Debug Mode Auto-Configuration
+# ==============================================================================
+# When MCPBASH_LOG_LEVEL=debug, automatically enable xaffinity debug features
+
 if [[ "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
+    # Enable xaffinity-specific debug logging
+    export XAFFINITY_DEBUG="${XAFFINITY_DEBUG:-true}"
+
+    # Enable CLI command tracing
     export AFFINITY_TRACE="1"
+
+    # Capture tool stderr for debugging (mcp-bash feature)
+    export MCPBASH_TOOL_STDERR_CAPTURE="${MCPBASH_TOOL_STDERR_CAPTURE:-true}"
+
+    # Increase stderr tail limit for more context in errors
+    export MCPBASH_TOOL_STDERR_TAIL_LIMIT="${MCPBASH_TOOL_STDERR_TAIL_LIMIT:-8192}"
+fi
+
+# ==============================================================================
+# Debug Log Directory (optional)
+# ==============================================================================
+# If XAFFINITY_DEBUG_LOG_DIR is set, write debug logs to files for analysis
+
+if [[ -n "${XAFFINITY_DEBUG_LOG_DIR:-}" ]]; then
+    mkdir -p "${XAFFINITY_DEBUG_LOG_DIR}" 2>/dev/null || true
+    export XAFFINITY_DEBUG_LOG_FILE="${XAFFINITY_DEBUG_LOG_DIR}/xaffinity-mcp-$(date +%Y%m%d-%H%M%S).log"
 fi

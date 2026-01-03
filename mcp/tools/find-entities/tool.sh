@@ -11,6 +11,9 @@ query="$(mcp_args_require '.query' 'Query string is required')"
 types_json="$(mcp_args_get '.types // ["person", "company"]')"
 limit="$(mcp_args_get '.limit // 10')"
 
+# Log tool invocation (debug mode only, query is logged as it's the search term)
+xaffinity_log_debug "find-entities" "query='$query' types=$types_json limit=$limit"
+
 # Parse types array (bash 3.2 compatible)
 types=()
 while IFS= read -r item; do
@@ -20,6 +23,8 @@ done < <(echo "$types_json" | jq -r '.[]')
 # Create temp directory for parallel results
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
+
+xaffinity_log_debug "find-entities" "searching ${#types[@]} entity types in parallel"
 
 # Search each requested type in PARALLEL using background jobs
 for entity_type in "${types[@]}"; do
@@ -66,6 +71,8 @@ all_matches=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add // [] | .[:'"$limit
 # Generate human-readable summary
 count=$(echo "$all_matches" | jq 'length')
 notes="Found $count matches for '$query'"
+
+xaffinity_log_debug "find-entities" "completed with $count matches"
 
 mcp_emit_json "$(jq -n \
     --argjson matches "$all_matches" \

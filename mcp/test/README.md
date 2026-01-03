@@ -84,6 +84,18 @@ mcp-bash run-tool slow-tool --args '{}' --timeout 120
 mcp-bash run-tool my-tool --args '{}' --minimal
 ```
 
+### Debug Mode
+
+Enable debug logging to troubleshoot test failures:
+
+```bash
+# Run with debug logging
+MCPBASH_LOG_LEVEL=debug mcp-bash run-tool my-tool --args '{}' --verbose
+
+# Enable shell tracing for deep debugging
+MCPBASH_TRACE_TOOLS=true mcp-bash run-tool my-tool --args '{}'
+```
+
 ## CI Integration
 
 Add to your GitHub Actions workflow:

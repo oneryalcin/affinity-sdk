@@ -272,11 +272,25 @@ AFFINITY_SESSION_CACHE_TTL=300 ./xaffinity-mcp.sh
 
 ### Debug Mode
 
-Enable debug logging:
+Enable comprehensive logging for troubleshooting:
 
 ```bash
+# Full debug mode - enables all debug features
 MCPBASH_LOG_LEVEL=debug ./xaffinity-mcp.sh
+
+# Test a single tool with debug output
+MCPBASH_LOG_LEVEL=debug mcp-bash run-tool find-entities --args '{"query":"acme"}' --verbose
+
+# Enable shell tracing for deep debugging
+MCPBASH_TRACE_TOOLS=true mcp-bash run-tool get-entity-dossier --args '{"entityType":"person","entityId":"12345"}'
 ```
+
+| Variable | Description |
+|----------|-------------|
+| `MCPBASH_LOG_LEVEL=debug` | Enable mcp-bash framework debug logging |
+| `XAFFINITY_DEBUG=true` | Enable xaffinity-specific debug logging |
+| `MCPBASH_LOG_VERBOSE=true` | Show paths in logs (exposes file paths) |
+| `MCPBASH_TRACE_TOOLS=true` | Enable shell tracing (`set -x`) for tools |
 
 ### Diagnostics
 

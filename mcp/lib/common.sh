@@ -4,6 +4,67 @@
 # Source cache utilities
 source "${MCPBASH_PROJECT_ROOT}/lib/cache.sh"
 
+# ==============================================================================
+# Logging Helpers
+# ==============================================================================
+# These wrap mcp-bash SDK logging with xaffinity-specific context.
+# Use XAFFINITY_DEBUG=true or MCPBASH_LOG_LEVEL=debug for verbose output.
+
+# Log debug message (only when debug mode enabled)
+# Usage: xaffinity_log_debug "context" "message"
+xaffinity_log_debug() {
+    local context="$1"
+    local message="$2"
+    if [[ "${XAFFINITY_DEBUG:-}" == "true" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
+        if type mcp_log_debug &>/dev/null; then
+            mcp_log_debug "xaffinity:$context" "$message"
+        fi
+    fi
+}
+
+# Log info message
+# Usage: xaffinity_log_info "context" "message"
+xaffinity_log_info() {
+    local context="$1"
+    local message="$2"
+    if type mcp_log_info &>/dev/null; then
+        mcp_log_info "xaffinity:$context" "$message"
+    fi
+}
+
+# Log warning message
+# Usage: xaffinity_log_warn "context" "message"
+xaffinity_log_warn() {
+    local context="$1"
+    local message="$2"
+    if type mcp_log_warn &>/dev/null; then
+        mcp_log_warn "xaffinity:$context" "$message"
+    fi
+}
+
+# Log error message
+# Usage: xaffinity_log_error "context" "message"
+xaffinity_log_error() {
+    local context="$1"
+    local message="$2"
+    if type mcp_log_error &>/dev/null; then
+        mcp_log_error "xaffinity:$context" "$message"
+    fi
+}
+
+# Log CLI command execution (debug only, redacts sensitive args)
+# Usage: xaffinity_log_cli "subcommand" "exit_code" "output_bytes"
+xaffinity_log_cli() {
+    local subcommand="$1"
+    local exit_code="$2"
+    local output_bytes="${3:-0}"
+    if [[ "${XAFFINITY_DEBUG:-}" == "true" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
+        if type mcp_log_debug &>/dev/null; then
+            mcp_log_debug "xaffinity:cli" "cmd=$subcommand exit=$exit_code bytes=$output_bytes"
+        fi
+    fi
+}
+
 # Build CLI base arguments from XAFFINITY_CLI_PATTERN
 # The pattern from check-key looks like: "xaffinity --dotenv --readonly <command> --json"
 # We extract flags before <command> and after <command>
@@ -57,10 +118,12 @@ run_xaffinity() {
 # Run xaffinity in readonly mode (respects dotenv from check-key)
 # Usage: run_xaffinity_readonly <subcommand> [args...]
 # Note: --quiet is a global option, so we detect and move it to the right position
+# Logs command execution in debug mode (args are not logged for security)
 run_xaffinity_readonly() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
     local needs_quiet=false
+    local subcommand="${1:-unknown}"
 
     if [[ "$pattern" == *"--dotenv"* ]]; then
         needs_dotenv=true
@@ -83,7 +146,20 @@ run_xaffinity_readonly() {
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     cmd+=("${filtered_args[@]}")
 
-    "${cmd[@]}"
+    # Log command start in debug mode
+    xaffinity_log_debug "cli" "executing: xaffinity --readonly $subcommand ..."
+
+    # Execute and capture result
+    local output exit_code=0
+    output=$("${cmd[@]}") || exit_code=$?
+
+    # Log result in debug mode
+    local output_bytes=${#output}
+    xaffinity_log_cli "$subcommand" "$exit_code" "$output_bytes"
+
+    # Output the result
+    echo "$output"
+    return $exit_code
 }
 
 # Fetch or retrieve cached workflow config for a list

@@ -5,6 +5,21 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-01-03
+
+### Added
+- **Debug mode**: Comprehensive logging for debugging MCP tool invocations
+  - Set `MCPBASH_LOG_LEVEL=debug` or `XAFFINITY_DEBUG=true` to enable
+  - Logs CLI command execution with exit codes and output sizes
+  - Logs tool invocation parameters and completion stats
+  - Auto-enables `MCPBASH_TOOL_STDERR_CAPTURE` in debug mode
+- **lib/common.sh**: Added `xaffinity_log_*` helpers wrapping mcp-bash SDK logging
+- **server.d/env.sh**: Documented debug mode configuration with examples
+
+### Changed
+- Tools now use structured logging via mcp-bash SDK (`mcp_log_debug`, `mcp_log_info`, etc.)
+- CLI wrapper functions log command execution in debug mode (args redacted for security)
+
 ## [1.0.3] - 2026-01-03
 
 ### Fixed

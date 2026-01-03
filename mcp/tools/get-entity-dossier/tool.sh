@@ -19,10 +19,14 @@ if [[ "$entity_json" != "null" ]]; then
     entity_type=$(echo "$entity_json" | jq -r '.type')
     entity_id=$(echo "$entity_json" | jq -r '.id')
 elif [[ "$entity_id" == "null" || -z "$entity_id" ]]; then
+    xaffinity_log_error "get-entity-dossier" "missing required entity reference"
     mcp_fail_invalid_args "Either entity object or entityId/entityType is required"
 fi
 
 validate_entity_type "$entity_type" || mcp_fail_invalid_args "Invalid entity type: $entity_type"
+
+# Log tool invocation (entity_id is logged as it's needed for debugging)
+xaffinity_log_debug "get-entity-dossier" "type=$entity_type id=$entity_id interactions=$include_interactions notes=$include_notes lists=$include_lists"
 
 # Fetch entity details
 cli_args=(--output json --quiet)
@@ -74,6 +78,13 @@ lists="[]"
 if [[ "$include_lists" == "true" ]]; then
     lists=$(run_xaffinity_readonly list-entry ls --"$entity_type"-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.entries // []' || echo "[]")
 fi
+
+# Count collected data for logging
+interactions_count=$(echo "$interactions" | jq 'length')
+notes_count=$(echo "$notes" | jq 'length')
+lists_count=$(echo "$lists" | jq 'length')
+
+xaffinity_log_debug "get-entity-dossier" "collected interactions=$interactions_count notes=$notes_count lists=$lists_count"
 
 # Build dossier
 mcp_emit_json "$(jq -n \
