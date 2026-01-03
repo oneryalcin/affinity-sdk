@@ -159,7 +159,7 @@ jobs:
     environment: ${{ needs.validate.outputs.publish_target }}
     steps:
       - name: Download dist artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
@@ -198,7 +198,7 @@ jobs:
           echo "$CHANGELOG" > release_notes.md
 
       - name: Download dist artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
