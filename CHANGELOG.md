@@ -7,19 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- CLI: `list view` renamed to `list get` for consistency with other entity commands.
-- CLI: `--completed/--not-completed` boolean flag pattern for `reminder update` (replaces separate flags).
-- CLI: Removed API version mentions from help text (implementation detail).
-- CLI: `interaction ls` now requires an entity ID (`--person-id`, `--company-id`, or `--opportunity-id`) and defaults to last 7 days with visible warning (API max: 1 year).
-- CLI: Unified `person field`, `company field`, `opportunity field` commands replace `set-field`, `set-fields`, and `unset-field` commands. New syntax: `--set FIELD VALUE`, `--unset FIELD`, `--json '{...}'`, `--get FIELD`.
+### Fixed
+- SDK: Regex patterns in `lists.py` and `http.py` were double-escaped, matching literal `\d` instead of digits.
 
-### Removed
-- CLI: `person set-field`, `person set-fields`, `person unset-field` commands (use `person field` instead).
-- CLI: `company set-field`, `company set-fields`, `company unset-field` commands (use `company field` instead).
-- CLI: `opportunity set-field`, `opportunity set-fields`, `opportunity unset-field` commands (use `opportunity field` instead).
+## 0.6.5 - 2026-01-02
+
+_No user-facing changes. Version bump for PyPI release._
+
+## 0.6.4 - 2026-01-02
+
+_No user-facing changes. Version bump for PyPI release._
+
+## 0.6.3 - 2026-01-02
+
+_No user-facing changes. Version bump for PyPI release._
+
+## 0.6.2 - 2026-01-02
+
+### Fixed
+- CLI: Added explicit `type=str` to Click arguments for Python 3.13 mypy compatibility.
+
+## 0.6.1 - 2026-01-02
+
+### Changed
+- Docs: Separated MCP Server documentation from Claude Code plugins.
+
+## 0.6.0 - 2026-01-02
 
 ### Added
+- MCP: `read-xaffinity-resource` tool for clients with limited resource support.
+
+### Changed
+- Plugins: Restructured into 3-plugin marketplace architecture (affinity-sdk, xaffinity-cli, xaffinity-mcp).
+- Docs: Restructured Claude integrations with consistent naming.
+
+### Fixed
+- CLI: Improved `setup-key` command UX with Rich styling.
+- MCP: Source both `.zprofile` and `.zshrc` in environment wrapper.
+- MCP: Parse JSON response correctly for `check-key` output.
+
+## 0.5.1 - 2026-01-01
+
+### Fixed
+- Plugins: Consolidated plugin structure and fixed relative paths.
+
+## 0.5.0 - 2026-01-01
+
+### Added
+- MCP: Initial xaffinity MCP server as separate Claude Code plugin.
 - CLI: Top-level `entry` command group as shorthand for `list entry` (e.g., `xaffinity entry get` instead of `xaffinity list entry get`).
 - CLI: `--query` / `-q` flag for `person ls`, `company ls`, and `opportunity ls` to enable free-text search (V1 API).
 - CLI: `--company-id` and `--opportunity-id` options for `interaction ls`.
@@ -27,14 +62,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `-n` short flag for `--max-results` on all commands with result limits.
 - CLI: `-s` short flag for `--page-size` on all pagination commands.
 - CLI: `-t` short flag for `--type` on interaction commands.
+- CLI: Structured `CommandContext` for all commands.
 - SDK: `OpportunityService.search()`, `search_pages()`, `search_all()` methods for V1 opportunity search.
 - SDK: Async versions of opportunity search methods in `AsyncOpportunityService`.
 - SDK: `InteractionService.list()` now accepts `company_id` and `opportunity_id` parameters.
+
+### Changed
+- CLI: `list view` renamed to `list get` for consistency with other entity commands.
+- CLI: `--completed/--not-completed` boolean flag pattern for `reminder update` (replaces separate flags).
+- CLI: Removed API version mentions from help text (implementation detail).
+- CLI: `interaction ls` now requires an entity ID (`--person-id`, `--company-id`, or `--opportunity-id`) and defaults to last 7 days with visible warning (API max: 1 year).
+- CLI: Unified `person field`, `company field`, `opportunity field` commands replace `set-field`, `set-fields`, and `unset-field` commands. New syntax: `--set FIELD VALUE`, `--unset FIELD`, `--json '{...}'`, `--get FIELD`.
+- CLI: Note content separated from metadata in table display.
+
+### Removed
+- CLI: `person set-field`, `person set-fields`, `person unset-field` commands (use `person field` instead).
+- CLI: `company set-field`, `company set-fields`, `company unset-field` commands (use `company field` instead).
+- CLI: `opportunity set-field`, `opportunity set-fields`, `opportunity unset-field` commands (use `opportunity field` instead).
 
 ### Fixed
 - CLI: Help text formatting - added missing spaces in command examples (~78 instances).
 - CLI: Improved `--cursor` help text explaining incompatibility with `--page-size`.
 - CLI: Clarified `--csv` help text to indicate it writes to file while stdout format is unchanged.
+- CLI: CommandContext validation and test isolation issues.
 
 ## 0.4.8 - 2025-12-31
 
