@@ -15,13 +15,23 @@ jobs:
 
       - name: Verify plugin structure
         run: |
-          # Ensure critical files exist after build
+          # Ensure critical files exist after build (ZIP-based distribution)
+          make -C mcp verify
           test -f mcp/.claude-plugin/xaffinity-mcp.sh
           test -f mcp/.claude-plugin/plugin.json
-          test -d mcp/.claude-plugin/tools
-          test -d mcp/.claude-plugin/prompts
-          test -d mcp/.claude-plugin/resources
+          test -f mcp/.claude-plugin/xaffinity-mcp-plugin.zip
+          test -f mcp/.claude-plugin/VERSION
           echo "Plugin structure validated successfully"
+
+      - name: Test ZIP extraction
+        run: |
+          cd mcp/.claude-plugin
+          mkdir -p .mcp-extracted
+          unzip -q xaffinity-mcp-plugin.zip -d .mcp-extracted
+          test -x .mcp-extracted/xaffinity-mcp.sh
+          test -d .mcp-extracted/tools
+          test -d .mcp-extracted/prompts
+          echo "ZIP extraction test passed"
 
   test:
     runs-on: ubuntu-latest
