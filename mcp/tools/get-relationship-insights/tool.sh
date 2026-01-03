@@ -38,7 +38,7 @@ target_strength="null"
 if [[ "$target_type" == "person" ]]; then
     target_strength=$(run_xaffinity_readonly relationship-strength ls --external-id "$target_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
-((current_step++))
+((++current_step))
 
 # Helper to fetch all interaction types for a person
 fetch_all_interactions() {
@@ -71,7 +71,7 @@ if [[ "$source_id" != "null" && -n "$source_id" ]]; then
     # Get source's interactions to find common contacts (Affinity API requires type)
     mcp_progress "$current_step" "Fetching source interactions" "$total_steps"
     source_interactions=$(fetch_all_interactions "$source_id" 100)
-    ((current_step++))
+    ((++current_step))
 
     if mcp_is_cancelled; then
         mcp_fail -32001 "Operation cancelled"
@@ -80,7 +80,7 @@ if [[ "$source_id" != "null" && -n "$source_id" ]]; then
     # Get target's interactions
     mcp_progress "$current_step" "Fetching target interactions" "$total_steps"
     target_interactions=$(fetch_all_interactions "$target_id" 100)
-    ((current_step++))
+    ((++current_step))
 
     # Find overlapping person IDs (potential intro paths)
     mcp_progress "$current_step" "Finding shared connections" "$total_steps"
@@ -91,7 +91,7 @@ if [[ "$source_id" != "null" && -n "$source_id" ]]; then
         --argjson source "$source_contacts" \
         --argjson target "$target_contacts" \
         '[$source[] as $s | $target[] | select(. == $s)] | unique | .[:10]' || echo "[]")
-    ((current_step++))
+    ((++current_step))
 fi
 
 if mcp_is_cancelled; then
@@ -101,7 +101,7 @@ fi
 # Get target's recent activity summary (Affinity API requires type)
 mcp_progress "$current_step" "Getting recent activity" "$total_steps"
 recent_interactions=$(fetch_all_interactions "$target_id" 5)
-((current_step++))
+((++current_step))
 
 # Log completion stats
 shared_count=$(echo "$shared_connections" | jq 'length')

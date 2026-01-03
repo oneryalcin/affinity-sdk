@@ -32,13 +32,12 @@ jobs:
       - name: Verify mcp-bash installation
         run: mcp-bash --version
 
-      - name: Verify plugin bundle exists
+      - name: Build Claude Code plugin ZIP
         run: |
-          test -f mcp/.claude-plugin/xaffinity-mcp-plugin.zip || {
-            echo "Error: Plugin ZIP not found. Run 'make plugin' and commit first." >&2
-            exit 1
-          }
-          echo "Plugin version: $(cat mcp/.claude-plugin/VERSION)"
+          cd mcp
+          make plugin
+          echo "Plugin version: $(cat .claude-plugin/VERSION)"
+          ls -la .claude-plugin/xaffinity-mcp-plugin.zip
 
       - name: Validate MCPB configuration
         run: |

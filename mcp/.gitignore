@@ -4,6 +4,10 @@
 # MCPB bundle output directory
 dist/
 
+# Claude Code plugin ZIP (built in CI)
+.claude-plugin/xaffinity-mcp-plugin.zip
+.claude-plugin/VERSION
+
 # Test configuration (contains user-specific entity IDs)
 # Note: .env.test.example is tracked, but .env.test is ignored
 test/.env.test

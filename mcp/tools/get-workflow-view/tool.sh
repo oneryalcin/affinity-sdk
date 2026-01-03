@@ -10,7 +10,7 @@ list_id="$(mcp_args_get '.listId // null')"
 list_name="$(mcp_args_get '.listName // null')"
 view_id="$(mcp_args_get '.viewId // null')"
 view_name="$(mcp_args_get '.viewName // null')"
-limit="$(mcp_args_int '.limit' 50 1 500)"
+limit="$(mcp_args_int '.limit' --default 50 --min 1 --max 500)"
 
 # Resolve list
 if [[ "$list_id" == "null" || -z "$list_id" ]]; then
@@ -24,24 +24,24 @@ fi
 config=$(get_or_fetch_workflow_config "$list_id")
 list_type=$(echo "$config" | jq -r '.list.type')
 
-# Build export command arguments
-export_args=(--list-id "$list_id" --output json --quiet --max-results "$limit")
+# Build export command arguments (list export takes list_id as positional arg)
+export_args=(--output json --quiet --max-results "$limit")
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && export_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
 
 # Resolve view if specified
 if [[ "$view_id" != "null" && -n "$view_id" ]]; then
-    export_args+=(--view-id "$view_id")
+    export_args+=(--saved-view "$view_id")
 elif [[ "$view_name" != "null" && -n "$view_name" ]]; then
     # Find view ID by name
     actual_view_id=$(echo "$config" | jq -r --arg name "$view_name" \
         '.savedViews[] | select(.name == $name) | .viewId' | head -1)
     if [[ -n "$actual_view_id" ]]; then
-        export_args+=(--view-id "$actual_view_id")
+        export_args+=(--saved-view "$actual_view_id")
     fi
 fi
 
 # Export list entries
-result=$(run_xaffinity_readonly list-entry export "${export_args[@]}" 2>/dev/null)
+result=$(run_xaffinity_readonly list export "$list_id" "${export_args[@]}" 2>/dev/null)
 
 # Transform entries to workflow items
 items=$(echo "$result" | jq -c --arg listType "$list_type" '

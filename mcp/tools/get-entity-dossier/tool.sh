@@ -10,9 +10,9 @@ source "${MCPBASH_PROJECT_ROOT}/lib/entity-types.sh"
 entity_json="$(mcp_args_get '.entity // null')"
 entity_type="$(mcp_args_get '.entityType // null')"
 entity_id="$(mcp_args_get '.entityId // null')"
-include_interactions="$(mcp_args_bool '.includeInteractions' true)"
-include_notes="$(mcp_args_bool '.includeNotes' true)"
-include_lists="$(mcp_args_bool '.includeLists' true)"
+include_interactions="$(mcp_args_bool '.includeInteractions' --default true)"
+include_notes="$(mcp_args_bool '.includeNotes' --default true)"
+include_lists="$(mcp_args_bool '.includeLists' --default true)"
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then
@@ -30,9 +30,9 @@ xaffinity_log_debug "get-entity-dossier" "type=$entity_type id=$entity_id intera
 
 # Calculate total steps for progress
 total_steps=2  # entity details + relationship strength
-[[ "$include_interactions" == "true" ]] && ((total_steps++))
-[[ "$include_notes" == "true" ]] && ((total_steps++))
-[[ "$include_lists" == "true" ]] && ((total_steps++))
+[[ "$include_interactions" == "true" ]] && ((++total_steps))
+[[ "$include_notes" == "true" ]] && ((++total_steps))
+[[ "$include_lists" == "true" ]] && ((++total_steps))
 current_step=0
 
 # Fetch entity details
@@ -51,7 +51,7 @@ case "$entity_type" in
         entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.opportunity // {}' || echo '{}')
         ;;
 esac
-((current_step++))
+((++current_step))
 
 # Check for cancellation
 if mcp_is_cancelled; then
@@ -64,7 +64,7 @@ relationship_data="null"
 if [[ "$entity_type" == "person" ]]; then
     relationship_data=$(run_xaffinity_readonly relationship-strength ls --external-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
-((current_step++))
+((++current_step))
 
 # Get interactions if requested (Affinity API requires type, so query all types)
 interactions="[]"
@@ -86,7 +86,7 @@ if [[ "$include_interactions" == "true" ]]; then
     wait
 
     interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse | .[:10]' || echo "[]")
-    ((current_step++))
+    ((++current_step))
 fi
 
 # Get notes if requested
@@ -97,7 +97,7 @@ if [[ "$include_notes" == "true" ]]; then
     fi
     mcp_progress "$current_step" "Fetching notes" "$total_steps"
     notes=$(run_xaffinity_readonly note ls --"$entity_type"-id "$entity_id" --max-results 10 "${cli_args[@]}" 2>/dev/null | jq -c '.data.notes // []' || echo "[]")
-    ((current_step++))
+    ((++current_step))
 fi
 
 # Get list memberships if requested
@@ -108,7 +108,7 @@ if [[ "$include_lists" == "true" ]]; then
     fi
     mcp_progress "$current_step" "Fetching list memberships" "$total_steps"
     lists=$(run_xaffinity_readonly list-entry ls --"$entity_type"-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.entries // []' || echo "[]")
-    ((current_step++))
+    ((++current_step))
 fi
 
 # Count collected data for logging

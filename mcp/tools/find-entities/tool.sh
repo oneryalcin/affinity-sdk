@@ -9,7 +9,7 @@ source "${MCPBASH_PROJECT_ROOT}/lib/entity-types.sh"
 # Extract arguments
 query="$(mcp_args_require '.query' 'Query string is required')"
 types_json="$(mcp_args_get '.types // ["person", "company"]')"
-limit="$(mcp_args_int '.limit' 10 1 100)"
+limit="$(mcp_args_int '.limit' --default 10 --min 1 --max 100)"
 
 # Log tool invocation (debug mode only, query is logged as it's the search term)
 xaffinity_log_debug "find-entities" "query='$query' types=$types_json limit=$limit"
