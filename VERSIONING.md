@@ -70,9 +70,10 @@ The MCP server shells out to CLI commands. These changes require MCP updates:
 
 1. Update `mcp/VERSION`
 2. Update `mcp/.claude-plugin/plugin.json` version field
-3. If CLI requirements changed: update `mcp/COMPATIBILITY`
-4. Update `mcp/CHANGELOG.md`
-5. Commit and tag: `git tag plugin-v1.1.0`
+3. Update `mcp/mcpb.conf` MCPB_VERSION field
+4. If CLI requirements changed: update `mcp/COMPATIBILITY`
+5. Update `mcp/CHANGELOG.md`
+6. Commit and tag: `git tag plugin-v1.1.0`
 
 ## Testing MCP Compatibility
 
@@ -101,6 +102,7 @@ run_xaffinity_readonly person ls --query "test" --output json --quiet
 | `mcp/VERSION` | MCP distribution version | Manual |
 | `mcp/COMPATIBILITY` | CLI version requirements | Manual |
 | `mcp/.claude-plugin/plugin.json` | MCP plugin version | Manual |
+| `mcp/mcpb.conf` | MCPB bundle version (MCPB_VERSION) | Manual |
 | `mcp/FRAMEWORK_VERSION` | MCP-bash framework version | Manual |
 
 ## Release Checklist
@@ -115,6 +117,7 @@ run_xaffinity_readonly person ls --query "test" --output json --quiet
 ### MCP Release (plugin-vX.Y.Z)
 - [ ] Version bumped in `mcp/VERSION`
 - [ ] `mcp/.claude-plugin/plugin.json` version updated
+- [ ] `mcp/mcpb.conf` MCPB_VERSION updated
 - [ ] `mcp/COMPATIBILITY` CLI requirements verified
 - [ ] `mcp/CHANGELOG.md` updated
 - [ ] Tag pushed: `git tag plugin-vX.Y.Z && git push --tags`

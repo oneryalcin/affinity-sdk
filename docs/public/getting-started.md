@@ -116,6 +116,5 @@ See [Sync vs async](guides/sync-vs-async.md).
 - [Configuration](guides/configuration.md)
 - [Field types & values](guides/field-types-and-values.md)
 - [API versions & routing](guides/api-versions-and-routing.md)
-- [MCP Server](mcp/index.md) - Connect AI tools to Affinity
-- [Claude Code plugins](guides/claude-code-plugins.md) - SDK/CLI knowledge for Claude
+- [AI Integrations](ai-integrations/index.md) - MCP Server & Claude Code plugins
 - [API reference](reference/client.md)

@@ -1,6 +1,6 @@
-# Claude Code Plugins
+# Claude Code Plugins & Skills
 
-Two [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugins teach Claude best practices for the Affinity SDK and CLI:
+Two [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugins provide **skills** that teach Claude best practices for the Affinity SDK and CLI:
 
 | Plugin | Best For | Key Feature |
 |--------|----------|-------------|
@@ -8,6 +8,9 @@ Two [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugins teach 
 | **cli** | CLI power users | `/affinity-help` quick reference |
 
 All plugins are installed from the `xaffinity` marketplace.
+
+!!! info "What are skills?"
+    Skills are knowledge packages that Claude loads when relevant. They teach Claude domain-specific patterns, best practices, and gotchas—so you don't have to explain them in every prompt.
 
 !!! tip "Looking for MCP?"
     For agentic workflows (meeting prep, pipeline management, warm intros), see the [MCP Server](../mcp/index.md) documentation. The MCP server works with any MCP client, not just Claude.
@@ -34,11 +37,11 @@ You can install both plugins. They complement each other.
 
 ---
 
-## SDK Plugin
+## SDK Plugin (affinity-python-sdk skill)
 
 Teaches Claude the correct patterns for writing Python scripts with the Affinity SDK.
 
-### What Claude learns
+### What the skill teaches Claude
 
 **Use typed IDs (not raw integers)**
 
@@ -87,7 +90,7 @@ client.persons.list(filter=F.field("Department").equals("Sales"))
 
 ---
 
-## CLI Plugin
+## CLI Plugin (xaffinity-cli-usage skill)
 
 Teaches Claude the correct patterns for running `xaffinity` CLI commands.
 
@@ -95,7 +98,7 @@ Teaches Claude the correct patterns for running `xaffinity` CLI commands.
 
 Run `/affinity-help` in Claude Code for a quick reference of CLI patterns.
 
-### What Claude learns
+### What the skill teaches Claude
 
 - Always use `--readonly` by default
 - Use `--json` for structured, parseable output

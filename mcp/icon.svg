@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-label="affinity-sdk icon">
+  <!-- Outer container -->
+  <rect x="48" y="48" width="416" height="416" rx="96" stroke="currentColor" stroke-width="28"/>
+
+  <!-- Left angle bracket "<" -->
+  <path d="M188 176L132 256L188 336" stroke="currentColor" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Right angle bracket ">" -->
+  <path d="M324 176L380 256L324 336" stroke="currentColor" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Stylized "A" (Affinity) -->
+  <path d="M220 336L256 176L292 336" stroke="currentColor" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M234 288H278" stroke="currentColor" stroke-width="28" stroke-linecap="round"/>
+
+  <!-- Small connector nodes (API/SDK feel) -->
+  <circle cx="256" cy="176" r="16" fill="currentColor"/>
+  <circle cx="220" cy="336" r="16" fill="currentColor"/>
+  <circle cx="292" cy="336" r="16" fill="currentColor"/>
+</svg>

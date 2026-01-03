@@ -26,7 +26,23 @@ MCP (Model Context Protocol) is an open standard. This server works with:
 
 ---
 
-## Prerequisites
+## Installation Options
+
+### Option 1: MCPB Bundle (Recommended)
+
+Download the `.mcpb` bundle for one-click installation:
+
+1. Download `xaffinity-mcp-X.Y.Z.mcpb` from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases)
+2. Double-click the file or drag it to Claude Desktop
+3. Configure your API key when prompted
+
+MCPB bundles work with Claude Desktop and other MCPB-compatible clients.
+
+### Option 2: Manual Configuration
+
+For clients that don't support MCPB, configure manually:
+
+**Prerequisites:**
 
 1. Install the CLI:
 
@@ -50,7 +66,7 @@ xaffinity config check-key
 
 ## Client Configuration
 
-Add the MCP server to your client's configuration.
+For manual installation, add the MCP server to your client's configuration.
 
 ### Claude Desktop
 
@@ -292,3 +308,19 @@ Using Claude Code? You can also install via the plugin marketplace:
 ```
 
 This installs the MCP server automatically. See [Claude Code plugins](../guides/claude-code-plugins.md) for additional Claude-specific features.
+
+---
+
+## Discoverability
+
+### MCPB Distribution
+
+This server is distributed as an [MCPB bundle](https://github.com/modelcontextprotocol/mcpb) for one-click installation. Download from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases).
+
+### MCP Registry (Planned)
+
+We plan to register this server with the [MCP Registry](https://registry.modelcontextprotocol.io/)—the official catalog for MCP servers.
+
+### Future: .well-known Discovery
+
+The MCP protocol is adding standardized discovery via `/.well-known/mcp.json` endpoints ([SEP-1649](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649)). This will allow clients to auto-discover server capabilities without connecting first.

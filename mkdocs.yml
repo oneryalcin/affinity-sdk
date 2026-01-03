@@ -41,9 +41,11 @@ nav:
       - Commands: cli/commands.md
       - Scripting: cli/scripting.md
       - JSON Output Reference: cli-reference.md
-  - MCP Server: mcp/index.md
+  - AI Integrations:
+      - Overview: ai-integrations/index.md
+      - MCP Server: mcp/index.md
+      - Claude Code Plugins & Skills: guides/claude-code-plugins.md
   - Guides:
-      - Claude Code plugins: guides/claude-code-plugins.md
       - Authentication: guides/authentication.md
       - Configuration: guides/configuration.md
       - Performance tuning: guides/performance.md

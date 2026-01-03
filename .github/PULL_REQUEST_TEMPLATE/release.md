@@ -20,9 +20,10 @@ about: Checklist for SDK or MCP releases
 
 - [ ] Version bumped in `mcp/VERSION`
 - [ ] `mcp/.claude-plugin/plugin.json` version updated
+- [ ] `mcp/mcpb.conf` MCPB_VERSION updated
 - [ ] `mcp/COMPATIBILITY` CLI requirements updated if needed
 - [ ] `mcp/CHANGELOG.md` documents CLI compatibility
-- [ ] Plugin builds successfully: `cd mcp && make plugin verify`
+- [ ] Builds successfully: `cd mcp && make all verify`
 
 ## Post-Merge
 

@@ -1,2 +1,5 @@
 # Auto-generated registry cache (created by Claude Code MCP scanner)
 .registry/
+
+# MCPB bundle output directory
+dist/
