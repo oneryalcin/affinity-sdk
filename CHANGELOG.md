@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## 0.6.9 - 2026-01-06
+
+### Changed
+- CLI Plugin: Skill now documents destructive command confirmation flow (look up, ask, wait, execute with `--yes`).
+- CLI Plugin: Skill lists all destructive commands requiring double confirmation.
+
 ## 0.6.8 - 2026-01-05
 
 ### Added
