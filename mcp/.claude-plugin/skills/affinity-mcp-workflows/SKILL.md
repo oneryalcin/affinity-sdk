@@ -78,10 +78,22 @@ For operations not covered by specialized tools, use the CLI Gateway:
 1. **Discover** the right command: `discover-commands(query: "create person", category: "write")`
 2. **Execute** it: `execute-write-command(command: "person create", argv: ["--first-name", "John", "--last-name", "Doe"])`
 
-**Destructive commands** (delete operations) require explicit confirmation:
-```json
-execute-write-command(command: "person delete", argv: ["123"], confirm: true)
+**Destructive commands** (delete operations) require double confirmation:
+
+1. **Look up the entity first** using `execute-read-command` to show what will be deleted
+2. **Ask the user to confirm** by showing them the entity details (name, ID, etc.)
+3. **Only after user confirms** should you execute with `confirm: true`
+
+Example flow:
 ```
+User: "Delete person 123"
+You: execute-read-command(command: "person get", argv: ["123"])
+You: "This will delete John Smith (ID: 123, email: john@example.com). Are you sure?"
+User: "Yes"
+You: execute-write-command(command: "person delete", argv: ["123"], confirm: true)
+```
+
+The `confirm: true` parameter is required by the tool, but YOU must still confirm with the user first.
 
 ## MCP Prompts (Guided Workflows)
 

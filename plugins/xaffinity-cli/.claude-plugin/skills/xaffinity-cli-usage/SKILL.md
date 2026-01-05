@@ -35,19 +35,26 @@ Write operations include creating, updating, or deleting:
 - List entries, field values
 - Persons, companies, opportunities
 
-## Destructive Commands Require Confirmation
+## Destructive Commands Require Double Confirmation
 
-Delete commands prompt for confirmation by default. Use `--yes` to skip the prompt:
+**IMPORTANT**: Before executing ANY delete command, you MUST:
 
-```bash
-# Interactive (prompts for confirmation):
-xaffinity person delete 123
+1. **Look up the entity first** to show the user what will be deleted
+2. **Ask the user to confirm** by showing them the entity details (name, ID, etc.)
+3. **Only after user confirms** should you run the delete with `--yes`
 
-# Non-interactive (use when scripting or when user has confirmed):
-xaffinity person delete 123 --yes
+Example flow:
+```
+User: "Delete person 123"
+You: First look up: xaffinity person get 123 --json
+You: "This will delete John Smith (ID: 123, email: john@example.com). Are you sure?"
+User: "Yes, delete it"
+You: xaffinity person delete 123 --yes
 ```
 
 **Destructive commands**: `person delete`, `company delete`, `opportunity delete`, `note delete`, `reminder delete`, `field delete`, `list entry delete`, `interaction delete`
+
+The `--yes` flag skips the CLI's interactive prompt, but YOU must still confirm with the user first.
 
 ## Critical Patterns
 
