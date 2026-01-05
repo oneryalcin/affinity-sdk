@@ -35,6 +35,20 @@ Write operations include creating, updating, or deleting:
 - List entries, field values
 - Persons, companies, opportunities
 
+## Destructive Commands Require Confirmation
+
+Delete commands prompt for confirmation by default. Use `--yes` to skip the prompt:
+
+```bash
+# Interactive (prompts for confirmation):
+xaffinity person delete 123
+
+# Non-interactive (use when scripting or when user has confirmed):
+xaffinity person delete 123 --yes
+```
+
+**Destructive commands**: `person delete`, `company delete`, `opportunity delete`, `note delete`, `reminder delete`, `field delete`, `list entry delete`, `interaction delete`
+
 ## Critical Patterns
 
 | Pattern | Purpose |
@@ -42,6 +56,7 @@ Write operations include creating, updating, or deleting:
 | `--readonly` | Prevent accidental data modification (ALWAYS use) |
 | `--json` | Structured, parseable output (ALWAYS use) |
 | `--all` | Fetch all pages (for exports) |
+| `--yes` | Skip confirmation on delete commands (use after user confirms) |
 | `--help` | Discover command options (USE THIS, don't guess) |
 
 ## Common Commands
