@@ -22,7 +22,7 @@ The CLI must be configured with an API key before the MCP server will work.
 **Only use tools or prompts that modify CRM data when the user explicitly asks to do so.**
 
 Write operations include:
-- **Tools**: `set-workflow-status`, `update-workflow-fields`, `add-note`, `log-interaction`
+- **Tools**: `set-workflow-status`, `update-workflow-fields`, `add-note`, `log-interaction`, `execute-write-command`
 - **Prompts**: `log-interaction-and-update-workflow`, `change-status`, `log-call`, `log-message`
 
 Read-only operations (search, lookup, briefings) can be used proactively to help the user. But never create, update, or delete CRM records unless the user specifically requests it.
@@ -62,6 +62,26 @@ Read-only operations (search, lookup, briefings) can be used proactively to help
 |------|----------|
 | `add-note` | **(write)** Add note to a person, company, or opportunity |
 | `log-interaction` | **(write)** Log call, meeting, email, or chat message |
+
+### CLI Gateway (full CLI access)
+
+For operations not covered by specialized tools, use the CLI Gateway:
+
+| Tool | Use Case |
+|------|----------|
+| `discover-commands` | Search CLI commands by keyword (e.g., "create person", "export list") |
+| `execute-read-command` | Execute read-only CLI commands (get, search, list, export) |
+| `execute-write-command` | **(write)** Execute write CLI commands (create, update, delete) |
+
+**Usage pattern:**
+
+1. **Discover** the right command: `discover-commands(query: "create person", category: "write")`
+2. **Execute** it: `execute-write-command(command: "person create", argv: ["--first-name", "John", "--last-name", "Doe"])`
+
+**Destructive commands** (delete operations) require explicit confirmation:
+```json
+execute-write-command(command: "person delete", argv: ["123"], confirm: true)
+```
 
 ## MCP Prompts (Guided Workflows)
 
