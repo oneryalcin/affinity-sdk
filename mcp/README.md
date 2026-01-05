@@ -12,6 +12,23 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 
 ## Installation
 
+### Option 1: Claude Desktop (One-Click)
+
+1. Download `xaffinity-mcp-*.mcpb` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest)
+2. Double-click the file or drag it into Claude Desktop
+3. Configure your Affinity API key when prompted
+
+### Option 2: Claude Code
+
+```bash
+/plugin marketplace add yaniv-golan/affinity-sdk
+/plugin install mcp@xaffinity
+```
+
+### Option 3: Manual Installation
+
+Download `xaffinity-mcp-plugin.zip` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest) and configure your MCP client manually (see [Usage](#usage) below).
+
 ### Prerequisites
 
 - Bash 3.2+
