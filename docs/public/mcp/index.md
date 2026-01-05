@@ -128,7 +128,7 @@ Replace `/path/to/affinity-sdk` with your actual installation path.
 
 ---
 
-## Available Tools (14)
+## Available Tools (17)
 
 ### Search & Lookup (read-only)
 
@@ -163,6 +163,33 @@ Replace `/path/to/affinity-sdk` with your actual installation path.
 |------|-------------|
 | `add-note` | Add note to a person, company, or opportunity **(write)** |
 | `log-interaction` | Log call, meeting, email, or chat message **(write)** |
+
+### CLI Gateway (full CLI access)
+
+These tools provide access to the full xaffinity CLI with minimal token overhead:
+
+| Tool | Description |
+|------|-------------|
+| `discover-commands` | Search CLI commands by keyword (e.g., "create person", "delete note") |
+| `execute-read-command` | Execute read-only CLI commands (get, search, list) |
+| `execute-write-command` | Execute write CLI commands (create, update, delete) |
+
+**Usage pattern:**
+
+1. **Discover** the right command:
+   ```json
+   {"query": "add person to list", "category": "write"}
+   ```
+
+2. **Execute** the command:
+   ```json
+   {"command": "list entry add", "argv": ["Pipeline", "--person-id", "123"]}
+   ```
+
+**Destructive commands** (delete operations) require explicit confirmation:
+```json
+{"command": "person delete", "argv": ["456"], "confirm": true}
+```
 
 ---
 
@@ -260,6 +287,14 @@ Restrict to read-only tools:
 
 ```bash
 AFFINITY_MCP_READ_ONLY=1 ./xaffinity-mcp.sh
+```
+
+### Disable Destructive Commands
+
+Allow write operations but block delete commands via CLI Gateway:
+
+```bash
+AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 ./xaffinity-mcp.sh
 ```
 
 ### Cache TTL
