@@ -1,0 +1,2185 @@
+{
+  "version": 1,
+  "cliVersion": "0.6.7",
+  "commands": [
+    {
+      "name": "company create",
+      "description": "Create a company.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--domain": {
+          "type": "string",
+          "required": false
+        },
+        "--name": {
+          "type": "string",
+          "required": true
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "company delete",
+      "description": "Delete a company.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--get": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--set": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--unset": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company files dump",
+      "description": "Download all files attached to a company.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--concurrency": {
+          "type": "int",
+          "required": false
+        },
+        "--max-files": {
+          "type": "int",
+          "required": false
+        },
+        "--out": {
+          "type": "string",
+          "required": false
+        },
+        "--overwrite": {
+          "type": "flag",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company files upload",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--file": {
+          "type": "string",
+          "required": true,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--all-fields": {
+          "type": "flag",
+          "required": false
+        },
+        "--expand": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field-type": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--list": {
+          "type": "string",
+          "required": false
+        },
+        "--list-entry-field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--list-entry-fields-scope": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--no-fields": {
+          "type": "flag",
+          "required": false
+        },
+        "--show-list-entry-fields": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company ls",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--csv": {
+          "type": "string",
+          "required": false
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field-type": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--filter": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--query": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "company merge",
+      "description": "Merge a duplicate company into a primary company (beta).",
+      "category": "write",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "PRIMARY_ID",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "DUPLICATE_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company search",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--with-interaction-dates": {
+          "type": "flag",
+          "required": false
+        },
+        "--with-interaction-persons": {
+          "type": "flag",
+          "required": false
+        },
+        "--with-opportunities": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "QUERY",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "company update",
+      "description": "Update a company.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--domain": {
+          "type": "string",
+          "required": false
+        },
+        "--name": {
+          "type": "string",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "completion",
+      "description": "Output shell completion script for bash, zsh, or fish.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "SHELL",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "config check-key",
+      "description": "",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "config init",
+      "description": "Create a new configuration file with template.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {
+        "--force": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "config path",
+      "description": "Show the path to the configuration file.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "config setup-key",
+      "description": "",
+      "category": "local",
+      "destructive": false,
+      "parameters": {
+        "--force": {
+          "type": "flag",
+          "required": false
+        },
+        "--scope": {
+          "type": "string",
+          "required": false
+        },
+        "--validate": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "entry add",
+      "description": "Add a person or company to a list.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--creator-id": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "entry delete",
+      "description": "Delete a list entry.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "entry get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "entry set-field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--append": {
+          "type": "flag",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false
+        },
+        "--field-id": {
+          "type": "string",
+          "required": false
+        },
+        "--value": {
+          "type": "string",
+          "required": false
+        },
+        "--value-json": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "entry set-fields",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--updates-json": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "entry unset-field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--all-values": {
+          "type": "flag",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false
+        },
+        "--field-id": {
+          "type": "string",
+          "required": false
+        },
+        "--value": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "field create",
+      "description": "Create a field.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--allows-multiple": {
+          "type": "flag",
+          "required": false
+        },
+        "--entity-type": {
+          "type": "string",
+          "required": true
+        },
+        "--list-id": {
+          "type": "int",
+          "required": false
+        },
+        "--list-specific": {
+          "type": "flag",
+          "required": false
+        },
+        "--name": {
+          "type": "string",
+          "required": true
+        },
+        "--required": {
+          "type": "flag",
+          "required": false
+        },
+        "--value-type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "field delete",
+      "description": "Delete a field.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "FIELD_ID",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "field history",
+      "description": "Show field value change history.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--action-type": {
+          "type": "string",
+          "required": false
+        },
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--list-entry-id": {
+          "type": "int",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "FIELD_ID",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "field ls",
+      "description": "List fields.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--entity-type": {
+          "type": "string",
+          "required": false
+        },
+        "--list-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "interaction create",
+      "description": "Create an interaction.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--content": {
+          "type": "string",
+          "required": true
+        },
+        "--date": {
+          "type": "string",
+          "required": true
+        },
+        "--direction": {
+          "type": "string",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "interaction delete",
+      "description": "Delete an interaction.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--type": {
+          "type": "string",
+          "required": true
+        },
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "INTERACTION_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "interaction get",
+      "description": "Get an interaction by id.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "INTERACTION_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "interaction ls",
+      "description": "List interactions.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--end-time": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        },
+        "--start-time": {
+          "type": "string",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "interaction update",
+      "description": "Update an interaction.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--content": {
+          "type": "string",
+          "required": false
+        },
+        "--date": {
+          "type": "string",
+          "required": false
+        },
+        "--direction": {
+          "type": "string",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "INTERACTION_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list create",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--name": {
+          "type": "string",
+          "required": true
+        },
+        "--owner-id": {
+          "type": "int",
+          "required": false
+        },
+        "--public": {
+          "type": "flag",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "list entry add",
+      "description": "Add a person or company to a list.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--creator-id": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list entry delete",
+      "description": "Delete a list entry.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list entry get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list entry set-field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--append": {
+          "type": "flag",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false
+        },
+        "--field-id": {
+          "type": "string",
+          "required": false
+        },
+        "--value": {
+          "type": "string",
+          "required": false
+        },
+        "--value-json": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list entry set-fields",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--updates-json": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list entry unset-field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--all-values": {
+          "type": "flag",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false
+        },
+        "--field-id": {
+          "type": "string",
+          "required": false
+        },
+        "--value": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list export",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--csv": {
+          "type": "string",
+          "required": false
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false
+        },
+        "--csv-header": {
+          "type": "string",
+          "required": false
+        },
+        "--csv-mode": {
+          "type": "string",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--dry-run": {
+          "type": "flag",
+          "required": false
+        },
+        "--expand": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--expand-all": {
+          "type": "flag",
+          "required": false
+        },
+        "--expand-field-type": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--expand-fields": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--expand-filter": {
+          "type": "string",
+          "required": false
+        },
+        "--expand-max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--expand-on-error": {
+          "type": "string",
+          "required": false
+        },
+        "--expand-opportunities-list": {
+          "type": "string",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--filter": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--saved-view": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "list ls",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "note create",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--content": {
+          "type": "string",
+          "required": true
+        },
+        "--created-at": {
+          "type": "string",
+          "required": false
+        },
+        "--creator-id": {
+          "type": "int",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--parent-id": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--type": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "note delete",
+      "description": "Delete a note.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "NOTE_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "note get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "NOTE_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "note ls",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--creator-id": {
+          "type": "int",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "note update",
+      "description": "Update a note.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--content": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "NOTE_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity create",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--list": {
+          "type": "string",
+          "required": true
+        },
+        "--name": {
+          "type": "string",
+          "required": true
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "opportunity delete",
+      "description": "",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--get": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--set": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--unset": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity files dump",
+      "description": "Download all files attached to an opportunity.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--concurrency": {
+          "type": "int",
+          "required": false
+        },
+        "--max-files": {
+          "type": "int",
+          "required": false
+        },
+        "--out": {
+          "type": "string",
+          "required": false
+        },
+        "--overwrite": {
+          "type": "flag",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity files upload",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--file": {
+          "type": "string",
+          "required": true,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--details": {
+          "type": "flag",
+          "required": false
+        },
+        "--expand": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "opportunity ls",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--csv": {
+          "type": "string",
+          "required": false
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--query": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "opportunity update",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--name": {
+          "type": "string",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person create",
+      "description": "Create a person.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--email": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--first-name": {
+          "type": "string",
+          "required": true
+        },
+        "--last-name": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "person delete",
+      "description": "Delete a person.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person field",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--get": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--set": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--unset": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person files dump",
+      "description": "Download all files attached to a person.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--concurrency": {
+          "type": "int",
+          "required": false
+        },
+        "--max-files": {
+          "type": "int",
+          "required": false
+        },
+        "--out": {
+          "type": "string",
+          "required": false
+        },
+        "--overwrite": {
+          "type": "flag",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person files upload",
+      "description": "",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--file": {
+          "type": "string",
+          "required": true,
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person get",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--all-fields": {
+          "type": "flag",
+          "required": false
+        },
+        "--expand": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field-type": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--list": {
+          "type": "string",
+          "required": false
+        },
+        "--list-entry-field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--list-entry-fields-scope": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--no-fields": {
+          "type": "flag",
+          "required": false
+        },
+        "--show-list-entry-fields": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_SELECTOR",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person ls",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--csv": {
+          "type": "string",
+          "required": false
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--field": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--field-type": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--filter": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--query": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "person merge",
+      "description": "Merge a duplicate person into a primary person (beta).",
+      "category": "write",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "PRIMARY_ID",
+          "type": "int",
+          "required": true
+        },
+        {
+          "name": "DUPLICATE_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person search",
+      "description": "",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--with-interaction-dates": {
+          "type": "flag",
+          "required": false
+        },
+        "--with-interaction-persons": {
+          "type": "flag",
+          "required": false
+        },
+        "--with-opportunities": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "QUERY",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "person update",
+      "description": "Update a person.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false,
+          "multiple": true
+        },
+        "--email": {
+          "type": "string",
+          "required": false,
+          "multiple": true
+        },
+        "--first-name": {
+          "type": "string",
+          "required": false
+        },
+        "--last-name": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "relationship-strength ls",
+      "description": "List relationship strengths.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--external-id": {
+          "type": "int",
+          "required": true
+        },
+        "--internal-id": {
+          "type": "int",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "reminder create",
+      "description": "Create a reminder.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--content": {
+          "type": "string",
+          "required": false
+        },
+        "--due-date": {
+          "type": "string",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false
+        },
+        "--owner-id": {
+          "type": "int",
+          "required": true
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        },
+        "--reminder-days": {
+          "type": "int",
+          "required": false
+        },
+        "--reset-type": {
+          "type": "string",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "reminder delete",
+      "description": "Delete a reminder.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {
+          "type": "flag",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "REMINDER_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "reminder get",
+      "description": "Get a reminder by id.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "REMINDER_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "reminder ls",
+      "description": "List reminders.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--all": {
+          "type": "flag",
+          "required": false
+        },
+        "--company-id": {
+          "type": "int",
+          "required": false
+        },
+        "--completer-id": {
+          "type": "int",
+          "required": false
+        },
+        "--creator-id": {
+          "type": "int",
+          "required": false
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false
+        },
+        "--due-after": {
+          "type": "string",
+          "required": false
+        },
+        "--due-before": {
+          "type": "string",
+          "required": false
+        },
+        "--max-results": {
+          "type": "int",
+          "required": false
+        },
+        "--opportunity-id": {
+          "type": "int",
+          "required": false
+        },
+        "--owner-id": {
+          "type": "int",
+          "required": false
+        },
+        "--page-size": {
+          "type": "int",
+          "required": false
+        },
+        "--person-id": {
+          "type": "int",
+          "required": false
+        },
+        "--reset-type": {
+          "type": "string",
+          "required": false
+        },
+        "--status": {
+          "type": "string",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": []
+    },
+    {
+      "name": "reminder update",
+      "description": "Update a reminder.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--completed": {
+          "type": "flag",
+          "required": false
+        },
+        "--content": {
+          "type": "string",
+          "required": false
+        },
+        "--due-date": {
+          "type": "string",
+          "required": false
+        },
+        "--owner-id": {
+          "type": "int",
+          "required": false
+        },
+        "--reminder-days": {
+          "type": "int",
+          "required": false
+        },
+        "--reset-type": {
+          "type": "string",
+          "required": false
+        },
+        "--type": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "REMINDER_ID",
+          "type": "int",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "resolve-url",
+      "description": "Resolve an Affinity UI URL to entity type and IDs.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "URL",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "session end",
+      "description": "Clean up the current session cache.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "session start",
+      "description": "Create a new session cache directory.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "session status",
+      "description": "Show current session cache status.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "task get",
+      "description": "Get task status.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": [
+        {
+          "name": "TASK_URL",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "task wait",
+      "description": "Wait for a task to complete.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {
+        "--max-poll-interval": {
+          "type": "string",
+          "required": false
+        },
+        "--poll-interval": {
+          "type": "string",
+          "required": false
+        },
+        "--timeout": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "positionals": [
+        {
+          "name": "TASK_URL",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "version",
+      "description": "Show version, Python, and platform information.",
+      "category": "local",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    },
+    {
+      "name": "whoami",
+      "description": "Show current authenticated user information.",
+      "category": "read",
+      "destructive": false,
+      "parameters": {},
+      "positionals": []
+    }
+  ],
+  "total": 77
+}
