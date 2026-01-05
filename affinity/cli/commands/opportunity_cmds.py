@@ -25,6 +25,7 @@ from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv_from_rows
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
@@ -85,6 +86,7 @@ def _resolve_opportunity_selector(
     )
 
 
+@category("read")
 @opportunity_group.command(name="ls", cls=RichCommand)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
 @click.option(
@@ -301,6 +303,7 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
     }
 
 
+@category("read")
 @opportunity_group.command(name="get", cls=RichCommand)
 @click.argument("opportunity_selector", type=str)
 @click.option(
@@ -529,6 +532,7 @@ def opportunity_get(
     run_command(ctx, command="opportunity get", fn=fn)
 
 
+@category("write")
 @opportunity_group.command(name="create", cls=RichCommand)
 @click.option("--name", required=True, help="Opportunity name.")
 @click.option("--list", "list_selector", required=True, help="List id or exact list name.")
@@ -620,6 +624,7 @@ def opportunity_create(
     run_command(ctx, command="opportunity create", fn=fn)
 
 
+@category("write")
 @opportunity_group.command(name="update", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
 @click.option("--name", default=None, help="Updated opportunity name.")
@@ -706,20 +711,26 @@ def opportunity_update(
     run_command(ctx, command="opportunity update", fn=fn)
 
 
+@category("write")
+@destructive
 @opportunity_group.command(name="delete", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
 def opportunity_delete(
     ctx: CLIContext,
     opportunity_id: int,
+    yes: bool,
 ) -> None:
     """
     Delete an opportunity.
 
     Example:
-    - `xaffinity opportunity delete 123`
+    - `xaffinity opportunity delete 123 --yes`
     """
+    if not yes:
+        click.confirm(f"Delete opportunity {opportunity_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -753,6 +764,7 @@ def opportunity_files_group() -> None:
     """Opportunity files."""
 
 
+@category("read")
 @opportunity_files_group.command(name="dump", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
 @click.option(
@@ -835,6 +847,7 @@ def opportunity_files_dump(
     run_command(ctx, command="opportunity files dump", fn=fn)
 
 
+@category("write")
 @opportunity_files_group.command(name="upload", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
 @click.option(
@@ -936,6 +949,7 @@ def _get_opportunity_list_id(*, client: Any, opportunity_id: int) -> int:
     return int(opp.list_id)
 
 
+@category("write")
 @opportunity_group.command(name="field", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
 @click.option(

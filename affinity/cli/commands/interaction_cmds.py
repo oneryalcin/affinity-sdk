@@ -13,6 +13,7 @@ from affinity.types import CompanyId, InteractionId, OpportunityId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..results import CommandContext
@@ -62,6 +63,7 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
     }
 
 
+@category("read")
 @interaction_group.command(name="ls", cls=RichCommand)
 @click.option(
     "--type",
@@ -266,6 +268,7 @@ def interaction_ls(
     run_command(ctx, command="interaction ls", fn=fn)
 
 
+@category("read")
 @interaction_group.command(name="get", cls=RichCommand)
 @click.argument("interaction_id", type=int)
 @click.option(
@@ -316,6 +319,7 @@ def interaction_get(ctx: CLIContext, interaction_id: int, *, interaction_type: s
     run_command(ctx, command="interaction get", fn=fn)
 
 
+@category("write")
 @interaction_group.command(name="create", cls=RichCommand)
 @click.option(
     "--type",
@@ -400,6 +404,7 @@ def interaction_create(
     run_command(ctx, command="interaction create", fn=fn)
 
 
+@category("write")
 @interaction_group.command(name="update", cls=RichCommand)
 @click.argument("interaction_id", type=int)
 @click.option(
@@ -491,6 +496,8 @@ def interaction_update(
     run_command(ctx, command="interaction update", fn=fn)
 
 
+@category("write")
+@destructive
 @interaction_group.command(name="delete", cls=RichCommand)
 @click.argument("interaction_id", type=int)
 @click.option(
@@ -501,10 +508,15 @@ def interaction_update(
     required=True,
     help="Interaction type (required by API).",
 )
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def interaction_delete(ctx: CLIContext, interaction_id: int, *, interaction_type: str) -> None:
+def interaction_delete(
+    ctx: CLIContext, interaction_id: int, *, interaction_type: str, yes: bool
+) -> None:
     """Delete an interaction."""
+    if not yes:
+        click.confirm(f"Delete interaction {interaction_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_type = parse_choice(

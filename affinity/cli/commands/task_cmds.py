@@ -4,6 +4,7 @@ from affinity.models.secondary import MergeTask
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category
 from ..options import output_options
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
@@ -19,6 +20,7 @@ def _task_payload(task: MergeTask) -> dict[str, object]:
     return serialize_model_for_cli(task)
 
 
+@category("read")
 @task_group.command(name="get", cls=RichCommand)
 @click.argument("task_url", type=str)
 @output_options
@@ -42,6 +44,7 @@ def task_get(ctx: CLIContext, task_url: str) -> None:
     run_command(ctx, command="task get", fn=fn)
 
 
+@category("read")
 @task_group.command(name="wait", cls=RichCommand)
 @click.argument("task_url", type=str)
 @click.option(

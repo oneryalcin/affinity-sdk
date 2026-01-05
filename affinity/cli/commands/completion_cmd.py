@@ -4,10 +4,12 @@ import sys
 
 from ..click_compat import RichCommand, click
 from ..context import CLIContext
+from ..decorators import category
 from ..options import output_options
 from ..runner import CommandOutput, run_command
 
 
+@category("local")
 @click.command(name="completion", cls=RichCommand)
 @click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
 @output_options

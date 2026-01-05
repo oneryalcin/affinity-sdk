@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -12,11 +13,49 @@ from .logging import configure_logging, restore_logging
 from .paths import get_paths
 
 
+def _custom_help_callback(
+    ctx: click.Context,
+    _param: click.Parameter,
+    value: bool,
+) -> None:
+    """Custom help callback that supports --help --json for machine-readable output.
+
+    When --help is used with --json, outputs JSON instead of formatted help text.
+    This is used by MCP tools and automation to discover available commands.
+    """
+    if not value or ctx.resilient_parsing:
+        return
+
+    # Check if --json flag is present in remaining args or already parsed
+    args = sys.argv[1:]
+    has_json = "--json" in args
+
+    if has_json:
+        # Generate JSON help output
+        from .help_json import emit_help_json_and_exit
+
+        emit_help_json_and_exit(ctx)
+    else:
+        # Standard help output
+        click.echo(ctx.get_help())
+        ctx.exit(0)
+
+
 @click.group(
     name="xaffinity",
     invoke_without_command=True,
-    context_settings={"help_option_names": ["-h", "--help"]},
+    # Disable built-in help to use our custom handler
+    context_settings={"help_option_names": []},
     cls=RichGroup,
+)
+@click.option(
+    "-h",
+    "--help",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=_custom_help_callback,
+    help="Show this message and exit. Use with --json for machine-readable output.",
 )
 @click.option(
     "--output",

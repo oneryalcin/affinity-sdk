@@ -9,6 +9,7 @@ from affinity.types import CompanyId, ListEntryId, ListId, OpportunityId, Person
 
 from ..click_compat import RichCommand, click
 from ..context import CLIContext
+from ..decorators import category
 from ..errors import CLIError
 from ..options import output_options
 from ..runner import CommandOutput, run_command
@@ -70,6 +71,7 @@ def _parse_affinity_url(url: str) -> ResolvedUrl:
     raise CLIError("Unrecognized Affinity URL path.", exit_code=2, error_type="usage_error")
 
 
+@category("read")
 @click.command(name="resolve-url", cls=RichCommand)
 @click.argument("url", type=str)
 @output_options

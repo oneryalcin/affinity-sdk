@@ -18,6 +18,7 @@ from affinity.types import CompanyId, FieldType, ListId, PersonId
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv_from_rows
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
@@ -146,6 +147,7 @@ def person_group() -> None:
     """Person commands."""
 
 
+@category("read")
 @person_group.command(name="search", cls=RichCommand)
 @click.argument("query", type=str)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
@@ -325,6 +327,7 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     return result
 
 
+@category("read")
 @person_group.command(name="ls", cls=RichCommand)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
 @click.option(
@@ -854,6 +857,7 @@ def _resolve_person_field_ids(
     return ordered, resolved_info
 
 
+@category("read")
 @person_group.command(name="get", cls=RichCommand)
 @click.argument("person_selector", type=str)
 @click.option(
@@ -1481,6 +1485,7 @@ def person_files_group() -> None:
     """Person files."""
 
 
+@category("read")
 @person_files_group.command(name="dump", cls=RichCommand)
 @click.argument("person_id", type=int)
 @click.option(
@@ -1555,6 +1560,7 @@ def person_files_dump(
     run_command(ctx, command="person files dump", fn=fn)
 
 
+@category("write")
 @person_files_group.command(name="upload", cls=RichCommand)
 @click.argument("person_id", type=int)
 @click.option(
@@ -1644,6 +1650,7 @@ def person_files_upload(
     run_command(ctx, command="person files upload", fn=fn)
 
 
+@category("write")
 @person_group.command(name="create", cls=RichCommand)
 @click.option("--first-name", required=True, help="First name.")
 @click.option("--last-name", required=True, help="Last name.")
@@ -1708,6 +1715,7 @@ def person_create(
     run_command(ctx, command="person create", fn=fn)
 
 
+@category("write")
 @person_group.command(name="update", cls=RichCommand)
 @click.argument("person_id", type=int)
 @click.option("--first-name", default=None, help="Updated first name.")
@@ -1783,12 +1791,17 @@ def person_update(
     run_command(ctx, command="person update", fn=fn)
 
 
+@category("write")
+@destructive
 @person_group.command(name="delete", cls=RichCommand)
 @click.argument("person_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def person_delete(ctx: CLIContext, person_id: int) -> None:
+def person_delete(ctx: CLIContext, person_id: int, yes: bool) -> None:
     """Delete a person."""
+    if not yes:
+        click.confirm(f"Delete person {person_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -1809,6 +1822,7 @@ def person_delete(ctx: CLIContext, person_id: int) -> None:
     run_command(ctx, command="person delete", fn=fn)
 
 
+@category("write")
 @person_group.command(name="merge", cls=RichCommand)
 @click.argument("primary_id", type=int)
 @click.argument("duplicate_id", type=int)
@@ -1845,6 +1859,7 @@ def person_merge(
     run_command(ctx, command="person merge", fn=fn)
 
 
+@category("write")
 @person_group.command(name="field", cls=RichCommand)
 @click.argument("person_id", type=int)
 @click.option(

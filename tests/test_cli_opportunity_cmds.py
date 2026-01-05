@@ -161,7 +161,7 @@ def test_opportunity_create_update_delete(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "opportunity", "delete", "123"],
+        ["--json", "opportunity", "delete", "123", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0

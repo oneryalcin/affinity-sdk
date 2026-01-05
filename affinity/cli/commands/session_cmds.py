@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from ..click_compat import RichCommand, RichGroup, click
+from ..decorators import category
 
 
 @click.group(name="session", cls=RichGroup)
@@ -16,6 +17,7 @@ def session_group() -> None:
     """Manage CLI session cache for pipeline optimization."""
 
 
+@category("local")
 @session_group.command(name="start", cls=RichCommand)
 def session_start() -> None:
     """Create a new session cache directory.
@@ -31,6 +33,7 @@ def session_start() -> None:
         raise SystemExit(1) from None
 
 
+@category("local")
 @session_group.command(name="end", cls=RichCommand)
 def session_end() -> None:
     """Clean up the current session cache.
@@ -50,6 +53,7 @@ def session_end() -> None:
         click.echo(f"Session directory already removed: {cache_dir}", err=True)
 
 
+@category("local")
 @session_group.command(name="status", cls=RichCommand)
 def session_status() -> None:
     """Show current session cache status.

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from ..click_compat import RichCommand, click
 from ..context import CLIContext
+from ..decorators import category
 from ..options import output_options
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 
 
+@category("read")
 @click.command(name="whoami", cls=RichCommand)
 @output_options
 @click.pass_obj

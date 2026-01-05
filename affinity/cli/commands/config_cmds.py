@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..click_compat import RichCommand, RichGroup, click
 from ..config import config_init_template
 from ..context import CLIContext
+from ..decorators import category
 from ..errors import CLIError
 from ..options import output_options
 from ..runner import CommandOutput, run_command
@@ -23,6 +24,7 @@ def config_group() -> None:
     """Configuration and profiles."""
 
 
+@category("local")
 @config_group.command(name="path", cls=RichCommand)
 @output_options
 @click.pass_obj
@@ -36,6 +38,7 @@ def config_path(ctx: CLIContext) -> None:
     run_command(ctx, command="config path", fn=fn)
 
 
+@category("local")
 @config_group.command(name="init", cls=RichCommand)
 @click.option("--force", is_flag=True, help="Overwrite existing config file.")
 @output_options
@@ -132,6 +135,7 @@ def _find_existing_key(ctx: CLIContext) -> tuple[bool, str | None]:
     return False, None
 
 
+@category("local")
 @config_group.command(name="check-key", cls=RichCommand)
 @output_options
 @click.pass_obj
@@ -361,6 +365,7 @@ def _ensure_gitignore(gitignore_path: Path) -> bool:
         return True
 
 
+@category("local")
 @config_group.command(name="setup-key", cls=RichCommand)
 @click.option(
     "--scope",

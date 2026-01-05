@@ -149,7 +149,7 @@ class TestOpportunityDelete:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["--json", "opportunity", "delete", "123"],
+            ["--json", "opportunity", "delete", "123", "--yes"],
             env={"AFFINITY_API_KEY": "test-key"},
         )
         assert result.exit_code == 0

@@ -448,7 +448,7 @@ class TestListEntryDelete:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["--json", "list", "entry", "delete", "100", "999"],
+            ["--json", "list", "entry", "delete", "100", "999", "--yes"],
             env={"AFFINITY_API_KEY": "test-key"},
         )
         assert result.exit_code == 0

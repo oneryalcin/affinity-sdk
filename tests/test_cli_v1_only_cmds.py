@@ -122,7 +122,7 @@ def test_note_create_update_delete(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "note", "delete", "10"],
+        ["--json", "note", "delete", "10", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0
@@ -244,7 +244,7 @@ def test_reminder_create_update_delete(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "reminder", "delete", "99"],
+        ["--json", "reminder", "delete", "99", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0
@@ -355,7 +355,7 @@ def test_interaction_create_update_delete(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "interaction", "delete", "10", "--type", "email"],
+        ["--json", "interaction", "delete", "10", "--type", "email", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0

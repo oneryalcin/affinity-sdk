@@ -31,6 +31,7 @@ from affinity.types import (
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..resolve import (
@@ -63,6 +64,7 @@ def _parse_list_type(value: str | None) -> ListType | None:
     raise CLIError(f"Unknown list type: {value}", exit_code=2, error_type="usage_error")
 
 
+@category("read")
 @list_group.command(name="ls", cls=RichCommand)
 @click.option("--type", "list_type", type=str, default=None, help="Filter by list type.")
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
@@ -218,6 +220,7 @@ def list_ls(
     run_command(ctx, command="list ls", fn=fn)
 
 
+@category("write")
 @list_group.command(name="create", cls=RichCommand)
 @click.option("--name", required=True, help="List name.")
 @click.option("--type", "list_type", required=True, help="List type (person/company/opportunity).")
@@ -290,6 +293,7 @@ def list_create(
     run_command(ctx, command="list create", fn=fn)
 
 
+@category("read")
 @list_group.command(name="get", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @output_options
@@ -349,6 +353,7 @@ CsvMode = Literal["flat", "nested"]
 ExpandOnError = Literal["raise", "skip"]
 
 
+@category("read")
 @list_group.command(name="export", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.option("--saved-view", type=str, default=None, help="Saved view id or name.")
@@ -2375,6 +2380,7 @@ def list_entry_group() -> None:
     """List entry commands."""
 
 
+@category("read")
 @list_entry_group.command(name="get", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
@@ -2462,6 +2468,7 @@ def _validate_entry_target(
     )
 
 
+@category("write")
 @list_entry_group.command(name="add", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.option("--person-id", type=int, default=None, help="Person id to add.")
@@ -2531,13 +2538,18 @@ def list_entry_add(
     run_command(ctx, command="list entry add", fn=fn)
 
 
+@category("write")
+@destructive
 @list_entry_group.command(name="delete", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> None:
+def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int, yes: bool) -> None:
     """Delete a list entry."""
+    if not yes:
+        click.confirm(f"Delete entry {entry_id} from list '{list_selector}'?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -2571,6 +2583,7 @@ def list_entry_delete(ctx: CLIContext, list_selector: str, entry_id: int) -> Non
     run_command(ctx, command="list entry delete", fn=fn)
 
 
+@category("write")
 @list_entry_group.command(name="set-field", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
@@ -2716,6 +2729,7 @@ def list_entry_set_field(
     run_command(ctx, command="list entry set-field", fn=fn)
 
 
+@category("write")
 @list_entry_group.command(name="set-fields", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)
@@ -2810,6 +2824,7 @@ def list_entry_set_fields(
     run_command(ctx, command="list entry set-fields", fn=fn)
 
 
+@category("write")
 @list_entry_group.command(name="unset-field", cls=RichCommand)
 @click.argument("list_selector", type=str)
 @click.argument("entry_id", type=int)

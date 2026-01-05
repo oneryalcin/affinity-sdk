@@ -12,6 +12,7 @@ from affinity.types import CompanyId, NoteId, OpportunityId, PersonId, UserId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..results import CommandContext
@@ -61,6 +62,7 @@ def _note_payload(note: Note) -> dict[str, object]:
     }
 
 
+@category("read")
 @note_group.command(name="ls", cls=RichCommand)
 @click.option("--person-id", type=int, default=None, help="Filter by person id.")
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
@@ -213,6 +215,7 @@ def note_ls(
     run_command(ctx, command="note ls", fn=fn)
 
 
+@category("read")
 @note_group.command(name="get", cls=RichCommand)
 @click.argument("note_id", type=int)
 @output_options
@@ -255,6 +258,7 @@ def note_get(ctx: CLIContext, note_id: int) -> None:
     run_command(ctx, command="note get", fn=fn)
 
 
+@category("write")
 @note_group.command(name="create", cls=RichCommand)
 @click.option("--content", type=str, required=True, help="Note content.")
 @click.option(
@@ -370,6 +374,7 @@ def note_create(
     run_command(ctx, command="note create", fn=fn)
 
 
+@category("write")
 @note_group.command(name="update", cls=RichCommand)
 @click.argument("note_id", type=int)
 @click.option("--content", type=str, required=True, help="Updated note content.")
@@ -397,12 +402,17 @@ def note_update(ctx: CLIContext, note_id: int, *, content: str) -> None:
     run_command(ctx, command="note update", fn=fn)
 
 
+@category("write")
+@destructive
 @note_group.command(name="delete", cls=RichCommand)
 @click.argument("note_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def note_delete(ctx: CLIContext, note_id: int) -> None:
+def note_delete(ctx: CLIContext, note_id: int, yes: bool) -> None:
     """Delete a note."""
+    if not yes:
+        click.confirm(f"Delete note {note_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

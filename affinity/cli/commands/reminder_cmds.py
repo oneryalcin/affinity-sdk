@@ -13,6 +13,7 @@ from affinity.types import CompanyId, OpportunityId, PersonId, ReminderIdType, U
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..results import CommandContext
@@ -118,6 +119,7 @@ def _validate_single_entity(
         )
 
 
+@category("read")
 @reminder_group.command(name="ls", cls=RichCommand)
 @click.option("--person-id", type=int, default=None, help="Filter by person id.")
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
@@ -326,6 +328,7 @@ def reminder_ls(
     run_command(ctx, command="reminder ls", fn=fn)
 
 
+@category("read")
 @reminder_group.command(name="get", cls=RichCommand)
 @click.argument("reminder_id", type=int)
 @output_options
@@ -352,6 +355,7 @@ def reminder_get(ctx: CLIContext, reminder_id: int) -> None:
     run_command(ctx, command="reminder get", fn=fn)
 
 
+@category("write")
 @reminder_group.command(name="create", cls=RichCommand)
 @click.option("--owner-id", type=int, required=True, help="Owner id (required).")
 @click.option(
@@ -452,6 +456,7 @@ def reminder_create(
     run_command(ctx, command="reminder create", fn=fn)
 
 
+@category("write")
 @reminder_group.command(name="update", cls=RichCommand)
 @click.argument("reminder_id", type=int)
 @click.option("--owner-id", type=int, default=None, help="Owner id.")
@@ -541,12 +546,17 @@ def reminder_update(
     run_command(ctx, command="reminder update", fn=fn)
 
 
+@category("write")
+@destructive
 @reminder_group.command(name="delete", cls=RichCommand)
 @click.argument("reminder_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def reminder_delete(ctx: CLIContext, reminder_id: int) -> None:
+def reminder_delete(ctx: CLIContext, reminder_id: int, yes: bool) -> None:
     """Delete a reminder."""
+    if not yes:
+        click.confirm(f"Delete reminder {reminder_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

@@ -85,7 +85,7 @@ def test_person_crud_and_merge(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "person", "delete", "1"],
+        ["--json", "person", "delete", "1", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0
@@ -153,7 +153,7 @@ def test_company_crud_and_merge(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "company", "delete", "224925494"],
+        ["--json", "company", "delete", "224925494", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0
@@ -300,7 +300,7 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
 
     deleted = runner.invoke(
         cli,
-        ["--json", "list", "entry", "delete", "123", "98765"],
+        ["--json", "list", "entry", "delete", "123", "98765", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert deleted.exit_code == 0
@@ -371,7 +371,7 @@ def test_field_and_field_value_ops(respx_mock: respx.MockRouter) -> None:
 
     field_delete = runner.invoke(
         cli,
-        ["--json", "field", "delete", "field-123"],
+        ["--json", "field", "delete", "field-123", "--yes"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert field_delete.exit_code == 0

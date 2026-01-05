@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
+## 0.6.8 - 2026-01-05
+
+### Added
+- CLI: `@category` and `@destructive` decorators for MCP registry generation.
+- CLI: `--help --json` output for machine-readable command documentation.
+- CLI: Commands now expose category (read/write/local) and destructive metadata.
+
 ## 0.6.7 - 2026-01-03
 
 ### Changed

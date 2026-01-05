@@ -6,10 +6,12 @@ import affinity
 
 from ..click_compat import RichCommand, click
 from ..context import CLIContext
+from ..decorators import category
 from ..options import output_options
 from ..runner import CommandOutput, run_command
 
 
+@category("local")
 @click.command(name="version", cls=RichCommand)
 @output_options
 @click.pass_obj

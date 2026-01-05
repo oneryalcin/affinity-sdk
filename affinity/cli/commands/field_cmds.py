@@ -14,6 +14,7 @@ from affinity.types import (
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..results import CommandContext
@@ -116,6 +117,7 @@ def _validate_exactly_one_selector(
     )
 
 
+@category("read")
 @field_group.command(name="ls", cls=RichCommand)
 @click.option("--list-id", type=int, default=None, help="Filter by list id.")
 @click.option(
@@ -161,6 +163,7 @@ def field_ls(
     run_command(ctx, command="field ls", fn=fn)
 
 
+@category("write")
 @field_group.command(name="create", cls=RichCommand)
 @click.option("--name", required=True, help="Field name.")
 @click.option(
@@ -246,12 +249,17 @@ def field_create(
     run_command(ctx, command="field create", fn=fn)
 
 
+@category("write")
+@destructive
 @field_group.command(name="delete", cls=RichCommand)
 @click.argument("field_id", type=str)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def field_delete(ctx: CLIContext, field_id: str) -> None:
+def field_delete(ctx: CLIContext, field_id: str, yes: bool) -> None:
     """Delete a field."""
+    if not yes:
+        click.confirm(f"Delete field {field_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -275,6 +283,7 @@ def field_delete(ctx: CLIContext, field_id: str) -> None:
     run_command(ctx, command="field delete", fn=fn)
 
 
+@category("read")
 @field_group.command(name="history", cls=RichCommand)
 @click.argument("field_id", type=str)
 @click.option("--person-id", type=int, default=None, help="Filter by person ID.")

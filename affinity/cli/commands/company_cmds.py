@@ -18,6 +18,7 @@ from affinity.types import CompanyId, FieldType, ListId, PersonId
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv_from_rows
+from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
@@ -259,6 +260,7 @@ def company_group() -> None:
     """Company commands."""
 
 
+@category("read")
 @company_group.command(name="search", cls=RichCommand)
 @click.argument("query", type=str)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
@@ -438,6 +440,7 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     return result
 
 
+@category("read")
 @company_group.command(name="ls", cls=RichCommand)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (limit).")
 @click.option(
@@ -974,6 +977,7 @@ def company_files_group() -> None:
     """Company files."""
 
 
+@category("read")
 @company_files_group.command(name="dump", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option(
@@ -1048,6 +1052,7 @@ def company_files_dump(
     run_command(ctx, command="company files dump", fn=fn)
 
 
+@category("write")
 @company_files_group.command(name="upload", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option(
@@ -1137,6 +1142,7 @@ def company_files_upload(
     run_command(ctx, command="company files upload", fn=fn)
 
 
+@category("read")
 @company_group.command(name="get", cls=RichCommand)
 @click.argument("company_selector", type=str)
 @click.option(
@@ -1822,6 +1828,7 @@ def company_get(
     run_command(ctx, command="company get", fn=fn)
 
 
+@category("write")
 @company_group.command(name="create", cls=RichCommand)
 @click.option("--name", required=True, help="Company name.")
 @click.option("--domain", default=None, help="Primary domain.")
@@ -1875,6 +1882,7 @@ def company_create(
     run_command(ctx, command="company create", fn=fn)
 
 
+@category("write")
 @company_group.command(name="update", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option("--name", default=None, help="Updated company name.")
@@ -1940,12 +1948,17 @@ def company_update(
     run_command(ctx, command="company update", fn=fn)
 
 
+@category("write")
+@destructive
 @company_group.command(name="delete", cls=RichCommand)
 @click.argument("company_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 @output_options
 @click.pass_obj
-def company_delete(ctx: CLIContext, company_id: int) -> None:
+def company_delete(ctx: CLIContext, company_id: int, yes: bool) -> None:
     """Delete a company."""
+    if not yes:
+        click.confirm(f"Delete company {company_id}?", abort=True)
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -1966,6 +1979,7 @@ def company_delete(ctx: CLIContext, company_id: int) -> None:
     run_command(ctx, command="company delete", fn=fn)
 
 
+@category("write")
 @company_group.command(name="merge", cls=RichCommand)
 @click.argument("primary_id", type=int)
 @click.argument("duplicate_id", type=int)
@@ -2005,6 +2019,7 @@ def company_merge(
     run_command(ctx, command="company merge", fn=fn)
 
 
+@category("write")
 @company_group.command(name="field", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option(

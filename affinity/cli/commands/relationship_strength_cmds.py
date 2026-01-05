@@ -5,6 +5,7 @@ from affinity.types import PersonId, UserId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..decorators import category
 from ..options import output_options
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
@@ -20,6 +21,7 @@ def _strength_payload(item: RelationshipStrength) -> dict[str, object]:
     return serialize_model_for_cli(item)
 
 
+@category("read")
 @relationship_strength_group.command(name="ls", cls=RichCommand)
 @click.option("--external-id", type=int, required=True, help="External person id.")
 @click.option("--internal-id", type=int, default=None, help="Internal user id.")
