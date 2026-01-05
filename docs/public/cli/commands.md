@@ -85,6 +85,7 @@ Get your API key from [Affinity API Settings](https://support.affinity.co/s/arti
 These options can be used with any command:
 
 - `--json` / `--output json`: emit machine-readable `CommandResult` JSON to stdout.
+- `--help --json`: emit machine-readable command documentation (see [Scripting: Machine-Readable Help](scripting.md#machine-readable-help)).
 - `--trace`: emit request/response/error trace lines to stderr (safe redaction). Recommended with `--no-progress` for long-running commands.
 - `--beta`: enable beta endpoints (required for merge commands).
 - `--session-cache <dir>`: enable session caching using the specified directory.

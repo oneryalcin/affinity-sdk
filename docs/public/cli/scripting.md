@@ -54,3 +54,70 @@ When a command writes a CSV file in `--json` mode, the JSON output includes a re
 ```bash
 xaffinity list export 123 --csv out.csv --json | jq '.artifacts'
 ```
+
+## Machine-Readable Help
+
+Use `--help --json` to get machine-readable command documentation. This is useful for:
+
+- Building automation tools that discover CLI capabilities
+- Generating command registries for AI integrations (like MCP servers)
+- Validating command arguments programmatically
+
+```bash
+xaffinity --help --json
+```
+
+### Output Format
+
+```json
+{
+  "commands": [
+    {
+      "name": "person create",
+      "description": "Create a person.",
+      "category": "write",
+      "destructive": false,
+      "parameters": {
+        "--first-name": {"type": "string", "required": false},
+        "--last-name": {"type": "string", "required": false},
+        "--email": {"type": "string", "required": false, "multiple": true}
+      },
+      "positionals": []
+    },
+    {
+      "name": "person delete",
+      "description": "Delete a person.",
+      "category": "write",
+      "destructive": true,
+      "parameters": {
+        "--yes": {"type": "flag", "required": false}
+      },
+      "positionals": [
+        {"name": "PERSON_ID", "type": "int", "required": true}
+      ]
+    }
+  ]
+}
+```
+
+### Command Metadata
+
+| Field | Description |
+|-------|-------------|
+| `name` | Full command path (e.g., `"person create"`, `"list entry add"`) |
+| `description` | Human-readable description |
+| `category` | `"read"`, `"write"`, or `"local"` (no-network) |
+| `destructive` | `true` for delete commands |
+| `parameters` | Named options with type info |
+| `positionals` | Positional arguments with type info |
+
+### Parameter Types
+
+| Type | Description |
+|------|-------------|
+| `string` | Text value |
+| `int` | Integer value |
+| `flag` | Boolean flag (no value) |
+| `choice` | One of allowed values (see `choices` array) |
+
+Parameters with `"multiple": true` can be specified multiple times.
