@@ -1,0 +1,432 @@
+#!/usr/bin/env bash
+# lib/cli-gateway.sh - Shared validation functions for CLI Gateway tools
+#
+# This library provides validation functions for the CLI Gateway pattern:
+# - discover-commands
+# - execute-read-command
+# - execute-write-command
+#
+# All functions use the pre-generated registry (REGISTRY_FILE from common.sh).
+
+# ==============================================================================
+# Registry Validation
+# ==============================================================================
+
+# Validate registry file exists and has expected structure
+# Returns: 0 if valid, 1 if invalid (with mcp_result_error emitted)
+validate_registry() {
+    if [[ ! -f "$REGISTRY_FILE" ]]; then
+        mcp_result_error '{"type": "configuration_error", "message": "Command registry not found. Run: python tools/generate_cli_commands_registry.py"}'
+        return 1
+    fi
+
+    if ! jq_tool -e '.commands | type == "array"' "$REGISTRY_FILE" >/dev/null 2>&1; then
+        mcp_result_error '{"type": "configuration_error", "message": "Command registry is invalid or corrupted"}'
+        return 1
+    fi
+
+    # Validate command object shape (prevents subtle runtime failures)
+    local validation_result
+    validation_result=$(jq_tool -r '
+        .commands | to_entries | map(
+            .value as $cmd | .key as $idx |
+            if ($cmd.name | type) != "string" or ($cmd.name | length) == 0 then
+                "Entry \($idx): missing or empty name"
+            elif ($cmd.category | . != "read" and . != "write" and . != "local") then
+                "Entry \($idx) (\($cmd.name)): category must be read, write, or local"
+            elif ($cmd.destructive | type) != "boolean" and ($cmd.destructive | type) != "null" then
+                "Entry \($idx) (\($cmd.name)): destructive must be boolean"
+            elif ($cmd.parameters | type) != "object" and ($cmd.parameters | type) != "null" then
+                "Entry \($idx) (\($cmd.name)): parameters must be object or null"
+            elif ($cmd.positionals | type) != "array" and ($cmd.positionals | type) != "null" then
+                "Entry \($idx) (\($cmd.name)): positionals must be array or null"
+            else empty end
+        ) | first // empty
+    ' "$REGISTRY_FILE" 2>/dev/null)
+
+    if [[ -n "$validation_result" ]]; then
+        mcp_result_error "$(jq_tool -n --arg msg "Registry validation failed: $validation_result" \
+            '{type: "configuration_error", message: $msg}')"
+        return 1
+    fi
+
+    return 0
+}
+
+# ==============================================================================
+# Fuzzy Matching Helpers
+# ==============================================================================
+
+# Find a similar command for "Did you mean" suggestions
+# Uses simple substring and prefix matching (no external dependencies)
+# Args: input_cmd all_commands (newline-separated)
+# Returns: best matching command or empty string
+find_similar_command() {
+    local input="$1"
+    local all_commands="$2"
+
+    # Normalize input (lowercase, remove extra spaces)
+    local normalized_input
+    normalized_input=$(echo "$input" | tr '[:upper:]' '[:lower:]' | tr -s ' ')
+
+    # Strategy 1: Check for prefix match (e.g., "pers" -> "person get")
+    local prefix_match
+    prefix_match=$(echo "$all_commands" | grep -i "^${normalized_input}" | head -1)
+    if [[ -n "$prefix_match" ]]; then
+        echo "$prefix_match"
+        return 0
+    fi
+
+    # Strategy 2: Check if input words appear in command (e.g., "persn create" -> "person create")
+    # Split input into words and find commands containing most of them
+    local input_words
+    read -ra input_words <<< "$normalized_input"
+
+    local best_match=""
+    local best_score=0
+
+    while IFS= read -r cmd; do
+        [[ -z "$cmd" ]] && continue
+        local cmd_lower
+        cmd_lower=$(echo "$cmd" | tr '[:upper:]' '[:lower:]')
+        local score=0
+
+        for word in "${input_words[@]}"; do
+            # Skip very short words
+            [[ ${#word} -lt 2 ]] && continue
+            # Check if word or similar appears in command
+            if [[ "$cmd_lower" == *"$word"* ]]; then
+                ((score++))
+            # Check for off-by-one typo (e.g., "persn" in "person")
+            elif [[ ${#word} -ge 3 ]]; then
+                # Check if removing one char matches
+                for ((i=0; i<${#word}; i++)); do
+                    local partial="${word:0:i}${word:i+1}"
+                    if [[ "$cmd_lower" == *"$partial"* ]]; then
+                        ((score++))
+                        break
+                    fi
+                done
+            fi
+        done
+
+        if [[ $score -gt $best_score ]]; then
+            best_score=$score
+            best_match="$cmd"
+        fi
+    done <<< "$all_commands"
+
+    # Only return if we found a reasonable match (at least one word matched)
+    if [[ $best_score -gt 0 ]]; then
+        echo "$best_match"
+    fi
+}
+
+# ==============================================================================
+# Command Validation
+# ==============================================================================
+
+# Validate command exists in registry with correct category
+# Args: command tool_type ("read" or "write")
+# Returns: 0 if valid, 1 if invalid (with mcp_result_error emitted)
+#
+# Category routing:
+#   - execute-read-command accepts: "read" and "local" (safe, no Affinity modifications)
+#   - execute-write-command accepts: "write" only (modifies Affinity data)
+validate_command() {
+    local cmd="$1"
+    local tool_type="$2"
+
+    # Reject any token starting with - (flags belong in argv, not command)
+    if [[ "$cmd" =~ (^|[[:space:]])-. ]]; then
+        mcp_result_error '{"type": "validation_error", "message": "Flags not allowed in command path"}'
+        return 1
+    fi
+
+    # Load valid commands from pre-generated registry
+    # For "read" tool_type, also accept "local" category commands
+    local valid_commands
+    if [[ "$tool_type" == "read" ]]; then
+        valid_commands=$(jq_tool -r \
+            '.commands[] | select(.category == "read" or .category == "local") | .name' \
+            "$REGISTRY_FILE")
+    else
+        valid_commands=$(jq_tool -r --arg cat "$tool_type" \
+            '.commands[] | select(.category == $cat) | .name' \
+            "$REGISTRY_FILE")
+    fi
+
+    # Exact match required
+    if ! echo "$valid_commands" | grep -qxF "$cmd"; then
+        # Check if command exists but wrong category
+        local all_commands
+        all_commands=$(jq_tool -r '.commands[].name' "$REGISTRY_FILE")
+        if echo "$all_commands" | grep -qxF "$cmd"; then
+            local actual_cat
+            actual_cat=$(jq_tool -r --arg cmd "$cmd" '.commands[] | select(.name == $cmd) | .category' "$REGISTRY_FILE")
+            # Map "local" to "read" in error message for user clarity
+            local suggest_tool="execute-${actual_cat}-command"
+            if [[ "$actual_cat" == "local" ]]; then
+                suggest_tool="execute-read-command"
+            fi
+            mcp_result_error "$(jq_tool -n --arg cmd "$cmd" --arg expected "$tool_type" --arg actual "$actual_cat" --arg suggest "$suggest_tool" \
+                '{type: "validation_error", message: ("Command \"\($cmd)\" is category \"\($actual)\", use \($suggest) instead")}')"
+        else
+            # Try to find similar commands for "Did you mean" suggestion
+            local suggestion
+            suggestion=$(find_similar_command "$cmd" "$all_commands")
+            if [[ -n "$suggestion" ]]; then
+                mcp_result_error "$(jq_tool -n --arg cmd "$cmd" --arg suggest "$suggestion" \
+                    '{type: "command_not_found", message: ("Unknown command: " + $cmd), hint: ("Did you mean \"" + $suggest + "\"?")}')"
+            else
+                mcp_result_error "$(jq_tool -n --arg cmd "$cmd" '{type: "command_not_found", message: ("Unknown command: " + $cmd), hint: "Use discover-commands to find available commands"}')"
+            fi
+        fi
+        return 1
+    fi
+
+    return 0
+}
+
+# ==============================================================================
+# Argument Validation
+# ==============================================================================
+
+# Validate argv against per-command schema from registry
+# Args: command argv...
+# Returns: 0 if valid, 1 if invalid (with mcp_result_error emitted)
+validate_argv() {
+    local cmd="$1"
+    shift
+    local argv=("$@")
+    local argc=${#argv[@]}
+
+    # Get allowed parameters for this command from registry
+    local cmd_schema
+    cmd_schema=$(jq_tool --arg cmd "$cmd" '.commands[] | select(.name == $cmd)' "$REGISTRY_FILE")
+
+    if [[ -z "$cmd_schema" ]]; then
+        mcp_result_error '{"type": "internal_error", "message": "Command schema not found"}'
+        return 1
+    fi
+
+    # Extract parameter metadata from registry
+    local allowed_flags
+    allowed_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '.parameters // {} | keys | .[] | select(startswith("-"))' 2>/dev/null || printf '')
+    local positional_defs
+    positional_defs=$(printf '%s' "$cmd_schema" | jq_tool -c '.positionals // []' 2>/dev/null || printf '[]')
+    local required_positional_count
+    required_positional_count=$(printf '%s' "$positional_defs" | jq_tool -r '[.[] | select(.required == true)] | length' 2>/dev/null || printf '0')
+    local total_positional_count
+    total_positional_count=$(printf '%s' "$positional_defs" | jq_tool -r 'length' 2>/dev/null || printf '0')
+
+    # Track provided params
+    local -A provided_flags
+    local positional_count=0
+    local i=0
+
+    while [[ $i -lt $argc ]]; do
+        local arg="${argv[$i]}"
+
+        if [[ "$arg" == -* ]]; then
+            # --- Flag argument ---
+            local flag_name="$arg"
+            local flag_value=""
+            local has_equals=false
+
+            # Handle --flag=value syntax
+            if [[ "$flag_name" == *=* ]]; then
+                has_equals=true
+                flag_value="${flag_name#*=}"
+                flag_name="${flag_name%%=*}"
+            fi
+
+            # Check if flag is in allowed list
+            if ! printf '%s' "$allowed_flags" | grep -qxF "$flag_name"; then
+                mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Unknown flag: " + $f), hint: "Use discover-commands to see valid parameters"}')"
+                return 1
+            fi
+
+            # Get flag type from schema
+            local flag_type
+            flag_type=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$flag_name" '.parameters[$f].type // "string"')
+
+            if [[ "$flag_type" == "flag" ]]; then
+                # Boolean flag (no value expected) - reject ANY use of = syntax
+                if [[ "$has_equals" == "true" ]]; then
+                    mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " does not accept a value (use without =)")}')"
+                    return 1
+                fi
+            else
+                # Value-taking flag
+                if [[ "$has_equals" == "false" ]]; then
+                    # Value should be next argument
+                    if [[ $((i + 1)) -ge $argc ]]; then
+                        mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " requires a value")}')"
+                        return 1
+                    fi
+                    local next_arg="${argv[$((i + 1))]}"
+                    # Only reject dash-leading values if they match a known flag
+                    if [[ "$next_arg" == -* ]]; then
+                        local next_flag_name="${next_arg%%=*}"
+                        if printf '%s' "$allowed_flags" | grep -qxF "$next_flag_name"; then
+                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " requires a value, got another flag")}')"
+                            return 1
+                        fi
+                    fi
+                    flag_value="$next_arg"
+                    ((i++))
+                fi
+
+                # Type validation
+                case "$flag_type" in
+                    int|integer)
+                        if ! [[ "$flag_value" =~ ^-?[0-9]+$ ]]; then
+                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" --arg v "$flag_value" '{type: "validation_error", message: ("Flag " + $f + " requires integer, got: " + $v)}')"
+                            return 1
+                        fi
+                        ;;
+                    bool|boolean)
+                        if ! [[ "$flag_value" =~ ^(true|false)$ ]]; then
+                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" --arg v "$flag_value" '{type: "validation_error", message: ("Flag " + $f + " requires true/false, got: " + $v)}')"
+                            return 1
+                        fi
+                        ;;
+                esac
+            fi
+
+            # Check for duplicate flags
+            if [[ -n "${provided_flags[$flag_name]:-}" ]]; then
+                local allows_multiple
+                allows_multiple=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$flag_name" '.parameters[$f].multiple // false')
+                if [[ "$allows_multiple" != "true" ]]; then
+                    mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " cannot be specified multiple times")}')"
+                    return 1
+                fi
+            fi
+            provided_flags["$flag_name"]=1
+
+        else
+            # --- Positional argument ---
+            if [[ $positional_count -lt $total_positional_count ]]; then
+                local pos_type
+                pos_type=$(printf '%s' "$positional_defs" | jq_tool -r --argjson idx "$positional_count" '.[$idx].type // "string"')
+                case "$pos_type" in
+                    int|integer)
+                        if ! [[ "$arg" =~ ^-?[0-9]+$ ]]; then
+                            local pos_name
+                            pos_name=$(printf '%s' "$positional_defs" | jq_tool -r --argjson idx "$positional_count" '.[$idx].name // "argument"')
+                            mcp_result_error "$(jq_tool -n --arg name "$pos_name" --arg v "$arg" \
+                                '{type: "validation_error", message: ($name + " requires integer, got: " + $v)}')"
+                            return 1
+                        fi
+                        ;;
+                esac
+            fi
+            ((positional_count++))
+        fi
+        ((i++))
+    done
+
+    # Check required positional arguments
+    if [[ $positional_count -lt $required_positional_count ]]; then
+        mcp_result_error "$(jq_tool -n --argjson got "$positional_count" --argjson need "$required_positional_count" \
+            '{type: "validation_error", message: ("Missing required arguments: need " + ($need|tostring) + ", got " + ($got|tostring))}')"
+        return 1
+    fi
+
+    # Check for too many positional arguments
+    if [[ $positional_count -gt $total_positional_count ]]; then
+        mcp_result_error "$(jq_tool -n --argjson got "$positional_count" --argjson max "$total_positional_count" \
+            '{type: "validation_error", message: ("Too many arguments: expected at most " + ($max|tostring) + ", got " + ($got|tostring))}')"
+        return 1
+    fi
+
+    # Check required flags
+    local required_flags
+    required_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '.parameters // {} | to_entries[] | select(.key | startswith("-")) | select(.value.required == true) | .key' 2>/dev/null || printf '')
+    for req_flag in $required_flags; do
+        if [[ -z "${provided_flags[$req_flag]:-}" ]]; then
+            mcp_result_error "$(jq_tool -n --arg f "$req_flag" '{type: "validation_error", message: ("Missing required flag: " + $f)}')"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+# ==============================================================================
+# Destructive Command Detection
+# ==============================================================================
+
+# Check if a command is destructive (from registry metadata)
+# Args: command
+# Returns: 0 if destructive, 1 if not
+is_destructive() {
+    local cmd="$1"
+    local destructive
+    destructive=$(jq_tool -r --arg cmd "$cmd" \
+        '.commands[] | select(.name == $cmd) | .destructive // false' \
+        "$REGISTRY_FILE")
+    [[ "$destructive" == "true" ]]
+}
+
+# ==============================================================================
+# Proactive Output Limiting
+# ==============================================================================
+
+# Default and maximum limits for --limit injection
+CLI_GATEWAY_DEFAULT_LIMIT="${CLI_GATEWAY_DEFAULT_LIMIT:-100}"
+CLI_GATEWAY_MAX_LIMIT="${CLI_GATEWAY_MAX_LIMIT:-500}"
+
+# Apply limit cap to argv - inject/cap --limit for commands that support it
+# This prevents large outputs before they happen (more efficient than post-hoc truncation)
+# Args: command argv...
+# Outputs: Modified argv (NUL-delimited) to stdout
+# Usage: mapfile -d '' argv < <(apply_limit_cap "$command" "${argv[@]}")
+apply_limit_cap() {
+    local cmd="$1"
+    shift
+    local argv=("$@")
+
+    # Check if command supports --limit (from registry)
+    local supports_limit
+    supports_limit=$(jq_tool -r --arg cmd "$cmd" \
+        '.commands[] | select(.name == $cmd) | .parameters["--limit"] // empty' \
+        "$REGISTRY_FILE")
+
+    if [[ -n "$supports_limit" ]]; then
+        local has_limit=false
+        local i=0
+        while [[ $i -lt ${#argv[@]} ]]; do
+            if [[ "${argv[$i]}" == "--limit" ]]; then
+                has_limit=true
+                # Cap existing --limit value if too high (next argument is value)
+                if [[ $((i + 1)) -lt ${#argv[@]} ]]; then
+                    local val="${argv[$((i + 1))]}"
+                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ $val -gt $CLI_GATEWAY_MAX_LIMIT ]]; then
+                        argv[$((i + 1))]=$CLI_GATEWAY_MAX_LIMIT
+                    fi
+                fi
+                break
+            elif [[ "${argv[$i]}" == --limit=* ]]; then
+                has_limit=true
+                # Cap --limit=N form if too high (extract value after =)
+                local val="${argv[$i]#--limit=}"
+                if [[ "$val" =~ ^[0-9]+$ ]] && [[ $val -gt $CLI_GATEWAY_MAX_LIMIT ]]; then
+                    argv[$i]="--limit=$CLI_GATEWAY_MAX_LIMIT"
+                fi
+                break
+            fi
+            ((i++))
+        done
+
+        # Inject default --limit if not present
+        if [[ "$has_limit" == "false" ]]; then
+            argv+=("--limit" "$CLI_GATEWAY_DEFAULT_LIMIT")
+        fi
+    fi
+
+    # Output NUL-delimited for safe consumption with mapfile
+    printf '%s\0' "${argv[@]}"
+}

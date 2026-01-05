@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# tools/discover-commands/tool.sh - Search CLI commands by keyword or capability
+set -euo pipefail
+
+source "${MCP_SDK:?}/tool-sdk.sh"
+source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
+source "${MCPBASH_PROJECT_ROOT}/lib/cli-gateway.sh"
+
+# Validate registry early
+validate_registry || exit 0
+
+# Parse arguments using mcp-bash SDK
+query="$(mcp_args_require '.query' 'Query string is required')"
+detail="$(mcp_args_get '.detail // "summary"')"
+category="$(mcp_args_get '.category // "all"')"
+format="$(mcp_args_get '.format // "text"')"
+limit="$(mcp_args_int '.limit' --default 10 --min 1 --max 50)"
+
+# Log tool invocation
+xaffinity_log_debug "discover-commands" "query='$query' category=$category format=$format limit=$limit"
+
+# Read-only mode: force category to "read" regardless of request
+if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
+    category="read"
+fi
+
+# Validate category
+case "$category" in
+    all|read|write|local) ;;
+    *)
+        mcp_result_error "$(jq_tool -n --arg cat "$category" \
+            '{type: "validation_error", message: ("Unknown category: " + $cat + ". Valid values: all, read, write, local")}')"
+        exit 0
+        ;;
+esac
+
+# Filter commands from pre-generated registry using token-based matching
+# Search over: name + description + parameter names
+# Score = count of query tokens that appear in search text
+# NOTE: Filter tokens < 3 chars for better relevance, but fall back to
+#       original query if ALL tokens would be filtered (e.g., "AI", "VC")
+if [[ "$category" == "all" ]]; then
+    matches=$(jq_tool -c --arg q "$query" --argjson lim "$limit" '
+        # Split query into tokens (lowercase), filter short tokens
+        ($q | ascii_downcase | split(" ")) as $all_tokens |
+        ($all_tokens | map(select(length >= 3))) as $filtered |
+        (if ($filtered | length) > 0 then $filtered else $all_tokens end) as $tokens |
+        .commands
+        | map(
+            . as $cmd |
+            (
+                [.name, (.description // "")]
+                + [(.parameters // {}) | keys | .[]]
+                + [.positionals // [] | .[].name]
+            ) | map(ascii_downcase) | join(" ") as $search_text |
+            ($tokens | map(select($search_text | contains(.))) | length) as $score |
+            select($score > 0) |
+            {cmd: $cmd, score: $score}
+        )
+        | sort_by(-.score)
+        | .[:$lim]
+        | map(.cmd)
+    ' "$REGISTRY_FILE")
+else
+    # For "read" category, also include "local" commands (safe to execute via execute-read-command)
+    matches=$(jq_tool -c --arg q "$query" --arg cat "$category" --argjson lim "$limit" '
+        ($q | ascii_downcase | split(" ")) as $all_tokens |
+        ($all_tokens | map(select(length >= 3))) as $filtered |
+        (if ($filtered | length) > 0 then $filtered else $all_tokens end) as $tokens |
+        .commands
+        | map(select(if $cat == "read" then (.category == "read" or .category == "local") else .category == $cat end))
+        | map(
+            . as $cmd |
+            (
+                [.name, (.description // "")]
+                + [(.parameters // {}) | keys | .[]]
+                + [.positionals // [] | .[].name]
+            ) | map(ascii_downcase) | join(" ") as $search_text |
+            ($tokens | map(select($search_text | contains(.))) | length) as $score |
+            select($score > 0) |
+            {cmd: $cmd, score: $score}
+        )
+        | sort_by(-.score)
+        | .[:$lim]
+        | map(.cmd)
+    ' "$REGISTRY_FILE")
+fi
+
+# Use temp file to avoid shell heredoc issues with complex JSON
+matches_file=$(mktemp)
+printf '%s' "$matches" > "$matches_file"
+trap 'rm -f "$matches_file"' EXIT
+
+match_count=$(jq_tool 'length' "$matches_file")
+xaffinity_log_debug "discover-commands" "found $match_count matches"
+
+if [[ "$format" == "text" ]]; then
+    # Compact pipe-delimited format
+    # Legend: r=read, l=local, w=write, d=destructive (so "wd" = write+destructive)
+    # Params: s=str i=int b=bool f=flag !=req *=multi, UPPERCASE=positional
+    text_lines=$(jq_tool -r '.[] | [.name, (if .destructive then "wd" elif .category == "write" then "w" elif .category == "local" then "l" else "r" end), (([.positionals // [] | .[] | (.name | ascii_upcase) + ":" + ((.type // "string") | .[0:1]) + (if .required then "!" else "" end)] + [(.parameters // {}) | to_entries | sort_by(.key) | .[] | .key + ":" + ((.value.type // "string") | .[0:1]) + (if .value.required then "!" else "" end) + (if .value.multiple then "*" else "" end)]) | join(" "))] | join("|")' "$matches_file")
+    text_output="# cmd|cat|params (r=read l=local w=write wd=destructive)"$'\n'"${text_lines}"
+
+    # In text mode, include minimal structuredContent (names only) for programmatic access
+    minimal_matches=$(jq_tool -c '[.[] | {name, category, destructive}]' "$matches_file")
+    jq_tool -n --arg text "$text_output" --argjson matches "$minimal_matches" '{
+        content: [{type: "text", text: $text}],
+        structuredContent: {success: true, result: $matches},
+        isError: false
+    }'
+else
+    # JSON format with full details
+    case "$detail" in
+        full)
+            matches_array="$matches"
+            ;;
+        list)
+            matches_array=$(jq_tool 'map({name})' "$matches_file")
+            ;;
+        summary|*)
+            matches_array=$(jq_tool 'map({name, description, category, destructive})' "$matches_file")
+            ;;
+    esac
+
+    # Wrap in {matches, total} structure
+    total_count=$(jq_tool 'length' "$matches_file")
+    json_result=$(jq_tool -n --argjson m "$matches_array" --argjson t "$total_count" \
+        '{matches: $m, total: $t}')
+
+    mcp_result_success "$json_result"
+fi

@@ -1,0 +1,36 @@
+{
+  "name": "execute-read-command",
+  "description": "Execute a read-only CLI command (get, search, list, show). Use discover-commands first to find the right command.",
+  "inputSchema": {
+    "type": "object",
+    "required": ["command"],
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "CLI command path (e.g., 'person get', 'company search', 'list show')"
+      },
+      "argv": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Command arguments as array (e.g., ['123', '--limit', '10'])"
+      },
+      "maxOutputBytes": {
+        "type": "integer",
+        "default": 50000,
+        "description": "Maximum output size in bytes. Larger outputs are truncated with truncated=true marker."
+      },
+      "dryRun": {
+        "type": "boolean",
+        "default": false,
+        "description": "If true, return the command that would be executed without running it."
+      }
+    }
+  },
+  "timeoutSecs": 30,
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  }
+}

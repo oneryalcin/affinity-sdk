@@ -53,6 +53,8 @@ Add to your MCP client configuration:
 
 ## Tools
 
+### Specialized Tools (14)
+
 | Tool | Description |
 |------|-------------|
 | `find-entities` | Search for persons, companies, or opportunities |
@@ -68,6 +70,43 @@ Add to your MCP client configuration:
 | `get-status-timeline` | Get status change history |
 | `log-interaction` | Log an interaction (call, meeting, etc.) |
 | `get-interactions` | Get interactions for an entity |
+| `read-xaffinity-resource` | Read static MCP resources |
+
+### CLI Gateway Tools (3)
+
+These tools provide full access to the xaffinity CLI with minimal token overhead:
+
+| Tool | Description |
+|------|-------------|
+| `discover-commands` | Search CLI commands by keyword (e.g., "create person", "delete note") |
+| `execute-read-command` | Execute read-only CLI commands (get, search, list) |
+| `execute-write-command` | Execute write CLI commands (create, update, delete) |
+
+#### CLI Gateway Usage
+
+1. **Discover** the right command:
+   ```json
+   {"query": "add person to list", "category": "write"}
+   ```
+   Returns compact text format:
+   ```
+   # cmd|cat|params (s=str i=int b=bool f=flag !=req *=multi)
+   list entry add|w|LIST:s! --person-id:i --company-id:i
+   ```
+
+2. **Execute** the command:
+   ```json
+   {"command": "list entry add", "argv": ["Pipeline", "--person-id", "123"]}
+   ```
+
+#### Destructive Commands
+
+Commands that delete data require explicit confirmation:
+```json
+{"command": "person delete", "argv": ["456"], "confirm": true}
+```
+
+The `confirm: true` parameter is required for destructive commands. The tool will automatically append `--yes` to bypass CLI prompts.
 
 ## Prompts
 
@@ -91,6 +130,16 @@ Set `AFFINITY_MCP_READ_ONLY=1` to restrict to read-only tools:
 ```bash
 AFFINITY_MCP_READ_ONLY=1 ./xaffinity-mcp.sh
 ```
+
+### Disable Destructive Commands
+
+Set `AFFINITY_MCP_DISABLE_DESTRUCTIVE=1` to block delete operations via CLI Gateway:
+
+```bash
+AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 ./xaffinity-mcp.sh
+```
+
+This blocks `execute-write-command` from running any destructive commands (those marked `destructive: true` in the registry).
 
 ### Cache TTL
 

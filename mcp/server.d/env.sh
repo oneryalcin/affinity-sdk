@@ -2,6 +2,20 @@
 # server.d/env.sh - Environment setup for xaffinity MCP Server
 #
 # ==============================================================================
+# Tool Environment Passthrough
+# ==============================================================================
+# Allow policy environment variables to be passed through to tool scripts.
+# By default, mcp-bash only passes MCP*/MCPBASH* variables for security.
+# We use "allowlist" mode to also pass AFFINITY_MCP_* policy variables.
+#
+# Available policy variables:
+#   AFFINITY_MCP_READ_ONLY=1         - Restrict to read-only operations
+#   AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 - Block destructive commands entirely
+
+export MCPBASH_TOOL_ENV_MODE="allowlist"
+export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE"
+
+# ==============================================================================
 # Debug Mode Configuration
 # ==============================================================================
 # Enable debug logging by setting these environment variables:

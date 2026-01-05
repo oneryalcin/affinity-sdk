@@ -83,3 +83,24 @@ jobs:
           else
             echo "Skipping traceability mapping (docs/internal not present in repo checkout)."
           fi
+
+      - name: CLI commands registry is valid
+        run: |
+          # Verify registry file exists and is valid JSON with expected structure
+          python -c "
+          import json
+          import sys
+          with open('mcp/.registry/commands.json') as f:
+              data = json.load(f)
+          assert 'commands' in data, 'Missing commands key'
+          assert isinstance(data['commands'], list), 'commands must be a list'
+          assert len(data['commands']) > 0, 'commands list is empty'
+          for cmd in data['commands']:
+              assert 'name' in cmd, f'Command missing name: {cmd}'
+              assert 'category' in cmd, f'Command {cmd[\"name\"]} missing category'
+              assert cmd['category'] in ('read', 'write', 'local'), f'Invalid category for {cmd[\"name\"]}'
+          print(f'Registry valid: {len(data[\"commands\"])} commands')
+          "
+          # Regenerate registry and verify it matches committed version
+          python tools/generate_cli_commands_registry.py
+          git diff --exit-code mcp/.registry/commands.json

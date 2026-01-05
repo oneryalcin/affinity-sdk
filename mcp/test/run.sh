@@ -32,6 +32,22 @@ if [[ -z "${MCPBASH_BIN}" ]]; then
 	exit 1
 fi
 
+# Derive MCPBASH_HOME from MCPBASH_BIN if not already set
+if [[ -z "${MCPBASH_HOME:-}" ]]; then
+	# mcp-bash binary is typically at MCPBASH_HOME/bin/mcp-bash or in PATH
+	if [[ -d "$(dirname "${MCPBASH_BIN}")/../lib" ]]; then
+		export MCPBASH_HOME="$(cd "$(dirname "${MCPBASH_BIN}")/.." && pwd)"
+	else
+		# Fall back to checking common locations
+		for dir in /usr/local/lib/mcp-bash /opt/mcp-bash "${HOME}/.mcp-bash"; do
+			if [[ -d "${dir}/lib" ]]; then
+				export MCPBASH_HOME="${dir}"
+				break
+			fi
+		done
+	fi
+fi
+
 VERBOSE="${VERBOSE:-0}"
 FORCE="${FORCE:-0}"
 
@@ -200,6 +216,157 @@ run_dry_run "add-note" '{"entityId":"123","entityType":"person","content":"test"
 run_dry_run "log-interaction" '{"entityId":"123","entityType":"person","type":"meeting"}'
 run_dry_run "set-workflow-status" '{"listId":"123","entityId":"456","entityType":"person","status":"Active"}'
 run_dry_run "update-workflow-fields" '{"listId":"123","entityId":"456","entityType":"person","fields":{}}'
+
+# CLI Gateway tools (dry-run only - validates args and registry lookup)
+run_dry_run "discover-commands" '{"query":"person"}'
+run_dry_run "execute-read-command" '{"command":"person get","argv":["123"],"dryRun":true}'
+run_dry_run "execute-write-command" '{"command":"person create","argv":["--first-name","John"],"dryRun":true}'
+
+printf "\n--- CLI Gateway validation tests ---\n"
+
+# Test: discover-commands with category filter
+printf "  discover-commands (category=read)... "
+output=$("${MCPBASH_BIN}" run-tool "discover-commands" --args '{"query":"get","category":"read","limit":3}' 2>&1)
+if echo "$output" | grep -q '"category":"read"'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (expected read category in results)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: discover-commands with local category
+printf "  discover-commands (category=local)... "
+output=$("${MCPBASH_BIN}" run-tool "discover-commands" --args '{"query":"version","category":"local","limit":3}' 2>&1)
+if echo "$output" | grep -q '"category":"local"'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (expected local category in results)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: execute-read-command accepts local commands
+printf "  execute-read-command (local command)... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"version","dryRun":true}' 2>&1)
+if echo "$output" | grep -q '"dryRun":true'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (local command should be accepted)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: execute-write-command rejects read commands
+printf "  execute-write-command rejects read command... "
+output=$("${MCPBASH_BIN}" run-tool "execute-write-command" --args '{"command":"person get","argv":["123"],"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'validation_error\|execute-read-command'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject read command)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: execute-read-command rejects write commands
+printf "  execute-read-command rejects write command... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"person create","dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'validation_error\|execute-write-command'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject write command)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: destructive command without confirm is rejected
+printf "  execute-write-command (destructive without confirm)... "
+output=$("${MCPBASH_BIN}" run-tool "execute-write-command" --args '{"command":"person delete","argv":["123"]}' 2>&1)
+if echo "$output" | grep -q 'confirmation_required\|confirm.*true'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should require confirmation)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: unknown command is rejected
+printf "  execute-read-command (unknown command)... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"nonexistent command","dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'command_not_found\|Unknown command'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject unknown command)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: flags in command path are rejected
+printf "  execute-read-command (flags in command)... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"person get --json","dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'validation_error\|Flags not allowed'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject flags in command path)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+printf "\n--- Policy enforcement tests ---\n"
+
+# Configure mcp-bash to pass through policy environment variables
+# (server.d/env.sh sets this for the MCP server, but run-tool needs it explicitly)
+export MCPBASH_TOOL_ENV_MODE="allowlist"
+export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE"
+
+# Test: Read-only mode restricts discover-commands to read category
+printf "  AFFINITY_MCP_READ_ONLY blocks write discovery... "
+output=$(AFFINITY_MCP_READ_ONLY=1 "${MCPBASH_BIN}" run-tool "discover-commands" --args '{"query":"create","category":"write","limit":3}' 2>&1)
+# In read-only mode, category is forced to "read" so write commands shouldn't appear
+if echo "$output" | grep -q '"category":"read"' || ! echo "$output" | grep -q '"category":"write"'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (read-only mode should force category=read)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: Destructive disabled policy blocks delete commands
+# NOTE: We use dryRun:true to ensure the command is never actually executed
+# The policy check happens before dryRun processing, so this is safe
+printf "  AFFINITY_MCP_DISABLE_DESTRUCTIVE blocks delete... "
+output=$(AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 "${MCPBASH_BIN}" run-tool "execute-write-command" --args '{"command":"person delete","argv":["123"],"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'destructive_disabled'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    # If policy didn't block, dryRun should have prevented execution
+    # But we expect destructive_disabled when policy is set
+    printf '%sFAIL%s (destructive commands should be blocked by policy)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: Did you mean suggestion for typos
+printf "  command_not_found includes 'Did you mean'... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"persn get","dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'Did you mean'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should suggest similar command)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: confirmation_required includes example field
+printf "  confirmation_required includes example... "
+output=$("${MCPBASH_BIN}" run-tool "execute-write-command" --args '{"command":"person delete","argv":["123"]}' 2>&1)
+if echo "$output" | grep -q '"example"'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should include example in error)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
 
 if [[ "${API_CONFIGURED}" != "1" ]]; then
     skip_test "find-entities (live)" "API not configured"

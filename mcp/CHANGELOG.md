@@ -5,6 +5,43 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-05
+
+### Added
+- **CLI Gateway tools**: 3 new tools enabling full CLI access with minimal token overhead
+  - `discover-commands`: Search CLI commands by keyword, returns compact text or JSON format
+  - `execute-read-command`: Execute read-only CLI commands with retry and truncation support
+  - `execute-write-command`: Execute write CLI commands with destructive command confirmation
+- **Pre-generated command registry**: `mcp/.registry/commands.json` for zero-latency discovery
+  - Registry validated at startup and in CI
+  - Generator script: `tools/generate_cli_commands_registry.py` (requires CLI `--help --json` support)
+- **CLI Gateway validation library**: `lib/cli-gateway.sh` with shared validation functions
+  - `validate_registry()`: Verify registry exists and has valid structure
+  - `validate_command()`: Check command exists in registry with correct category
+  - `validate_argv()`: Validate arguments against per-command schema
+  - `is_destructive()`: Check if command is destructive (from registry metadata)
+  - `find_similar_command()`: Fuzzy matching for "Did you mean" suggestions on typos
+- **Proactive output limiting**: Auto-inject `--limit` for commands that support it
+- **CI validation**: Registry structure validation in GitHub Actions
+- **API key health check**: Warns at startup if API key is not configured or invalid
+- **Policy enforcement**: Runtime policy controls via environment variables
+  - `AFFINITY_MCP_READ_ONLY=1`: Restrict to read-only operations
+  - `AFFINITY_MCP_DISABLE_DESTRUCTIVE=1`: Block destructive commands entirely
+- **Metrics logging**: `log_metric()` helper for structured metrics output
+- **Post-execution cancellation**: Check `mcp_is_cancelled` after CLI execution
+
+### Changed
+- `lib/common.sh`: Added `jq_tool` wrapper, `REGISTRY_FILE` constant, and `log_metric()` helper
+- `server.d/policy.sh`: Added CLI Gateway tools to read/write tool lists
+- `server.d/env.sh`: Environment passthrough for policy variables via `MCPBASH_TOOL_ENV_ALLOWLIST`
+- `confirmation_required` error now includes `example` field showing how to confirm
+- `command_not_found` error now includes "Did you mean" hint for similar commands
+
+### CLI Prerequisites (Implemented)
+- CLI now supports `--help --json` for machine-readable help output
+- All destructive commands (`*delete`) now support `--yes` flag for non-interactive execution
+- Registry generated from live CLI via `tools/generate_cli_commands_registry.py`
+
 ## [1.0.5] - 2026-01-03
 
 ### Fixed
