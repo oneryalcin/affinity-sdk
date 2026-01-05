@@ -40,21 +40,25 @@ Write operations include creating, updating, or deleting:
 **IMPORTANT**: Before executing ANY delete command, you MUST:
 
 1. **Look up the entity first** to show the user what will be deleted
-2. **Ask the user to confirm** by showing them the entity details (name, ID, etc.)
-3. **Only after user confirms** should you run the delete with `--yes`
+2. **Ask the user in your response** by showing them the entity details and requesting confirmation
+3. **Wait for user's next message** - do NOT proceed until they explicitly confirm
+4. **Only after user confirms** should you run the delete with `--yes`
 
 Example flow:
 ```
 User: "Delete person 123"
-You: First look up: xaffinity person get 123 --json
-You: "This will delete John Smith (ID: 123, email: john@example.com). Are you sure?"
-User: "Yes, delete it"
+You: xaffinity person get 123 --readonly --json
+You: "This will permanently delete John Smith (ID: 123, email: john@example.com).
+      Type 'yes' to confirm deletion."
+[Stop here and wait for user's response]
+
+User: "yes"
 You: xaffinity person delete 123 --yes
 ```
 
 **Destructive commands**: `person delete`, `company delete`, `opportunity delete`, `note delete`, `reminder delete`, `field delete`, `list entry delete`, `interaction delete`
 
-The `--yes` flag skips the CLI's interactive prompt, but YOU must still confirm with the user first.
+**Note**: This is conversation-based confirmation - you ask, then wait for the user's next message. The `--yes` flag bypasses the CLI's interactive prompt, but you must get explicit user confirmation in the conversation first.
 
 ## Critical Patterns
 

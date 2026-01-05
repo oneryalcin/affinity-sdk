@@ -81,19 +81,23 @@ For operations not covered by specialized tools, use the CLI Gateway:
 **Destructive commands** (delete operations) require double confirmation:
 
 1. **Look up the entity first** using `execute-read-command` to show what will be deleted
-2. **Ask the user to confirm** by showing them the entity details (name, ID, etc.)
-3. **Only after user confirms** should you execute with `confirm: true`
+2. **Ask the user in your response** by showing them the entity details and requesting confirmation
+3. **Wait for user's next message** - do NOT proceed until they explicitly confirm
+4. **Only after user confirms** should you execute with `confirm: true`
 
 Example flow:
 ```
 User: "Delete person 123"
 You: execute-read-command(command: "person get", argv: ["123"])
-You: "This will delete John Smith (ID: 123, email: john@example.com). Are you sure?"
-User: "Yes"
+You: "This will permanently delete John Smith (ID: 123, email: john@example.com).
+      Type 'yes' to confirm deletion."
+[Stop here and wait for user's response]
+
+User: "yes"
 You: execute-write-command(command: "person delete", argv: ["123"], confirm: true)
 ```
 
-The `confirm: true` parameter is required by the tool, but YOU must still confirm with the user first.
+**Note**: This is conversation-based confirmation - you ask, then wait for the user's next message. This works with all MCP clients regardless of elicitation support. The `confirm: true` parameter bypasses the CLI prompt, but you must get explicit user confirmation in the conversation first.
 
 ## MCP Prompts (Guided Workflows)
 
