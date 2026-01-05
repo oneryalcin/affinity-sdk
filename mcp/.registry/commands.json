@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "cliVersion": "0.6.8",
+  "cliVersion": "0.6.9",
   "commands": [
     {
       "name": "company create",
