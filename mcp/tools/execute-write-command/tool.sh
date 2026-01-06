@@ -21,8 +21,9 @@ dry_run="$(mcp_args_get '.dryRun // false')"
 # Log tool invocation
 xaffinity_log_debug "execute-write-command" "command='$command' confirm=$confirm dryRun=$dry_run"
 
-# Track start time for latency metrics
-start_time_ms=$(($(date +%s%3N 2>/dev/null || echo 0)))
+# Track start time for latency metrics (macOS doesn't support %3N, fall back to seconds)
+_get_time_ms() { local t; t=$(date +%s%3N 2>/dev/null); [[ "$t" =~ ^[0-9]+$ ]] && echo "$t" || echo "$(($(date +%s) * 1000))"; }
+start_time_ms=$(_get_time_ms)
 
 # Validate command is in registry with category=write
 validate_command "$command" "write" || exit 0
@@ -152,7 +153,7 @@ if mcp_is_cancelled; then
 fi
 
 # Calculate latency
-end_time_ms=$(($(date +%s%3N 2>/dev/null || echo 0)))
+end_time_ms=$(_get_time_ms)
 latency_ms=$((end_time_ms - start_time_ms))
 
 # Log result and metrics

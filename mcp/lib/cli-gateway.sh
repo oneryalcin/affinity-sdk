@@ -241,8 +241,8 @@ validate_argv() {
                 flag_name="${flag_name%%=*}"
             fi
 
-            # Check if flag is in allowed list
-            if ! printf '%s' "$allowed_flags" | grep -qxF "$flag_name"; then
+            # Check if flag is in allowed list (use -- to prevent grep treating flags as options)
+            if ! printf '%s' "$allowed_flags" | grep -qxF -- "$flag_name"; then
                 mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Unknown flag: " + $f), hint: "Use discover-commands to see valid parameters"}')"
                 return 1
             fi
@@ -269,7 +269,7 @@ validate_argv() {
                     # Only reject dash-leading values if they match a known flag
                     if [[ "$next_arg" == -* ]]; then
                         local next_flag_name="${next_arg%%=*}"
-                        if printf '%s' "$allowed_flags" | grep -qxF "$next_flag_name"; then
+                        if printf '%s' "$allowed_flags" | grep -qxF -- "$next_flag_name"; then
                             mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " requires a value, got another flag")}')"
                             return 1
                         fi
