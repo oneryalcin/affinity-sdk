@@ -5,6 +5,18 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-01-06
+
+### Added
+- **Debug mode**: Single flag `XAFFINITY_MCP_DEBUG=1` enables debug logging across all components
+- **Debug file toggle**: Touch `.debug` file in server directory to enable debugging without rebuild
+- **Version banner**: Debug mode shows version info at startup (mcp, cli, mcp-bash versions)
+- **Component prefixes**: All log messages include component and version: `[xaffinity:tool:1.2.3]`
+
+### Changed
+- Logging functions now include version in prefix for easier debugging
+- Debug cascade propagates to `MCPBASH_LOG_LEVEL=debug` and `XAFFINITY_DEBUG=true`
+
 ## [1.2.2] - 2026-01-06
 
 ### Fixed

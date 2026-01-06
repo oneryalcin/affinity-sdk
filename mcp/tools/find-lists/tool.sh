@@ -10,6 +10,9 @@ query="$(mcp_args_get '.query // ""')"
 list_type="$(mcp_args_get '.type // null')"
 limit="$(mcp_args_int '.limit' --default 20 --min 1 --max 100)"
 
+# Log tool invocation in debug mode
+xaffinity_log_debug "tool" "find-lists invoked query='$query' type='$list_type' limit=$limit"
+
 # Fetch all lists
 result=$(run_xaffinity_readonly list ls --output json --quiet \
     ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>/dev/null)

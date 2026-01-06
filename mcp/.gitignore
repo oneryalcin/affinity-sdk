@@ -13,3 +13,9 @@ dist/
 # Note: .env.test.example is tracked, but .env.test is ignored
 test/.env.test
 !test/.env.test.example
+
+# Debug mode flag file (touch .debug to enable)
+.debug
+
+# MCPB bundle files (build artifacts)
+*.mcpb

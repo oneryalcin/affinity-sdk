@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 # lib/common.sh - Common utilities for Affinity MCP tools
 
+# ==============================================================================
+# Debug Mode Initialization
+# ==============================================================================
+# Enable debug mode via:
+#   1. XAFFINITY_MCP_DEBUG=1 environment variable
+#   2. .debug file in server directory (touch .debug / rm .debug)
+#
+# When enabled, cascades to enable mcp-bash and xaffinity logging.
+# This is also set in xaffinity-mcp.sh for server startup, but we set it here
+# too for direct tool invocation via mcp-bash run-tool.
+
+_DEBUG_FLAG_FILE="${MCPBASH_PROJECT_ROOT}/.debug"
+if [[ -f "$_DEBUG_FLAG_FILE" || "${XAFFINITY_MCP_DEBUG:-}" == "1" ]]; then
+    export XAFFINITY_MCP_DEBUG=1
+    export MCPBASH_LOG_LEVEL="${MCPBASH_LOG_LEVEL:-debug}"
+    export XAFFINITY_DEBUG="true"
+fi
+
+# Cache version at startup (if not already set by xaffinity-mcp.sh)
+if [[ -z "${XAFFINITY_MCP_VERSION:-}" ]]; then
+    export XAFFINITY_MCP_VERSION=$(cat "${MCPBASH_PROJECT_ROOT}/VERSION" 2>/dev/null || echo "unknown")
+fi
+
 # Source cache utilities
 source "${MCPBASH_PROJECT_ROOT}/lib/cache.sh"
 
@@ -33,16 +56,20 @@ fi
 # Logging Helpers
 # ==============================================================================
 # These wrap mcp-bash SDK logging with xaffinity-specific context.
-# Use XAFFINITY_DEBUG=true or MCPBASH_LOG_LEVEL=debug for verbose output.
+# Use XAFFINITY_MCP_DEBUG=1 or MCPBASH_LOG_LEVEL=debug for verbose output.
+#
+# Log format: [xaffinity:<context>:<version>] <message>
+# Version is cached at startup in XAFFINITY_MCP_VERSION (see xaffinity-mcp.sh)
 
 # Log debug message (only when debug mode enabled)
 # Usage: xaffinity_log_debug "context" "message"
 xaffinity_log_debug() {
     local context="$1"
     local message="$2"
-    if [[ "${XAFFINITY_DEBUG:-}" == "true" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
+    local version="${XAFFINITY_MCP_VERSION:-?}"
+    if [[ "${XAFFINITY_MCP_DEBUG:-}" == "1" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
         if type mcp_log_debug &>/dev/null; then
-            mcp_log_debug "xaffinity:$context" "$message"
+            mcp_log_debug "xaffinity:$context:$version" "$message"
         fi
     fi
 }
@@ -52,8 +79,9 @@ xaffinity_log_debug() {
 xaffinity_log_info() {
     local context="$1"
     local message="$2"
+    local version="${XAFFINITY_MCP_VERSION:-?}"
     if type mcp_log_info &>/dev/null; then
-        mcp_log_info "xaffinity:$context" "$message"
+        mcp_log_info "xaffinity:$context:$version" "$message"
     fi
 }
 
@@ -62,8 +90,9 @@ xaffinity_log_info() {
 xaffinity_log_warn() {
     local context="$1"
     local message="$2"
+    local version="${XAFFINITY_MCP_VERSION:-?}"
     if type mcp_log_warn &>/dev/null; then
-        mcp_log_warn "xaffinity:$context" "$message"
+        mcp_log_warn "xaffinity:$context:$version" "$message"
     fi
 }
 
@@ -72,8 +101,9 @@ xaffinity_log_warn() {
 xaffinity_log_error() {
     local context="$1"
     local message="$2"
+    local version="${XAFFINITY_MCP_VERSION:-?}"
     if type mcp_log_error &>/dev/null; then
-        mcp_log_error "xaffinity:$context" "$message"
+        mcp_log_error "xaffinity:$context:$version" "$message"
     fi
 }
 
@@ -83,9 +113,10 @@ xaffinity_log_cli() {
     local subcommand="$1"
     local exit_code="$2"
     local output_bytes="${3:-0}"
-    if [[ "${XAFFINITY_DEBUG:-}" == "true" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
+    local version="${XAFFINITY_MCP_VERSION:-?}"
+    if [[ "${XAFFINITY_MCP_DEBUG:-}" == "1" || "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
         if type mcp_log_debug &>/dev/null; then
-            mcp_log_debug "xaffinity:cli" "cmd=$subcommand exit=$exit_code bytes=$output_bytes"
+            mcp_log_debug "xaffinity:cli:$version" "cmd=$subcommand exit=$exit_code bytes=$output_bytes"
         fi
     fi
 }

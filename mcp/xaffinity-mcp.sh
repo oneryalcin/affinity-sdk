@@ -5,6 +5,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MCPBASH_PROJECT_ROOT="${SCRIPT_DIR}"
 
+# ==============================================================================
+# Debug Mode
+# ==============================================================================
+# Enable debug mode via:
+#   1. XAFFINITY_MCP_DEBUG=1 environment variable
+#   2. .debug file in server directory (touch .debug / rm .debug)
+#
+# When enabled, cascades to enable mcp-bash and xaffinity logging.
+
+DEBUG_FLAG_FILE="${SCRIPT_DIR}/.debug"
+if [[ -f "$DEBUG_FLAG_FILE" || "${XAFFINITY_MCP_DEBUG:-}" == "1" ]]; then
+    export XAFFINITY_MCP_DEBUG=1
+    export MCPBASH_LOG_LEVEL="debug"
+    export XAFFINITY_DEBUG="true"
+fi
+
+# Cache version at startup (for debug banner and logging)
+export XAFFINITY_MCP_VERSION=$(cat "${SCRIPT_DIR}/VERSION" 2>/dev/null || echo "unknown")
+
 # Framework version - read from FRAMEWORK_VERSION file, allow env override
 FRAMEWORK_VERSION="${MCPBASH_VERSION:-v$(cat "${SCRIPT_DIR}/FRAMEWORK_VERSION")}"
 
@@ -149,6 +168,13 @@ if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
     export MCPBASH_TOOL_ALLOWLIST="${AFFINITY_MCP_TOOLS_READONLY}"
 else
     export MCPBASH_TOOL_ALLOWLIST="${AFFINITY_MCP_TOOLS_ALL}"
+fi
+
+# Print debug banner if debug mode enabled
+if [[ "${XAFFINITY_MCP_DEBUG:-}" == "1" ]]; then
+    echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Debug mode enabled" >&2
+    echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Versions: mcp=${XAFFINITY_MCP_VERSION} cli=${CLI_VERSION} mcp-bash=${FRAMEWORK_VERSION}" >&2
+    echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Process: pid=$$ started=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)" >&2
 fi
 
 exec "$FRAMEWORK" --project-root "${SCRIPT_DIR}" "$@"
