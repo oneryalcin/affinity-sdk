@@ -27,14 +27,14 @@ validate_entity_type() {
 build_entity_ref() {
     local type="$1"
     local id="$2"
-    jq -n --arg t "$type" --argjson i "$id" '{type: $t, id: $i}'
+    jq_tool -n --arg t "$type" --argjson i "$id" '{type: $t, id: $i}'
 }
 
 # Build ListEntryRef JSON
 build_list_entry_ref() {
     local list_id="$1"
     local entry_id="$2"
-    jq -n --argjson l "$list_id" --argjson e "$entry_id" '{listId: $l, listEntryId: $e}'
+    jq_tool -n --argjson l "$list_id" --argjson e "$entry_id" '{listId: $l, listEntryId: $e}'
 }
 
 # Parse WorkflowItemRef - handles both forms:
@@ -59,7 +59,7 @@ parse_workflow_item_ref() {
         local entity_id=$(echo "$entity" | jq_tool -r '.id')
 
         # Need to resolve - this requires the calling tool to handle
-        jq -n \
+        jq_tool -n \
             --argjson listId "$list_id" \
             --arg entityType "$entity_type" \
             --argjson entityId "$entity_id" \

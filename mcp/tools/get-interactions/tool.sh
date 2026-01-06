@@ -66,7 +66,7 @@ items=$(echo "$interactions" | jq_tool -c 'map({
 
 count=$(echo "$items" | jq_tool 'length')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --arg entityType "$entity_type" \
     --argjson entityId "$entity_id" \
     --argjson interactions "$items" \

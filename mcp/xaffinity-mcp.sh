@@ -26,6 +26,21 @@ find_framework() {
     fi
 }
 
+# Minimal JSON processor for pre-framework startup checks
+# Tries: jq (system), gojq (bundled), gojq (system)
+_json() {
+    if command -v jq >/dev/null 2>&1; then
+        jq "$@"
+    elif [[ -x "${SCRIPT_DIR}/mcp-bash-framework/bin/gojq" ]]; then
+        "${SCRIPT_DIR}/mcp-bash-framework/bin/gojq" "$@"
+    elif command -v gojq >/dev/null 2>&1; then
+        gojq "$@"
+    else
+        echo "Error: No JSON processor found (jq or gojq required)" >&2
+        return 1
+    fi
+}
+
 # Handle special commands
 case "${1:-}" in
     install)
@@ -55,7 +70,7 @@ esac
 # Source CLI compatibility requirements and verify CLI version
 source "${SCRIPT_DIR}/COMPATIBILITY"
 
-CLI_VERSION=$(xaffinity version --output json 2>/dev/null | jq -r '.data.version // empty') || true
+CLI_VERSION=$(xaffinity version --output json 2>/dev/null | _json -r '.data.version // empty') || true
 
 if [[ -z "$CLI_VERSION" ]]; then
     echo "Error: Could not detect xaffinity CLI version." >&2
@@ -99,7 +114,7 @@ check_key_output=$(xaffinity config check-key --json 2>/dev/null) || {
 }
 
 # Parse check-key output (data is nested under .data in JSON response)
-configured=$(echo "$check_key_output" | jq -r '.data.configured // false')
+configured=$(echo "$check_key_output" | _json -r '.data.configured // false')
 if [[ "$configured" != "true" ]]; then
     echo "Error: Affinity API key not configured." >&2
     echo "" >&2
@@ -115,7 +130,7 @@ fi
 #   "xaffinity --dotenv --readonly <command> --json"  (dotenv mode)
 #   "xaffinity --readonly <command> --json"           (keychain mode)
 # Export for tool scripts to use when invoking xaffinity
-export XAFFINITY_CLI_PATTERN=$(echo "$check_key_output" | jq -r '.data.pattern')
+export XAFFINITY_CLI_PATTERN=$(echo "$check_key_output" | _json -r '.data.pattern')
 
 # Find and run framework
 FRAMEWORK=$(find_framework)

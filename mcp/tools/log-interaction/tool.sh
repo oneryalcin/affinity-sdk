@@ -53,7 +53,7 @@ result=$(run_xaffinity interaction create "${int_args[@]}" 2>&1) || {
 int_data=$(echo "$result" | jq_tool -c '.data // {}')
 int_id=$(echo "$int_data" | jq_tool -r '.id // "unknown"')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --arg interactionId "$int_id" \
     --arg type "$interaction_type" \
     --argjson personIds "$person_ids_json" \

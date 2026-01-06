@@ -40,7 +40,7 @@ entries=$(echo "$result" | jq_tool -c --argjson entityId "$entity_id" \
 count=$(echo "$entries" | jq_tool 'length')
 
 if [[ "$count" == "0" ]]; then
-    mcp_emit_json "$(jq -n \
+    mcp_emit_json "$(jq_tool -n \
         --argjson listId "$list_id" \
         --argjson entityId "$entity_id" \
         '{
@@ -67,7 +67,7 @@ items=$(echo "$entries" | jq_tool -c 'map({
 # If single entry, mark as resolved
 if [[ "$count" == "1" ]]; then
     entry=$(echo "$items" | jq_tool -c '.[0]')
-    mcp_emit_json "$(jq -n \
+    mcp_emit_json "$(jq_tool -n \
         --argjson entry "$entry" \
         --argjson count "$count" \
         '{
@@ -79,7 +79,7 @@ if [[ "$count" == "1" ]]; then
     )"
 else
     # Multiple entries - return all candidates
-    mcp_emit_json "$(jq -n \
+    mcp_emit_json "$(jq_tool -n \
         --argjson entries "$items" \
         --argjson count "$count" \
         '{

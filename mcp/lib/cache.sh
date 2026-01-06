@@ -52,7 +52,7 @@ get_me_person_id_cached() {
         if [[ -f "$cache_file" ]]; then
             local age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file")))
             if [[ $age -lt ${AFFINITY_SESSION_CACHE_TTL:-600} ]]; then
-                jq -r '.personId // empty' "$cache_file"
+                jq_tool -r '.personId // empty' "$cache_file"
                 return 0
             fi
         fi

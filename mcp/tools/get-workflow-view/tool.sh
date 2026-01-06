@@ -62,7 +62,7 @@ items=$(echo "$result" | jq_tool -c --arg listType "$list_type" '
 count=$(echo "$items" | jq_tool 'length')
 list_name_display=$(echo "$config" | jq_tool -r '.list.name')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson items "$items" \
     --argjson listId "$list_id" \
     --arg listName "$list_name_display" \

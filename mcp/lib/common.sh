@@ -249,7 +249,7 @@ get_or_fetch_workflow_config() {
         local field_id=$(echo "$status_field" | jq_tool -r '.id')
         local field_name=$(echo "$status_field" | jq_tool -r '.name')
         local options=$(echo "$status_field" | jq_tool -c '.dropdownOptions // []')
-        status_field_output=$(jq -n \
+        status_field_output=$(jq_tool -n \
             --arg fid "$field_id" \
             --arg fname "$field_name" \
             --argjson opts "$options" \
@@ -267,7 +267,7 @@ get_or_fetch_workflow_config() {
 
     # Compose result
     local result
-    result=$(jq -n \
+    result=$(jq_tool -n \
         --argjson listId "$list_id" \
         --arg listName "$list_name" \
         --arg listType "$list_type" \

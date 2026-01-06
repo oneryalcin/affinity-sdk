@@ -44,7 +44,7 @@ result=$(run_xaffinity field-value set \
     mcp_fail -32603 "Failed to update status: $result"
 }
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson listId "$list_id" \
     --argjson listEntryId "$list_entry_id" \
     --arg status "$status" \

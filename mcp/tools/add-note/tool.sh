@@ -36,7 +36,7 @@ result=$(run_xaffinity note create "${note_args[@]}" 2>&1) || {
 note_data=$(echo "$result" | jq_tool -c '.data // {}')
 note_id=$(echo "$note_data" | jq_tool -r '.id // "unknown"')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --arg noteId "$note_id" \
     --arg entityType "$entity_type" \
     --argjson entityId "$entity_id" \

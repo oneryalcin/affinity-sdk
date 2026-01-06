@@ -86,7 +86,7 @@ xaffinity_log_debug "find-entities" "completed with $count matches"
 
 mcp_progress 3 "Search complete" 3
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson matches "$all_matches" \
     --arg notes "$notes" \
     '{matches: $matches, notes: $notes}'

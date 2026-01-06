@@ -87,7 +87,7 @@ if [[ "$source_id" != "null" && -n "$source_id" ]]; then
     source_contacts=$(echo "$source_interactions" | jq_tool -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
     target_contacts=$(echo "$target_interactions" | jq_tool -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
 
-    shared_connections=$(jq -n \
+    shared_connections=$(jq_tool -n \
         --argjson source "$source_contacts" \
         --argjson target "$target_contacts" \
         '[$source[] as $s | $target[] | select(. == $s)] | unique | .[:10]' || echo "[]")
@@ -110,7 +110,7 @@ xaffinity_log_debug "get-relationship-insights" "completed shared_connections=$s
 
 mcp_progress "$total_steps" "Building insights" "$total_steps"
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --arg targetType "$target_type" \
     --argjson targetId "$target_id" \
     --argjson relationshipStrength "$target_strength" \

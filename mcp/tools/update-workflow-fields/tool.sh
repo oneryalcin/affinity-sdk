@@ -54,7 +54,7 @@ done < <(echo "$field_updates" | jq_tool -c '.[]')
 success_count=$(echo "$results" | jq_tool 'length')
 error_count=$(echo "$errors" | jq_tool 'length')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson listId "$list_id" \
     --argjson listEntryId "$list_entry_id" \
     --argjson results "$results" \

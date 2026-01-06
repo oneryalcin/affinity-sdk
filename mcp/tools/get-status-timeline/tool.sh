@@ -50,7 +50,7 @@ timeline=$(echo "$status_changes" | jq_tool -c 'map({
 
 count=$(echo "$timeline" | jq_tool 'length')
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson listId "$list_id" \
     --argjson listEntryId "$list_entry_id" \
     --argjson timeline "$timeline" \

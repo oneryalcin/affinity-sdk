@@ -121,7 +121,7 @@ xaffinity_log_debug "get-entity-dossier" "collected interactions=$interactions_c
 mcp_progress "$total_steps" "Building dossier" "$total_steps"
 
 # Build dossier
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --arg entityType "$entity_type" \
     --argjson entityId "$entity_id" \
     --argjson entity "$entity_data" \

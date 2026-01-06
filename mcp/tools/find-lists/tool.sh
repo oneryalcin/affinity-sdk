@@ -48,7 +48,7 @@ if [[ "$list_type" != "null" && -n "$list_type" ]]; then
     notes="$notes (type: $list_type)"
 fi
 
-mcp_emit_json "$(jq -n \
+mcp_emit_json "$(jq_tool -n \
     --argjson lists "$matches" \
     --arg notes "$notes" \
     '{lists: $lists, notes: $notes}'
