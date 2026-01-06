@@ -428,5 +428,6 @@ apply_limit_cap() {
     fi
 
     # Output NUL-delimited for safe consumption with mapfile
-    printf '%s\0' "${argv[@]}"
+    # Only output if array is non-empty (empty printf '%s\0' would create one empty element)
+    [[ ${#argv[@]} -gt 0 ]] && printf '%s\0' "${argv[@]}"
 }

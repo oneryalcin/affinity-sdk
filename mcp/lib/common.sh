@@ -228,8 +228,8 @@ get_or_fetch_workflow_config() {
     # Fetch list metadata
     local list_data
     list_data=$(run_xaffinity_readonly list get "$list_id" "${cli_base_args[@]}" 2>/dev/null | jq_tool -c '.data // {}')
-    local list_name=$(echo "$list_data" | jq_tool -r '.name // "Unknown"')
-    local list_type=$(echo "$list_data" | jq_tool -r '.type // "unknown"')
+    local list_name=$(echo "$list_data" | jq_tool -r '.list.name // "Unknown"')
+    local list_type=$(echo "$list_data" | jq_tool -r '.list.type // "unknown"')
 
     # Fetch fields for this list
     local fields_data

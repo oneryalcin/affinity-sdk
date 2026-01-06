@@ -43,19 +43,17 @@ fi
 # Export list entries
 result=$(run_xaffinity_readonly list export "$list_id" "${export_args[@]}" 2>/dev/null)
 
-# Transform entries to workflow items
-items=$(echo "$result" | jq_tool -c --arg listType "$list_type" '
-    .data.entries // [] | map({
-        listEntryId: .id,
-        listId: .listId,
+# Transform entries to workflow items (CLI uses .data.rows with fields at root level)
+items=$(echo "$result" | jq_tool -c '
+    .data.rows // [] | map({
+        listEntryId: .listEntryId,
         entity: {
-            type: $listType,
+            type: .entityType,
             id: .entityId
         },
         entityName: .entityName,
-        status: .status,
-        fields: (.fields // {}),
-        createdAt: .createdAt
+        status: (.Status // null),
+        fields: (. | to_entries | map(select(.key | test("^(listEntryId|entityType|entityId|entityName)$") | not)) | from_entries)
     })
 ')
 
