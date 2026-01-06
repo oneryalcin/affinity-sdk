@@ -6,8 +6,11 @@ source "${MCP_SDK:?}/tool-sdk.sh"
 source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 source "${MCPBASH_PROJECT_ROOT}/lib/cli-gateway.sh"
 
-# Validate registry early
-validate_registry || exit 0
+# Validate registry (required for CLI Gateway tools)
+if ! validate_registry; then
+    # validate_registry already emitted mcp_result_error with details
+    exit 0
+fi
 
 # Parse arguments using mcp-bash SDK
 query="$(mcp_args_require '.query' 'Query string is required')"

@@ -15,7 +15,7 @@ fields_json="$(mcp_args_require '.fields' 'fields object is required')"
 config=$(get_or_fetch_workflow_config "$list_id")
 
 # Parse fields object - expecting {fieldName: value, ...} or {fieldId: value, ...}
-field_updates=$(echo "$fields_json" | jq -c 'to_entries')
+field_updates=$(echo "$fields_json" | jq_tool -c 'to_entries')
 
 # Track results
 results='[]'
@@ -23,15 +23,15 @@ errors='[]'
 
 # Process each field update
 while IFS= read -r entry; do
-    field_key=$(echo "$entry" | jq -r '.key')
-    value=$(echo "$entry" | jq -r '.value')
+    field_key=$(echo "$entry" | jq_tool -r '.key')
+    value=$(echo "$entry" | jq_tool -r '.value')
 
     # Resolve field name to ID if needed
     if [[ "$field_key" =~ ^[0-9]+$ ]]; then
         field_id="$field_key"
     else
         field_id=$(resolve_field_id "$list_id" "$field_key") || {
-            errors=$(echo "$errors" | jq -c --arg key "$field_key" '. + [{field: $key, error: "Field not found"}]')
+            errors=$(echo "$errors" | jq_tool -c --arg key "$field_key" '. + [{field: $key, error: "Field not found"}]')
             continue
         }
     fi
@@ -43,16 +43,16 @@ while IFS= read -r entry; do
         --value "$value" \
         --output json --quiet \
         ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>&1) && {
-        results=$(echo "$results" | jq -c --arg key "$field_key" --arg fid "$field_id" \
+        results=$(echo "$results" | jq_tool -c --arg key "$field_key" --arg fid "$field_id" \
             '. + [{field: $key, fieldId: $fid, success: true}]')
     } || {
-        errors=$(echo "$errors" | jq -c --arg key "$field_key" --arg err "$update_result" \
+        errors=$(echo "$errors" | jq_tool -c --arg key "$field_key" --arg err "$update_result" \
             '. + [{field: $key, error: $err}]')
     }
-done < <(echo "$field_updates" | jq -c '.[]')
+done < <(echo "$field_updates" | jq_tool -c '.[]')
 
-success_count=$(echo "$results" | jq 'length')
-error_count=$(echo "$errors" | jq 'length')
+success_count=$(echo "$results" | jq_tool 'length')
+error_count=$(echo "$errors" | jq_tool 'length')
 
 mcp_emit_json "$(jq -n \
     --argjson listId "$list_id" \

@@ -13,7 +13,7 @@ resolve_field_id() {
 
     # Search field index
     local field_id
-    field_id=$(echo "$config" | jq -r --arg name "$field_name" \
+    field_id=$(echo "$config" | jq_tool -r --arg name "$field_name" \
         '.fieldIndex[] | select(.name == $name) | .fieldId' | head -1)
 
     if [[ -n "$field_id" ]]; then
@@ -22,7 +22,7 @@ resolve_field_id() {
     fi
 
     # Try case-insensitive match
-    field_id=$(echo "$config" | jq -r --arg name "$field_name" \
+    field_id=$(echo "$config" | jq_tool -r --arg name "$field_name" \
         '.fieldIndex[] | select(.name | ascii_downcase == ($name | ascii_downcase)) | .fieldId' | head -1)
 
     if [[ -n "$field_id" ]]; then
@@ -45,7 +45,7 @@ resolve_status_option_id() {
 
     # Get status field options
     local status_field
-    status_field=$(echo "$config" | jq -c '.statusField // null')
+    status_field=$(echo "$config" | jq_tool -c '.statusField // null')
 
     if [[ "$status_field" == "null" ]]; then
         return 1
@@ -53,7 +53,7 @@ resolve_status_option_id() {
 
     # Find matching option
     local option_id
-    option_id=$(echo "$status_field" | jq -r --arg text "$status_text" \
+    option_id=$(echo "$status_field" | jq_tool -r --arg text "$status_text" \
         '.options[] | select(.text == $text) | .id' | head -1)
 
     if [[ -n "$option_id" ]]; then
@@ -62,7 +62,7 @@ resolve_status_option_id() {
     fi
 
     # Try case-insensitive match
-    option_id=$(echo "$status_field" | jq -r --arg text "$status_text" \
+    option_id=$(echo "$status_field" | jq_tool -r --arg text "$status_text" \
         '.options[] | select(.text | ascii_downcase == ($text | ascii_downcase)) | .id' | head -1)
 
     if [[ -n "$option_id" ]]; then
@@ -81,7 +81,7 @@ get_status_options() {
     local config
     config=$(get_or_fetch_workflow_config "$list_id")
 
-    echo "$config" | jq -c '.statusField.options // []'
+    echo "$config" | jq_tool -c '.statusField.options // []'
 }
 
 # Resolve field value for update
@@ -97,11 +97,11 @@ resolve_field_value() {
 
     # Get field type
     local field_info
-    field_info=$(echo "$config" | jq -c --arg fid "$field_id" \
+    field_info=$(echo "$config" | jq_tool -c --arg fid "$field_id" \
         '.fieldIndex[] | select(.fieldId == $fid)')
 
     local value_type
-    value_type=$(echo "$field_info" | jq -r '.valueType // "text"')
+    value_type=$(echo "$field_info" | jq_tool -r '.valueType // "text"')
 
     case "$value_type" in
         ranked-dropdown|dropdown)

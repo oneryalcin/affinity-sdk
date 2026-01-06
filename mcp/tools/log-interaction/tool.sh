@@ -24,7 +24,7 @@ esac
 person_ids=()
 while IFS= read -r id; do
     [[ -n "$id" ]] && person_ids+=("$id")
-done < <(echo "$person_ids_json" | jq -r '.[]')
+done < <(echo "$person_ids_json" | jq_tool -r '.[]')
 
 if [[ ${#person_ids[@]} -eq 0 ]]; then
     mcp_fail_invalid_args "At least one person ID is required"
@@ -50,8 +50,8 @@ result=$(run_xaffinity interaction create "${int_args[@]}" 2>&1) || {
     mcp_fail -32603 "Failed to log interaction: $result"
 }
 
-int_data=$(echo "$result" | jq -c '.data // {}')
-int_id=$(echo "$int_data" | jq -r '.id // "unknown"')
+int_data=$(echo "$result" | jq_tool -c '.data // {}')
+int_id=$(echo "$int_data" | jq_tool -r '.id // "unknown"')
 
 mcp_emit_json "$(jq -n \
     --arg interactionId "$int_id" \

@@ -14,8 +14,8 @@ source_id="$(mcp_args_get '.sourceId // null')"
 
 # Parse target entity
 if [[ "$target_entity_json" != "null" ]]; then
-    target_type=$(echo "$target_entity_json" | jq -r '.type')
-    target_id=$(echo "$target_entity_json" | jq -r '.id')
+    target_type=$(echo "$target_entity_json" | jq_tool -r '.type')
+    target_id=$(echo "$target_entity_json" | jq_tool -r '.id')
 elif [[ "$target_id" == "null" || -z "$target_id" ]]; then
     xaffinity_log_error "get-relationship-insights" "missing required target entity"
     mcp_fail_invalid_args "Either targetEntity or targetId is required"
@@ -36,7 +36,7 @@ cli_args=(--output json --quiet)
 mcp_progress "$current_step" "Getting relationship strength" "$total_steps"
 target_strength="null"
 if [[ "$target_type" == "person" ]]; then
-    target_strength=$(run_xaffinity_readonly relationship-strength ls --external-id "$target_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
+    target_strength=$(run_xaffinity_readonly relationship-strength ls --external-id "$target_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
 ((++current_step))
 
@@ -50,12 +50,12 @@ fetch_all_interactions() {
     for itype in email meeting call chat-message; do
         (
             result=$(run_xaffinity_readonly interaction ls --person-id "$person_id" --type "$itype" --max-results "$max_results" "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-            echo "$result" | jq -c '.data.interactions // []' > "$tmp_dir/$itype.json"
+            echo "$result" | jq_tool -c '.data.interactions // []' > "$tmp_dir/$itype.json"
         ) &
     done
     wait
 
-    cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse' || echo "[]"
+    cat "$tmp_dir"/*.json 2>/dev/null | jq_tool -s 'add | sort_by(.date) | reverse' || echo "[]"
     rm -rf "$tmp_dir"
 }
 
@@ -84,8 +84,8 @@ if [[ "$source_id" != "null" && -n "$source_id" ]]; then
 
     # Find overlapping person IDs (potential intro paths)
     mcp_progress "$current_step" "Finding shared connections" "$total_steps"
-    source_contacts=$(echo "$source_interactions" | jq -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
-    target_contacts=$(echo "$target_interactions" | jq -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
+    source_contacts=$(echo "$source_interactions" | jq_tool -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
+    target_contacts=$(echo "$target_interactions" | jq_tool -c '[.[] | (.participants // [])[] | .personId] | unique' || echo "[]")
 
     shared_connections=$(jq -n \
         --argjson source "$source_contacts" \
@@ -104,8 +104,8 @@ recent_interactions=$(fetch_all_interactions "$target_id" 5)
 ((++current_step))
 
 # Log completion stats
-shared_count=$(echo "$shared_connections" | jq 'length')
-recent_count=$(echo "$recent_interactions" | jq 'length')
+shared_count=$(echo "$shared_connections" | jq_tool 'length')
+recent_count=$(echo "$recent_interactions" | jq_tool 'length')
 xaffinity_log_debug "get-relationship-insights" "completed shared_connections=$shared_count recent_interactions=$recent_count"
 
 mcp_progress "$total_steps" "Building insights" "$total_steps"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resources/me/resource.sh - Get current user information
+# resources/me/me.sh - Get current user information
 set -euo pipefail
 
 source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
@@ -13,4 +13,4 @@ result=$(run_xaffinity_readonly whoami "${cli_args[@]}" 2>/dev/null) || {
     exit 1
 }
 
-echo "$result" | jq -c '.data // {}'
+echo "$result" | jq_tool -c '.data // {}'

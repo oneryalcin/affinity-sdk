@@ -15,8 +15,8 @@ creator_id="$(mcp_args_get '.creatorId // null')"
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then
-    entity_type=$(echo "$entity_json" | jq -r '.type')
-    entity_id=$(echo "$entity_json" | jq -r '.id')
+    entity_type=$(echo "$entity_json" | jq_tool -r '.type')
+    entity_id=$(echo "$entity_json" | jq_tool -r '.id')
 elif [[ "$entity_id" == "null" || -z "$entity_id" ]]; then
     mcp_fail_invalid_args "Either entity object or entityId/entityType is required"
 fi
@@ -33,8 +33,8 @@ result=$(run_xaffinity note create "${note_args[@]}" 2>&1) || {
     mcp_fail -32603 "Failed to create note: $result"
 }
 
-note_data=$(echo "$result" | jq -c '.data // {}')
-note_id=$(echo "$note_data" | jq -r '.id // "unknown"')
+note_data=$(echo "$result" | jq_tool -c '.data // {}')
+note_id=$(echo "$note_data" | jq_tool -r '.id // "unknown"')
 
 mcp_emit_json "$(jq -n \
     --arg noteId "$note_id" \

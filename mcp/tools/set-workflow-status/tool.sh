@@ -13,13 +13,13 @@ status="$(mcp_args_require '.status' 'status is required')"
 
 # Get workflow config to find status field
 config=$(get_or_fetch_workflow_config "$list_id")
-status_field=$(echo "$config" | jq -c '.statusField')
+status_field=$(echo "$config" | jq_tool -c '.statusField')
 
 if [[ "$status_field" == "null" ]]; then
     mcp_fail -32602 "List does not have a status field configured"
 fi
 
-field_id=$(echo "$status_field" | jq -r '.fieldId')
+field_id=$(echo "$status_field" | jq_tool -r '.fieldId')
 
 # Resolve status text to option ID if needed
 if [[ "$status" =~ ^[0-9]+$ ]]; then
@@ -29,7 +29,7 @@ else
     # Resolve text to ID
     status_option_id=$(resolve_status_option_id "$list_id" "$status") || {
         # Show available options
-        options=$(echo "$status_field" | jq -r '.options[].text' | tr '\n' ', ' | sed 's/,$//')
+        options=$(echo "$status_field" | jq_tool -r '.options[].text' | tr '\n' ', ' | sed 's/,$//')
         mcp_fail_invalid_args "Unknown status: '$status'. Available: $options"
     }
 fi

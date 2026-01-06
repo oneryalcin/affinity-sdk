@@ -17,7 +17,7 @@ cli_args=(--json)
 
 # Get current user from whoami - user.id IS the person ID
 result=$(run_xaffinity_readonly whoami "${cli_args[@]}" 2>/dev/null)
-person_id=$(echo "$result" | jq -r '.data.user.id // empty')
+person_id=$(echo "$result" | jq_tool -r '.data.user.id // empty')
 
 if [[ -n "$person_id" ]]; then
     # Cache for future requests

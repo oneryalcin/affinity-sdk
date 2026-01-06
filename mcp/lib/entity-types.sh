@@ -8,7 +8,7 @@ parse_entity_ref() {
     local field="${2:-}"
 
     if [[ -n "$field" ]]; then
-        echo "$json" | jq -r ".$field // empty"
+        echo "$json" | jq_tool -r ".$field // empty"
     else
         echo "$json"
     fi
@@ -43,8 +43,8 @@ build_list_entry_ref() {
 parse_workflow_item_ref() {
     local json="$1"
 
-    local list_id=$(echo "$json" | jq -r '.listId // empty')
-    local list_entry_id=$(echo "$json" | jq -r '.listEntryId // empty')
+    local list_id=$(echo "$json" | jq_tool -r '.listId // empty')
+    local list_entry_id=$(echo "$json" | jq_tool -r '.listEntryId // empty')
 
     if [[ -n "$list_id" && -n "$list_entry_id" ]]; then
         # Preferred form - direct list entry reference
@@ -53,10 +53,10 @@ parse_workflow_item_ref() {
     fi
 
     # Convenience form - need to resolve entity to list entry
-    local entity=$(echo "$json" | jq -c '.entity // null')
+    local entity=$(echo "$json" | jq_tool -c '.entity // null')
     if [[ "$entity" != "null" && -n "$list_id" ]]; then
-        local entity_type=$(echo "$entity" | jq -r '.type')
-        local entity_id=$(echo "$entity" | jq -r '.id')
+        local entity_type=$(echo "$entity" | jq_tool -r '.type')
+        local entity_id=$(echo "$entity" | jq_tool -r '.id')
 
         # Need to resolve - this requires the calling tool to handle
         jq -n \

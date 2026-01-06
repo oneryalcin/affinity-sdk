@@ -22,7 +22,7 @@ fi
 
 # Get workflow config for context
 config=$(get_or_fetch_workflow_config "$list_id")
-list_type=$(echo "$config" | jq -r '.list.type')
+list_type=$(echo "$config" | jq_tool -r '.list.type')
 
 # Build export command arguments (list export takes list_id as positional arg)
 export_args=(--output json --quiet --max-results "$limit")
@@ -33,7 +33,7 @@ if [[ "$view_id" != "null" && -n "$view_id" ]]; then
     export_args+=(--saved-view "$view_id")
 elif [[ "$view_name" != "null" && -n "$view_name" ]]; then
     # Find view ID by name
-    actual_view_id=$(echo "$config" | jq -r --arg name "$view_name" \
+    actual_view_id=$(echo "$config" | jq_tool -r --arg name "$view_name" \
         '.savedViews[] | select(.name == $name) | .viewId' | head -1)
     if [[ -n "$actual_view_id" ]]; then
         export_args+=(--saved-view "$actual_view_id")
@@ -44,7 +44,7 @@ fi
 result=$(run_xaffinity_readonly list export "$list_id" "${export_args[@]}" 2>/dev/null)
 
 # Transform entries to workflow items
-items=$(echo "$result" | jq -c --arg listType "$list_type" '
+items=$(echo "$result" | jq_tool -c --arg listType "$list_type" '
     .data.entries // [] | map({
         listEntryId: .id,
         listId: .listId,
@@ -59,8 +59,8 @@ items=$(echo "$result" | jq -c --arg listType "$list_type" '
     })
 ')
 
-count=$(echo "$items" | jq 'length')
-list_name_display=$(echo "$config" | jq -r '.list.name')
+count=$(echo "$items" | jq_tool 'length')
+list_name_display=$(echo "$config" | jq_tool -r '.list.name')
 
 mcp_emit_json "$(jq -n \
     --argjson items "$items" \

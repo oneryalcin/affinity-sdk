@@ -23,8 +23,8 @@ fi
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then
-    entity_type=$(echo "$entity_json" | jq -r '.type')
-    entity_id=$(echo "$entity_json" | jq -r '.id')
+    entity_type=$(echo "$entity_json" | jq_tool -r '.type')
+    entity_id=$(echo "$entity_json" | jq_tool -r '.id')
 elif [[ "$entity_id" == "null" || -z "$entity_id" ]]; then
     mcp_fail_invalid_args "Either entity object or entityId is required"
 fi
@@ -34,10 +34,10 @@ result=$(run_xaffinity_readonly list-entry ls --list-id "$list_id" --output json
     ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>/dev/null)
 
 # Filter entries by entity ID
-entries=$(echo "$result" | jq -c --argjson entityId "$entity_id" \
+entries=$(echo "$result" | jq_tool -c --argjson entityId "$entity_id" \
     '[.data.entries[] | select(.entityId == $entityId)]')
 
-count=$(echo "$entries" | jq 'length')
+count=$(echo "$entries" | jq_tool 'length')
 
 if [[ "$count" == "0" ]]; then
     mcp_emit_json "$(jq -n \
@@ -55,7 +55,7 @@ if [[ "$count" == "0" ]]; then
 fi
 
 # Transform entries
-items=$(echo "$entries" | jq -c 'map({
+items=$(echo "$entries" | jq_tool -c 'map({
     listEntryId: .id,
     listId: .listId,
     entityId: .entityId,
@@ -66,7 +66,7 @@ items=$(echo "$entries" | jq -c 'map({
 
 # If single entry, mark as resolved
 if [[ "$count" == "1" ]]; then
-    entry=$(echo "$items" | jq -c '.[0]')
+    entry=$(echo "$items" | jq_tool -c '.[0]')
     mcp_emit_json "$(jq -n \
         --argjson entry "$entry" \
         --argjson count "$count" \

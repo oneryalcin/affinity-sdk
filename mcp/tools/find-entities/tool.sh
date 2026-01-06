@@ -18,7 +18,7 @@ xaffinity_log_debug "find-entities" "query='$query' types=$types_json limit=$lim
 types=()
 while IFS= read -r item; do
     [[ -n "$item" ]] && types+=("$item")
-done < <(echo "$types_json" | jq -r '.[]')
+done < <(echo "$types_json" | jq_tool -r '.[]')
 
 # Create temp directory for parallel results
 tmp_dir=$(mktemp -d)
@@ -38,12 +38,12 @@ for entity_type in "${types[@]}"; do
             person)
                 result=$(run_xaffinity_readonly person ls --query "$query" --output json --quiet \
                     ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} \
-                    2>/dev/null | jq -c '.data.persons // []' || echo "[]")
+                    2>/dev/null | jq_tool -c '.data.persons // []' || echo "[]")
                 ;;
             company)
                 result=$(run_xaffinity_readonly company ls --query "$query" --output json --quiet \
                     ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} \
-                    2>/dev/null | jq -c '.data.companies // []' || echo "[]")
+                    2>/dev/null | jq_tool -c '.data.companies // []' || echo "[]")
                 ;;
             opportunity)
                 # Opportunities cannot be searched globally in Affinity API
@@ -53,7 +53,7 @@ for entity_type in "${types[@]}"; do
         esac
 
         # Transform to unified format
-        echo "$result" | jq -c --arg type "$entity_type" '
+        echo "$result" | jq_tool -c --arg type "$entity_type" '
             .[:'"$limit"'] | map({
                 entity: {type: $type, id: .id},
                 displayName: (.name // ((.firstName // "") + " " + (.lastName // "")) // "Unknown"),
@@ -76,10 +76,10 @@ fi
 
 # Merge results from all entity types
 mcp_progress 2 "Merging results" 3
-all_matches=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add // [] | .[:'"$limit"']' || echo "[]")
+all_matches=$(cat "$tmp_dir"/*.json 2>/dev/null | jq_tool -s 'add // [] | .[:'"$limit"']' || echo "[]")
 
 # Generate human-readable summary
-count=$(echo "$all_matches" | jq 'length')
+count=$(echo "$all_matches" | jq_tool 'length')
 notes="Found $count matches for '$query'"
 
 xaffinity_log_debug "find-entities" "completed with $count matches"

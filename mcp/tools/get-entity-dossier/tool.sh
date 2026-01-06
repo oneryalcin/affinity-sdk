@@ -16,8 +16,8 @@ include_lists="$(mcp_args_bool '.includeLists' --default true)"
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then
-    entity_type=$(echo "$entity_json" | jq -r '.type')
-    entity_id=$(echo "$entity_json" | jq -r '.id')
+    entity_type=$(echo "$entity_json" | jq_tool -r '.type')
+    entity_id=$(echo "$entity_json" | jq_tool -r '.id')
 elif [[ "$entity_id" == "null" || -z "$entity_id" ]]; then
     xaffinity_log_error "get-entity-dossier" "missing required entity reference"
     mcp_fail_invalid_args "Either entity object or entityId/entityType is required"
@@ -42,13 +42,13 @@ cli_args=(--output json --quiet)
 
 case "$entity_type" in
     person)
-        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.person // {}' || echo '{}')
+        entity_data=$(run_xaffinity_readonly person get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.person // {}' || echo '{}')
         ;;
     company)
-        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.company // {}' || echo '{}')
+        entity_data=$(run_xaffinity_readonly company get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.company // {}' || echo '{}')
         ;;
     opportunity)
-        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.opportunity // {}' || echo '{}')
+        entity_data=$(run_xaffinity_readonly opportunity get "$entity_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.opportunity // {}' || echo '{}')
         ;;
 esac
 ((++current_step))
@@ -62,7 +62,7 @@ fi
 mcp_progress "$current_step" "Getting relationship strength" "$total_steps"
 relationship_data="null"
 if [[ "$entity_type" == "person" ]]; then
-    relationship_data=$(run_xaffinity_readonly relationship-strength ls --external-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.relationshipStrengths[0] // null' || echo "null")
+    relationship_data=$(run_xaffinity_readonly relationship-strength ls --external-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.relationshipStrengths[0] // null' || echo "null")
 fi
 ((++current_step))
 
@@ -80,12 +80,12 @@ if [[ "$include_interactions" == "true" ]]; then
     for itype in email meeting call chat-message; do
         (
             result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type "$itype" --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-            echo "$result" | jq -c '.data.interactions // []' > "$tmp_dir/$itype.json"
+            echo "$result" | jq_tool -c '.data.interactions // []' > "$tmp_dir/$itype.json"
         ) &
     done
     wait
 
-    interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse | .[:10]' || echo "[]")
+    interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq_tool -s 'add | sort_by(.date) | reverse | .[:10]' || echo "[]")
     ((++current_step))
 fi
 
@@ -96,7 +96,7 @@ if [[ "$include_notes" == "true" ]]; then
         mcp_fail -32001 "Operation cancelled"
     fi
     mcp_progress "$current_step" "Fetching notes" "$total_steps"
-    notes=$(run_xaffinity_readonly note ls --"$entity_type"-id "$entity_id" --max-results 10 "${cli_args[@]}" 2>/dev/null | jq -c '.data.notes // []' || echo "[]")
+    notes=$(run_xaffinity_readonly note ls --"$entity_type"-id "$entity_id" --max-results 10 "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.notes // []' || echo "[]")
     ((++current_step))
 fi
 
@@ -107,14 +107,14 @@ if [[ "$include_lists" == "true" ]]; then
         mcp_fail -32001 "Operation cancelled"
     fi
     mcp_progress "$current_step" "Fetching list memberships" "$total_steps"
-    lists=$(run_xaffinity_readonly list-entry ls --"$entity_type"-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq -c '.data.entries // []' || echo "[]")
+    lists=$(run_xaffinity_readonly list-entry ls --"$entity_type"-id "$entity_id" "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.entries // []' || echo "[]")
     ((++current_step))
 fi
 
 # Count collected data for logging
-interactions_count=$(echo "$interactions" | jq 'length')
-notes_count=$(echo "$notes" | jq 'length')
-lists_count=$(echo "$lists" | jq 'length')
+interactions_count=$(echo "$interactions" | jq_tool 'length')
+notes_count=$(echo "$notes" | jq_tool 'length')
+lists_count=$(echo "$lists" | jq_tool 'length')
 
 xaffinity_log_debug "get-entity-dossier" "collected interactions=$interactions_count notes=$notes_count lists=$lists_count"
 

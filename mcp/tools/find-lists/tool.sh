@@ -16,20 +16,20 @@ result=$(run_xaffinity_readonly list ls --output json --quiet \
 
 # Filter by type if specified
 if [[ "$list_type" != "null" && -n "$list_type" ]]; then
-    lists=$(echo "$result" | jq -c --arg type "$list_type" \
+    lists=$(echo "$result" | jq_tool -c --arg type "$list_type" \
         '.data.lists | [.[] | select(.type == $type)]')
 else
-    lists=$(echo "$result" | jq -c '.data.lists // []')
+    lists=$(echo "$result" | jq_tool -c '.data.lists // []')
 fi
 
 # Filter by query if specified
 if [[ -n "$query" ]]; then
-    lists=$(echo "$lists" | jq -c --arg query "$query" \
+    lists=$(echo "$lists" | jq_tool -c --arg query "$query" \
         '[.[] | select(.name | ascii_downcase | contains($query | ascii_downcase))]')
 fi
 
 # Apply limit and transform
-matches=$(echo "$lists" | jq -c '
+matches=$(echo "$lists" | jq_tool -c '
     .[:'"$limit"'] | map({
         listId: .id,
         name: .name,
@@ -39,7 +39,7 @@ matches=$(echo "$lists" | jq -c '
     })
 ')
 
-count=$(echo "$matches" | jq 'length')
+count=$(echo "$matches" | jq_tool 'length')
 notes="Found $count lists"
 if [[ -n "$query" ]]; then
     notes="$notes matching '$query'"

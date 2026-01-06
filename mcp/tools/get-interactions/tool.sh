@@ -15,8 +15,8 @@ limit="$(mcp_args_int '.limit' --default 20 --min 1 --max 100)"
 
 # Parse entity reference
 if [[ "$entity_json" != "null" ]]; then
-    entity_type=$(echo "$entity_json" | jq -r '.type')
-    entity_id=$(echo "$entity_json" | jq -r '.id')
+    entity_type=$(echo "$entity_json" | jq_tool -r '.type')
+    entity_id=$(echo "$entity_json" | jq_tool -r '.id')
 elif [[ "$entity_id" == "null" || -z "$entity_id" ]]; then
     mcp_fail_invalid_args "Either entity object or entityId/entityType is required"
 fi
@@ -31,7 +31,7 @@ if [[ "$interaction_type" != "null" && -n "$interaction_type" ]]; then
     int_args=(--"$entity_type"-id "$entity_id" --type "$interaction_type" --max-results "$limit" --output json --quiet)
     [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && int_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
     result=$(run_xaffinity_readonly interaction ls "${int_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-    all_interactions=$(echo "$result" | jq -c '.data.interactions // []')
+    all_interactions=$(echo "$result" | jq_tool -c '.data.interactions // []')
 else
     # Query all interaction types in parallel
     tmp_dir=$(mktemp -d)
@@ -42,19 +42,19 @@ else
             int_args=(--"$entity_type"-id "$entity_id" --type "$itype" --max-results "$limit" --output json --quiet)
             [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && int_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
             result=$(run_xaffinity_readonly interaction ls "${int_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-            echo "$result" | jq -c '.data.interactions // []' > "$tmp_dir/$itype.json"
+            echo "$result" | jq_tool -c '.data.interactions // []' > "$tmp_dir/$itype.json"
         ) &
     done
     wait
 
     # Merge and sort by date
-    all_interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq -s 'add | sort_by(.date) | reverse | .[:'"$limit"']' || echo "[]")
+    all_interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq_tool -s 'add | sort_by(.date) | reverse | .[:'"$limit"']' || echo "[]")
 fi
 
 interactions="$all_interactions"
 
 # Transform to summary format
-items=$(echo "$interactions" | jq -c 'map({
+items=$(echo "$interactions" | jq_tool -c 'map({
     interactionId: .id,
     type: .type,
     direction: .direction,
@@ -64,7 +64,7 @@ items=$(echo "$interactions" | jq -c 'map({
     createdAt: .createdAt
 }) // []')
 
-count=$(echo "$items" | jq 'length')
+count=$(echo "$items" | jq_tool 'length')
 
 mcp_emit_json "$(jq -n \
     --arg entityType "$entity_type" \

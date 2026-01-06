@@ -3,7 +3,7 @@
 Generate CLI commands registry for MCP discover-commands tool.
 
 Uses `xaffinity --help --json` to get machine-readable help output from the CLI.
-Writes to mcp/.registry/commands.json.
+Writes to mcp/server.d/registry/commands.json (bundled with MCP server).
 
 Usage:
     python tools/generate_cli_commands_registry.py
@@ -17,7 +17,7 @@ CI Integration:
         - name: Verify CLI commands registry is up to date
           run: |
             python tools/generate_cli_commands_registry.py
-            git diff --exit-code mcp/.registry/commands.json
+            git diff --exit-code mcp/server.d/registry/commands.json
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def generate_registry(output_path: Path) -> None:
 def main() -> None:
     """Main entry point."""
     repo_root = Path(__file__).parent.parent
-    output_path = repo_root / "mcp" / ".registry" / "commands.json"
+    output_path = repo_root / "mcp" / "server.d" / "registry" / "commands.json"
     generate_registry(output_path)
 
 

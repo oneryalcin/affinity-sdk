@@ -125,8 +125,10 @@ if [[ -z "$FRAMEWORK" ]]; then
 fi
 
 # Tool allowlist (read-only vs full access)
-AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions read-xaffinity-resource"
-AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} set-workflow-status update-workflow-fields add-note log-interaction"
+# CLI Gateway tools provide dynamic command discovery and execution
+AFFINITY_MCP_TOOLS_CLI_GATEWAY="discover-commands execute-read-command"
+AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions read-xaffinity-resource ${AFFINITY_MCP_TOOLS_CLI_GATEWAY}"
+AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} set-workflow-status update-workflow-fields add-note log-interaction execute-write-command"
 
 if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
     export MCPBASH_TOOL_ALLOWLIST="${AFFINITY_MCP_TOOLS_READONLY}"
