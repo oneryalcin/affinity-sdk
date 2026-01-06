@@ -18,8 +18,12 @@ if ! xaffinity config check-key --json >/dev/null 2>&1; then
 fi
 
 # Required: CLI commands registry for CLI Gateway tools
-# Note: REGISTRY_FILE is defined in lib/common.sh
-REGISTRY_FILE="${MCPBASH_PROJECT_ROOT}/.registry/commands.json"
+# Check bundled location first, then fallback to development location
+if [[ -f "${MCPBASH_PROJECT_ROOT}/server.d/registry/commands.json" ]]; then
+    REGISTRY_FILE="${MCPBASH_PROJECT_ROOT}/server.d/registry/commands.json"
+else
+    REGISTRY_FILE="${MCPBASH_PROJECT_ROOT}/.registry/commands.json"
+fi
 if [[ -f "$REGISTRY_FILE" ]]; then
     mcp_log_debug "CLI commands registry found: $REGISTRY_FILE"
 else

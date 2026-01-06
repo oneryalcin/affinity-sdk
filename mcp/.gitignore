@@ -1,7 +1,6 @@
 # Auto-generated registry cache (created by Claude Code MCP scanner)
+# Note: CLI commands registry is now in server.d/registry/ (bundled with MCPB)
 .registry/
-# Exception: CLI commands registry is committed (validated in CI)
-!.registry/commands.json
 
 # MCPB bundle output directory
 dist/

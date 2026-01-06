@@ -90,7 +90,7 @@ jobs:
           python -c "
           import json
           import sys
-          with open('mcp/.registry/commands.json') as f:
+          with open('mcp/server.d/registry/commands.json') as f:
               data = json.load(f)
           assert 'commands' in data, 'Missing commands key'
           assert isinstance(data['commands'], list), 'commands must be a list'
@@ -103,4 +103,4 @@ jobs:
           "
           # Regenerate registry and verify it matches committed version
           python tools/generate_cli_commands_registry.py
-          git diff --exit-code mcp/.registry/commands.json
+          git diff --exit-code mcp/server.d/registry/commands.json
