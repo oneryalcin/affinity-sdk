@@ -5,6 +5,13 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-01-06
+
+### Fixed
+- **CLI Gateway grep compatibility**: Fixed `grep` treating `--filter` and other flags as grep options (now uses `grep --`)
+- **macOS date compatibility**: Fixed `date +%s%3N` failing on macOS (doesn't support milliseconds), falls back to seconds
+- **Complete jq→jq_tool migration**: Fixed remaining bare `jq` calls in `mcp_emit_json` and lib scripts
+
 ## [1.2.0] - 2026-01-06
 
 ### Added
