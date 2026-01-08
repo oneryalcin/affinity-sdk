@@ -2,7 +2,6 @@
   "name": "xaffinity-saved-views",
   "title": "Saved Views",
   "description": "Saved views available for a specific list",
-  "uri": "xaffinity://saved-views/{listId}",
   "uriTemplate": "xaffinity://saved-views/{listId}",
   "mimeType": "application/json"
 }
