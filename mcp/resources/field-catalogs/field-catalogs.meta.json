@@ -2,6 +2,7 @@
   "name": "xaffinity-field-catalogs",
   "title": "Field Catalogs",
   "description": "Field catalog for an entity type showing available fields and their types",
+  "uri": "xaffinity://field-catalogs/{entityType}",
   "uriTemplate": "xaffinity://field-catalogs/{entityType}",
   "mimeType": "application/json"
 }
