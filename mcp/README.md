@@ -70,34 +70,22 @@ Add to your MCP client configuration:
 
 ## Tools
 
-### Specialized Tools (14)
+### CLI Gateway (Primary Interface)
 
-| Tool | Description |
-|------|-------------|
-| `find-entities` | Search for persons, companies, or opportunities |
-| `find-lists` | Search for Affinity lists |
-| `get-list-workflow-config` | Get workflow configuration for a list |
-| `get-workflow-view` | Get items from a workflow view |
-| `resolve-workflow-item` | Resolve entity to list entry ID |
-| `set-workflow-status` | Update status for a workflow item |
-| `update-workflow-fields` | Update multiple fields on a workflow item |
-| `get-entity-dossier` | Get comprehensive info for an entity |
-| `add-note` | Add a note to an entity |
-| `get-relationship-insights` | Get relationship insights and intro paths |
-| `get-status-timeline` | Get status change history |
-| `log-interaction` | Log an interaction (call, meeting, etc.) |
-| `get-interactions` | Get interactions for an entity |
-| `read-xaffinity-resource` | Read static MCP resources |
-
-### CLI Gateway Tools (3)
-
-These tools provide full access to the xaffinity CLI with minimal token overhead:
+The CLI Gateway provides full access to the xaffinity CLI with minimal token overhead:
 
 | Tool | Description |
 |------|-------------|
 | `discover-commands` | Search CLI commands by keyword (e.g., "create person", "delete note") |
 | `execute-read-command` | Execute read-only CLI commands (get, search, list) |
 | `execute-write-command` | Execute write CLI commands (create, update, delete) |
+
+### Utility Tools
+
+| Tool | Description |
+|------|-------------|
+| `get-entity-dossier` | Get comprehensive info for an entity (aggregates 5+ CLI calls) |
+| `read-xaffinity-resource` | Read static MCP resources (data-model, etc.) |
 
 #### CLI Gateway Usage
 
@@ -176,32 +164,42 @@ AFFINITY_SESSION_CACHE_TTL=300 ./xaffinity-mcp.sh
 
 ### Debug Mode
 
-Enable comprehensive logging for troubleshooting:
+Enable debug logging for troubleshooting. Debug mode shows version info at startup and adds component prefixes to all log messages.
 
 ```bash
-# Full debug mode - enables all debug features
-MCPBASH_LOG_LEVEL=debug ./xaffinity-mcp.sh
+# Persistent debug mode (recommended - survives reinstalls)
+mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
 
-# Test a single tool with debug output
-MCPBASH_LOG_LEVEL=debug mcp-bash run-tool find-entities --args '{"query":"acme"}' --verbose
+# Session-only via environment variable
+XAFFINITY_MCP_DEBUG=1 ./xaffinity-mcp.sh
 
-# Enable shell tracing for deep debugging
-MCPBASH_TRACE_TOOLS=true mcp-bash run-tool get-entity-dossier --args '{"entityType":"person","entityId":"12345"}'
+# Disable persistent debug mode
+rm ~/.config/xaffinity-mcp/debug
 ```
 
-#### Debug Environment Variables
+When debug mode is enabled, logs show:
+```
+[xaffinity-mcp:1.2.3] Debug mode enabled
+[xaffinity-mcp:1.2.3] Versions: mcp=1.2.3 cli=0.6.9 mcp-bash=v0.9.3
+[xaffinity-mcp:1.2.3] Process: pid=12345 started=2026-01-06T10:30:00-08:00
+```
+
+#### Log Locations
+
+| Context | Log Location |
+|---------|--------------|
+| Claude Desktop | `~/Library/Logs/Claude/mcp-server-Affinity CRM MCP Server.log` |
+| CLI standalone | stderr (console) |
+
+#### Advanced Debug Options
 
 | Variable | Description |
 |----------|-------------|
-| `MCPBASH_LOG_LEVEL=debug` | Enable mcp-bash framework debug logging |
-| `XAFFINITY_DEBUG=true` | Enable xaffinity-specific debug logging |
+| `XAFFINITY_MCP_DEBUG=1` | Enable debug mode (cascades to all components) |
 | `MCPBASH_LOG_VERBOSE=true` | Show paths in logs (exposes file paths) |
 | `MCPBASH_TRACE_TOOLS=true` | Enable shell tracing (`set -x`) for tools |
 
-When `MCPBASH_LOG_LEVEL=debug` is set, the server automatically:
-- Enables `XAFFINITY_DEBUG=true`
-- Captures tool stderr (`MCPBASH_TOOL_STDERR_CAPTURE=true`)
-- Increases stderr tail limit to 8KB for more error context
+See [docs/DEBUGGING.md](docs/DEBUGGING.md) for full debugging guide.
 
 ### Claude Code Plugin
 

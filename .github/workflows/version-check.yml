@@ -45,16 +45,48 @@ jobs:
             exit 1
           fi
 
-      - name: Check framework version consistency
+      - name: Check MCP plugin version matches VERSION
         run: |
-          # Verify FRAMEWORK_VERSION file exists and is valid
-          if [ ! -f mcp/FRAMEWORK_VERSION ]; then
-            echo "::error::mcp/FRAMEWORK_VERSION file not found"
+          MCP_VERSION=$(cat mcp/VERSION | tr -d '[:space:]')
+          PLUGIN_VERSION=$(jq -r '.version' mcp/.claude-plugin/plugin.json)
+          if [ "$PLUGIN_VERSION" != "$MCP_VERSION" ]; then
+            echo "::error::MCP plugin.json version ($PLUGIN_VERSION) != VERSION file ($MCP_VERSION)"
             exit 1
           fi
-          VERSION=$(cat mcp/FRAMEWORK_VERSION | tr -d 'v')
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid version format in FRAMEWORK_VERSION: $VERSION"
+          echo "MCP plugin version: $MCP_VERSION"
+
+      - name: Check mcp-bash lockfile
+        run: |
+          # Verify lockfile exists
+          if [ ! -f mcp/mcp-bash.lock ]; then
+            echo "::error::mcp/mcp-bash.lock not found"
             exit 1
           fi
-          echo "Framework version: $VERSION"
+
+          # Source and validate lockfile
+          source mcp/mcp-bash.lock
+
+          # Validate version format
+          if ! [[ "$MCPBASH_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid MCPBASH_VERSION format: $MCPBASH_VERSION"
+            exit 1
+          fi
+          echo "Framework version: $MCPBASH_VERSION"
+
+          # Validate commit hash format
+          if ! [[ "$MCPBASH_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid MCPBASH_COMMIT format: $MCPBASH_COMMIT"
+            exit 1
+          fi
+          echo "Framework commit: $MCPBASH_COMMIT"
+
+          # Verify the hash matches the remote tag
+          REMOTE_HASH=$(git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git "v${MCPBASH_VERSION}" | cut -f1)
+          if [ -z "$REMOTE_HASH" ]; then
+            echo "::warning::Could not verify remote hash for v${MCPBASH_VERSION} (tag may not exist yet)"
+          elif [ "$MCPBASH_COMMIT" != "$REMOTE_HASH" ]; then
+            echo "::error::MCPBASH_COMMIT ($MCPBASH_COMMIT) does not match remote v${MCPBASH_VERSION} ($REMOTE_HASH)"
+            exit 1
+          else
+            echo "Commit hash verified against remote tag"
+          fi

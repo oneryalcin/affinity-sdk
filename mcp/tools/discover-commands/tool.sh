@@ -39,24 +39,35 @@ esac
 
 # Filter commands from pre-generated registry using token-based matching
 # Search over: name + description + parameter names
-# Score = count of query tokens that appear in search text
+# Scoring (prioritizes command name matches):
+#   - Exact name match: +1000
+#   - Name starts with query: +500
+#   - Each token in name: +100
+#   - Each token in description/params: +1
 # NOTE: Filter tokens < 3 chars for better relevance, but fall back to
 #       original query if ALL tokens would be filtered (e.g., "AI", "VC")
 if [[ "$category" == "all" ]]; then
     matches=$(jq_tool -c --arg q "$query" --argjson lim "$limit" '
         # Split query into tokens (lowercase), filter short tokens
-        ($q | ascii_downcase | split(" ")) as $all_tokens |
+        ($q | ascii_downcase) as $query_lower |
+        ($query_lower | split(" ")) as $all_tokens |
         ($all_tokens | map(select(length >= 3))) as $filtered |
         (if ($filtered | length) > 0 then $filtered else $all_tokens end) as $tokens |
         .commands
         | map(
             . as $cmd |
+            (.name | ascii_downcase) as $name_lower |
             (
-                [.name, (.description // "")]
+                [(.description // "")]
                 + [(.parameters // {}) | keys | .[]]
                 + [.positionals // [] | .[].name]
-            ) | map(ascii_downcase) | join(" ") as $search_text |
-            ($tokens | map(select($search_text | contains(.))) | length) as $score |
+            ) | map(ascii_downcase) | join(" ") as $other_text |
+            # Scoring: prioritize name matches
+            (if $name_lower == $query_lower then 1000 else 0 end) as $exact_match |
+            (if ($name_lower | startswith($query_lower)) then 500 else 0 end) as $prefix_match |
+            ($tokens | map(select($name_lower | contains(.))) | length * 100) as $name_token_score |
+            ($tokens | map(select($other_text | contains(.))) | length) as $other_token_score |
+            ($exact_match + $prefix_match + $name_token_score + $other_token_score) as $score |
             select($score > 0) |
             {cmd: $cmd, score: $score}
         )
@@ -67,19 +78,26 @@ if [[ "$category" == "all" ]]; then
 else
     # For "read" category, also include "local" commands (safe to execute via execute-read-command)
     matches=$(jq_tool -c --arg q "$query" --arg cat "$category" --argjson lim "$limit" '
-        ($q | ascii_downcase | split(" ")) as $all_tokens |
+        ($q | ascii_downcase) as $query_lower |
+        ($query_lower | split(" ")) as $all_tokens |
         ($all_tokens | map(select(length >= 3))) as $filtered |
         (if ($filtered | length) > 0 then $filtered else $all_tokens end) as $tokens |
         .commands
         | map(select(if $cat == "read" then (.category == "read" or .category == "local") else .category == $cat end))
         | map(
             . as $cmd |
+            (.name | ascii_downcase) as $name_lower |
             (
-                [.name, (.description // "")]
+                [(.description // "")]
                 + [(.parameters // {}) | keys | .[]]
                 + [.positionals // [] | .[].name]
-            ) | map(ascii_downcase) | join(" ") as $search_text |
-            ($tokens | map(select($search_text | contains(.))) | length) as $score |
+            ) | map(ascii_downcase) | join(" ") as $other_text |
+            # Scoring: prioritize name matches
+            (if $name_lower == $query_lower then 1000 else 0 end) as $exact_match |
+            (if ($name_lower | startswith($query_lower)) then 500 else 0 end) as $prefix_match |
+            ($tokens | map(select($name_lower | contains(.))) | length * 100) as $name_token_score |
+            ($tokens | map(select($other_text | contains(.))) | length) as $other_token_score |
+            ($exact_match + $prefix_match + $name_token_score + $other_token_score) as $score |
             select($score > 0) |
             {cmd: $cmd, score: $score}
         )

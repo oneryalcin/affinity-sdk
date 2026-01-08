@@ -24,9 +24,18 @@ jobs:
 
       - name: Install mcp-bash framework
         run: |
+          # Source version and commit from lockfile (single source of truth)
+          source mcp/mcp-bash.lock
+          echo "Installing mcp-bash v${MCPBASH_VERSION} (${MCPBASH_COMMIT})"
           curl -fsSL https://raw.githubusercontent.com/yaniv-golan/mcp-bash-framework/main/install.sh | \
-            bash -s -- --version v0.9.1 --yes
+            bash -s -- --version "v${MCPBASH_VERSION}" --yes
           echo "$HOME/.local/bin" >> $GITHUB_PATH
+          # Verify installed commit matches lockfile
+          INSTALLED_COMMIT=$(git -C "${XDG_DATA_HOME:-$HOME/.local/share}/mcp-bash" rev-parse HEAD)
+          if [[ "$INSTALLED_COMMIT" != "$MCPBASH_COMMIT" ]]; then
+            echo "::error::mcp-bash commit mismatch: expected $MCPBASH_COMMIT, got $INSTALLED_COMMIT"
+            exit 1
+          fi
 
       - name: Verify mcp-bash installation
         run: |

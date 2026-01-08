@@ -1,6 +1,7 @@
 # Auto-generated registry cache (created by Claude Code MCP scanner)
-# Note: CLI commands registry is now in server.d/registry/ (bundled with MCPB)
-.registry/
+# Note: CLI commands registry (.registry/commands.json) IS tracked and bundled via MCPB_INCLUDE
+# Only tools.json and other auto-generated files are ignored
+.registry/tools.json
 
 # MCPB bundle output directory
 dist/

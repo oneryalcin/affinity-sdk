@@ -1,15 +1,13 @@
 You just completed a phone call with ${personName}.
 
-Please log this call using the log-interaction tool:
-- Type: call
-- Direction: ${direction}
-- Subject: ${subject}
-- Body/Notes: ${notes}
+Using the CLI Gateway (discover-commands → execute-write-command):
 
-Steps:
-1. Use find-entities to get the person ID for ${personName}
-2. Use log-interaction to record the call
-3. If there are important follow-ups, use add-note to capture them
+1. **Find the person** - Use `person ls --query "${personName}"` to get their ID
+2. **Log the call** - Use `interaction create --type call --person-id <id>`:
+   - Direction: ${direction}
+   - Subject: ${subject}
+   - Body: ${notes}
+3. **Add follow-ups** (if needed) - Use `note create --person-id <id>`
 
 Call details:
 - Direction: ${direction}

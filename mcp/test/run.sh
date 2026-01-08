@@ -199,23 +199,9 @@ TEST_LIST_ID="${TEST_LIST_ID:-}"
 printf "\n--- Dry-run validation (no API calls) ---\n"
 
 # Dry-run tests validate args and metadata without calling API
-# Read-only tools
-run_dry_run "find-entities" '{"query":"test"}'
-run_dry_run "find-lists" '{}'
+# Utility tools
 run_dry_run "get-entity-dossier" '{"entityId":"123","entityType":"person"}'
-run_dry_run "get-relationship-insights" '{"targetId":"123"}'
-run_dry_run "get-interactions" '{"entityId":"123","entityType":"person"}'
-run_dry_run "get-status-timeline" '{"entityId":"123","entityType":"person"}'
-run_dry_run "get-list-workflow-config" '{"listId":"123"}'
-run_dry_run "get-workflow-view" '{"listId":"123"}'
-run_dry_run "resolve-workflow-item" '{"listId":"123","query":"test"}'
 run_dry_run "read-xaffinity-resource" '{"uri":"xaffinity://person/123"}'
-
-# Write tools (dry-run only - validates args without executing)
-run_dry_run "add-note" '{"entityId":"123","entityType":"person","content":"test"}'
-run_dry_run "log-interaction" '{"entityId":"123","entityType":"person","type":"meeting"}'
-run_dry_run "set-workflow-status" '{"listId":"123","entityId":"456","entityType":"person","status":"Active"}'
-run_dry_run "update-workflow-fields" '{"listId":"123","entityId":"456","entityType":"person","fields":{}}'
 
 # CLI Gateway tools (dry-run only - validates args and registry lookup)
 run_dry_run "discover-commands" '{"query":"person"}'
@@ -369,28 +355,17 @@ else
 fi
 
 if [[ "${API_CONFIGURED}" != "1" ]]; then
-    skip_test "find-entities (live)" "API not configured"
-    skip_test "find-lists (live)" "API not configured"
     skip_test "get-entity-dossier (live)" "API not configured"
-    skip_test "get-relationship-insights (live)" "API not configured"
 elif [[ "${SKIP_LIVE:-0}" == "1" ]]; then
     skip_test "live tests" "SKIP_LIVE=1"
 else
     printf "\n--- Live API tests (READ-ONLY) ---\n"
 
-    # Entity search tests (read-only)
-    run_test "find-entities" '{"query":"test","types":["person","company"],"limit":5}' "search persons and companies"
-    run_test "find-lists" '{}' "list all lists"
-
     # Entity dossier tests (requires valid person ID from .env.test)
     if [[ -n "${TEST_PERSON_ID}" ]]; then
         run_test "get-entity-dossier" '{"entityId":"'"${TEST_PERSON_ID}"'","entityType":"person","includeInteractions":true,"includeLists":true}' "person dossier"
-        run_test "get-relationship-insights" '{"targetId":"'"${TEST_PERSON_ID}"'"}' "relationship insights"
-        run_test "get-interactions" '{"entityId":"'"${TEST_PERSON_ID}"'","entityType":"person","limit":5}' "person interactions"
     else
         skip_test "get-entity-dossier (person)" "set TEST_PERSON_ID in .env.test"
-        skip_test "get-relationship-insights" "set TEST_PERSON_ID in .env.test"
-        skip_test "get-interactions (person)" "set TEST_PERSON_ID in .env.test"
     fi
 
     # Company tests (requires valid company ID from .env.test)
@@ -398,15 +373,6 @@ else
         run_test "get-entity-dossier" '{"entityId":"'"${TEST_COMPANY_ID}"'","entityType":"company","includeInteractions":true,"includeLists":true}' "company dossier"
     else
         skip_test "get-entity-dossier (company)" "set TEST_COMPANY_ID in .env.test"
-    fi
-
-    # List-based tests (requires valid list ID from .env.test)
-    if [[ -n "${TEST_LIST_ID}" ]]; then
-        run_test "get-list-workflow-config" '{"listId":"'"${TEST_LIST_ID}"'"}' "workflow config"
-        run_test "get-workflow-view" '{"listId":"'"${TEST_LIST_ID}"'","limit":5}' "workflow view"
-    else
-        skip_test "get-list-workflow-config" "set TEST_LIST_ID in .env.test"
-        skip_test "get-workflow-view" "set TEST_LIST_ID in .env.test"
     fi
 fi
 

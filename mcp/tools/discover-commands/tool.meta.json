@@ -1,38 +1,38 @@
 {
   "name": "discover-commands",
-  "description": "Search CLI commands by keyword or capability. Returns command syntax, parameters, and examples. Use before execute-read-command or execute-write-command. Tip: Use format='json' with detail='full' for structured parameter info.",
+  "description": "Search CLI commands by keyword or capability. Use this first when unsure which command to use.\n\nCommon queries:\n- 'list' or 'export entries' → list export (for list-specific data)\n- 'company' or 'search companies' → company ls (for global search)\n- 'person' → person ls, person get\n- 'create' or 'add' → write commands (use category='write')\n- 'interaction' or 'meeting' → interaction commands\n\nTip: Start with category='read' or category='write' to narrow results.",
   "inputSchema": {
     "type": "object",
     "required": ["query"],
     "properties": {
       "query": {
         "type": "string",
-        "description": "What you want to do (e.g., 'create person', 'add to list', 'log meeting')"
+        "description": "What you want to do in plain English (e.g., 'find companies on a list', 'create person', 'log a meeting', 'export list entries')"
       },
       "detail": {
         "type": "string",
         "enum": ["list", "summary", "full"],
         "default": "summary",
-        "description": "Detail level (JSON format only): list (names only), summary (+ description), full (+ parameters + examples). Text format always includes parameters."
+        "description": "Detail level: 'list' (names only), 'summary' (+ description), 'full' (+ parameters). Use 'full' when you need filter syntax."
       },
       "category": {
         "type": "string",
         "enum": ["read", "write", "local", "all"],
         "default": "all",
-        "description": "Filter by operation category"
+        "description": "Filter by operation type: 'read' (ls, get, export), 'write' (create, update, delete), 'local' (config), 'all'"
       },
       "format": {
         "type": "string",
         "enum": ["text", "json"],
         "default": "text",
-        "description": "Output format: text (compact pipe-delimited, recommended) or json (structured but verbose)"
+        "description": "Output format: 'text' (compact, recommended) or 'json' (structured)"
       },
       "limit": {
         "type": "integer",
         "default": 10,
         "minimum": 1,
         "maximum": 50,
-        "description": "Maximum commands to return"
+        "description": "Maximum commands to return (default 10)"
       }
     }
   },

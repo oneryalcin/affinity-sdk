@@ -1,17 +1,16 @@
 You just completed a ${interactionType} with ${personName}.
 
-Please help me:
-1. **Log the interaction** using the log-interaction tool with:
-   - Type: ${interactionType}
+Using the CLI Gateway (discover-commands → execute-read/write-command):
+
+1. **Find the person** - Use `person ls --query "${personName}"` to get their ID
+2. **Log the interaction** - Use `interaction create --type ${interactionType} --person-id <id>`:
    - Subject: ${subject}
-   - Notes about the conversation
-
-2. **Update the workflow status** if appropriate:
-   - First, use find-lists to identify relevant pipeline lists
-   - Use resolve-workflow-item to find their list entry
-   - Use set-workflow-status to update their status if the interaction warrants a change
-
-3. **Add any follow-up notes** using add-note if there are important details to capture
+   - Body: notes about the conversation
+3. **Update workflow status** (if appropriate):
+   - Use `list ls` to find relevant pipeline lists
+   - Use `list export "<listName>" --filter "..."` to find their list entry
+   - Use `field-value set` to update status if warranted
+4. **Add follow-up notes** - Use `note create` if there are important details to capture
 
 Interaction summary to log:
 ${summary}

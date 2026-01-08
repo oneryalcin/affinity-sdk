@@ -150,31 +150,48 @@ xaffinity_log_debug() {
 
 ### 4. Easy Debug Toggle Without Rebuild
 
-Add `.debug` file support:
+Use XDG-compliant config location for debug flag file:
 
 ```bash
-# In run-server.sh, before sourcing anything
-DEBUG_FLAG_FILE="${MCPBASH_PROJECT_ROOT}/.debug"
-if [[ -f "$DEBUG_FLAG_FILE" ]]; then
+# Check locations in priority order
+_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+_DEBUG_XDG_FILE="${_XDG_CONFIG_HOME}/xaffinity-mcp/debug"
+_DEBUG_LOCAL_FILE="${MCPBASH_PROJECT_ROOT}/.debug"
+
+if [[ "${XAFFINITY_MCP_DEBUG:-}" == "1" || -f "$_DEBUG_XDG_FILE" || -f "$_DEBUG_LOCAL_FILE" ]]; then
     export XAFFINITY_MCP_DEBUG=1
 fi
 ```
 
+**Debug flag locations** (checked in priority order):
+
+| Priority | Location | Use Case |
+|----------|----------|----------|
+| 1 (highest) | `XAFFINITY_MCP_DEBUG=1` env var | Explicit, session-specific |
+| 2 | `~/.config/xaffinity-mcp/debug` | User preference (persists across reinstalls) |
+| 3 (lowest) | `$MCPBASH_PROJECT_ROOT/.debug` | Development/local testing only |
+
 **User workflow**:
 ```bash
-# Enable debugging for installed bundle
-touch "/Users/yaniv/Library/Application Support/Claude/Claude Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server/.debug"
+# Enable debugging (persistent, works with any MCP client)
+mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
 
-# Restart Claude Desktop
+# Restart MCP client (Claude Desktop, etc.)
 
-# View logs
-tail -f "/Users/yaniv/Library/Logs/Claude/mcp-server-Affinity CRM MCP Server.log"
+# View logs (location depends on client)
+# Claude Desktop: tail -f ~/Library/Logs/Claude/mcp-server-*.log
 
 # Disable debugging
-rm "/Users/yaniv/Library/Application Support/Claude/Claude Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server/.debug"
+rm ~/.config/xaffinity-mcp/debug
 ```
 
-**Rationale**: No need to edit JSON files, no need to rebuild bundles, just touch/rm a file.
+**Why XDG?**
+- Standard location for CLI tools on Linux and macOS (`~/.config/`)
+- Survives bundle reinstalls (not inside installation directory)
+- Works with any MCP client, not just Claude Desktop
+- Easy to find and manage
+
+**Rationale**: No need to find obscure installation paths, just use `~/.config/xaffinity-mcp/debug`.
 
 ### 5. Debug Log Location Documentation
 
@@ -188,23 +205,22 @@ The version banner (Section 2) ensures you can identify which component produced
 
 **Rationale**: Keep it simple - don't add complexity, just document what already exists.
 
-### 6. Helper Script for Debug Toggle
+### 6. Simple Debug Commands
 
-Provide a helper to manage the `.debug` file:
+With XDG location, no helper script needed - commands are simple and memorable:
 
 ```bash
-# In lib/debug-helper.sh (or documented command)
-xaffinity_mcp_debug_path() {
-    local installed_path="$HOME/Library/Application Support/Claude/Claude Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server/.debug"
-    echo "$installed_path"
-}
+# Enable debug mode
+mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
 
-# User can then:
-# touch "$(xaffinity_mcp_debug_path)"   # Enable
-# rm "$(xaffinity_mcp_debug_path)"      # Disable
+# Disable debug mode
+rm ~/.config/xaffinity-mcp/debug
+
+# Check if debug mode is enabled
+[[ -f ~/.config/xaffinity-mcp/debug ]] && echo "Debug ON" || echo "Debug OFF"
 ```
 
-For now, document this path in `docs/DEBUGGING.md` rather than shipping a helper script.
+Document these commands in `docs/DEBUGGING.md`.
 
 ### 7. Security Note
 
@@ -218,54 +234,40 @@ The `.debug` file approach is safe because:
 
 ## Enhancement Requests for mcp-bash
 
-### Request 1: Version Export
+**Status**: Implemented in mcp-bash v0.9.3
 
-**Current**: mcp-bash version not easily accessible from tools
-**Requested**: Export `MCPBASH_VERSION` environment variable
+### Request 1: Version Export ✅ ACCEPTED
 
-```bash
-# In mcp-bash startup
-export MCPBASH_VERSION="1.0.0"  # Read from framework VERSION file
-```
-
-**Benefit**: Tools can log framework version without file reads.
-
-### Request 2: Debug Mode Cascade
-
-**Current**: `MCPBASH_LOG_LEVEL=debug` only affects mcp-bash logging
-**Requested**: When debug, also export a flag tools can check:
+**Requested**: Export mcp-bash version as environment variable
+**Implemented**: `MCPBASH_FRAMEWORK_VERSION` exported at startup
 
 ```bash
-# When MCPBASH_LOG_LEVEL=debug
-export MCPBASH_DEBUG=1
+# Available to tools after mcp-bash initializes
+echo "$MCPBASH_FRAMEWORK_VERSION"  # e.g., "0.9.3"
 ```
 
-**Benefit**: Tools don't need to parse log level strings.
+**Note**: Named `MCPBASH_FRAMEWORK_VERSION` (not `MCPBASH_VERSION`) to avoid confusion with `MCPBASH_SERVER_VERSION` (project version).
 
-### Request 3: Startup Banner Hook
+### Request 2: Debug Mode Cascade ❌ DECLINED
 
-**Current**: No hook for tools to log at server startup
-**Requested**: Call a `server.d/on-startup.sh` if present
+**Requested**: Export `MCPBASH_DEBUG=1` when debug level enabled
+**Decision**: Declined — string check `[[ "$MCPBASH_LOG_LEVEL" == "debug" ]]` is sufficient
 
-```bash
-# mcp-bash calls this after initialization
-if [[ -f "$MCPBASH_SERVER_DIR/on-startup.sh" ]]; then
-    source "$MCPBASH_SERVER_DIR/on-startup.sh"
-fi
-```
+### Request 3: Startup Banner Hook ❌ DECLINED
 
-**Benefit**: Clean place for version banner and debug initialization.
+**Requested**: Call `server.d/on-startup.sh` if present
+**Decision**: Declined — consuming projects can log from their own entry point (which we do in `xaffinity-mcp.sh`)
 
-### Request 4: Process Identity Logging
+### Request 4: Client Identity Logging ✅ ACCEPTED
 
-**Current**: Hard to identify which mcp-bash process serves which client
-**Requested**: Log client identity at connection:
+**Requested**: Log client identity at connection
+**Implemented**: When `MCPBASH_LOG_LEVEL=debug`, logs at initialize:
 
 ```
-[mcp-bash] Client connected: claude-ai/0.1.0 pid=12345
+[mcp.lifecycle] Client: claude-ai/0.1.0 pid=12345
 ```
 
-**Benefit**: When multiple processes running, know which is which.
+**Benefit**: Identify which mcp-bash process serves which client.
 
 ---
 
@@ -295,13 +297,13 @@ fi
 
 **Estimated effort**: 30 minutes
 
-### Phase 3: mcp-bash Enhancements (Separate)
+### Phase 3: mcp-bash Enhancements ✅ COMPLETE
 
-File enhancement requests with mcp-bash project:
-- [ ] MCPBASH_VERSION export
-- [ ] MCPBASH_DEBUG flag
-- [ ] on-startup.sh hook
-- [ ] Client identity logging
+Implemented in mcp-bash v0.9.3:
+- ✅ `MCPBASH_FRAMEWORK_VERSION` export
+- ✅ Client identity logging at initialize
+- ❌ `MCPBASH_DEBUG` flag (declined - string check sufficient)
+- ❌ `on-startup.sh` hook (declined - use entry point)
 
 ---
 
@@ -324,28 +326,33 @@ The full debug logging (version banner, component prefixes) only works when:
    # Verify: No debug output, tool works normally
    ```
 
-2. **Debug via .debug file**:
+2. **Debug via XDG config file** (recommended):
    ```bash
-   touch .debug
+   mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
    mcp-bash run-tool find-lists --args '{"query": "test"}'
-   rm .debug
+   rm ~/.config/xaffinity-mcp/debug
    # Verify: XAFFINITY_MCP_DEBUG=1 is set (visible if tool outputs env)
    # Note: mcp_log_* output won't appear (no MCP_LOG_STREAM in run-tool mode)
    ```
 
-3. **Claude Desktop integration** (primary test):
-   - Build and install bundle: `mcp-bash bundle && mcpb install dist/*.mcpb`
-   - Touch .debug file in installed location:
+3. **Debug via local .debug file** (development only):
+   ```bash
+   touch .debug
+   mcp-bash run-tool find-lists --args '{"query": "test"}'
+   rm .debug
+   # Same behavior as XDG file
+   ```
+
+4. **MCP client integration** (primary test):
+   - Enable debug: `mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug`
+   - Restart MCP client (Claude Desktop: Cmd+Q, reopen)
+   - Use any tool via the client
+   - Check logs (Claude Desktop):
      ```bash
-     touch "/Users/yaniv/Library/Application Support/Claude/Claude Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server/.debug"
+     tail -f ~/Library/Logs/Claude/mcp-server-*.log
      ```
-   - Restart Claude Desktop (Cmd+Q, reopen)
-   - Use any tool via Claude
-   - Check logs:
-     ```bash
-     tail -f "/Users/yaniv/Library/Logs/Claude/mcp-server-Affinity CRM MCP Server.log"
-     ```
-   - **Verify**: Version banner appears, logs have `[xaffinity:*:1.2.2]` prefix
+   - **Verify**: Version banner appears, logs have `[xaffinity:*:1.2.3]` prefix
+   - Disable: `rm ~/.config/xaffinity-mcp/debug`
 
 ---
 

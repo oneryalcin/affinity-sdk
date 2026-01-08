@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "version": 1,
+  "generatedAt": "2026-01-07T20:58:18Z",
+  "items": [
+    {
+      "name": "xaffinity-data-model",
+      "description": "Conceptual guide to Affinity's data model - read this to understand entities, lists, and fields",
+      "path": "data-model/data-model.md",
+      "uri": "xaffinity://data-model",
+      "mimeType": "text/markdown",
+      "provider": "xaffinity"
+    },
+    {
+      "name": "xaffinity-interaction-enums",
+      "description": "Enumeration values for interaction types and directions used by interaction create command",
+      "path": "interaction-enums/interaction-enums.json",
+      "uri": "xaffinity://interaction-enums",
+      "mimeType": "application/json",
+      "provider": "xaffinity"
+    },
+    {
+      "name": "xaffinity-me",
+      "description": "Current authenticated user information from Affinity",
+      "path": "me/me.sh",
+      "uri": "xaffinity://me",
+      "mimeType": "application/json",
+      "provider": "xaffinity"
+    },
+    {
+      "name": "xaffinity-me-person-id",
+      "description": "Current user's person ID in Affinity (cached for efficient interaction logging)",
+      "path": "me-person-id/me-person-id.sh",
+      "uri": "xaffinity://me/person-id",
+      "mimeType": "application/json",
+      "provider": "xaffinity"
+    }
+  ],
+  "hash": "8995b069e59ac2d1a88735f1362ee3bd5977b4ef2bf323f1c0f93668f8299177",
+  "total": 4
+}

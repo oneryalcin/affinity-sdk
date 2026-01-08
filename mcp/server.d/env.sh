@@ -18,20 +18,24 @@ export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_D
 # ==============================================================================
 # Debug Mode Configuration
 # ==============================================================================
-# Enable debug logging by setting these environment variables:
+# Enable debug logging via (checked in priority order):
+#   1. MCPBASH_LOG_LEVEL=debug environment variable
+#   2. ~/.config/xaffinity-mcp/debug file (XDG-compliant, persistent)
+#   3. .debug file in server directory (development/local testing)
 #
-#   MCPBASH_LOG_LEVEL=debug     # Enable mcp-bash framework debug logging
-#   XAFFINITY_DEBUG=true        # Enable xaffinity-specific debug logging
-#   MCPBASH_LOG_VERBOSE=true    # Show paths in logs (security warning: exposes paths)
-#   MCPBASH_TRACE_TOOLS=true    # Enable shell tracing (set -x) for tools
-#
-# Example: Run MCP server in full debug mode:
-#   MCPBASH_LOG_LEVEL=debug XAFFINITY_DEBUG=true ./run-server.sh
-#
-# Example: Test a single tool with debug logging:
-#   MCPBASH_LOG_LEVEL=debug mcp-bash run-tool find-entities --args '{"query":"test"}' --verbose
+# Quick enable:  mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
+# Quick disable: rm ~/.config/xaffinity-mcp/debug
 #
 # ==============================================================================
+
+# Check for debug file (works in mcpb bundle and development)
+_XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+_DEBUG_XDG_FILE="${_XDG_CONFIG_HOME}/xaffinity-mcp/debug"
+_DEBUG_LOCAL_FILE="${MCPBASH_PROJECT_ROOT:-.}/.debug"
+
+if [[ -f "$_DEBUG_XDG_FILE" || -f "$_DEBUG_LOCAL_FILE" ]]; then
+    export MCPBASH_LOG_LEVEL="debug"
+fi
 
 # Create session cache on server startup
 if [[ -z "${AFFINITY_SESSION_CACHE:-}" ]]; then

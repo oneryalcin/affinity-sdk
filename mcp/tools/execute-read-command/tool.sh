@@ -79,13 +79,29 @@ stdout_file=$(mktemp)
 stderr_file=$(mktemp)
 trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
-# Report progress
-mcp_progress 0 "Executing: ${command}"
+# Check if command supports progress and MCP progress is available
+supports_progress=false
+if command_supports_progress "$command" && [[ -n "${MCP_PROGRESS_STREAM:-}" ]]; then
+    supports_progress=true
+    xaffinity_log_debug "execute-read-command" "Using progress forwarding for $command"
+fi
+
+# Report initial progress (only if not using CLI progress, to avoid duplicate 0%)
+if [[ "$supports_progress" != "true" ]]; then
+    mcp_progress 0 "Executing: ${command}"
+fi
 
 # Execute CLI with retry for transient failures (read commands are safe to retry)
 set +e
-mcp_with_retry 3 0.5 -- "${cmd_args[@]}" >"$stdout_file" 2>"$stderr_file"
-exit_code=$?
+if [[ "$supports_progress" == "true" ]]; then
+    # Use progress-aware execution (mcp_run_with_progress handles retries internally)
+    run_xaffinity_with_progress "${cmd_args[@]:1}" >"$stdout_file" 2>"$stderr_file"
+    exit_code=$?
+else
+    # Standard execution with retry
+    mcp_with_retry 3 0.5 -- "${cmd_args[@]}" >"$stdout_file" 2>"$stderr_file"
+    exit_code=$?
+fi
 set -e
 
 stdout_content=$(cat "$stdout_file")
@@ -109,8 +125,10 @@ xaffinity_log_debug "execute-read-command" "exit_code=$exit_code output_bytes=${
 log_metric "cli_command_latency_ms" "$latency_ms" "command=$command" "status=$([[ $exit_code -eq 0 ]] && echo 'success' || echo 'error')" "category=read"
 log_metric "cli_command_output_bytes" "${#stdout_content}" "command=$command"
 
-# Report completion progress
-mcp_progress 100 "Complete"
+# Report completion progress (skip if CLI already emitted via progress forwarding)
+if [[ "$supports_progress" != "true" ]]; then
+    mcp_progress 100 "Complete"
+fi
 
 if [[ $exit_code -eq 0 ]]; then
     # Validate stdout is valid JSON before using --argjson
@@ -123,11 +141,16 @@ if [[ $exit_code -eq 0 ]]; then
             mcp_result_error "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '.error + {executed: $cmd}')"
         fi
     else
-        mcp_result_error "$(jq_tool -n --arg stdout "$stdout_content" --argjson cmd "$cmd_json" \
+        # Use temp files to avoid "Argument list too long" error with large outputs
+        printf '%s' "$stdout_content" > "$stdout_file"
+        mcp_result_error "$(jq_tool -n --rawfile stdout "$stdout_file" --argjson cmd "$cmd_json" \
             '{type: "invalid_json_output", message: "CLI returned non-JSON output", output: $stdout, executed: $cmd}')"
     fi
 else
-    mcp_result_error "$(jq_tool -n --arg stderr "$stderr_content" --arg stdout "$stdout_content" \
+    # Use temp files to avoid "Argument list too long" error with large outputs
+    printf '%s' "$stderr_content" > "$stderr_file"
+    printf '%s' "$stdout_content" > "$stdout_file"
+    mcp_result_error "$(jq_tool -n --rawfile stderr "$stderr_file" --rawfile stdout "$stdout_file" \
           --argjson cmd "$cmd_json" --argjson code "$exit_code" \
           '{type: "cli_error", message: $stderr, output: $stdout, exitCode: $code, executed: $cmd}')"
 fi

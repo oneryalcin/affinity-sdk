@@ -1,0 +1,7 @@
+{
+  "name": "xaffinity-data-model",
+  "description": "Conceptual guide to Affinity's data model - read this to understand entities, lists, and fields",
+  "uri": "xaffinity://data-model",
+  "mimeType": "text/markdown",
+  "provider": "xaffinity"
+}

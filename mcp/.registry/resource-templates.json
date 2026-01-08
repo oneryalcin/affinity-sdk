@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "generatedAt": "2026-01-07T06:48:31Z",
+  "items": [
+    {
+      "name": "xaffinity-field-catalogs",
+      "uriTemplate": "xaffinity://field-catalogs/{entityType}",
+      "title": "Field Catalogs",
+      "description": "Field catalog for an entity type showing available fields and their types",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "xaffinity-saved-views",
+      "uriTemplate": "xaffinity://saved-views/{listId}",
+      "title": "Saved Views",
+      "description": "Saved views available for a specific list",
+      "mimeType": "application/json"
+    },
+    {
+      "name": "xaffinity-workflow-config",
+      "uriTemplate": "xaffinity://workflow-config/{listId}",
+      "title": "Workflow Configuration",
+      "description": "Workflow configuration for a specific list including status field options and saved views",
+      "mimeType": "application/json"
+    }
+  ],
+  "hash": "fff5a4a77b99be893aef7bd8413106fa1e81847e858a717d109a0652167150c3",
+  "total": 3
+}

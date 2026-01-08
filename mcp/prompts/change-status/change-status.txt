@@ -1,14 +1,13 @@
 You need to change the workflow status for ${entityName} on the "${listName}" list to "${newStatus}".
 
-Please:
-1. Use find-entities to locate the entity by name
-2. Use find-lists to find the list (if not using list ID)
-3. Use resolve-workflow-item to find the list entry ID
-4. Use get-list-workflow-config to verify the status value is valid
-5. Use set-workflow-status to make the change
+Using the CLI Gateway (discover-commands → execute-read/write-command):
 
-If there's a reason for the status change, also:
-- Use add-note to document why the status changed
-- Log any recent interaction that prompted this change
+1. **Find the entity** - Use `person ls` or `company ls` to find by name
+2. **Get list entry** - Use `list export "${listName}"` with a filter to find the entry
+3. **Verify status options** - Use `field ls --list-id "${listName}"` to see valid status values
+4. **Update status** - Use `field-value set` with the list entry ID and status field
+
+If there's a reason for the status change:
+- Use `note create` to document why the status changed
 
 Reason for status change (if provided): ${reason}

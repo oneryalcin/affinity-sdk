@@ -5,27 +5,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MCPBASH_PROJECT_ROOT="${SCRIPT_DIR}"
 
-# ==============================================================================
-# Debug Mode
-# ==============================================================================
-# Enable debug mode via:
-#   1. XAFFINITY_MCP_DEBUG=1 environment variable
-#   2. .debug file in server directory (touch .debug / rm .debug)
-#
-# When enabled, cascades to enable mcp-bash and xaffinity logging.
+# Source shared environment setup (debug mode, session cache, etc.)
+# This is the single source of truth - also sourced by mcp-bash in bundle mode
+# shellcheck source=server.d/env.sh
+source "${SCRIPT_DIR}/server.d/env.sh"
 
-DEBUG_FLAG_FILE="${SCRIPT_DIR}/.debug"
-if [[ -f "$DEBUG_FLAG_FILE" || "${XAFFINITY_MCP_DEBUG:-}" == "1" ]]; then
+# Set XAFFINITY_MCP_DEBUG based on MCPBASH_LOG_LEVEL (set by env.sh)
+if [[ "${MCPBASH_LOG_LEVEL:-}" == "debug" ]]; then
     export XAFFINITY_MCP_DEBUG=1
-    export MCPBASH_LOG_LEVEL="debug"
-    export XAFFINITY_DEBUG="true"
 fi
 
 # Cache version at startup (for debug banner and logging)
 export XAFFINITY_MCP_VERSION=$(cat "${SCRIPT_DIR}/VERSION" 2>/dev/null || echo "unknown")
 
-# Framework version - read from FRAMEWORK_VERSION file, allow env override
-FRAMEWORK_VERSION="${MCPBASH_VERSION:-v$(cat "${SCRIPT_DIR}/FRAMEWORK_VERSION")}"
+# Framework version - source from lockfile, allow env override
+# shellcheck source=mcp-bash.lock
+source "${SCRIPT_DIR}/mcp-bash.lock"
+FRAMEWORK_VERSION="${MCPBASH_VERSION:-unknown}"
 
 # Framework location precedence:
 # 1. Vendored: ${SCRIPT_DIR}/mcp-bash-framework/bin/mcp-bash
@@ -64,7 +60,7 @@ _json() {
 case "${1:-}" in
     install)
         # Install framework and create PATH launcher
-        "${SCRIPT_DIR}/scripts/install-framework.sh" "${FRAMEWORK_VERSION}"
+        "${SCRIPT_DIR}/scripts/install-framework.sh"
         exit $?
         ;;
     doctor)
@@ -150,6 +146,8 @@ fi
 #   "xaffinity --readonly <command> --json"           (keychain mode)
 # Export for tool scripts to use when invoking xaffinity
 export XAFFINITY_CLI_PATTERN=$(echo "$check_key_output" | _json -r '.data.pattern')
+# Export CLI version for progress capability checks
+export XAFFINITY_CLI_VERSION="$CLI_VERSION"
 
 # Find and run framework
 FRAMEWORK=$(find_framework)
@@ -161,8 +159,8 @@ fi
 # Tool allowlist (read-only vs full access)
 # CLI Gateway tools provide dynamic command discovery and execution
 AFFINITY_MCP_TOOLS_CLI_GATEWAY="discover-commands execute-read-command"
-AFFINITY_MCP_TOOLS_READONLY="find-entities find-lists get-list-workflow-config get-workflow-view resolve-workflow-item get-entity-dossier get-relationship-insights get-status-timeline get-interactions read-xaffinity-resource ${AFFINITY_MCP_TOOLS_CLI_GATEWAY}"
-AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} set-workflow-status update-workflow-fields add-note log-interaction execute-write-command"
+AFFINITY_MCP_TOOLS_READONLY="get-entity-dossier read-xaffinity-resource ${AFFINITY_MCP_TOOLS_CLI_GATEWAY}"
+AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} execute-write-command"
 
 if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
     export MCPBASH_TOOL_ALLOWLIST="${AFFINITY_MCP_TOOLS_READONLY}"
@@ -173,7 +171,7 @@ fi
 # Print debug banner if debug mode enabled
 if [[ "${XAFFINITY_MCP_DEBUG:-}" == "1" ]]; then
     echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Debug mode enabled" >&2
-    echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Versions: mcp=${XAFFINITY_MCP_VERSION} cli=${CLI_VERSION} mcp-bash=${FRAMEWORK_VERSION}" >&2
+    echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Versions: mcp=${XAFFINITY_MCP_VERSION} cli=${CLI_VERSION} mcp-bash=v${MCPBASH_VERSION}" >&2
     echo "[xaffinity-mcp:${XAFFINITY_MCP_VERSION}] Process: pid=$$ started=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)" >&2
 fi
 

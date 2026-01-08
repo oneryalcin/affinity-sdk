@@ -1,9 +1,10 @@
 You are conducting a pipeline review for the "${listName}" list.
 
-Please:
-1. Use get-list-workflow-config to understand the pipeline structure and status options
-2. Use get-workflow-view to fetch current items in the pipeline
-3. For each item, identify:
+Using the CLI Gateway (discover-commands → execute-read-command):
+
+1. **Get pipeline structure** - Use `field ls --list-id "${listName}"` to understand fields and status options
+2. **Export pipeline items** - Use `list export "${listName}"` to get all entries
+3. **Analyze each item** - Identify:
    - Time in current stage
    - Recent activity (last interaction/note)
    - Any stale deals that need attention

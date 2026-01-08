@@ -1,9 +1,10 @@
 You need a quick interaction history brief for ${entityName}.
 
-Please:
-1. Use find-entities to locate ${entityName}
-2. Use get-interactions to fetch recent interactions (last ${limit})
-3. Summarize the interaction history:
+Using the CLI Gateway (discover-commands → execute-read-command):
+
+1. **Find the entity** - Use `person ls --query "${entityName}"` or `company ls` to get their ID
+2. **Get interactions** - Use `interaction ls --person-id <id>` for each type (email, meeting, call, chat-message)
+3. **Summarize** the interaction history:
    - Total interactions by type (calls, meetings, emails)
    - Most recent interaction date and type
    - Who from your team has been in contact

@@ -2,10 +2,16 @@
 # scripts/install-framework.sh - Framework installer with verification
 set -euo pipefail
 
-FRAMEWORK_VERSION="${1:-v$(cat "$(dirname "$0")/../FRAMEWORK_VERSION")}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Source version and commit from lockfile
+# shellcheck source=../mcp-bash.lock
+source "${PROJECT_ROOT}/mcp-bash.lock"
+
+# Allow args to override lockfile values
+FRAMEWORK_VERSION="${1:-v${MCPBASH_VERSION}}"
+EXPECTED_COMMIT="${2:-${MCPBASH_COMMIT}}"
 
 # Determine install location
 if [[ -n "${MCPBASH_HOME:-}" ]]; then
@@ -46,6 +52,19 @@ fi
 
 # Create launcher symlink
 ln -sf "${INSTALL_DIR}/bin/mcp-bash" "$LAUNCHER_PATH"
+
+# Verify installed commit matches expected hash (if provided)
+if [[ -n "$EXPECTED_COMMIT" ]]; then
+    INSTALLED_COMMIT=$(git -C "$INSTALL_DIR" rev-parse HEAD)
+    if [[ "$INSTALLED_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+        echo "ERROR: Commit hash mismatch!" >&2
+        echo "  Expected: $EXPECTED_COMMIT" >&2
+        echo "  Got:      $INSTALLED_COMMIT" >&2
+        echo "  This may indicate a security issue or version mismatch." >&2
+        exit 2
+    fi
+    echo "Verified: commit hash matches expected value"
+fi
 
 echo "Framework installed at ${INSTALL_DIR}"
 echo "Launcher created at ${LAUNCHER_PATH}"

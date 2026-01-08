@@ -1,0 +1,253 @@
+{
+  "format_version": 1,
+  "version": 1,
+  "generatedAt": "2026-01-07T20:58:19Z",
+  "items": [
+    {
+      "name": "change-status",
+      "description": "Change the workflow status for an entity on a list with proper documentation",
+      "path": "change-status/change-status.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "entityName",
+          "listName",
+          "newStatus"
+        ],
+        "properties": {
+          "entityName": {
+            "type": "string",
+            "description": "Name of the person, company, or opportunity"
+          },
+          "listName": {
+            "type": "string",
+            "description": "Name of the pipeline list"
+          },
+          "newStatus": {
+            "type": "string",
+            "description": "New status value to set"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for the status change (optional)"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "interaction-brief",
+      "description": "Get a quick summary of interaction history with a contact",
+      "path": "interaction-brief/interaction-brief.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "entityName"
+        ],
+        "properties": {
+          "entityName": {
+            "type": "string",
+            "description": "Name of the person or company"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "description": "Number of recent interactions to include"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "log-call",
+      "description": "Quickly log a phone call with a contact",
+      "path": "log-call/log-call.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "personName"
+        ],
+        "properties": {
+          "personName": {
+            "type": "string",
+            "description": "Name of the person you called"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "incoming",
+              "outgoing"
+            ],
+            "default": "outgoing",
+            "description": "Whether you called them or they called you"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Brief subject or topic of the call"
+          },
+          "duration": {
+            "type": "string",
+            "description": "Approximate duration of the call"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes about what was discussed"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "log-interaction-and-update-workflow",
+      "description": "Log an interaction and optionally update the workflow status for a contact",
+      "path": "log-interaction-and-update-workflow/log-interaction-and-update-workflow.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "personName",
+          "interactionType",
+          "summary"
+        ],
+        "properties": {
+          "personName": {
+            "type": "string",
+            "description": "Name of the person you interacted with"
+          },
+          "interactionType": {
+            "type": "string",
+            "enum": [
+              "call",
+              "meeting",
+              "email",
+              "chat_message",
+              "in_person"
+            ],
+            "description": "Type of interaction"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject or title for the interaction"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Summary of what was discussed or happened"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "log-message",
+      "description": "Quickly log a chat/text message exchange with a contact",
+      "path": "log-message/log-message.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "personName"
+        ],
+        "properties": {
+          "personName": {
+            "type": "string",
+            "description": "Name of the person you messaged"
+          },
+          "channel": {
+            "type": "string",
+            "default": "chat",
+            "description": "Channel used (e.g., Slack, Teams, SMS, WhatsApp)"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "incoming",
+              "outgoing"
+            ],
+            "default": "outgoing",
+            "description": "Whether they messaged you or you messaged them"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Brief subject or topic"
+          },
+          "content": {
+            "type": "string",
+            "description": "Summary of the message content"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "pipeline-review",
+      "description": "Conduct a comprehensive pipeline review for a workflow list",
+      "path": "pipeline-review/pipeline-review.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "listName"
+        ],
+        "properties": {
+          "listName": {
+            "type": "string",
+            "description": "Name of the pipeline list to review"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "prepare-briefing",
+      "description": "Prepare a comprehensive briefing for a meeting or interaction with a person or company",
+      "path": "prepare-briefing/prepare-briefing.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "entityName"
+        ],
+        "properties": {
+          "entityName": {
+            "type": "string",
+            "description": "Name of the person or company to prepare briefing for"
+          },
+          "meetingType": {
+            "type": "string",
+            "default": "meeting",
+            "description": "Type of meeting (e.g., 'initial call', 'follow-up', 'demo')"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    },
+    {
+      "name": "warm-intro",
+      "description": "Find warm introduction paths to a target person through shared connections",
+      "path": "warm-intro/warm-intro.txt",
+      "arguments": {
+        "type": "object",
+        "required": [
+          "targetName"
+        ],
+        "properties": {
+          "targetName": {
+            "type": "string",
+            "description": "Name of the person you want an introduction to"
+          },
+          "context": {
+            "type": "string",
+            "description": "Context for why you want the introduction (optional)"
+          }
+        }
+      },
+      "role": "user",
+      "metadata": null
+    }
+  ],
+  "hash": "dff9e87cb24aba3d8b0087ed5ff31a0a2fa25255825fac9ecfba4f5a61291cce",
+  "total": 8
+}

@@ -1,12 +1,12 @@
 {
   "name": "read-xaffinity-resource",
-  "description": "Read an xaffinity:// resource by URI. Available resources: xaffinity://me (current user), xaffinity://me/person-id (user's person ID), xaffinity://interaction-enums (interaction type/direction enums)",
+  "description": "Read an xaffinity:// resource by URI.\n\nAvailable resources:\n- xaffinity://data-model - Conceptual guide to Affinity's data model (READ THIS FIRST)\n- xaffinity://me - Current authenticated user\n- xaffinity://me/person-id - User's person ID in the CRM\n- xaffinity://interaction-enums - Interaction type/direction enum values\n\nTip: Read xaffinity://data-model to understand when to use 'company ls' vs 'list export'.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "uri": {
         "type": "string",
-        "description": "The xaffinity:// resource URI to read (e.g., xaffinity://me, xaffinity://me/person-id, xaffinity://interaction-enums)"
+        "description": "The xaffinity:// resource URI. Use 'xaffinity://data-model' for the data model guide."
       }
     },
     "required": ["uri"]

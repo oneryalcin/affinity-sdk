@@ -1,28 +1,28 @@
 {
   "name": "execute-read-command",
-  "description": "Execute a read-only CLI command (get, search, list, show). Use discover-commands first to find the right command.",
+  "description": "Execute a read-only CLI command (get, search, list, export). Use discover-commands first to find the right command.\n\nKey concepts:\n- Entities (Company, Person, Opportunity): Global CRM records. Use 'company ls', 'person ls' to search ALL entities.\n- Lists: Collections with custom fields. Use 'list export <id>' to get entries from a specific list.\n- To filter by list-specific fields (Status, Stage, etc.), use 'list export', NOT 'company ls'.\n\nExamples:\n- company ls --limit 10\n- company ls --filter 'name =~ \"Acme\"'\n- list ls (find list IDs)\n- list export 12345 --filter 'Status=Active'\n- person get 67890\n\nFilter syntax: 'field op \"value\"' where op is = != =~ (contains) =^ (starts) =$ (ends) > < >= <=",
   "inputSchema": {
     "type": "object",
     "required": ["command"],
     "properties": {
       "command": {
         "type": "string",
-        "description": "CLI command path (e.g., 'person get', 'company search', 'list show')"
+        "description": "CLI command path (e.g., 'person get', 'company ls', 'list export'). Use discover-commands to find available commands."
       },
       "argv": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Command arguments as array (e.g., ['123', '--limit', '10'])"
+        "description": "Command arguments as array. Include IDs as first element, then flags. Example: ['12345', '--filter', 'Status=Active', '--limit', '50']"
       },
       "maxOutputBytes": {
         "type": "integer",
         "default": 50000,
-        "description": "Maximum output size in bytes. Larger outputs are truncated with truncated=true marker."
+        "description": "Maximum output size in bytes (default 50000). Larger outputs are truncated with truncated=true marker. Use --limit flag to reduce output size."
       },
       "dryRun": {
         "type": "boolean",
         "default": false,
-        "description": "If true, return the command that would be executed without running it."
+        "description": "If true, return the command that would be executed without running it. Useful for verification."
       }
     }
   },

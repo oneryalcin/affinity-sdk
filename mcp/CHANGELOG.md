@@ -5,17 +5,51 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-01-07
+
+### Added
+- **xaffinity://data-model resource**: Conceptual guide to Affinity's data model (entities vs lists vs list entries)
+- **relatedCommands**: CLI registry now includes related command suggestions for key commands
+- **whenToUse**: CLI registry now includes usage guidance to help LLMs choose the right command
+- **commands-metadata.json**: Manual metadata file for enriching auto-generated registry
+
+### Changed
+- **Registry generator**: Now merges manual metadata with CLI-generated data
+- **Tool descriptions**: Enriched execute-read-command, execute-write-command, discover-commands, read-xaffinity-resource with domain context
+- **xaffinity provider**: Added .md file support for static markdown resources
+
+## [1.4.0] - 2026-01-06
+
+### Removed
+- **find-lists tool**: Thin wrapper, use `execute-read-command` with `list ls` instead
+- **get-status-timeline tool**: Thin wrapper, use `execute-read-command` with `field-value-changes ls` instead
+
+## [1.3.0] - 2026-01-06
+
+### Removed
+- **get-workflow-view tool**: Not useful for LLM agents (returns bulk data exceeding context limits). Use `get-list-workflow-config` for saved views, then `execute-read-command` with `list export --saved-view` for filtered results.
+
+### Fixed
+- **Large output handling**: Fixed "Argument list too long" error when tools process large outputs (>128KB)
+  - `execute-read-command`: Use `--rawfile` for error output paths
+  - `execute-write-command`: Use stdin piping and `--rawfile` for large outputs
+
 ## [1.2.3] - 2026-01-06
 
 ### Added
 - **Debug mode**: Single flag `XAFFINITY_MCP_DEBUG=1` enables debug logging across all components
-- **Debug file toggle**: Touch `.debug` file in server directory to enable debugging without rebuild
+- **Debug file toggle**: XDG-compliant `~/.config/xaffinity-mcp/debug` file persists across reinstalls
 - **Version banner**: Debug mode shows version info at startup (mcp, cli, mcp-bash versions)
 - **Component prefixes**: All log messages include component and version: `[xaffinity:tool:1.2.3]`
+- **Debugging guide**: New `docs/DEBUGGING.md` with troubleshooting instructions
+- **Framework lockfile**: `mcp-bash.lock` pins framework version and commit hash (replaces `FRAMEWORK_VERSION`)
 
 ### Changed
 - Logging functions now include version in prefix for easier debugging
 - Debug cascade propagates to `MCPBASH_LOG_LEVEL=debug` and `XAFFINITY_DEBUG=true`
+- Debug file uses XDG config location (`~/.config/xaffinity-mcp/debug`) instead of installation directory
+- Requires mcp-bash >= 0.9.3 (provides `MCPBASH_FRAMEWORK_VERSION`, client identity logging, `mcp_run_with_progress`)
+- CLI commands registry moved from `server.d/registry/` to `.registry/` (uses `MCPB_INCLUDE` for bundling)
 
 ## [1.2.2] - 2026-01-06
 

@@ -1,28 +1,28 @@
 {
   "name": "execute-write-command",
-  "description": "Execute a write CLI command (create, update, delete, add, remove). Use discover-commands first. Destructive commands require explicit confirmation.",
+  "description": "Execute a write CLI command (create, update, delete, add, remove). Use discover-commands with category='write' first.\n\nCommon operations:\n- Create entities: person create, company create, opportunity create\n- Add to lists: list-entry add --list-id <id> --entity-id <id>\n- Log interactions: interaction create --type meeting --participants <id>\n- Update fields: field-value set --list-entry-id <id> --field-id <id> --value <value>\n\nExamples:\n- person create --first-name John --last-name Doe --emails john@example.com\n- interaction create --type meeting --direction outgoing --participants 123\n- note create --entity-id 456 --content 'Meeting notes here'\n\nDestructive commands (delete, remove) require confirm=true.",
   "inputSchema": {
     "type": "object",
     "required": ["command"],
     "properties": {
       "command": {
         "type": "string",
-        "description": "CLI command path (e.g., 'person create', 'list entry add', 'note delete')"
+        "description": "CLI command path (e.g., 'person create', 'list-entry add', 'interaction create'). Use discover-commands with category='write' to find available commands."
       },
       "argv": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Command arguments as array (e.g., ['--first-name', 'John', '--last-name', 'Doe'])"
+        "description": "Command arguments as array. Use '--flag', 'value' pairs. Example: ['--first-name', 'John', '--last-name', 'Doe', '--emails', 'john@example.com']"
       },
       "confirm": {
         "type": "boolean",
         "default": false,
-        "description": "Required true for destructive commands (delete, remove). Automatically appends --yes to CLI."
+        "description": "REQUIRED for destructive commands (delete, remove). Set to true to confirm the operation. Automatically appends --yes to CLI."
       },
       "dryRun": {
         "type": "boolean",
         "default": false,
-        "description": "If true, return the command that would be executed without running it."
+        "description": "If true, return the command that would be executed without running it. Use to verify command before execution."
       }
     }
   },

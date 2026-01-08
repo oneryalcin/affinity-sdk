@@ -10,3 +10,7 @@ CLI_MAX_VERSION="1.0.0"
 # - --readonly flag
 # - config check-key --json command
 # - version --output json command
+
+# Progress forwarding requires CLI >= 0.6.10 (NDJSON progress on stderr)
+# MCP tools gracefully degrade when progress not supported
+PROGRESS_MIN_VERSION="0.6.10"

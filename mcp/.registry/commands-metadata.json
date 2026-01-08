@@ -1,0 +1,55 @@
+{
+  "_comment": "Manual metadata to merge with auto-generated registry. Keys are command names.",
+  "list ls": {
+    "relatedCommands": ["list get", "list export", "field ls"],
+    "whenToUse": "Find list IDs by name. Use before list export or field ls."
+  },
+  "list get": {
+    "relatedCommands": ["list ls", "list export", "field ls"],
+    "whenToUse": "Get list details including type and field count."
+  },
+  "list export": {
+    "relatedCommands": ["list ls", "field ls", "list-entry get"],
+    "whenToUse": "Get entries from a list. PREFER --saved-view (server-side, efficient) over --filter (client-side, fetches all then filters). Check xaffinity://saved-views/{listId} first."
+  },
+  "list-entry get": {
+    "relatedCommands": ["list export", "field-value get"],
+    "whenToUse": "Get full details for a single list entry by ID."
+  },
+  "company ls": {
+    "relatedCommands": ["company get", "company search"],
+    "whenToUse": "Search ALL companies in CRM by core fields (name, domain). NOT for list-specific fields like Status."
+  },
+  "company get": {
+    "relatedCommands": ["company ls", "company field"],
+    "whenToUse": "Get full details for a company by ID. Use --expand for list memberships."
+  },
+  "person ls": {
+    "relatedCommands": ["person get", "person search"],
+    "whenToUse": "Search ALL persons in CRM by core fields (name, email). NOT for list-specific fields."
+  },
+  "person get": {
+    "relatedCommands": ["person ls", "person field"],
+    "whenToUse": "Get full details for a person by ID. Use --expand for list memberships."
+  },
+  "opportunity ls": {
+    "relatedCommands": ["opportunity get", "list ls"],
+    "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline)."
+  },
+  "opportunity get": {
+    "relatedCommands": ["opportunity ls"],
+    "whenToUse": "Get opportunity details. Use --expand people/companies for associations."
+  },
+  "field ls": {
+    "relatedCommands": ["list ls", "list export", "field-value get"],
+    "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields."
+  },
+  "interaction create": {
+    "relatedCommands": ["interaction ls", "note create"],
+    "whenToUse": "Log a meeting, call, or email. Requires --type and --participants."
+  },
+  "note create": {
+    "relatedCommands": ["note ls", "interaction create"],
+    "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes."
+  }
+}

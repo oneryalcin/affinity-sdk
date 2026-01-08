@@ -46,6 +46,10 @@ elif [ -f "${resources_dir}/${normalized_path}/${normalized_path}.json" ]; then
     # Static JSON file - just output it
     cat "${resources_dir}/${normalized_path}/${normalized_path}.json"
     exit 0
+elif [ -f "${resources_dir}/${normalized_path}/${normalized_path}.md" ]; then
+    # Static markdown file - just output it
+    cat "${resources_dir}/${normalized_path}/${normalized_path}.md"
+    exit 0
 elif [ -f "${resources_dir}/${resource_path}/${resource_path##*/}.sh" ]; then
     # Try with original path structure
     script_path="${resources_dir}/${resource_path}/${resource_path##*/}.sh"

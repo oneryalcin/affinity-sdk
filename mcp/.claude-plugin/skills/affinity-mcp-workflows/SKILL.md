@@ -22,50 +22,16 @@ The CLI must be configured with an API key before the MCP server will work.
 **Only use tools or prompts that modify CRM data when the user explicitly asks to do so.**
 
 Write operations include:
-- **Tools**: `set-workflow-status`, `update-workflow-fields`, `add-note`, `log-interaction`, `execute-write-command`
+- **Tools**: `execute-write-command`
 - **Prompts**: `log-interaction-and-update-workflow`, `change-status`, `log-call`, `log-message`
 
 Read-only operations (search, lookup, briefings) can be used proactively to help the user. But never create, update, or delete CRM records unless the user specifically requests it.
 
 ## Available Tools
 
-### Search & Lookup (read-only)
+### CLI Gateway (Primary Interface)
 
-| Tool | Use Case |
-|------|----------|
-| `find-entities` | Search persons, companies, opportunities by name/email |
-| `find-lists` | Find Affinity lists by name |
-| `get-entity-dossier` | Comprehensive entity info (details, relationship strength, interactions, notes, list memberships) |
-| `read-xaffinity-resource` | Access dynamic resources via `xaffinity://` URIs |
-
-### Workflow Management
-
-| Tool | Use Case |
-|------|----------|
-| `get-list-workflow-config` | Get workflow config (statuses, fields) for a list |
-| `get-workflow-view` | Get items from a saved workflow view |
-| `resolve-workflow-item` | Resolve entity to list entry ID (needed before status updates) |
-| `set-workflow-status` | **(write)** Update workflow item status - requires explicit user request |
-| `update-workflow-fields` | **(write)** Update multiple fields on workflow item - requires explicit user request |
-
-### Relationships & Intelligence
-
-| Tool | Use Case |
-|------|----------|
-| `get-relationship-insights` | Relationship strength scores, warm intro paths via shared connections |
-| `get-status-timeline` | Status change history for a workflow item |
-| `get-interactions` | Interaction history (calls, meetings, emails) for an entity |
-
-### Logging (write operations - require explicit user request)
-
-| Tool | Use Case |
-|------|----------|
-| `add-note` | **(write)** Add note to a person, company, or opportunity |
-| `log-interaction` | **(write)** Log call, meeting, email, or chat message |
-
-### CLI Gateway (full CLI access)
-
-For operations not covered by specialized tools, use the CLI Gateway:
+The CLI Gateway provides full access to the xaffinity CLI:
 
 | Tool | Use Case |
 |------|----------|
@@ -78,7 +44,16 @@ For operations not covered by specialized tools, use the CLI Gateway:
 1. **Discover** the right command: `discover-commands(query: "create person", category: "write")`
 2. **Execute** it: `execute-write-command(command: "person create", argv: ["--first-name", "John", "--last-name", "Doe"])`
 
-**Destructive commands** (delete operations) require double confirmation:
+### Utility Tools
+
+| Tool | Use Case |
+|------|----------|
+| `get-entity-dossier` | Comprehensive entity info (details, relationship strength, interactions, notes, list memberships) |
+| `read-xaffinity-resource` | Access dynamic resources via `xaffinity://` URIs |
+
+### Destructive Commands
+
+Commands that delete data require double confirmation:
 
 1. **Look up the entity first** using `execute-read-command` to show what will be deleted
 2. **Ask the user in your response** by showing them the entity details and requesting confirmation
@@ -97,7 +72,38 @@ User: "yes"
 You: execute-write-command(command: "person delete", argv: ["123"], confirm: true)
 ```
 
-**Note**: This is conversation-based confirmation - you ask, then wait for the user's next message. This works with all MCP clients regardless of elicitation support. The `confirm: true` parameter bypasses the CLI prompt, but you must get explicit user confirmation in the conversation first.
+## Common CLI Commands
+
+Use `discover-commands` to find commands, then `execute-read-command` or `execute-write-command` to run them.
+
+### Search & Lookup
+
+| Command | Use Case |
+|---------|----------|
+| `person ls --query "..."` | Search persons by name/email |
+| `company ls --filter 'name =~ "..."'` | Search companies |
+| `list ls` | List all Affinity lists |
+| `list export "<listName>"` | Export list entries (supports --filter) |
+| `field ls --list-id <id>` | Get field definitions and dropdown options for a list |
+
+### Entity Details
+
+| Command | Use Case |
+|---------|----------|
+| `person get <id>` | Get person details |
+| `company get <id>` | Get company details |
+| `opportunity get <id>` | Get opportunity details |
+| `relationship-strength ls --external-id <id>` | Get relationship strength for a person |
+| `interaction ls --person-id <id> --type email` | Get interactions (types: email, meeting, call, chat-message) |
+
+### Write Operations
+
+| Command | Use Case |
+|---------|----------|
+| `interaction create --type call --person-id <id>` | Log a call/meeting/email |
+| `note create --person-id <id> --content "..."` | Add a note |
+| `field-value set --list-entry-id <id> --field-id <id> --value "..."` | Update a field value |
+| `person create --first-name "..." --last-name "..."` | Create a person |
 
 ## MCP Prompts (Guided Workflows)
 
@@ -139,37 +145,65 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 ## Common Workflow Patterns
 
 ### Before a Meeting
-1. `find-entities` to locate the person/company
-2. `get-entity-dossier` for full context (relationship strength, recent interactions, notes)
-3. **Or use**: `prepare-briefing` prompt for a guided flow
+1. Use `get-entity-dossier` for full context (relationship strength, recent interactions, notes)
+2. **Or use**: `prepare-briefing` prompt for a guided flow
 
 ### After a Call/Meeting
-1. `log-interaction` to record what happened
-2. `resolve-workflow-item` to get list entry ID (if updating pipeline)
-3. `set-workflow-status` if deal stage changed
+1. Use `execute-write-command` with `interaction create` to log what happened
+2. Use `execute-read-command` with `list export` to find list entry (if updating pipeline)
+3. Use `execute-write-command` with `field-value set` if deal stage changed
 4. **Or use**: `log-interaction-and-update-workflow` prompt
 
 ### Finding Warm Introductions
-1. `find-entities` to locate target person
-2. `get-relationship-insights` for connection paths
+1. Use `execute-read-command` with `person ls` to locate target person
+2. Use `execute-read-command` with `relationship-strength ls` for connection strength
 3. **Or use**: `warm-intro` prompt for guided flow
 
 ### Pipeline Review
-1. `find-lists` to locate the pipeline list
-2. `get-workflow-view` to see items in a saved view
+1. Use `execute-read-command` with `field ls --list-id` to see fields/statuses
+2. Use `execute-read-command` with `list export` to see items
 3. **Or use**: `pipeline-review` prompt
 
 ### Updating Deal Status
-1. `find-entities` to find the opportunity
-2. `resolve-workflow-item` to get list entry ID
-3. `get-list-workflow-config` to see available statuses
-4. `set-workflow-status` to update
-5. **Or use**: `change-status` prompt
+1. Use `execute-read-command` with `list export` to find the entry
+2. Use `execute-read-command` with `field ls --list-id` to see available statuses
+3. Use `execute-write-command` with `field-value set` to update
+4. **Or use**: `change-status` prompt
 
 ## Tips
 
 - **Entity types**: `person`, `company`, `opportunity`
 - **Interaction types**: `call`, `meeting`, `email`, `chat_message`, `in_person`
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
-- **Resolve before update**: Always use `resolve-workflow-item` before `set-workflow-status` or `update-workflow-fields`
-- **Check workflow config**: Use `get-list-workflow-config` to discover valid status options before updating
+- **Use names directly**: Most commands accept names instead of IDs (e.g., `list export "Dealflow"`)
+- **Filter syntax**: `--filter 'field op "value"'` (ops: `=`, `!=`, `=~` contains, `=^` starts with)
+
+## Troubleshooting
+
+If tools aren't working or returning unexpected results:
+
+### Enable Debug Mode
+
+```bash
+# Enable (persistent, works with any MCP client)
+mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
+
+# Restart the MCP client (Claude Desktop: Cmd+Q, reopen)
+
+# Disable when done
+rm ~/.config/xaffinity-mcp/debug
+```
+
+### View Logs
+
+**Claude Desktop**: `tail -f ~/Library/Logs/Claude/mcp-server-*.log`
+
+Debug logs show component prefixes like `[xaffinity:tool:1.2.3]` to identify which component produced each message.
+
+### Common Issues
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Tools show old behavior after update | Cached MCP server process | Fully quit and restart Claude Desktop |
+| API key errors | Key not configured | Run `xaffinity config setup-key` |
+| CLI version errors | Outdated CLI | Run `pip install --upgrade affinity-sdk`
