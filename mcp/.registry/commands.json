@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "cliVersion": "0.6.11",
+  "cliVersion": "0.7.0",
   "commands": [
     {
       "name": "company create",
@@ -876,7 +876,7 @@
     },
     {
       "name": "field ls",
-      "description": "List fields with dropdown options. Returns field definitions including dropdownOptions for dropdown/ranked-dropdown fields.",
+      "description": "List fields with dropdown options.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
@@ -1501,7 +1501,7 @@
         "--filter": {
           "type": "string",
           "required": false,
-          "help": "Client-side filter (fetches all, then filters). Prefer --saved-view for efficiency. Syntax: 'field op value'. Ops: = != =~ =^ =$ > < >= <=."
+          "help": "Client-side filter. Syntax: 'field op value'. Ops: = != =~ =^ =$ > < >= <=."
         },
         "--max-results": {
           "type": "int",
