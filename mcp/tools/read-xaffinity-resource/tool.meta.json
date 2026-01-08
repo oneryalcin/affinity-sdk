@@ -1,6 +1,6 @@
 {
   "name": "read-xaffinity-resource",
-  "description": "Read an xaffinity:// resource by URI.\n\nAvailable resources:\n- xaffinity://data-model - Conceptual guide to Affinity's data model (READ THIS FIRST)\n- xaffinity://me - Current authenticated user\n- xaffinity://me/person-id - User's person ID in the CRM\n- xaffinity://interaction-enums - Interaction type/direction enum values\n- xaffinity://saved-views/{listId} - Saved view names for a list (filter criteria not available via API)\n\nTip: Read xaffinity://data-model to understand when to use 'company ls' vs 'list export'.",
+  "description": "Read an xaffinity:// resource by URI.\n\nAvailable resources:\n- xaffinity://data-model - Conceptual guide to Affinity's data model (READ THIS FIRST)\n- xaffinity://me - Current authenticated user\n- xaffinity://me/person-id - User's person ID in the CRM\n- xaffinity://interaction-enums - Interaction type/direction enum values\n- xaffinity://saved-views/{listId} - Saved views for a list (pre-configured filters in Affinity UI)\n- xaffinity://workflow-config/{listId} - Workflow config: list info, status field options, saved views\n- xaffinity://field-catalogs/{listId|entityType} - Field schema for a list (by ID) or entity type (person/company/opportunity)\n\nTip: Read xaffinity://data-model to understand when to use 'company ls' vs 'list export'.",
   "inputSchema": {
     "type": "object",
     "properties": {

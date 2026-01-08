@@ -70,7 +70,7 @@ list export Dealflow --saved-view "Active Pipeline"
 - Caveat: You cannot query what filters a saved view applies
 
 ### Decision Flow
-1. Check available saved views: `xaffinity://saved-views/{listId}`
+1. Get workflow config: `xaffinity://workflow-config/{listId}` (returns status options + saved views in one call)
 2. If a saved view name clearly matches your intent (e.g., "Due Diligence" for DD stage) → use it
 3. If no matching saved view, or you need specific field filtering → use `--filter`
 4. When in doubt, use `--filter` - it's explicit and predictable
@@ -109,6 +109,8 @@ person get john@example.com                    # ✓ One call (email works)
 field ls --list-id Dealflow                    # Returns all fields with dropdown options
 ```
 The response includes `dropdownOptions` array for dropdown/ranked-dropdown fields with `id`, `text`, `rank`, `color`.
+
+Or use the resource: `xaffinity://field-catalogs/{listId}` for field schema with descriptions.
 
 ## Common Mistakes
 
