@@ -23,7 +23,7 @@ def test_table_from_rows_marks_offset_varies_when_dst_applies(
         pytest.skip("timezone database not available for America/Los_Angeles")
 
     try:
-        table = _table_from_rows(
+        table, _ = _table_from_rows(
             [
                 {
                     "id": 1,

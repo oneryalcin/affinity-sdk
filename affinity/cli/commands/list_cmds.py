@@ -4,7 +4,9 @@ import json
 import os
 import signal
 import sys
+import time
 import warnings as stdlib_warnings
+from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -15,6 +17,7 @@ from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedCo
 from affinity.filters import FilterExpression
 from affinity.filters import parse as parse_filter
 from affinity.models.entities import FieldMetadata, ListCreate, ListEntryWithEntity
+from affinity.models.pagination import FilterStats
 from affinity.models.types import ListType
 from affinity.types import (
     AnyFieldId,
@@ -34,6 +37,7 @@ from ..csv_utils import artifact_path, write_csv
 from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
+from ..render import format_duration
 from ..resolve import (
     list_all_saved_views,
     list_fields_for_list,
@@ -363,7 +367,7 @@ ExpandOnError = Literal["raise", "skip"]
     "filter_expr",
     type=str,
     default=None,
-    help="Filter expression (mutually exclusive with --saved-view).",
+    help="Client-side filter. Syntax: 'field op value'. Ops: = != =~ =^ =$ > < >= <=.",
 )
 @click.option(
     "--page-size", "-s", type=int, default=100, show_default=True, help="Page size (max 100)."
@@ -493,6 +497,9 @@ def list_export(
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Track start time for summary line
+        export_start_time = time.time()
+
         # Parse and validate expand options early
         expand_set = {e.strip().lower() for e in expand if e and e.strip()}
         want_expand = len(expand_set) > 0
@@ -877,6 +884,21 @@ def list_export(
                     desc += ", " + " + ".join(parts)
             return desc
 
+        def _format_filter_progress(state: dict[str, Any] | None) -> str | None:
+            """Format progress description for filtered queries.
+
+            Returns a description showing scanning context. The progress bar
+            separately shows the exported row count, so we don't duplicate that here.
+            """
+            if state is None:
+                return None
+            filter_stats = state.get("filterStats")
+            if filter_stats is None:
+                return None
+            scanned = filter_stats.get("scanned", 0)
+            matched = filter_stats.get("matched", 0)
+            return f"Exporting ({matched} matches from {scanned} scanned)"
+
         with ExitStack() as stack:
             progress: Progress | None = None
             task_id: TaskID | None = None
@@ -951,6 +973,45 @@ def list_export(
 
                 def iter_rows() -> Any:
                     nonlocal rows_written, next_cursor, csv_entries_processed
+
+                    # Rate limiting for MCP progress (0.65s interval)
+                    last_mcp_progress_time: float = float("-inf")
+                    # MCP mode: emit JSON progress when not TTY but progress still desired
+                    # IMPORTANT: If Rich progress bar is active (show_progress=True),
+                    # don't also emit JSON progress - they're mutually exclusive
+                    mcp_mode = (
+                        not show_progress
+                        and not sys.stderr.isatty()
+                        and ctx.progress != "never"
+                        and not ctx.quiet
+                    )
+
+                    # Create callback for real-time filter progress updates
+                    def on_filter_progress(stats: FilterStats) -> None:
+                        nonlocal last_mcp_progress_time
+
+                        desc = f"Scanning {stats.scanned}... ({stats.matched} matches)"
+
+                        # Rich Progress bar (TTY)
+                        if progress is not None and task_id is not None:
+                            progress.update(task_id, description=desc)
+
+                        # NDJSON for MCP (non-TTY) with rate limiting
+                        if mcp_mode:
+                            now = time.monotonic()
+                            if now - last_mcp_progress_time >= 0.65:
+                                last_mcp_progress_time = now
+                                obj = {"type": "progress", "progress": None, "message": desc}
+                                print(json.dumps(obj), file=sys.stderr, flush=True)
+
+                    # Use callback if we have a filter and either Rich progress or MCP mode
+                    has_rich_progress = progress is not None and task_id is not None
+                    filter_callback = (
+                        on_filter_progress
+                        if filter_expr and (mcp_mode or has_rich_progress)
+                        else None
+                    )
+
                     for row, page_next_cursor in _iterate_list_entries(
                         client=client,
                         list_id=list_id,
@@ -965,6 +1026,7 @@ def list_export(
                         key_mode=csv_header,
                         state=csv_iter_state,
                         cache=cache,
+                        filter_progress_callback=filter_callback,
                     ):
                         next_cursor = page_next_cursor
 
@@ -972,7 +1034,15 @@ def list_export(
                             # No expansion - yield row as-is
                             rows_written += 1
                             if progress is not None and task_id is not None:
-                                progress.update(task_id, completed=rows_written)
+                                filter_desc = _format_filter_progress(csv_iter_state)
+                                if filter_desc:
+                                    progress.update(
+                                        task_id,
+                                        completed=rows_written,
+                                        description=filter_desc,
+                                    )
+                                else:
+                                    progress.update(task_id, completed=rows_written)
                             yield row
                             continue
 
@@ -1225,6 +1295,24 @@ def list_export(
                     warnings.append(
                         "Results limited by --max-results. Use --all to fetch all results."
                     )
+
+                # Print export summary to stderr
+                if show_progress:
+                    elapsed = time.time() - export_start_time
+                    filter_stats = csv_iter_state.get("filterStats")
+                    if filter_stats:
+                        scanned = filter_stats.get("scanned", 0)
+                        Console(file=sys.stderr).print(
+                            f"Exported {write_result.rows_written:,} rows "
+                            f"(filtered from {scanned:,} scanned) "
+                            f"in {format_duration(elapsed)}"
+                        )
+                    else:
+                        Console(file=sys.stderr).print(
+                            f"Exported {write_result.rows_written:,} rows "
+                            f"in {format_duration(elapsed)}"
+                        )
+
                 return CommandOutput(
                     data=csv_data,
                     context=cmd_context,
@@ -1268,6 +1356,46 @@ def list_export(
                 "opportunities": 0,
             }
 
+            # Rate limiting for MCP progress (0.65s interval)
+            json_last_mcp_progress_time: float = float("-inf")
+            # MCP mode: emit JSON progress when not TTY but progress still desired
+            # IMPORTANT: If Rich progress bar is active (show_progress=True),
+            # don't also emit JSON progress - they're mutually exclusive
+            json_mcp_mode = (
+                not show_progress
+                and not sys.stderr.isatty()
+                and ctx.progress != "never"
+                and not ctx.quiet
+            )
+
+            # Create callback for real-time filter progress updates (JSON output)
+            def on_json_filter_progress(stats: FilterStats) -> None:
+                nonlocal json_last_mcp_progress_time
+
+                desc = f"Scanning {stats.scanned}... ({stats.matched} matches)"
+
+                # Rich Progress bar (TTY)
+                if progress is not None and task_id is not None:
+                    progress.update(task_id, description=desc)
+
+                # NDJSON for MCP (non-TTY) with rate limiting
+                if json_mcp_mode:
+                    now = time.monotonic()
+                    if now - json_last_mcp_progress_time >= 0.65:
+                        json_last_mcp_progress_time = now
+                        print(
+                            json.dumps({"type": "progress", "progress": None, "message": desc}),
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+            # Use callback if we have a filter and either Rich progress or MCP mode
+            json_filter_callback = (
+                on_json_filter_progress
+                if filter_expr and (json_mcp_mode or (progress is not None and task_id is not None))
+                else None
+            )
+
             for row, page_next_cursor in _iterate_list_entries(
                 client=client,
                 list_id=list_id,
@@ -1282,13 +1410,18 @@ def list_export(
                 key_mode="names",
                 state=table_iter_state,
                 cache=cache,
+                filter_progress_callback=json_filter_callback,
             ):
                 next_cursor = page_next_cursor
 
                 if not want_expand:
                     rows.append(row)
                     if progress is not None and task_id is not None:
-                        progress.update(task_id, completed=len(rows))
+                        filter_desc = _format_filter_progress(table_iter_state)
+                        if filter_desc:
+                            progress.update(task_id, completed=len(rows), description=filter_desc)
+                        else:
+                            progress.update(task_id, completed=len(rows))
                     continue
 
                 # Handle expansion for JSON output (nested arrays)
@@ -1438,6 +1571,22 @@ def list_export(
                     k: v for k, v in associations_fetched.items() if k in expand_set
                 }
 
+            # Print export summary to stderr
+            if show_progress:
+                elapsed = time.time() - export_start_time
+                filter_stats = table_iter_state.get("filterStats")
+                if filter_stats:
+                    scanned = filter_stats.get("scanned", 0)
+                    Console(file=sys.stderr).print(
+                        f"Exported {len(rows):,} rows "
+                        f"(filtered from {scanned:,} scanned) "
+                        f"in {format_duration(elapsed)}"
+                    )
+                else:
+                    Console(file=sys.stderr).print(
+                        f"Exported {len(rows):,} rows in {format_duration(elapsed)}"
+                    )
+
             return CommandOutput(
                 data=output_data,
                 context=cmd_context,
@@ -1523,9 +1672,15 @@ def _iterate_list_entries(
     key_mode: Literal["names", "ids"],
     state: dict[str, Any] | None = None,
     cache: Any = None,
+    filter_progress_callback: Callable[[FilterStats], None] | None = None,
 ) -> Any:
     """
     Yield `(row_dict, next_cursor)` where `next_cursor` resumes at the next page (not per-row).
+
+    Args:
+        filter_progress_callback: Optional callback invoked after each physical page
+            fetch during filtered queries. Useful for real-time progress updates
+            while scanning many rows with few matches.
     """
     # Suppress SDK's client-side filtering warning (CLI handles this warning itself)
     stdlib_warnings.filterwarnings(
@@ -1591,12 +1746,19 @@ def _iterate_list_entries(
             field_ids=selected_field_ids,
             filter=filter_expr,
             limit=page_size,
+            progress_callback=filter_progress_callback,
         )
     )
 
     first_page = True
     for page in pages:
         next_page_cursor = page.pagination.next_cursor
+        # Track filter stats for progress reporting
+        if state is not None and page.filter_stats is not None:
+            state["filterStats"] = {
+                "scanned": page.filter_stats.scanned,
+                "matched": page.filter_stats.matched,
+            }
         for idx, entry in enumerate(page.data):
             fetched += 1
             yield (

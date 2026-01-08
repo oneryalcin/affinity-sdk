@@ -8,7 +8,7 @@ from affinity.cli.render import _table_from_rows
 
 
 def test_table_from_rows_urlifies_domain_columns() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [
             {
                 "id": 1,

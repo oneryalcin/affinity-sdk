@@ -18,7 +18,7 @@ from affinity.types import CompanyId, FieldType, ListId, PersonId
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv_from_rows
-from ..decorators import category, destructive
+from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
@@ -467,14 +467,14 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     "filter_expr",
     type=str,
     default=None,
-    help="Filter expression (e.g., 'Industry = \"Software\"').",
+    help="Filter: 'field op value'. Ops: = != =~ =^ =$ > < >= <=. E.g., 'name =~ \"Acme\"'.",
 )
 @click.option(
     "--query",
     "-q",
     type=str,
     default=None,
-    help="Free-text search term. Cannot combine with --filter.",
+    help="Fuzzy text search (simple matching). Use --filter for structured queries.",
 )
 @click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
@@ -1053,6 +1053,7 @@ def company_files_dump(
 
 
 @category("write")
+@progress_capable
 @company_files_group.command(name="upload", cls=RichCommand)
 @click.argument("company_id", type=int)
 @click.option(

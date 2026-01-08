@@ -68,6 +68,17 @@ def _custom_help_callback(
 @click.option("-v", "verbose", count=True, help="Increase verbosity (-v, -vv).")
 @click.option("--pager/--no-pager", default=None, help="Page table / long output when interactive.")
 @click.option(
+    "--all-columns",
+    is_flag=True,
+    help="Show all table columns (disable auto-limiting based on terminal width).",
+)
+@click.option(
+    "--max-columns",
+    type=int,
+    default=None,
+    help="Limit table output to N columns (default: auto based on terminal width).",
+)
+@click.option(
     "--progress/--no-progress",
     default=None,
     help="Force enable/disable progress bars (stderr).",
@@ -131,6 +142,8 @@ def cli(
     quiet: bool,
     verbose: int,
     pager: bool | None,
+    all_columns: bool,
+    max_columns: int | None,
     progress: bool | None,
     profile: str | None,
     dotenv: bool,
@@ -188,6 +201,8 @@ def cli(
         trace=trace,
         log_file=effective_log_file,
         enable_log_file=enable_log_file,
+        all_columns=all_columns,
+        max_columns=max_columns,
         _paths=paths,
     )
 

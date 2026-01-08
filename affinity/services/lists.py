@@ -10,7 +10,7 @@ import builtins
 import contextlib
 import re
 import warnings
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import urlsplit
 
@@ -32,6 +32,7 @@ from ..models.entities import (
 from ..models.pagination import (
     AsyncPageIterator,
     BatchOperationResponse,
+    FilterStats,
     PageIterator,
     PaginatedResponse,
     PaginationInfo,
@@ -563,30 +564,143 @@ class ListEntryService:
         filter: str | FilterExpression | None = None,
         limit: int | None = None,
         cursor: str | None = None,
+        progress_callback: Callable[[FilterStats], None] | None = None,
     ) -> Iterator[PaginatedResponse[ListEntryWithEntity]]:
-        """Iterate list-entry pages, yielding `PaginatedResponse[ListEntryWithEntity]`."""
+        """Iterate list-entry pages, yielding `PaginatedResponse[ListEntryWithEntity]`.
+
+        Use ``pages()`` when you need page-level control for batch processing,
+        cursor-based resumption, or progress tracking on unfiltered queries.
+        Use ``iter()`` for most cases, especially with filters.
+
+        Args:
+            progress_callback: Optional callback called after each physical page
+                fetch during filtered queries. Receives FilterStats with current
+                scanned/matched counts for real-time progress updates.
+
+        Note:
+            Filtering is applied client-side (Affinity V2 API does not support
+            server-side filtering on list entries). When a filter is provided,
+            pages are "virtualized" - the method fetches physical pages internally
+            and accumulates filtered results until a full virtual page is ready.
+            This ensures consistent page sizes and fast time-to-first-results.
+        """
         if cursor is not None and (
-            field_ids or field_types or filter is not None or limit is not None
+            field_ids
+            or field_types
+            or filter is not None
+            or limit is not None
+            or progress_callback is not None
         ):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
                 "Start a new pagination sequence without a cursor to change parameters."
             )
-        requested_cursor = cursor
-        page = (
-            self.list(field_ids=field_ids, field_types=field_types, filter=filter, limit=limit)
-            if cursor is None
-            else self.list(cursor=cursor)
-        )
+
+        # Parse filter once for all pages (since list() with cursor can't accept filter)
+        filter_expr: FilterExpression | None = None
+        if filter is not None:
+            if isinstance(filter, str):
+                stripped = filter.strip()
+                if stripped:
+                    with contextlib.suppress(ValueError):
+                        filter_expr = parse_filter(stripped)
+            else:
+                filter_expr = filter
+
+        # No filter: use simple pagination (original behavior)
+        if filter_expr is None:
+            requested_cursor = cursor
+            page = (
+                self.list(field_ids=field_ids, field_types=field_types, limit=limit)
+                if cursor is None
+                else self.list(cursor=cursor)
+            )
+            while True:
+                yield page
+                if not page.has_next:
+                    return
+                next_cursor = page.next_cursor
+                if next_cursor is None or next_cursor == requested_cursor:
+                    return
+                requested_cursor = next_cursor
+                page = self.list(cursor=next_cursor)
+            return
+
+        # With filter: use virtualized pagination for consistent page sizes
+        # and fast time-to-first-results
+        virtual_page_size = limit if limit is not None else 100
+        buffer: list[ListEntryWithEntity] = []
+        physical_cursor: str | None = None
+        has_more_physical = True
+
+        # Track filter stats for progress reporting
+        total_scanned = 0
+        total_matched = 0
+
+        # Fetch first physical page WITHOUT filter so we can track accurate counts
+        first_page = self.list(field_ids=field_ids, field_types=field_types, limit=limit)
+        # Track scanned count (before filtering)
+        total_scanned += len(first_page.data)
+        # Apply filter manually to first page (same as subsequent pages)
+        filtered_first = [
+            e for e in first_page.data if filter_expr.matches(_entry_to_filter_dict(e))
+        ]
+        total_matched += len(filtered_first)
+        buffer.extend(filtered_first)
+        physical_cursor = first_page.next_cursor
+        has_more_physical = first_page.has_next and physical_cursor is not None
+
+        # Report initial progress after first page fetch
+        if progress_callback is not None:
+            progress_callback(FilterStats(scanned=total_scanned, matched=total_matched))
+
         while True:
-            yield page
-            if not page.has_next:
-                return
-            next_cursor = page.next_cursor
-            if next_cursor is None or next_cursor == requested_cursor:
-                return
-            requested_cursor = next_cursor
-            page = self.list(cursor=next_cursor)
+            # Yield virtual page when buffer is full or no more data
+            if len(buffer) >= virtual_page_size or not has_more_physical:
+                if not buffer and not has_more_physical:
+                    return  # No more data
+                # Slice off one virtual page
+                page_data = buffer[:virtual_page_size]
+                buffer = buffer[virtual_page_size:]
+                # has_next is true if we have more buffered or more physical pages
+                has_next = len(buffer) > 0 or has_more_physical
+                virtual_page = PaginatedResponse[ListEntryWithEntity](
+                    data=page_data,
+                    pagination=PaginationInfo(
+                        next_cursor=None,  # Virtual pages don't support cursor resumption
+                        prev_cursor=None,
+                    ),
+                )
+                # Override has_next since we know better than the pagination info
+                virtual_page._has_next_override = has_next
+                # Add filter stats for progress tracking
+                virtual_page._filter_stats = FilterStats(
+                    scanned=total_scanned, matched=total_matched
+                )
+                yield virtual_page
+                if not has_next:
+                    return
+                continue
+
+            # Need more data - fetch next physical page
+            if not has_more_physical:
+                continue  # Will yield remaining buffer above
+
+            physical_page = self.list(cursor=physical_cursor)
+            # Track scanned count (before filtering)
+            total_scanned += len(physical_page.data)
+            # Apply filter manually to subsequent pages
+            filtered_data = [
+                e for e in physical_page.data if filter_expr.matches(_entry_to_filter_dict(e))
+            ]
+            total_matched += len(filtered_data)
+            buffer.extend(filtered_data)
+            physical_cursor = physical_page.next_cursor
+            has_more_physical = physical_page.has_next and physical_cursor is not None
+
+            # Report progress after each physical page fetch
+            if progress_callback is not None:
+                progress_callback(FilterStats(scanned=total_scanned, matched=total_matched))
 
     def all(
         self,

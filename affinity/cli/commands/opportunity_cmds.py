@@ -25,7 +25,7 @@ from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..csv_utils import artifact_path, write_csv_from_rows
-from ..decorators import category, destructive
+from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
@@ -99,7 +99,7 @@ def _resolve_opportunity_selector(
     "-q",
     type=str,
     default=None,
-    help="Free-text search term.",
+    help="Fuzzy text search (simple matching).",
 )
 @click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
 @click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel compatibility.")
@@ -848,6 +848,7 @@ def opportunity_files_dump(
 
 
 @category("write")
+@progress_capable
 @opportunity_files_group.command(name="upload", cls=RichCommand)
 @click.argument("opportunity_id", type=int)
 @click.option(

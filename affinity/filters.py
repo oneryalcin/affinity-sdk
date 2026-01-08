@@ -164,7 +164,11 @@ class FieldComparison(FilterExpression):
             return value is None or value == ""
 
         # Handle equality/inequality - coerce to strings for comparison
-        entity_str = str(value) if value is not None else ""
+        # For dropdown fields, extract the "text" property
+        if isinstance(value, dict) and "text" in value:
+            entity_str = str(value["text"])
+        else:
+            entity_str = str(value) if value is not None else ""
         target_str = str(self.value) if not isinstance(self.value, RawToken) else self.value.token
 
         if self.operator == "=":

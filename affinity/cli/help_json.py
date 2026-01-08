@@ -22,10 +22,10 @@ class MissingCategoryError(Exception):
     """Raised when a command is missing the required @category decorator."""
 
 
-def _classify_command(cmd: Command, cmd_name: str) -> tuple[str, bool]:
-    """Classify command by category and destructive flag.
+def _classify_command(cmd: Command, cmd_name: str) -> tuple[str, bool, bool]:
+    """Classify command by category, destructive flag, and progress capability.
 
-    Reads @category and @destructive decorator metadata from the command.
+    Reads @category, @destructive, and @progress_capable decorator metadata.
     All commands MUST have an explicit @category decorator.
 
     Args:
@@ -33,7 +33,7 @@ def _classify_command(cmd: Command, cmd_name: str) -> tuple[str, bool]:
         cmd_name: Full command name (for error messages)
 
     Returns:
-        Tuple of (category, destructive) where category is "read", "write", or "local"
+        Tuple of (category, destructive, progress_capable)
 
     Raises:
         MissingCategoryError: If command lacks @category decorator
@@ -47,7 +47,8 @@ def _classify_command(cmd: Command, cmd_name: str) -> tuple[str, bool]:
         )
 
     destructive = getattr(cmd, "destructive", False)
-    return category, destructive
+    progress_capable = getattr(cmd, "progress_capable", False)
+    return category, destructive, progress_capable
 
 
 def _get_param_type(param: Option | Argument) -> str:
@@ -76,10 +77,20 @@ def _get_param_type(param: Option | Argument) -> str:
 
 def _extract_option(opt: Option) -> dict[str, Any]:
     """Extract option metadata for JSON output."""
+    from click import Choice
+
     result: dict[str, Any] = {
         "type": _get_param_type(opt),
         "required": opt.required,
     }
+
+    # Add help text if available
+    if opt.help:
+        result["help"] = opt.help
+
+    # Add choices if this is a Choice type
+    if isinstance(opt.type, Choice):
+        result["choices"] = list(opt.type.choices)
 
     # Add multiple flag if applicable
     if opt.multiple:
@@ -95,6 +106,43 @@ def _extract_positional(arg: Argument) -> dict[str, Any]:
         "type": _get_param_type(arg),
         "required": arg.required,
     }
+
+
+def _parse_examples(docstring: str) -> list[str]:
+    """Parse examples from a command docstring.
+
+    Looks for an "Examples:" section and extracts lines starting with "- `".
+    Returns the command portion without the leading "xaffinity " prefix.
+    """
+    import re
+
+    examples: list[str] = []
+    if not docstring:
+        return examples
+
+    # Find Examples: section
+    lines = docstring.split("\n")
+    in_examples = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower().startswith("examples:"):
+            in_examples = True
+            continue
+        if in_examples:
+            # Stop at next section (line ending with :) or empty section marker
+            if stripped and not stripped.startswith("-") and stripped.endswith(":"):
+                break
+            # Extract example from "- `xaffinity cmd args`" format
+            match = re.match(r"^-\s*`xaffinity\s+(.+?)`\s*$", stripped)
+            if match:
+                examples.append(match.group(1))
+            elif re.match(r"^-\s*`(.+?)`\s*$", stripped):
+                # Also handle examples without xaffinity prefix
+                match = re.match(r"^-\s*`(.+?)`\s*$", stripped)
+                if match:
+                    examples.append(match.group(1))
+
+    return examples
 
 
 def _extract_command(
@@ -127,13 +175,15 @@ def _extract_command(
     if not full_name:
         return results
 
-    # Extract description from docstring
-    description = cmd.help or ""
-    # Take first line only, strip whitespace
-    description = description.split("\n")[0].strip()
+    # Extract description from docstring (strip first to handle leading newlines)
+    docstring = cmd.help or ""
+    description = docstring.strip().split("\n")[0].strip()
+
+    # Extract examples from docstring
+    examples = _parse_examples(docstring)
 
     # Classify command from decorator metadata (required)
-    category, destructive = _classify_command(cmd, full_name)
+    category, destructive, progress_capable = _classify_command(cmd, full_name)
 
     # Extract parameters (options) and positionals (arguments)
     parameters: dict[str, dict[str, Any]] = {}
@@ -161,16 +211,19 @@ def _extract_command(
         elif isinstance(param, Argument):
             positionals.append(_extract_positional(param))
 
-    results.append(
-        {
-            "name": full_name,
-            "description": description,
-            "category": category,
-            "destructive": destructive,
-            "parameters": parameters,
-            "positionals": positionals,
-        }
-    )
+    command_data: dict[str, Any] = {
+        "name": full_name,
+        "description": description,
+        "category": category,
+        "destructive": destructive,
+        "progressCapable": progress_capable,
+        "parameters": parameters,
+        "positionals": positionals,
+    }
+    if examples:
+        command_data["examples"] = examples
+
+    results.append(command_data)
 
     return results
 

@@ -107,6 +107,8 @@ class CLIContext:
     log_file: Path | None
     enable_log_file: bool
     enable_beta_endpoints: bool
+    all_columns: bool = False  # Show all columns in table output
+    max_columns: int | None = None  # Override auto-calculated max columns
 
     _paths: CliPaths = field(default_factory=get_paths)
     _loaded_config: LoadedConfig | None = None

@@ -134,7 +134,7 @@ def field_ls(
     list_id: int | None,
     entity_type: str | None,
 ) -> None:
-    """List fields."""
+    """List fields with dropdown options."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

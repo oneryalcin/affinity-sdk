@@ -55,3 +55,23 @@ def category(cat: str) -> Callable[[click.Command], click.Command]:
         return cmd
 
     return decorator
+
+
+def progress_capable(cmd: click.Command) -> click.Command:
+    """Mark a command as supporting progress reporting.
+
+    Commands marked with this decorator emit NDJSON progress to stderr
+    when not connected to a TTY, enabling MCP tools to forward progress.
+
+    Usage:
+        @person_group.command(name="files-upload")
+        @progress_capable
+        @click.argument("person_id", type=int)
+        @click.option("--file", required=True)
+        def files_upload(person_id: int, file: str) -> None:
+            ...
+
+    Note: Decorator order (bottom-up): def → options → progress_capable → command
+    """
+    cmd.progress_capable = True  # type: ignore[attr-defined]
+    return cmd

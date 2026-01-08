@@ -18,7 +18,7 @@ def test_table_from_rows_formats_datetimes_in_local_time(monkeypatch: pytest.Mon
     time.tzset()  # type: ignore[attr-defined]
 
     try:
-        table = _table_from_rows(
+        table, _ = _table_from_rows(
             [
                 {
                     "id": 1,

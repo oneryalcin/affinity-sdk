@@ -10,13 +10,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ..exceptions import TooManyResultsError
 
 T = TypeVar("T")
 
 __all__ = [
+    "FilterStats",
     "PaginationProgress",
     "PaginatedResponse",
     "PageIterator",
@@ -77,6 +78,14 @@ class PaginationInfoWithTotal(PaginationInfo):
 # =============================================================================
 
 
+@dataclass
+class FilterStats:
+    """Stats for client-side filtered pagination."""
+
+    scanned: int = 0  # Total physical rows scanned so far
+    matched: int = 0  # Total rows matching filter so far
+
+
 class PaginatedResponse(AffinityModel, Generic[T]):
     """
     A paginated response from the API.
@@ -86,6 +95,8 @@ class PaginatedResponse(AffinityModel, Generic[T]):
 
     data: list[T] = Field(default_factory=list)
     pagination: PaginationInfo = Field(default_factory=PaginationInfo)
+    _has_next_override: bool | None = PrivateAttr(default=None)
+    _filter_stats: FilterStats | None = PrivateAttr(default=None)
 
     def __len__(self) -> int:
         """Number of items in current page."""
@@ -94,12 +105,19 @@ class PaginatedResponse(AffinityModel, Generic[T]):
     @property
     def has_next(self) -> bool:
         """Whether there are more pages."""
+        if self._has_next_override is not None:
+            return self._has_next_override
         return self.pagination.next_cursor is not None
 
     @property
     def next_cursor(self) -> str | None:
         """Cursor for the next page, if any."""
         return self.pagination.next_cursor
+
+    @property
+    def filter_stats(self) -> FilterStats | None:
+        """Stats for client-side filtered queries (scanned/matched counts)."""
+        return self._filter_stats
 
 
 # =============================================================================

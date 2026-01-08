@@ -8,7 +8,7 @@ from affinity.cli.render import _table_from_rows
 
 
 def test_table_from_rows_humanizes_typed_person_value() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [
             {
                 "id": "source-of-introduction",
@@ -33,7 +33,7 @@ def test_table_from_rows_humanizes_typed_person_value() -> None:
 
 
 def test_table_from_rows_humanizes_typed_interaction_value() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [
             {
                 "id": "first-email",
@@ -61,7 +61,7 @@ def test_table_from_rows_humanizes_typed_interaction_value() -> None:
 
 
 def test_table_from_rows_formats_quantity_but_not_ids() -> None:
-    table = _table_from_rows([{"id": 1234567, "count": 1234567}])
+    table, _ = _table_from_rows([{"id": 1234567, "count": 1234567}])
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
     rendered = "\n".join(str(line) for line in console.render_lines(table, options=console.options))
     assert "1234567" in rendered
@@ -69,7 +69,7 @@ def test_table_from_rows_formats_quantity_but_not_ids() -> None:
 
 
 def test_table_from_rows_formats_money_with_currency_from_name() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [
             {
                 "name": "Total Funding Amount (EUR)",
@@ -83,7 +83,7 @@ def test_table_from_rows_formats_money_with_currency_from_name() -> None:
 
 
 def test_table_from_rows_formats_year_without_thousands_separator() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [{"name": "Year Founded", "value": {"type": "number", "data": 2019.0}}]
     )
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
@@ -93,7 +93,7 @@ def test_table_from_rows_formats_year_without_thousands_separator() -> None:
 
 
 def test_table_from_rows_humanizes_dropdown_multi_from_dict_items() -> None:
-    table = _table_from_rows(
+    table, _ = _table_from_rows(
         [
             {
                 "name": "Reason for Passing",

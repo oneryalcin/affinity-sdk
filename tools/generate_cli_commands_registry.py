@@ -3,7 +3,7 @@
 Generate CLI commands registry for MCP discover-commands tool.
 
 Uses `xaffinity --help --json` to get machine-readable help output from the CLI.
-Writes to mcp/server.d/registry/commands.json (bundled with MCP server).
+Writes to mcp/.registry/commands.json (bundled via MCPB_INCLUDE).
 
 Usage:
     python tools/generate_cli_commands_registry.py
@@ -17,7 +17,7 @@ CI Integration:
         - name: Verify CLI commands registry is up to date
           run: |
             python tools/generate_cli_commands_registry.py
-            git diff --exit-code mcp/server.d/registry/commands.json
+            git diff --exit-code mcp/.registry/commands.json
 """
 
 from __future__ import annotations
@@ -52,6 +52,35 @@ def get_commands_json() -> dict:
         check=True,
     )
     return json.loads(result.stdout)
+
+
+def load_manual_metadata(metadata_path: Path) -> dict[str, dict]:
+    """Load manual metadata for commands (relatedCommands, whenToUse, etc).
+
+    Returns a dict mapping command name to metadata dict.
+    """
+    if not metadata_path.exists():
+        return {}
+    try:
+        data = json.loads(metadata_path.read_text())
+        # Remove the _comment key if present
+        data.pop("_comment", None)
+        return data
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def merge_metadata(commands: list[dict], metadata: dict[str, dict]) -> list[dict]:
+    """Merge manual metadata into auto-generated commands."""
+    for cmd in commands:
+        cmd_name = cmd.get("name", "")
+        if cmd_name in metadata:
+            cmd_meta = metadata[cmd_name]
+            if "relatedCommands" in cmd_meta:
+                cmd["relatedCommands"] = cmd_meta["relatedCommands"]
+            if "whenToUse" in cmd_meta:
+                cmd["whenToUse"] = cmd_meta["whenToUse"]
+    return commands
 
 
 def sort_registry(commands: list[dict]) -> list[dict]:
@@ -89,6 +118,14 @@ def generate_registry(output_path: Path) -> None:
     if not commands:
         print("Warning: No commands found in CLI help output", file=sys.stderr)
 
+    # Load and merge manual metadata (relatedCommands, whenToUse, etc.)
+    metadata_path = output_path.parent / "commands-metadata.json"
+    manual_metadata = load_manual_metadata(metadata_path)
+    if manual_metadata:
+        commands = merge_metadata(commands, manual_metadata)
+        enriched_count = sum(1 for c in commands if c.get("relatedCommands") or c.get("whenToUse"))
+        print(f"Merged manual metadata for {enriched_count} commands")
+
     sorted_commands = sort_registry(commands)
 
     # Build registry (no generatedAt to avoid CI diff churn)
@@ -113,7 +150,7 @@ def generate_registry(output_path: Path) -> None:
 def main() -> None:
     """Main entry point."""
     repo_root = Path(__file__).parent.parent
-    output_path = repo_root / "mcp" / "server.d" / "registry" / "commands.json"
+    output_path = repo_root / "mcp" / ".registry" / "commands.json"
     generate_registry(output_path)
 
 

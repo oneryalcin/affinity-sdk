@@ -70,10 +70,12 @@ The MCP server shells out to CLI commands. These changes require MCP updates:
 
 1. Update `mcp/VERSION`
 2. Update `mcp/.claude-plugin/plugin.json` version field
-3. Update `mcp/mcpb.conf` MCPB_VERSION field
+3. Update `mcp/server.d/server.meta.json` version field
 4. If CLI requirements changed: update `mcp/COMPATIBILITY`
 5. Update `mcp/CHANGELOG.md`
 6. Commit and tag: `git tag plugin-v1.1.0`
+
+Note: `mcpb.conf` reads version from VERSION file automatically.
 
 ## Testing MCP Compatibility
 
@@ -100,10 +102,26 @@ run_xaffinity_readonly person ls --query "test" --output json --quiet
 | `plugins/affinity-sdk/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
 | `plugins/xaffinity-cli/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
 | `mcp/VERSION` | MCP distribution version | Manual |
+| `mcp/server.d/server.meta.json` | MCP server metadata (version for MCP protocol) | Manual |
 | `mcp/COMPATIBILITY` | CLI version requirements | Manual |
-| `mcp/.claude-plugin/plugin.json` | MCP plugin version | Manual |
-| `mcp/mcpb.conf` | MCPB bundle version (MCPB_VERSION) | Manual |
-| `mcp/FRAMEWORK_VERSION` | MCP-bash framework version | Manual |
+| `mcp/.claude-plugin/plugin.json` | MCP plugin version | Manual (CI validates) |
+| `mcp/mcpb.conf` | MCPB bundle config | Manual (version from VERSION) |
+| `mcp/mcp-bash.lock` | MCP-bash framework version + commit hash | Manual |
+
+## MCP-Bash Framework Pinning
+
+The MCP server depends on the mcp-bash-framework. Version and commit hash are pinned in `mcp/mcp-bash.lock`.
+
+### When to Update
+
+```bash
+# 1. Get the new version's commit hash
+git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git vX.Y.Z
+
+# 2. Update mcp/mcp-bash.lock with both values
+
+# 3. Update mcp/CHANGELOG.md
+```
 
 ## Release Checklist
 
@@ -116,8 +134,8 @@ run_xaffinity_readonly person ls --query "test" --output json --quiet
 
 ### MCP Release (plugin-vX.Y.Z)
 - [ ] Version bumped in `mcp/VERSION`
-- [ ] `mcp/.claude-plugin/plugin.json` version updated
-- [ ] `mcp/mcpb.conf` MCPB_VERSION updated
+- [ ] `mcp/.claude-plugin/plugin.json` version updated (CI validates match)
+- [ ] `mcp/server.d/server.meta.json` version updated
 - [ ] `mcp/COMPATIBILITY` CLI requirements verified
 - [ ] `mcp/CHANGELOG.md` updated
 - [ ] Tag pushed: `git tag plugin-vX.Y.Z && git push --tags`

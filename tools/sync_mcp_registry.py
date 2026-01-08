@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sync MCP CLI commands registry with current CLI version.
 
-This pre-commit hook regenerates mcp/server.d/registry/commands.json when
+This pre-commit hook regenerates mcp/.registry/commands.json when
 pyproject.toml changes (indicating a version bump). This ensures the registry
 stays in sync with the CLI version.
 
@@ -70,7 +70,7 @@ def regenerate_registry() -> bool:
 def main() -> int:
     """Check and sync registry if needed. Returns 1 if modified."""
     repo_root = Path(__file__).parent.parent
-    registry_path = repo_root / "mcp" / "server.d" / "registry" / "commands.json"
+    registry_path = repo_root / "mcp" / ".registry" / "commands.json"
 
     # Get versions
     installed_version = get_installed_cli_version()
@@ -91,7 +91,7 @@ def main() -> int:
         print("Failed to regenerate registry", file=sys.stderr)
         return 1
 
-    print(f"Updated mcp/server.d/registry/commands.json to CLI v{installed_version}")
+    print(f"Updated mcp/.registry/commands.json to CLI v{installed_version}")
     return 1  # Files modified, pre-commit will re-stage
 
 

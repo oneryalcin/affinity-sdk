@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,6 +17,100 @@ from affinity.models.rate_limit_snapshot import RateLimitSnapshot
 
 from .results import CommandResult
 
+# Columns likely to contain long content - used for column priority (drop first when limiting)
+_LONG_COLUMNS = frozenset(
+    {
+        "dropdownoptions",
+        "dropdown_options",
+        "domains",
+        "emails",
+        "description",
+        "notes",
+        "content",
+        "fields",
+        "body",
+        "subject",
+        "snippet",
+    }
+)
+
+# Essential columns that should always be kept when limiting columns
+_ESSENTIAL_COLUMNS = frozenset({"id", "listentryid"})
+
+# Minimum readable column width for calculating max columns
+_MIN_COL_WIDTH = 8
+
+
+def get_terminal_width() -> int:
+    """Get terminal width, with fallbacks."""
+    try:
+        return shutil.get_terminal_size().columns
+    except (ValueError, OSError):
+        return 80  # Standard fallback
+
+
+def get_max_columns(terminal_width: int | None = None) -> int:
+    """Calculate max columns based on terminal width."""
+    width = terminal_width or get_terminal_width()
+    # Account for borders (~3 chars per column: | + padding)
+    usable = width - 2  # outer borders
+    return max(4, usable // (_MIN_COL_WIDTH + 3))  # ~12 for 80 chars, ~20 for 160 chars
+
+
+def limit_columns(
+    columns: list[str],
+    max_cols: int | None = None,
+    essential: frozenset[str] | None = None,
+    drop_first: frozenset[str] | None = None,
+) -> tuple[list[str], int]:
+    """Limit columns to fit terminal, return (limited_cols, omitted_count).
+
+    Args:
+        columns: All columns to consider
+        max_cols: Maximum columns to show (default: auto from terminal width)
+        essential: Columns to always keep (default: _ESSENTIAL_COLUMNS)
+        drop_first: Columns to drop first when over limit (default: _LONG_COLUMNS)
+
+    Returns:
+        (selected_columns, omitted_count) - preserves original column order
+    """
+    max_cols = max_cols if max_cols is not None else get_max_columns()
+    essential = essential if essential is not None else _ESSENTIAL_COLUMNS
+    drop_first = drop_first if drop_first is not None else _LONG_COLUMNS
+
+    if len(columns) <= max_cols:
+        return columns, 0
+
+    # Use LISTS (not sets) to preserve deterministic order
+    # Sets have undefined iteration order - would cause non-deterministic column selection
+    essential_cols = [c for c in columns if c.lower() in essential]
+    droppable_cols = [c for c in columns if c.lower() in drop_first and c.lower() not in essential]
+    regular_cols = [c for c in columns if c not in essential_cols and c not in droppable_cols]
+
+    # Calculate how many we can keep beyond essential
+    # Handle edge case where essential columns alone exceed max_cols
+    available = max(0, max_cols - len(essential_cols))
+    keep_regular = regular_cols[:available]
+    remaining = available - len(keep_regular)
+    keep_droppable = droppable_cols[:remaining] if remaining > 0 else []
+
+    # Build kept set for O(1) lookup
+    kept = set(essential_cols + keep_regular + keep_droppable)
+
+    # Return in ORIGINAL ORDER (critical!)
+    selected = [c for c in columns if c in kept]
+    omitted = len(columns) - len(selected)
+    return selected, omitted
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration as '2:15' or '0:45' or '3:02:05'."""
+    mins, secs = divmod(int(seconds), 60)
+    hours, mins = divmod(mins, 60)
+    if hours:
+        return f"{hours}:{mins:02d}:{secs:02d}"
+    return f"{mins}:{secs:02d}"
+
 
 @dataclass(frozen=True, slots=True)
 class RenderSettings:
@@ -23,6 +118,8 @@ class RenderSettings:
     quiet: bool
     verbosity: int
     pager: bool | None  # None=auto
+    all_columns: bool = False  # If True, show all columns regardless of terminal width
+    max_columns: int | None = None  # Override auto-calculated max columns
 
 
 def _error_title(error_type: str) -> str:
@@ -174,33 +271,41 @@ def _rate_limit_footer(snapshot: RateLimitSnapshot) -> str:
     return "# Rate limit: " + " | ".join(parts)
 
 
-def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
+def _table_from_rows(
+    rows: list[dict[str, Any]],
+    *,
+    max_columns: int | None = None,
+    all_columns: bool = False,
+) -> tuple[Table, int]:
+    """Build a Rich table from rows.
+
+    Args:
+        rows: List of row dicts to render
+        max_columns: Maximum columns to show (None = auto from terminal width)
+        all_columns: If True, show all columns regardless of limit
+
+    Returns:
+        (table, omitted_count) - the table and number of columns omitted
+    """
     table = Table(show_header=True, header_style="bold", expand=True)
     if not rows:
         table.add_column("result")
         table.add_row("No results")
-        return table
-
-    # Columns likely to contain long content - move to end and give more space
-    _LONG_COLUMNS = {
-        "dropdownoptions",
-        "dropdown_options",
-        "domains",
-        "emails",
-        "description",
-        "notes",
-        "content",
-        "fields",
-        "body",
-        "subject",
-        "snippet",
-    }
+        return table, 0
 
     raw_columns = list(rows[0].keys())
     # Partition into regular and long columns, preserving relative order
+    # Long columns (defined in module-level _LONG_COLUMNS) go to end
     regular_cols = [c for c in raw_columns if c.lower() not in _LONG_COLUMNS]
     long_cols = [c for c in raw_columns if c.lower() in _LONG_COLUMNS]
-    columns = regular_cols + long_cols
+    reordered_columns = regular_cols + long_cols
+
+    # Apply column limiting unless all_columns is True
+    if all_columns:
+        columns = reordered_columns
+        omitted = 0
+    else:
+        columns, omitted = limit_columns(reordered_columns, max_cols=max_columns)
 
     def maybe_urlify_domain(value: str) -> str:
         value = value.strip()
@@ -625,7 +730,7 @@ def _table_from_rows(rows: list[dict[str, Any]]) -> Table:
 
     for row in rows:
         table.add_row(*[format_cell(row=row, column=c, value=row.get(c, "")) for c in columns])
-    return table
+    return table, omitted
 
 
 _CAMEL_BREAK_RE = re.compile(r"(?<!^)(?=[A-Z])")
@@ -865,12 +970,23 @@ def _render_collection_section(
     title: str | None,
     rows: list[Any],
     pagination: dict[str, Any] | None,
+    all_columns: bool = False,
+    max_columns: int | None = None,
 ) -> Any:
     dict_rows = [r for r in rows if isinstance(r, dict)]
     renderables: list[Any] = []
     if title:
         renderables.append(Text(_humanize_title(title), style="bold"))
-    renderables.append(_table_from_rows(cast(list[dict[str, Any]], dict_rows)))
+    table, omitted = _table_from_rows(
+        cast(list[dict[str, Any]], dict_rows),
+        all_columns=all_columns,
+        max_columns=max_columns,
+    )
+    renderables.append(table)
+    if omitted > 0:
+        renderables.append(
+            Text(f"({omitted} columns hidden — use --all-columns or --json)", style="dim")
+        )
     if _pagination_has_more(pagination):
         renderables.append(
             Text(f"({len(dict_rows):,} shown, more available — use --max-results/--all or --json)")
@@ -883,12 +999,23 @@ def _render_collection_with_hint(
     title: str | None,
     rows: list[Any],
     hint: str,
+    all_columns: bool = False,
+    max_columns: int | None = None,
 ) -> Any:
     dict_rows = [r for r in rows if isinstance(r, dict)]
     renderables: list[Any] = []
     if title:
         renderables.append(Text(_humanize_title(title), style="bold"))
-    renderables.append(_table_from_rows(cast(list[dict[str, Any]], dict_rows)))
+    table, omitted = _table_from_rows(
+        cast(list[dict[str, Any]], dict_rows),
+        all_columns=all_columns,
+        max_columns=max_columns,
+    )
+    renderables.append(table)
+    if omitted > 0:
+        renderables.append(
+            Text(f"({omitted} columns hidden — use --all-columns or --json)", style="dim")
+        )
     renderables.append(Text(hint))
     return Group(*renderables) if len(renderables) > 1 else renderables[0]
 
@@ -900,6 +1027,8 @@ def _render_object_section(
     verbosity: int,
     pagination: dict[str, Any] | None,
     force_nested_keys: set[str] | None = None,
+    all_columns: bool = False,
+    max_columns: int | None = None,
 ) -> Any:
     scalar_summary: dict[str, Any] = {}
     nested: list[tuple[str, Any]] = []
@@ -945,6 +1074,8 @@ def _render_object_section(
                         title=k,
                         rows=cast(list[Any], envelope.get("data", [])),
                         pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             elif isinstance(v, dict) and _is_collection_with_hint(v):
@@ -953,10 +1084,20 @@ def _render_object_section(
                         title=k,
                         rows=cast(list[Any], v.get("_rows", [])),
                         hint=cast(str, v.get("_hint")),
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             elif isinstance(v, list) and all(isinstance(x, dict) for x in v):
-                renderables.append(_render_collection_section(title=k, rows=v, pagination=None))
+                renderables.append(
+                    _render_collection_section(
+                        title=k,
+                        rows=v,
+                        pagination=None,
+                        all_columns=all_columns,
+                        max_columns=max_columns,
+                    )
+                )
             elif isinstance(v, dict):
                 renderables.append(
                     _render_object_section(
@@ -965,6 +1106,8 @@ def _render_object_section(
                         verbosity=verbosity,
                         pagination=None,
                         force_nested_keys=None,
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             else:
@@ -1011,18 +1154,28 @@ def _render_human_data(
     meta_pagination: dict[str, Any] | None,
     meta_resolved: dict[str, Any] | None,
     verbosity: int,
+    all_columns: bool = False,
+    max_columns: int | None = None,
 ) -> Any:
     if isinstance(data, list) and all(isinstance(x, dict) for x in data):
-        table = _table_from_rows(cast(list[dict[str, Any]], data))
+        table, omitted = _table_from_rows(
+            cast(list[dict[str, Any]], data),
+            all_columns=all_columns,
+            max_columns=max_columns,
+        )
         pagination = (
             meta_pagination if meta_pagination and _pagination_has_more(meta_pagination) else None
         )
-        if not pagination:
-            return table
-        return Group(
-            table,
-            Text(f"({len(data):,} shown, more available — use --max-results/--all or --json)"),
-        )
+        renderables: list[Any] = [table]
+        if omitted > 0:
+            renderables.append(
+                Text(f"({omitted} columns hidden — use --all-columns or --json)", style="dim")
+            )
+        if pagination:
+            renderables.append(
+                Text(f"({len(data):,} shown, more available — use --max-results/--all or --json)")
+            )
+        return Group(*renderables) if len(renderables) > 1 else table
 
     if isinstance(data, dict):
         if _is_collection_envelope(data):
@@ -1031,6 +1184,8 @@ def _render_human_data(
                 title=None,
                 rows=cast(list[Any], envelope.get("data", [])),
                 pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                all_columns=all_columns,
+                max_columns=max_columns,
             )
 
         # Sectioned dict rendering: render collections as tables; objects as kv.
@@ -1052,12 +1207,16 @@ def _render_human_data(
                     title=only_key,
                     rows=cast(list[Any], envelope.get("data", [])),
                     pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                    all_columns=all_columns,
+                    max_columns=max_columns,
                 )
             if isinstance(v, dict) and _is_collection_with_hint(v):
                 return _render_collection_with_hint(
                     title=only_key,
                     rows=cast(list[Any], v.get("_rows", [])),
                     hint=cast(str, v.get("_hint")),
+                    all_columns=all_columns,
+                    max_columns=max_columns,
                 )
             if isinstance(v, list) and all(isinstance(x, dict) for x in v):
                 # Check if this is a fields section with metadata available
@@ -1077,7 +1236,11 @@ def _render_human_data(
                         if fields_section is not None:
                             return fields_section
                 return _render_collection_section(
-                    title=only_key, rows=v, pagination=section_pagination
+                    title=only_key,
+                    rows=v,
+                    pagination=section_pagination,
+                    all_columns=all_columns,
+                    max_columns=max_columns,
                 )
             if isinstance(v, dict):
                 company_force_nested: set[str] | None = None
@@ -1093,6 +1256,8 @@ def _render_human_data(
                     verbosity=verbosity,
                     pagination=section_pagination,
                     force_nested_keys=company_force_nested,
+                    all_columns=all_columns,
+                    max_columns=max_columns,
                 )
 
         sections: list[Any] = []
@@ -1119,6 +1284,8 @@ def _render_human_data(
                         title=key,
                         rows=cast(list[Any], envelope.get("data", [])),
                         pagination=cast(dict[str, Any] | None, envelope.get("pagination")),
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             elif isinstance(v, dict) and _is_collection_with_hint(v):
@@ -1127,6 +1294,8 @@ def _render_human_data(
                         title=key,
                         rows=cast(list[Any], v.get("_rows", [])),
                         hint=cast(str, v.get("_hint")),
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             elif isinstance(v, list) and all(isinstance(x, dict) for x in v):
@@ -1148,7 +1317,13 @@ def _render_human_data(
                             sections.append(fields_section)
                         continue
                 sections.append(
-                    _render_collection_section(title=key, rows=v, pagination=section_pagination)
+                    _render_collection_section(
+                        title=key,
+                        rows=v,
+                        pagination=section_pagination,
+                        all_columns=all_columns,
+                        max_columns=max_columns,
+                    )
                 )
             elif isinstance(v, dict):
                 force_nested: set[str] | None = None
@@ -1165,6 +1340,8 @@ def _render_human_data(
                         verbosity=verbosity,
                         pagination=section_pagination,
                         force_nested_keys=force_nested,
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
             else:
@@ -1175,6 +1352,8 @@ def _render_human_data(
                         verbosity=verbosity,
                         pagination=section_pagination,
                         force_nested_keys=None,
+                        all_columns=all_columns,
+                        max_columns=max_columns,
                     )
                 )
         return Group(*sections) if sections else Panel.fit(Text("OK"))
@@ -1281,11 +1460,13 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
             meta_pagination=result.meta.pagination,
             meta_resolved=result.meta.resolved,
             verbosity=settings.verbosity,
+            all_columns=settings.all_columns,
+            max_columns=settings.max_columns,
         )
 
     if renderable is not None:
         if _should_use_pager(settings=settings, stdout=stdout, renderable=renderable):
-            with stdout.pager():
+            with stdout.pager(styles=True):
                 stdout.print(renderable)
         else:
             stdout.print(renderable)

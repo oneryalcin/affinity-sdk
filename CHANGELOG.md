@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+## 0.7.0 - 2026-01-08
+
+### Added
+- CLI: Column limiting for wide table output - tables now auto-limit columns based on terminal width.
+- CLI: `--all-columns` flag to show all columns regardless of terminal width.
+- CLI: `--max-columns N` flag for fine control over column limits.
+- CLI: Real-time filter scanning progress during `list export --filter` shows "Scanning X... (Y matches)".
+- CLI: Export summary line after filtered operations (e.g., "Exported 35 rows (filtered from 9,340 scanned) in 2:15").
+- CLI: `format_duration()` helper for human-readable time formatting.
+- CLI: Rich pager now uses `styles=True` to preserve ANSI colors when paging.
+- SDK: `FilterStats` dataclass for tracking scanned/matched counts during filtered pagination.
+- SDK: `PaginatedResponse.filter_stats` property exposes filter statistics.
+
+### Fixed
+- CLI: JSON progress output no longer appears alongside Rich progress bar (mutual exclusivity enforced).
+- SDK: Dropdown field filtering now extracts "text" property from dropdown dicts.
+
+## 0.6.11 - 2026-01-07
+
+### Added
+- CLI: Parameter help text (`help`) now included in `--help --json` output.
+- CLI: Click.Choice values (`choices`) now included in `--help --json` output.
+- CLI: Examples from docstrings now parsed and included in `--help --json` output.
+
+### Changed
+- CLI: Improved `--filter` help text with full operator list (`= != =~ =^ =$ > < >= <=`).
+- CLI: Improved `--query` help text to clarify V1 fuzzy search vs V2 structured filtering.
+
+## 0.6.10 - 2026-01-06
+
+### Added
+- CLI: JSON progress output to stderr when not connected to a TTY (for MCP integration).
+- CLI: `@progress_capable` decorator to mark commands supporting progress reporting.
+- CLI: Rate-limited progress updates (0.65s interval) with guaranteed 100% completion emission.
+- CLI: `progressCapable` field in `--help --json` output for registry generation.
+- MCP: `run_xaffinity_with_progress` helper for progress-aware CLI execution.
+- MCP: `command_supports_progress` helper to check registry for progress capability.
+- MCP: Execute tools now forward CLI progress for `@progress_capable` commands.
+- CLI: File upload commands (`person/company/opportunity files upload`) marked as `@progress_capable`.
+- MCP: `PROGRESS_MIN_VERSION` in COMPATIBILITY for graceful degradation with older CLIs.
+- MCP: `version_gte` helper for portable version comparison (macOS/Linux).
+- MCP: CLI version check in `command_supports_progress` (disables progress for CLI < 0.6.10).
+- MCP: `XAFFINITY_CLI_VERSION` exported for tool scripts to access CLI version.
+
+### Changed
+- MCP: Updated mcp-bash.lock to patched v0.9.3 (commit ee245a7) with progress passthrough fixes.
 
 ## 0.6.9 - 2026-01-06
 

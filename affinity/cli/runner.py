@@ -80,6 +80,8 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
             quiet=ctx.quiet,
             verbosity=ctx.verbosity,
             pager=ctx.pager,
+            all_columns=ctx.all_columns,
+            max_columns=ctx.max_columns,
         ),
     )
     _emit_warnings(ctx=ctx, warnings=result.warnings)
