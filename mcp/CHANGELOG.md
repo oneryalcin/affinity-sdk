@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session caching for field ls**: CLI `field ls` command now uses session cache when `AFFINITY_SESSION_CACHE` is set, reducing redundant API calls
 
 ### Changed
-- **mcp-bash framework 0.9.6**: Updated from 0.9.5; fixes validator to support `uriTemplate` for parameterized resources
+- **mcp-bash framework 0.9.7**: Updated from 0.9.5; fixes validator to support `uriTemplate` for parameterized resources, fixes bundle missing require.sh
 - **xaffinity provider**: Now handles parameterized URIs by extracting path segments and passing to resource scripts
 - **env.sh allowlist**: Added `AFFINITY_SESSION_CACHE` and `AFFINITY_SESSION_CACHE_TTL` to tool environment passthrough
 
