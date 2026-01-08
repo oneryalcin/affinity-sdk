@@ -138,11 +138,28 @@ def field_ls(
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
+        cache = ctx.session_cache
         parsed_type = parse_choice(entity_type, _ENTITY_TYPE_MAP, label="entity type")
-        fields = client.fields.list(
-            list_id=ListId(list_id) if list_id is not None else None,
-            entity_type=parsed_type,
-        )
+
+        # Build cache key from parameters
+        cache_key = f"fields_v1_list{list_id or 'all'}_type{entity_type or 'all'}"
+
+        # Check session cache first
+        fields: list[FieldMetadata] | None = None
+        api_called = False
+        if cache.enabled:
+            fields = cache.get_list(cache_key, FieldMetadata)
+
+        if fields is None:
+            fields = client.fields.list(
+                list_id=ListId(list_id) if list_id is not None else None,
+                entity_type=parsed_type,
+            )
+            api_called = True
+            # Cache the result
+            if cache.enabled:
+                cache.set(cache_key, fields)
+
         payload = [_field_payload(field) for field in fields]
 
         # Build CommandContext
@@ -158,7 +175,7 @@ def field_ls(
             modifiers=ctx_modifiers,
         )
 
-        return CommandOutput(data={"fields": payload}, context=cmd_context, api_called=True)
+        return CommandOutput(data={"fields": payload}, context=cmd_context, api_called=api_called)
 
     run_command(ctx, command="field ls", fn=fn)
 

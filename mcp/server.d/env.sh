@@ -11,9 +11,13 @@
 # Available policy variables:
 #   AFFINITY_MCP_READ_ONLY=1         - Restrict to read-only operations
 #   AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 - Block destructive commands entirely
+#
+# Session cache variables (auto-configured below):
+#   AFFINITY_SESSION_CACHE           - Cache directory for cross-command caching
+#   AFFINITY_SESSION_CACHE_TTL       - Cache TTL in seconds (default: 600)
 
 export MCPBASH_TOOL_ENV_MODE="allowlist"
-export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE"
+export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
 
 # ==============================================================================
 # Debug Mode Configuration

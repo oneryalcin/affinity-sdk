@@ -10,7 +10,7 @@
   },
   "list export": {
     "relatedCommands": ["list ls", "field ls", "list-entry get"],
-    "whenToUse": "Get entries from a list. PREFER --saved-view (server-side, efficient) over --filter (client-side, fetches all then filters). Check xaffinity://saved-views/{listId} first."
+    "whenToUse": "Get entries from a list. Use --filter for field-based filtering (e.g., 'Status=\"New\"'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
   },
   "list-entry get": {
     "relatedCommands": ["list export", "field-value get"],

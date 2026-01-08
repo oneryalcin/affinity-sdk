@@ -51,25 +51,38 @@ person get john@example.com                    # email address
 opportunity get "Big Deal Q1"                  # opportunity name
 ```
 
-## Performance: Saved Views vs --filter
+## Filtering List Entries
 
-### Saved Views (Server-Side) - PREFERRED
+### --filter (Direct Field Filtering)
 ```bash
-list export Dealflow --saved-view "Active Deals"   # ✓ Server filters, returns only matches
+list export Dealflow --filter 'Status="New"'
 ```
-- Uses pre-defined filters stored in Affinity
-- Fast: API returns only matching entries
-- Check available views first: read `xaffinity://saved-views/{listId}` resource
+- Filter by any field value directly
+- Works for any criteria you specify
+- Use when you know the field name and value
 
-### --filter (Client-Side) - LAST RESORT
+### --saved-view (Pre-Configured Views)
 ```bash
-list export Dealflow --filter "Status=New"         # ✗ Downloads ALL, filters locally
+list export Dealflow --saved-view "Active Pipeline"
 ```
-- Downloads entire list, then filters in CLI
-- Slow on large lists (1000+ entries)
-- Use ONLY when no Saved View matches your criteria
+- Uses a named view pre-configured in Affinity UI
+- More efficient (server-side filtering)
+- Caveat: You cannot query what filters a saved view applies
 
-**Decision flow**: Saved View exists? → Use `--saved-view`. No match? → Use `--filter`.
+### Decision Flow
+1. Check available saved views: `xaffinity://saved-views/{listId}`
+2. If a saved view name clearly matches your intent (e.g., "Due Diligence" for DD stage) → use it
+3. If no matching saved view, or you need specific field filtering → use `--filter`
+4. When in doubt, use `--filter` - it's explicit and predictable
+
+### Common Mistake: Confusing Status Values with Saved View Names
+```bash
+# ✗ WRONG - "New" is a Status field value, not a saved view name
+list export Dealflow --saved-view "New"
+
+# ✓ CORRECT - Filter by the Status field
+list export Dealflow --filter 'Status="New"'
+```
 
 ---
 
@@ -140,7 +153,7 @@ All commands use the same filter syntax:
 
 ## Query vs Filter
 
-- `--filter`: Structured V2 API filtering with operators (preferred)
-- `--query`: V1 API free-text search (simple text matching)
+- `--filter`: Structured filtering with operators (preferred)
+- `--query`:  free-text search (simple text matching)
 
 Use `--filter` for precise matching, `--query` for fuzzy text search.
