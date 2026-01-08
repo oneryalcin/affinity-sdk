@@ -15,8 +15,8 @@ dist/
 test/.env.test
 !test/.env.test.example
 
-# Debug mode flag file (touch .debug to enable)
-.debug
+# Debug mode flag file (touch server.d/.debug to enable)
+server.d/.debug
 
 # MCPB bundle files (build artifacts)
 *.mcpb

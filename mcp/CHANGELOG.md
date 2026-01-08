@@ -5,6 +5,16 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-01-08
+
+### Changed
+- **mcp-bash framework 0.9.5**: Updated from 0.9.4 for native debug file detection and timeout fixes
+- **Simplified env.sh**: Removed custom debug file detection; now uses native `server.d/.debug` (mcp-bash 0.9.5+)
+- **Updated DEBUGGING.md**: Simplified to use native mcp-bash debug approach
+
+### Fixed
+- **set -e timeout bug**: Framework 0.9.5 fixes premature exit in `with_timeout` when grep finds no match
+
 ## [1.5.0] - 2026-01-07
 
 ### Added

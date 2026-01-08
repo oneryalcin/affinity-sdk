@@ -5,13 +5,13 @@ This guide explains how to enable debug logging for the xaffinity MCP server.
 ## Quick Start
 
 ```bash
-# Enable debug mode
-mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
+# Enable debug mode (mcp-bash 0.9.5+ native)
+touch mcp/server.d/.debug
 
 # Restart your MCP client (e.g., Claude Desktop)
 
 # Disable debug mode
-rm ~/.config/xaffinity-mcp/debug
+rm mcp/server.d/.debug
 ```
 
 ## Debug Mode Options
@@ -20,9 +20,12 @@ Debug mode can be enabled via (checked in priority order):
 
 | Priority | Method | Use Case |
 |----------|--------|----------|
-| 1 | `XAFFINITY_MCP_DEBUG=1` env var | Session-specific, explicit |
-| 2 | `~/.config/xaffinity-mcp/debug` file | Persistent across reinstalls |
-| 3 | `.debug` file in server directory | Development/local testing |
+| 1 | `MCPBASH_LOG_LEVEL=debug` env var | Session-specific, explicit |
+| 2 | `server.d/.debug` file | Persistent for development |
+
+The `.debug` file is detected natively by mcp-bash 0.9.5+. Only the file's existence matters—contents are ignored.
+
+**Note**: The `server.d/.debug` file is gitignored to prevent accidental commits.
 
 ## What Debug Mode Does
 
@@ -31,18 +34,19 @@ When enabled, debug mode:
 1. **Cascades to all components**:
    - Sets `MCPBASH_LOG_LEVEL=debug` (mcp-bash framework)
    - Sets `XAFFINITY_DEBUG=true` (xaffinity tools)
+   - Sets `AFFINITY_TRACE=1` (CLI command tracing)
 
 2. **Shows version banner at startup**:
    ```
-   [xaffinity-mcp:1.2.3] Debug mode enabled
-   [xaffinity-mcp:1.2.3] Versions: mcp=1.2.3 cli=0.6.9 mcp-bash=v1.0.0
-   [xaffinity-mcp:1.2.3] Process: pid=12345 started=2026-01-06T10:30:00-08:00
+   [xaffinity-mcp:1.5.1] Debug mode enabled
+   [xaffinity-mcp:1.5.1] Versions: mcp=1.5.1 cli=0.7.0 mcp-bash=0.9.5
+   [xaffinity-mcp:1.5.1] Process: pid=12345 started=2026-01-08T10:30:00-08:00
    ```
 
 3. **Adds component prefixes to all logs**:
-   - `[xaffinity:tool:1.2.3]` - Tool execution
-   - `[xaffinity:cli:1.2.3]` - CLI command calls
-   - `[xaffinity:gateway:1.2.3]` - CLI Gateway operations
+   - `[xaffinity:tool:1.5.1]` - Tool execution
+   - `[xaffinity:cli:1.5.1]` - CLI command calls
+   - `[xaffinity:gateway:1.5.1]` - CLI Gateway operations
 
 ## Log Locations
 
@@ -91,7 +95,7 @@ Claude Desktop logs all JSON-RPC messages, so you can always see:
 
 1. **Check if debug file exists**:
    ```bash
-   [[ -f ~/.config/xaffinity-mcp/debug ]] && echo "Debug ON" || echo "Debug OFF"
+   [[ -f mcp/server.d/.debug ]] && echo "Debug ON" || echo "Debug OFF"
    ```
 
 2. **Restart the MCP client** - Changes require restart
@@ -115,15 +119,22 @@ If logs show an old version, the MCP client may have cached an old server proces
 
 | Variable | Description |
 |----------|-------------|
-| `XAFFINITY_MCP_DEBUG=1` | Enable debug mode |
-| `XAFFINITY_MCP_VERSION` | Cached MCP server version (set at startup) |
-| `MCPBASH_LOG_LEVEL` | mcp-bash log level (set to `debug` when debug enabled) |
+| `MCPBASH_LOG_LEVEL` | mcp-bash log level (`debug` enables debug mode) |
 | `MCPBASH_FRAMEWORK_VERSION` | mcp-bash framework version (set by framework at startup) |
 | `XAFFINITY_DEBUG` | xaffinity tools debug flag (set to `true` when debug enabled) |
+| `AFFINITY_TRACE` | CLI command tracing (set to `1` when debug enabled) |
 
 ## mcp-bash Framework Debug Features
 
-The mcp-bash framework (v0.9.3+) provides additional debug capabilities:
+The mcp-bash framework (v0.9.5+) provides additional debug capabilities:
+
+### Debug File Detection
+
+Create `server.d/.debug` to enable debug logging persistently. The framework detects this file automatically—no custom env.sh logic required.
+
+### Debug EXIT Trap
+
+When `MCPBASH_DEBUG=true`, an EXIT trap logs exit location and call stack on non-zero exits, helping diagnose `set -e` failures.
 
 ### Client Identity Logging
 
