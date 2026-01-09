@@ -29,6 +29,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def get_git_commit_timestamp() -> str:
+    """Get the author timestamp of the HEAD commit in ISO format.
+
+    Uses author date (not committer date) because author date is preserved
+    during amends, making the timestamp deterministic and avoiding CI failures
+    from timestamp drift when regenerating.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%aI"],  # %aI = author date ISO format
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # Parse and reformat to ensure consistent UTC format
+        commit_time = result.stdout.strip()
+        # Convert to UTC and format consistently
+        dt = datetime.fromisoformat(commit_time)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (subprocess.CalledProcessError, ValueError):
+        # Fallback to current time if git is not available
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def get_cli_version() -> str:
     """Get xaffinity CLI version string."""
     result = subprocess.run(
@@ -134,7 +158,7 @@ def generate_registry(output_path: Path) -> None:
         "_generated": {
             "by": "tools/generate_cli_commands_registry.py",
             "cliVersion": cli_version,
-            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "at": get_git_commit_timestamp(),
         },
         "version": 1,
         "cliVersion": cli_version,
