@@ -17,6 +17,7 @@ from ..context import CLIContext
 from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
+from ..resolve import resolve_list_selector
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
@@ -119,7 +120,12 @@ def _validate_exactly_one_selector(
 
 @category("read")
 @field_group.command(name="ls", cls=RichCommand)
-@click.option("--list-id", type=int, default=None, help="Filter by list id.")
+@click.option(
+    "--list-id",
+    type=str,
+    default=None,
+    help="Filter by list (ID or name).",
+)
 @click.option(
     "--entity-type",
     type=click.Choice(sorted(_ENTITY_TYPE_MAP.keys())),
@@ -131,7 +137,7 @@ def _validate_exactly_one_selector(
 def field_ls(
     ctx: CLIContext,
     *,
-    list_id: int | None,
+    list_id: str | None,
     entity_type: str | None,
 ) -> None:
     """List fields with dropdown options."""
@@ -141,8 +147,18 @@ def field_ls(
         cache = ctx.session_cache
         parsed_type = parse_choice(entity_type, _ENTITY_TYPE_MAP, label="entity type")
 
-        # Build cache key from parameters
-        cache_key = f"fields_v1_list{list_id or 'all'}_type{entity_type or 'all'}"
+        # Resolve list selector (accepts name or ID)
+        resolved_list_id: int | None = None
+        ctx_resolved: dict[str, str] | None = None
+        if list_id is not None:
+            resolved = resolve_list_selector(client=client, selector=list_id, cache=cache)
+            resolved_list_id = int(resolved.list.id)
+            # Only include resolved name if different from input (i.e., name was provided)
+            if resolved.list.name and resolved.list.name != list_id:
+                ctx_resolved = {"listId": resolved.list.name}
+
+        # Build cache key from resolved ID (not input string) for consistency
+        cache_key = f"fields_v1_list{resolved_list_id or 'all'}_type{entity_type or 'all'}"
 
         # Check session cache first
         fields: list[FieldMetadata] | None = None
@@ -152,7 +168,7 @@ def field_ls(
 
         if fields is None:
             fields = client.fields.list(
-                list_id=ListId(list_id) if list_id is not None else None,
+                list_id=ListId(resolved_list_id) if resolved_list_id is not None else None,
                 entity_type=parsed_type,
             )
             api_called = True
@@ -164,8 +180,8 @@ def field_ls(
 
         # Build CommandContext
         ctx_modifiers: dict[str, object] = {}
-        if list_id is not None:
-            ctx_modifiers["listId"] = list_id
+        if resolved_list_id is not None:
+            ctx_modifiers["listId"] = resolved_list_id
         if entity_type:
             ctx_modifiers["entityType"] = entity_type
 
@@ -173,6 +189,7 @@ def field_ls(
             name="field ls",
             inputs={},
             modifiers=ctx_modifiers,
+            resolved=ctx_resolved,
         )
 
         return CommandOutput(data={"fields": payload}, context=cmd_context, api_called=api_called)

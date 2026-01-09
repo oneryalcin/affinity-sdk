@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.7.1 - 2026-01-09
+
+### Added
+- SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.
+- CLI: `list export --saved-view` can now be combined with `--field` for server-side filtering with explicit field selection.
+
+### Fixed
+- SDK: `FieldValues` now properly parses field arrays from API responses (previously showed `requested=False`).
+
 ## 0.7.0 - 2026-01-08
 
 ### Added

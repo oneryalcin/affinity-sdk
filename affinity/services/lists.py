@@ -776,14 +776,31 @@ class ListEntryService:
         self,
         view_id: SavedViewId,
         *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
         limit: int | None = None,
     ) -> PaginatedResponse[ListEntryWithEntity]:
         """
         Get list entries from a saved view.
 
-        Respects the view's field selection and filters (but not sorts).
+        Args:
+            view_id: The saved view ID
+            field_ids: Specific field IDs to include in the response
+            field_types: Field types to include in the response
+            limit: Maximum results per page
+
+        Returns:
+            Paginated list entries with entity data and field values
+
+        Note:
+            The saved view's filters are applied server-side.
+            Field values are returned in entity.fields_raw as an array.
         """
         params: dict[str, Any] = {}
+        if field_ids:
+            params["fieldIds"] = [str(field_id) for field_id in field_ids]
+        if field_types:
+            params["fieldTypes"] = [field_type.value for field_type in field_types]
         if limit:
             params["limit"] = limit
 

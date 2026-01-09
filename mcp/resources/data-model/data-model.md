@@ -93,6 +93,21 @@ list export Dealflow --filter 'Status="New"'
 list export Dealflow --filter "Status=New"     # ✓ One call
 ```
 
+### Get list entries with specific field values
+By default, `list export` only returns basic columns (listEntryId, entityType, entityId, entityName).
+**To get custom field values** like Owner, Team Member, Status, use `--field` for each field:
+```bash
+list export Dealflow --field "Team Member" --field "Owner" --filter 'Status="New"'
+```
+
+**Tip:** `--saved-view` can be combined with `--field` to get server-side filtering (from the saved view) with explicit field selection.
+
+### Get recent interactions for a company or person
+```bash
+interaction ls --company-id 12345 --limit 10   # Recent interactions with company
+interaction ls --person-id 67890 --limit 5     # Recent interactions with person
+```
+
 ### Search companies globally
 ```bash
 company ls --filter 'name =~ "Acme"'           # ✓ One call

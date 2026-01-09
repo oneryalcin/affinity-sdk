@@ -894,9 +894,9 @@
           ]
         },
         "--list-id": {
-          "type": "int",
+          "type": "string",
           "required": false,
-          "help": "Filter by list id."
+          "help": "Filter by list (ID or name)."
         }
       },
       "positionals": [],

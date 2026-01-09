@@ -725,29 +725,18 @@ def list_export(
 
         selected_field_ids: list[str] = []
         if saved_view:
-            view, view_resolved = resolve_saved_view(
+            _, view_resolved = resolve_saved_view(
                 client=client, list_id=list_id, selector=saved_view, cache=cache
             )
             resolved.update(view_resolved)
-            selected_field_ids = list(view.field_ids)
+            # Note: API's view.field_ids is typically empty; use --field to specify fields
             if fields:
-                requested_ids = _resolve_field_selectors(fields=fields, field_by_id=field_by_id)
-                missing = [fid for fid in requested_ids if fid not in selected_field_ids]
-                if missing:
-                    message = (
-                        "When using --saved-view, --field may only subset/reorder the "
-                        "saved view columns."
-                    )
-                    raise CLIError(
-                        message,
-                        exit_code=2,
-                        error_type="usage_error",
-                        details={
-                            "missingFieldIds": missing,
-                            "savedViewFieldIds": selected_field_ids,
-                        },
-                    )
-                selected_field_ids = requested_ids
+                selected_field_ids = _resolve_field_selectors(
+                    fields=fields, field_by_id=field_by_id
+                )
+            else:
+                # No explicit fields requested with saved view - return all fields
+                selected_field_ids = [str(f.id) for f in field_meta]
         elif fields:
             selected_field_ids = _resolve_field_selectors(fields=fields, field_by_id=field_by_id)
         else:
@@ -1701,7 +1690,7 @@ def _iterate_list_entries(
             view, _ = resolve_saved_view(
                 client=client, list_id=list_id, selector=saved_view, cache=cache
             )
-            page = entries.from_saved_view(view.id, limit=page_size)
+            page = entries.from_saved_view(view.id, field_ids=selected_field_ids, limit=page_size)
 
         next_page_cursor = page.pagination.next_cursor
         for idx, entry in enumerate(page.data):

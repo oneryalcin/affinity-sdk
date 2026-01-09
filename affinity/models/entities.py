@@ -75,6 +75,11 @@ class FieldValues(AffinityModel):
             return value
         if value is None:
             return {"requested": True, "data": {}}
+        if isinstance(value, list):
+            # API returns fields as array: [{"id": "field-123", "value": {...}}, ...]
+            # Convert to dict keyed by field ID for easier access
+            data = {item["id"]: item for item in value if isinstance(item, dict) and "id" in item}
+            return {"requested": True, "data": data}
         if isinstance(value, dict):
             return {"requested": True, "data": value}
         return {"requested": True, "data": {}}
