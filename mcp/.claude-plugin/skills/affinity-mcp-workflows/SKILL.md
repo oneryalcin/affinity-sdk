@@ -102,7 +102,7 @@ Use `discover-commands` to find commands, then `execute-read-command` or `execut
 |---------|----------|
 | `interaction create --type call --person-id <id>` | Log a call/meeting/email |
 | `note create --person-id <id> --content "..."` | Add a note |
-| `field-value set --list-entry-id <id> --field-id <id> --value "..."` | Update a field value |
+| `entry field "<list>" <entryId> --set <field> <value>` | Update a field value |
 | `person create --first-name "..." --last-name "..."` | Create a person |
 
 ## MCP Prompts (Guided Workflows)
@@ -151,7 +151,7 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 ### After a Call/Meeting
 1. Use `execute-write-command` with `interaction create` to log what happened
 2. Use `execute-read-command` with `list export` to find list entry (if updating pipeline)
-3. Use `execute-write-command` with `field-value set` if deal stage changed
+3. Use `execute-write-command` with `entry field` if deal stage changed
 4. **Or use**: `log-interaction-and-update-workflow` prompt
 
 ### Finding Warm Introductions
@@ -167,7 +167,7 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 ### Updating Deal Status
 1. Use `execute-read-command` with `list export` to find the entry
 2. Use `execute-read-command` with `field ls --list-id` to see available statuses
-3. Use `execute-write-command` with `field-value set` to update
+3. Use `execute-write-command` with `entry field` to update
 4. **Or use**: `change-status` prompt
 
 ## Tips

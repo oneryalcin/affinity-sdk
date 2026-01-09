@@ -115,10 +115,10 @@ The `-r` flag is crucial - it outputs raw strings instead of JSON-quoted values.
 
 ### Examples
 
-**Export field values:**
+**Export list entries with field values:**
 ```bash
-xaffinity field-value ls --field-id field-12345 --json | \
-  jq -r '.data.fieldValues[] | [.fieldId, .value, .entityId] | @csv'
+xaffinity list export "My List" --json | \
+  jq -r '.data.entries[] | [.id, .fields["Status"], .fields["Owner"]] | @csv'
 ```
 
 **Export notes:**

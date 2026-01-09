@@ -13,7 +13,7 @@
     "whenToUse": "Get entries from a list. Use --filter for field-based filtering (e.g., 'Status=\"New\"'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
   },
   "list-entry get": {
-    "relatedCommands": ["list export", "field-value get"],
+    "relatedCommands": ["list export", "entry field"],
     "whenToUse": "Get full details for a single list entry by ID."
   },
   "company ls": {
@@ -41,7 +41,7 @@
     "whenToUse": "Get opportunity details. Use --expand people/companies for associations."
   },
   "field ls": {
-    "relatedCommands": ["list ls", "list export", "field-value get"],
+    "relatedCommands": ["list ls", "list export", "entry field"],
     "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields."
   },
   "interaction ls": {

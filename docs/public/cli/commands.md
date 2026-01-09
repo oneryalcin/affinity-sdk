@@ -547,7 +547,7 @@ See the [CSV Export Guide](../guides/csv-export.md) for more details.
 **Shorthand:** All `list entry` commands are also available as top-level `entry` commands:
 ```bash
 xaffinity entry get 123 456          # Same as: xaffinity list entry get 123 456
-xaffinity entry set-field 123 456 ...  # Same as: xaffinity list entry set-field 123 456 ...
+xaffinity entry field 123 456 ...    # Same as: xaffinity list entry field 123 456 ...
 ```
 
 ### `xaffinity list entry add <list>`
@@ -563,17 +563,42 @@ xaffinity list entry add "Dealflow" --company-id 224925494
 xaffinity list entry delete 123 98765
 ```
 
-### `xaffinity list entry update-field <list> <entryId>`
+### `xaffinity list entry field <list> <entryId>`
+
+Unified command for getting, setting, appending, and unsetting field values.
 
 ```bash
-xaffinity list entry update-field 123 98765 --field-id field-123 --value-json '"Active"'
+# Set a single field
+xaffinity list entry field "Portfolio" 123 --set Status "Active"
+
+# Set multiple fields
+xaffinity list entry field "Portfolio" 123 --set Status "Active" --set Priority "High"
+
+# Append to a multi-value field (e.g., tags)
+xaffinity list entry field "Portfolio" 123 --append Tags "Priority"
+
+# Unset a field (remove all values)
+xaffinity list entry field "Portfolio" 123 --unset OldField
+
+# Unset a specific value from a multi-value field
+xaffinity list entry field "Portfolio" 123 --unset-value Tags "OldTag"
+
+# Batch set via JSON
+xaffinity list entry field "Portfolio" 123 --set-json '{"Status": "Active", "Priority": "High"}'
+
+# Get specific field values
+xaffinity list entry field "Portfolio" 123 --get Status --get Priority
+
+# Swap tags (append new, remove old)
+xaffinity list entry field "Portfolio" 123 --append Tags "NewTag" --unset-value Tags "OldTag"
 ```
 
-### `xaffinity list entry batch-update <list> <entryId>`
-
-```bash
-xaffinity list entry batch-update 123 98765 --updates-json '{"field-1": "Active", "field-2": 10}'
-```
+**Notes:**
+- Field names are resolved case-insensitively
+- Field IDs (`field-123`) can be used directly
+- `--set` replaces all existing values; use `--append` to add to multi-value fields
+- `--get` is exclusive with write operations
+- Operation order: `--set`/`--set-json` → `--append` → `--unset`/`--unset-value`
 
 ## Notes
 
@@ -729,33 +754,6 @@ Exactly one entity selector is required.
 xaffinity field history field-123 --person-id 456
 xaffinity field history field-123 --company-id 789 --action-type update
 xaffinity --json field history field-123 --list-entry-id 101 --max-results 20
-```
-
-## Field Values
-
-### `xaffinity field-value ls`
-
-```bash
-xaffinity field-value ls --person-id 26229794
-xaffinity field-value ls --list-entry-id 98765 --json
-```
-
-### `xaffinity field-value create`
-
-```bash
-xaffinity field-value create --field-id field-123 --entity-id 26229794 --value \"Investor\"
-```
-
-### `xaffinity field-value update <fieldValueId>`
-
-```bash
-xaffinity field-value update 555 --value-json '\"Active\"'
-```
-
-### `xaffinity field-value delete <fieldValueId>`
-
-```bash
-xaffinity field-value delete 555
 ```
 
 ## Relationship Strengths

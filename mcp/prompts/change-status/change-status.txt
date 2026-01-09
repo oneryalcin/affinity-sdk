@@ -5,7 +5,7 @@ Using the CLI Gateway (discover-commands → execute-read/write-command):
 1. **Find the entity** - Use `person ls` or `company ls` to find by name
 2. **Get list entry** - Use `list export "${listName}"` with a filter to find the entry
 3. **Verify status options** - Use `field ls --list-id "${listName}"` to see valid status values
-4. **Update status** - Use `field-value set` with the list entry ID and status field
+4. **Update status** - Use `entry field "${listName}" <entryId> --set <statusField> "${newStatus}"`
 
 If there's a reason for the status change:
 - Use `note create` to document why the status changed

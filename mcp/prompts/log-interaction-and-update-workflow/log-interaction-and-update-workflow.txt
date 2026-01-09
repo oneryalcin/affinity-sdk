@@ -9,7 +9,7 @@ Using the CLI Gateway (discover-commands → execute-read/write-command):
 3. **Update workflow status** (if appropriate):
    - Use `list ls` to find relevant pipeline lists
    - Use `list export "<listName>" --filter "..."` to find their list entry
-   - Use `field-value set` to update status if warranted
+   - Use `entry field "<listName>" <entryId> --set <statusField> <value>` to update status if warranted
 4. **Add follow-up notes** - Use `note create` if there are important details to capture
 
 Interaction summary to log:

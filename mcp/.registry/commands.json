@@ -2,7 +2,7 @@
   "_generated": {
     "by": "tools/generate_cli_commands_registry.py",
     "cliVersion": "0.7.1",
-    "at": "2026-01-09T14:32:44Z"
+    "at": "2026-01-09T17:33:25Z"
   },
   "version": 1,
   "cliVersion": "0.7.1",
@@ -532,6 +532,71 @@
       ]
     },
     {
+      "name": "entry field",
+      "description": "Manage list entry field values.",
+      "category": "write",
+      "destructive": false,
+      "progressCapable": false,
+      "parameters": {
+        "--append": {
+          "type": "string",
+          "required": false,
+          "help": "Append to multi-value field (repeatable). Adds without replacing.",
+          "multiple": true
+        },
+        "--get": {
+          "type": "string",
+          "required": false,
+          "help": "Get specific field values (repeatable).",
+          "multiple": true
+        },
+        "--set": {
+          "type": "string",
+          "required": false,
+          "help": "Set field value (repeatable). Replaces existing value(s).",
+          "multiple": true
+        },
+        "--set-json": {
+          "type": "string",
+          "required": false,
+          "help": "JSON object of field:value pairs to set."
+        },
+        "--unset": {
+          "type": "string",
+          "required": false,
+          "help": "Unset all values for field (repeatable).",
+          "multiple": true
+        },
+        "--unset-value": {
+          "type": "string",
+          "required": false,
+          "help": "Unset specific value from multi-value field (repeatable).",
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "examples": [
+        "entry field \"Portfolio\" 123 --set Status \"Active\"",
+        "entry field \"Portfolio\" 123 --set Status \"Active\" --set Priority \"High\"",
+        "entry field \"Portfolio\" 123 --append Tags \"Priority\"",
+        "entry field \"Portfolio\" 123 --unset Status",
+        "entry field \"Portfolio\" 123 --unset-value Tags \"OldTag\"",
+        "entry field \"Portfolio\" 123 --set-json '{\"Status\": \"Active\"}'",
+        "entry field \"Portfolio\" 123 --get Status --get Priority"
+      ]
+    },
+    {
       "name": "entry get",
       "description": "Get a single list entry by ID.",
       "category": "read",
@@ -553,132 +618,6 @@
       "examples": [
         "list entry get \"Portfolio\" 12345",
         "list entry get 67890 12345"
-      ]
-    },
-    {
-      "name": "entry set-field",
-      "description": "Set a field value on a list entry.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--append": {
-          "type": "flag",
-          "required": false,
-          "help": "Append to multi-value field instead of replacing."
-        },
-        "--field": {
-          "type": "string",
-          "required": false,
-          "help": "Field name (e.g. 'Status')."
-        },
-        "--field-id": {
-          "type": "string",
-          "required": false,
-          "help": "Field ID (e.g. 'field-260415')."
-        },
-        "--value": {
-          "type": "string",
-          "required": false,
-          "help": "Value to set (string)."
-        },
-        "--value-json": {
-          "type": "string",
-          "required": false,
-          "help": "Value to set (JSON)."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry set-field \"Portfolio\" 123 --field Status --value \"Active\"",
-        "list entry set-field 67890 123 --field-id field-260415 --value \"High\"",
-        "list entry set-field \"Deals\" 123 --field Tags --value \"Priority\" --append"
-      ]
-    },
-    {
-      "name": "entry set-fields",
-      "description": "Set multiple field values on a list entry at once.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--updates-json": {
-          "type": "string",
-          "required": true,
-          "help": "JSON object of field name/ID -> value pairs (e.g. '{\"Status\": \"Active\"}')."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry set-fields \"Portfolio\" 123 --updates-json '{\"Status\": \"Active\"}'"
-      ]
-    },
-    {
-      "name": "entry unset-field",
-      "description": "Unset a field value from a list entry.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--all-values": {
-          "type": "flag",
-          "required": false,
-          "help": "Unset all values for field."
-        },
-        "--field": {
-          "type": "string",
-          "required": false,
-          "help": "Field name (e.g. 'Status')."
-        },
-        "--field-id": {
-          "type": "string",
-          "required": false,
-          "help": "Field ID (e.g. 'field-260415')."
-        },
-        "--value": {
-          "type": "string",
-          "required": false,
-          "help": "Specific value to unset (for multi-value fields)."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry unset-field \"Portfolio\" 123 --field Status",
-        "list entry unset-field \"Portfolio\" 123 --field Tags --value \"Priority\"",
-        "list entry unset-field \"Portfolio\" 123 --field Tags --all-values"
       ]
     },
     {
@@ -857,7 +796,7 @@
       "relatedCommands": [
         "list ls",
         "list export",
-        "field-value get"
+        "entry field"
       ],
       "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields."
     },
@@ -1201,6 +1140,71 @@
       ]
     },
     {
+      "name": "list entry field",
+      "description": "Manage list entry field values.",
+      "category": "write",
+      "destructive": false,
+      "progressCapable": false,
+      "parameters": {
+        "--append": {
+          "type": "string",
+          "required": false,
+          "help": "Append to multi-value field (repeatable). Adds without replacing.",
+          "multiple": true
+        },
+        "--get": {
+          "type": "string",
+          "required": false,
+          "help": "Get specific field values (repeatable).",
+          "multiple": true
+        },
+        "--set": {
+          "type": "string",
+          "required": false,
+          "help": "Set field value (repeatable). Replaces existing value(s).",
+          "multiple": true
+        },
+        "--set-json": {
+          "type": "string",
+          "required": false,
+          "help": "JSON object of field:value pairs to set."
+        },
+        "--unset": {
+          "type": "string",
+          "required": false,
+          "help": "Unset all values for field (repeatable).",
+          "multiple": true
+        },
+        "--unset-value": {
+          "type": "string",
+          "required": false,
+          "help": "Unset specific value from multi-value field (repeatable).",
+          "multiple": true
+        }
+      },
+      "positionals": [
+        {
+          "name": "LIST_SELECTOR",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "ENTRY_ID",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "examples": [
+        "entry field \"Portfolio\" 123 --set Status \"Active\"",
+        "entry field \"Portfolio\" 123 --set Status \"Active\" --set Priority \"High\"",
+        "entry field \"Portfolio\" 123 --append Tags \"Priority\"",
+        "entry field \"Portfolio\" 123 --unset Status",
+        "entry field \"Portfolio\" 123 --unset-value Tags \"OldTag\"",
+        "entry field \"Portfolio\" 123 --set-json '{\"Status\": \"Active\"}'",
+        "entry field \"Portfolio\" 123 --get Status --get Priority"
+      ]
+    },
+    {
       "name": "list entry get",
       "description": "Get a single list entry by ID.",
       "category": "read",
@@ -1222,132 +1226,6 @@
       "examples": [
         "list entry get \"Portfolio\" 12345",
         "list entry get 67890 12345"
-      ]
-    },
-    {
-      "name": "list entry set-field",
-      "description": "Set a field value on a list entry.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--append": {
-          "type": "flag",
-          "required": false,
-          "help": "Append to multi-value field instead of replacing."
-        },
-        "--field": {
-          "type": "string",
-          "required": false,
-          "help": "Field name (e.g. 'Status')."
-        },
-        "--field-id": {
-          "type": "string",
-          "required": false,
-          "help": "Field ID (e.g. 'field-260415')."
-        },
-        "--value": {
-          "type": "string",
-          "required": false,
-          "help": "Value to set (string)."
-        },
-        "--value-json": {
-          "type": "string",
-          "required": false,
-          "help": "Value to set (JSON)."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry set-field \"Portfolio\" 123 --field Status --value \"Active\"",
-        "list entry set-field 67890 123 --field-id field-260415 --value \"High\"",
-        "list entry set-field \"Deals\" 123 --field Tags --value \"Priority\" --append"
-      ]
-    },
-    {
-      "name": "list entry set-fields",
-      "description": "Set multiple field values on a list entry at once.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--updates-json": {
-          "type": "string",
-          "required": true,
-          "help": "JSON object of field name/ID -> value pairs (e.g. '{\"Status\": \"Active\"}')."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry set-fields \"Portfolio\" 123 --updates-json '{\"Status\": \"Active\"}'"
-      ]
-    },
-    {
-      "name": "list entry unset-field",
-      "description": "Unset a field value from a list entry.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--all-values": {
-          "type": "flag",
-          "required": false,
-          "help": "Unset all values for field."
-        },
-        "--field": {
-          "type": "string",
-          "required": false,
-          "help": "Field name (e.g. 'Status')."
-        },
-        "--field-id": {
-          "type": "string",
-          "required": false,
-          "help": "Field ID (e.g. 'field-260415')."
-        },
-        "--value": {
-          "type": "string",
-          "required": false,
-          "help": "Specific value to unset (for multi-value fields)."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry unset-field \"Portfolio\" 123 --field Status",
-        "list entry unset-field \"Portfolio\" 123 --field Tags --value \"Priority\"",
-        "list entry unset-field \"Portfolio\" 123 --field Tags --all-values"
       ]
     },
     {
@@ -2873,5 +2751,5 @@
       "positionals": []
     }
   ],
-  "total": 75
+  "total": 71
 }

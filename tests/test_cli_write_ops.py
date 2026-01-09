@@ -260,43 +260,44 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
     added_payload = json.loads(added.output.strip())
     assert added_payload["data"]["listEntry"]["id"] == 98765
 
+    # Test the unified 'entry field' command (replaced set-field/set-fields)
     updated_field = runner.invoke(
         cli,
         [
             "--json",
             "list",
             "entry",
-            "set-field",
+            "field",
             "123",
             "98765",
-            "--field-id",
+            "--set",
             "field-1",
-            "--value-json",
-            '"Active"',
+            "Active",
         ],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert updated_field.exit_code == 0
     updated_payload = json.loads(updated_field.output.strip())
-    assert updated_payload["data"]["fieldValue"]["data"]["field-1"] == "Active"
+    assert "created" in updated_payload["data"]
 
+    # Test --set-json for batch updates
     batch_updated = runner.invoke(
         cli,
         [
             "--json",
             "list",
             "entry",
-            "set-fields",
+            "field",
             "123",
             "98765",
-            "--updates-json",
+            "--set-json",
             '{"field-1": "Active"}',
         ],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert batch_updated.exit_code == 0
     batch_payload = json.loads(batch_updated.output.strip())
-    assert batch_payload["data"]["fieldUpdates"]["results"][0]["success"] is True
+    assert "created" in batch_payload["data"]
 
     deleted = runner.invoke(
         cli,

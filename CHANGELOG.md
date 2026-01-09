@@ -18,17 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Context metadata keys changed: `startTime`/`endTime` → `after`/`before`
   - Note: Interaction object fields (`startTime`/`endTime`) are unchanged
 - **BREAKING**: CLI: `interaction ls` now requires `--type` (was optional but API required it).
+- **BREAKING**: CLI: List entry field commands unified into single `entry field` command:
+  - `entry set-field --field F --value V` → `entry field --set F V`
+  - `entry set-field --field F --value-json '{...}'` → `entry field --set-json '{"F": ...}'`
+  - `entry set-fields --updates-json '{...}'` → `entry field --set-json '{...}'`
+  - `entry unset-field --field F` → `entry field --unset F`
+  - `entry unset-field --field F --value V` → `entry field --unset-value F V`
+  - `entry unset-field --field F --all-values` → `entry field --unset F`
+  - Removed: `--field-id` option (field IDs can be passed as FIELD argument directly)
+  - **Behavior change:** `--set` on multi-value field now replaces all values (use `--append` to add)
 
 ### Added
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.
 - CLI: `list export --saved-view` can now be combined with `--field` for server-side filtering with explicit field selection.
 - SDK: `ids` parameter added to `PersonService`, `CompanyService`, and `OpportunityService` for batch fetching by ID.
+- CLI: `entry field --get FIELD` for reading field values (new functionality).
+- CLI: `entry field --append FIELD VALUE` for adding to multi-value fields without replacing.
+- CLI: `entry field --unset-value FIELD VALUE` for removing specific value from multi-value field.
 
 ### Fixed
 - SDK: `FieldValues` now properly parses field arrays from API responses (previously showed `requested=False`).
 
 ### Removed
 - CLI: `person search` and `company search` commands. Use `person ls --query` and `company ls --query` instead.
+- CLI: Removed `entry set-field`, `entry set-fields`, and `entry unset-field` commands (replaced by unified `entry field`).
 
 ## 0.7.0 - 2026-01-08
 

@@ -9,10 +9,8 @@ from ..click_compat import RichGroup, click
 from .list_cmds import (
     list_entry_add,
     list_entry_delete,
+    list_entry_field,
     list_entry_get,
-    list_entry_set_field,
-    list_entry_set_fields,
-    list_entry_unset_field,
 )
 
 
@@ -32,6 +30,4 @@ def entry_group() -> None:
 entry_group.add_command(list_entry_get, name="get")
 entry_group.add_command(list_entry_add, name="add")
 entry_group.add_command(list_entry_delete, name="delete")
-entry_group.add_command(list_entry_set_field, name="set-field")
-entry_group.add_command(list_entry_set_fields, name="set-fields")
-entry_group.add_command(list_entry_unset_field, name="unset-field")
+entry_group.add_command(list_entry_field, name="field")
