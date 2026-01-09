@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import affinity
 
@@ -12,50 +12,48 @@ from .context import CLIContext
 from .logging import configure_logging, restore_logging
 from .paths import get_paths
 
+if TYPE_CHECKING:
+    pass
 
-def _custom_help_callback(
-    ctx: click.Context,
-    _param: click.Parameter,
-    value: bool,
-) -> None:
-    """Custom help callback that supports --help --json for machine-readable output.
 
-    When --help is used with --json, outputs JSON instead of formatted help text.
-    This is used by MCP tools and automation to discover available commands.
-    """
-    if not value or ctx.resilient_parsing:
-        return
+class _RootGroupMixin:
+    """Mixin that adds --help --json support to the root CLI group."""
 
-    # Check if --json flag is present in remaining args or already parsed
-    args = sys.argv[1:]
-    has_json = "--json" in args
+    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Override to support --help --json for machine-readable output."""
+        # Check if --json flag is present in args
+        if "--json" in sys.argv:
+            from .help_json import emit_help_json_and_exit
 
-    if has_json:
-        # Generate JSON help output
-        from .help_json import emit_help_json_and_exit
+            emit_help_json_and_exit(ctx)
 
-        emit_help_json_and_exit(ctx)
-    else:
         # Standard help output
-        click.echo(ctx.get_help())
-        ctx.exit(0)
+        super().format_help(ctx, formatter)  # type: ignore[misc]
+
+    def main(self, *args: Any, **kwargs: Any) -> Any:
+        """Override main to handle --help --json before Click processes args."""
+        # Check for --help --json combination early
+        argv = sys.argv[1:]
+        if ("--help" in argv or "-h" in argv) and "--json" in argv:
+            # Create a minimal context and emit JSON help
+            with self.make_context("xaffinity", []) as ctx:  # type: ignore[attr-defined]
+                from .help_json import emit_help_json_and_exit
+
+                emit_help_json_and_exit(ctx)
+
+        return super().main(*args, **kwargs)  # type: ignore[misc]
+
+
+# Create RootGroup by mixing in the JSON help behavior with RichGroup
+# This approach satisfies mypy since the base class is determined at import time
+RootGroup: type[click.Group] = type("RootGroup", (_RootGroupMixin, RichGroup), {})
 
 
 @click.group(
     name="xaffinity",
     invoke_without_command=True,
-    # Disable built-in help to use our custom handler
-    context_settings={"help_option_names": []},
-    cls=RichGroup,
-)
-@click.option(
-    "-h",
-    "--help",
-    is_flag=True,
-    is_eager=True,
-    expose_value=False,
-    callback=_custom_help_callback,
-    help="Show this message and exit. Use with --json for machine-readable output.",
+    cls=RootGroup,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.option(
     "--output",
