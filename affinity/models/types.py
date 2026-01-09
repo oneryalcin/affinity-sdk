@@ -7,11 +7,11 @@ This module provides type-safe ID wrappers to prevent mixing up different entity
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum, IntEnum
 from typing import Annotated, Any, SupportsInt, TypeAlias, cast
 
-from pydantic import Field, GetCoreSchemaHandler
+from pydantic import AfterValidator, Field, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 # =============================================================================
@@ -604,8 +604,41 @@ PositiveInt = Annotated[int, Field(gt=0)]
 NonNegativeInt = Annotated[int, Field(ge=0)]
 EmailStr = Annotated[str, Field(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")]
 
-# Datetime with ISO8601 format
-ISODatetime = datetime
+# =============================================================================
+# Datetime with UTC normalization
+# =============================================================================
+
+
+def _normalize_to_utc(v: datetime) -> datetime:
+    """
+    Normalize datetime to UTC-aware.
+
+    This validator ensures all ISODatetime values are:
+    1. Timezone-aware (never naive)
+    2. Normalized to UTC
+
+    Input handling:
+    - Naive datetime: Assumed UTC, tzinfo added
+    - UTC datetime: Passed through unchanged
+    - Non-UTC aware: Converted to UTC equivalent
+
+    This guarantees ISODatetime values are always directly comparable
+    without risk of TypeError from naive/aware mixing.
+
+    Note: This differs from CLI input parsing (parse_iso_datetime)
+    which interprets naive strings as local time for user convenience.
+    SDK uses UTC assumption because API responses are always UTC.
+    """
+    if v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v.astimezone(timezone.utc)
+
+
+# Datetime with UTC normalization - all values guaranteed UTC-aware
+# IMPORTANT: Use AfterValidator, not BeforeValidator!
+# BeforeValidator runs before Pydantic's type coercion, so input could be a string.
+# AfterValidator runs after Pydantic parses the string to datetime.
+ISODatetime = Annotated[datetime, AfterValidator(_normalize_to_utc)]
 
 
 # =============================================================================

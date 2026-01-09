@@ -136,8 +136,13 @@ xaffinity note ls --person-id 123 --json  # Filter for isMeeting: true
 xaffinity interaction ls --type meeting --person-id 123 --json
 
 # With custom date range (max 1 year):
+# Note: Dates are interpreted as LOCAL TIME (use Z suffix for explicit UTC)
 xaffinity interaction ls --type meeting --person-id 123 \
   --after 2025-01-01 --before 2025-12-31 --json
+
+# Explicit UTC:
+xaffinity interaction ls --type meeting --person-id 123 \
+  --after 2025-01-01T00:00:00Z --json
 ```
 
 ### Smart Fields not in API

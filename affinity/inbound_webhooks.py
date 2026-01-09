@@ -150,6 +150,13 @@ _DEFAULT_WEBHOOK_FUTURE_SKEW_SECONDS = 120
 
 
 def _normalize_now(now: datetime | None) -> datetime:
+    """
+    Return current UTC time, or normalize provided datetime to UTC.
+
+    Handles naive datetimes defensively - callers may pass datetime objects
+    from sources outside ISODatetime-validated models (e.g., tests, manual
+    construction). This is intentional defense-in-depth.
+    """
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         return current.replace(tzinfo=timezone.utc)

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Context metadata keys changed: `startTime`/`endTime` → `after`/`before`
   - Note: Interaction object fields (`startTime`/`endTime`) are unchanged
 - **BREAKING**: CLI: `interaction ls` now requires `--type` (was optional but API required it).
+- **BREAKING**: CLI: Naive datetime strings (without timezone) are now interpreted as **local time** instead of UTC. Use explicit `Z` suffix or offset for UTC. See [datetime-handling guide](https://yaniv-golan.github.io/affinity-sdk/latest/guides/datetime-handling/) for details.
 - **BREAKING**: CLI: List entry field commands unified into single `entry field` command:
   - `entry set-field --field F --value V` → `entry field --set F V`
   - `entry set-field --field F --value-json '{...}'` → `entry field --set-json '{"F": ...}'`

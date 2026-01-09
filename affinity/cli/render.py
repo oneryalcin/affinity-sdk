@@ -5,7 +5,7 @@ import re
 import shutil
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, cast
 
 from rich.console import Console, Group
@@ -316,10 +316,8 @@ def _table_from_rows(
         return f"https://{value}"
 
     def localize_datetime(value: datetime) -> tuple[datetime, int | None]:
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        local = dt.astimezone()
+        # dt is guaranteed UTC-aware from ISODatetime validator
+        local = value.astimezone()
         offset = local.utcoffset()
         if offset is None:
             return local, None
@@ -806,10 +804,8 @@ def _format_scalar_value(*, key: str | None, value: Any) -> str:
         return ""
     key_lower = (key or "").lower()
     if isinstance(value, datetime):
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        local = dt.astimezone()
+        # value is guaranteed UTC-aware from ISODatetime validator
+        local = value.astimezone()
         show_seconds = bool(local.second or local.microsecond)
         return local.strftime("%Y-%m-%d %H:%M:%S" if show_seconds else "%Y-%m-%d %H:%M")
     if isinstance(value, list):

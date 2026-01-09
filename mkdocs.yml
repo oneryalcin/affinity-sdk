@@ -54,6 +54,7 @@ nav:
       - Errors & retries: guides/errors-and-retries.md
       - Rate limits: guides/rate-limits.md
       - Filtering: guides/filtering.md
+      - Datetime handling: guides/datetime-handling.md
       - CSV Export (CLI): guides/csv-export.md
       - Field types & values: guides/field-types-and-values.md
       - Field values: guides/field-values.md

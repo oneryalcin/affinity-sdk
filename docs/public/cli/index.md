@@ -7,6 +7,7 @@ The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as a
 - **CSV Export**: Export people, companies, opportunities, and list entries to CSV with `--csv` flag ([CSV Export Guide](../guides/csv-export.md))
 - **Filtering**: Server-side filtering on custom fields with `--filter` ([Filtering Guide](../guides/filtering.md))
 - **JSON Output**: All commands support `--json` for programmatic use ([Scripting Guide](scripting.md))
+- **Datetime Handling**: Local time input, UTC output for JSON ([Datetime Guide](../guides/datetime-handling.md))
 - **Pagination**: Fetch all pages with `--all` or control page size with `--page-size`
 - **Name Resolution**: Use names instead of IDs for lists, fields, and entities
 - **Session Caching**: Share metadata across pipeline commands with `session start/end` ([Pipeline Optimization](commands.md#pipeline-optimization))

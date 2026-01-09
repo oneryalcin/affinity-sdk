@@ -23,6 +23,20 @@ Use `--json` for machine-readable output:
 xaffinity whoami --json | jq
 ```
 
+## Timezone-safe datetime handling
+
+Date/time flags (`--after`, `--before`, etc.) interpret naive strings as **local time**. For reproducible scripts across timezones, always use explicit UTC:
+
+```bash
+# Use Z suffix for explicit UTC
+xaffinity interaction ls --after 2024-01-01T00:00:00Z --json
+
+# Or use explicit timezone offset
+xaffinity interaction ls --after 2024-01-01T00:00:00-05:00 --json
+```
+
+JSON output always returns datetimes in UTC (with `+00:00` suffix). See the [Datetime Handling Guide](../guides/datetime-handling.md) for full details on SDK vs CLI behavior.
+
 ## Pagination and resume
 
 Some commands include resume tokens in `meta.pagination`.
