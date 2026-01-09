@@ -5,6 +5,17 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - Unreleased
+
+### Changed
+- **CLI 0.8.0 required**: Updated minimum CLI version from 0.6.0 to 0.8.0
+- **Updated prompts**: `change-status` and `log-interaction-and-update-workflow` now use `entry field` command
+- **Updated tool descriptions**: `execute-write-command` examples updated for `entry field` syntax
+- **Updated SKILL.md**: Command references updated for unified `entry field` command
+
+### Compatibility
+- **BREAKING**: Requires CLI 0.8.0+ (previous MCP versions worked with CLI 0.6.0+)
+
 ## [1.6.0] - 2026-01-08
 
 ### Added
