@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## 0.7.1 - Unreleased
 
-## 0.7.1 - 2026-01-09
+### Changed
+- CLI: Renamed `--json` to `--set-json` on `person field`, `company field`, `opportunity field` commands to avoid conflict with global `--json` output flag.
 
 ### Added
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.
@@ -148,7 +149,7 @@ _No user-facing changes. Version bump for PyPI release._
 - CLI: `--completed/--not-completed` boolean flag pattern for `reminder update` (replaces separate flags).
 - CLI: Removed API version mentions from help text (implementation detail).
 - CLI: `interaction ls` now requires an entity ID (`--person-id`, `--company-id`, or `--opportunity-id`) and defaults to last 7 days with visible warning (API max: 1 year).
-- CLI: Unified `person field`, `company field`, `opportunity field` commands replace `set-field`, `set-fields`, and `unset-field` commands. New syntax: `--set FIELD VALUE`, `--unset FIELD`, `--json '{...}'`, `--get FIELD`.
+- CLI: Unified `person field`, `company field`, `opportunity field` commands replace `set-field`, `set-fields`, and `unset-field` commands. New syntax: `--set FIELD VALUE`, `--unset FIELD`, `--set-json '{...}'`, `--get FIELD`.
 - CLI: Note content separated from metadata in table display.
 
 ### Removed

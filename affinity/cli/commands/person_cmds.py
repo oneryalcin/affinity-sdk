@@ -1879,7 +1879,7 @@ def person_merge(
     help="Unset field (repeatable). Removes all values for the field.",
 )
 @click.option(
-    "--json",
+    "--set-json",
     "json_input",
     type=str,
     help="JSON object of field:value pairs to set.",
@@ -1913,7 +1913,7 @@ def person_field(
     - `xaffinity person field 123 --set Phone "+1-555-0123"`
     - `xaffinity person field 123 --set Phone "+1..." --set Title "CEO"`
     - `xaffinity person field 123 --unset Phone`
-    - `xaffinity person field 123 --json '{"Phone": "+1...", "Title": "CEO"}'`
+    - `xaffinity person field 123 --set-json '{"Phone": "+1...", "Title": "CEO"}'`
     - `xaffinity person field 123 --get Phone --get Email`
     """
     import json as json_module
@@ -1935,7 +1935,7 @@ def person_field(
 
         if not has_set and not has_unset and not has_get:
             raise CLIError(
-                "Provide at least one of --set, --unset, --json, or --get.",
+                "Provide at least one of --set, --unset, --set-json, or --get.",
                 exit_code=2,
                 error_type="usage_error",
             )
@@ -1943,7 +1943,7 @@ def person_field(
         # Validate: --get is exclusive (can't mix read with write)
         if has_get and (has_set or has_unset):
             raise CLIError(
-                "--get cannot be combined with --set, --unset, or --json.",
+                "--get cannot be combined with --set, --unset, or --set-json.",
                 exit_code=2,
                 error_type="usage_error",
             )
