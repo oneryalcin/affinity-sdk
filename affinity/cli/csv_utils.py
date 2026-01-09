@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 import re
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -118,3 +120,38 @@ def write_csv_from_rows(
         fieldnames=fieldnames,
         bom=bom,
     )
+
+
+def write_csv_to_stdout(
+    *,
+    rows: Iterable[dict[str, Any]],
+    fieldnames: list[str],
+    bom: bool,
+) -> int:
+    """
+    Write CSV data to stdout.
+
+    Uses TextIOWrapper around stdout.buffer for proper UTF-8 encoding on all platforms.
+    BOM is written when bom=True (useful for Excel compatibility when redirecting to file).
+
+    Args:
+        rows: Iterable of dictionaries to write
+        fieldnames: Column names for CSV header
+        bom: Whether to write UTF-8 BOM
+
+    Returns:
+        Number of rows written
+    """
+    encoding = "utf-8-sig" if bom else "utf-8"
+    stream = io.TextIOWrapper(sys.stdout.buffer, encoding=encoding, newline="")
+
+    writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    rows_written = 0
+    for row in rows:
+        writer.writerow({k: to_cell(v) for k, v in row.items()})
+        rows_written += 1
+
+    stream.flush()
+    stream.detach()  # Don't close stdout.buffer
+    return rows_written

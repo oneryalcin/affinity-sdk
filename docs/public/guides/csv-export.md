@@ -4,20 +4,20 @@ This guide shows you how to export data from the Affinity CLI to CSV format for 
 
 ## Quick Start
 
-Export data to CSV using the `--csv` flag:
+Export data to CSV using the `--csv` flag with shell redirection:
 
 ```bash
 # Export all people to CSV
-xaffinity person ls --all --csv people.csv
+xaffinity person ls --all --csv > people.csv
 
 # Export all companies to CSV
-xaffinity company ls --all --csv companies.csv
+xaffinity company ls --all --csv > companies.csv
 
 # Export all opportunities to CSV
-xaffinity opportunity ls --all --csv opportunities.csv
+xaffinity opportunity ls --all --csv > opportunities.csv
 
 # Export list entries with custom fields
-xaffinity list export 12345 --all --csv entries.csv
+xaffinity list export 12345 --all --csv > entries.csv
 ```
 
 ## Excel Compatibility
@@ -25,7 +25,7 @@ xaffinity list export 12345 --all --csv entries.csv
 If you're opening CSV files in Microsoft Excel, use the `--csv-bom` flag to ensure proper character encoding:
 
 ```bash
-xaffinity person ls --all --csv people.csv --csv-bom
+xaffinity person ls --all --csv --csv-bom > people.csv
 ```
 
 This adds a UTF-8 Byte Order Mark (BOM) to the file, which helps Excel correctly display special characters, accents, and non-English text.
@@ -34,12 +34,12 @@ This adds a UTF-8 Byte Order Mark (BOM) to the file, which helps Excel correctly
 
 | Command | CSV Flag | Example |
 |---------|----------|---------|
-| `person ls` | ✅ `--csv` | `xaffinity person ls --all --csv people.csv` |
-| `company ls` | ✅ `--csv` | `xaffinity company ls --all --csv companies.csv` |
-| `opportunity ls` | ✅ `--csv` | `xaffinity opportunity ls --all --csv opps.csv` |
-| `list export` | ✅ `--csv` | `xaffinity list export 12345 --all --csv entries.csv` |
+| `person ls` | `--csv` | `xaffinity person ls --all --csv > people.csv` |
+| `company ls` | `--csv` | `xaffinity company ls --all --csv > companies.csv` |
+| `opportunity ls` | `--csv` | `xaffinity opportunity ls --all --csv > opps.csv` |
+| `list export` | `--csv` | `xaffinity list export 12345 --all --csv > entries.csv` |
 
-**Note:** The `--csv` flag requires `--all` to fetch all pages of data. Single-page exports are not supported for CSV output.
+**Note:** The `--csv` flag outputs CSV to stdout. Use shell redirection (`>`) to save to a file, or pipe (`|`) to other tools.
 
 ## CSV Column Reference
 
@@ -181,10 +181,10 @@ Entity paths for jq:
 Make sure you're accessing the correct JSON path:
 
 ```bash
-# ❌ Wrong - missing .data
+# Wrong - missing .data
 xaffinity person ls --json | jq '.persons'
 
-# ✅ Correct
+# Correct
 xaffinity person ls --json | jq '.data.persons'
 ```
 
@@ -193,10 +193,10 @@ xaffinity person ls --json | jq '.data.persons'
 Use the `-r` flag with jq:
 
 ```bash
-# ❌ Wrong - produces "[1,\"Alice\"]"
+# Wrong - produces "[1,\"Alice\"]"
 xaffinity person ls --json | jq '.data.persons[] | [.id, .name] | @csv'
 
-# ✅ Correct - produces "1,Alice"
+# Correct - produces "1,Alice"
 xaffinity person ls --json | jq -r '.data.persons[] | [.id, .name] | @csv'
 ```
 
@@ -205,7 +205,7 @@ xaffinity person ls --json | jq -r '.data.persons[] | [.id, .name] | @csv'
 Use the `--csv-bom` flag:
 
 ```bash
-xaffinity person ls --all --csv people.csv --csv-bom
+xaffinity person ls --all --csv --csv-bom > people.csv
 ```
 
 ### Empty CSV file has no headers
@@ -216,14 +216,14 @@ This is expected behavior when there are no results. The CLI cannot determine co
 
 ### 1. Use --all for complete exports
 
-The `--csv` flag requires `--all` to fetch all pages:
+For large datasets, use `--all` to fetch all pages:
 
 ```bash
-# ✅ Correct
-xaffinity person ls --all --csv people.csv
+# Fetch all pages
+xaffinity person ls --all --csv > people.csv
 
-# ❌ Won't work
-xaffinity person ls --csv people.csv
+# Or limit results
+xaffinity person ls --max-results 100 --csv > people.csv
 ```
 
 ### 2. Combine with filters
@@ -233,8 +233,8 @@ xaffinity person ls --csv people.csv
 When filtering on custom fields, use `--filter` for server-side filtering. This is more efficient as Affinity filters the data before sending it:
 
 ```bash
-# ✅ Efficient: Server-side filtering on custom field
-xaffinity person ls --filter 'Department = "Sales"' --all --csv sales-people.csv
+# Efficient: Server-side filtering on custom field
+xaffinity person ls --filter 'Department = "Sales"' --all --csv > sales-people.csv
 ```
 
 You can also combine `--filter` with jq for additional client-side processing:
@@ -250,7 +250,7 @@ xaffinity person ls --filter 'Department = "Sales"' --json --all | \
 Built-in properties like `type`, `firstName`, `primaryEmail`, etc. cannot be filtered using `--filter` (which only works with custom fields). Use jq for client-side filtering:
 
 ```bash
-# ⚠️ Less efficient: Client-side filtering on built-in 'type' property
+# Less efficient: Client-side filtering on built-in 'type' property
 # (downloads all data, then filters locally)
 xaffinity person ls --json --all | \
   jq -r '.data.persons[] | select(.type == "internal") | [.id, .name] | @csv'
@@ -274,9 +274,9 @@ Create reusable export scripts:
 #!/bin/bash
 # export-pipeline.sh
 
-xaffinity person ls --all --csv people.csv --csv-bom
-xaffinity company ls --all --csv companies.csv --csv-bom
-xaffinity opportunity ls --all --csv opportunities.csv --csv-bom
+xaffinity person ls --all --csv --csv-bom > people.csv
+xaffinity company ls --all --csv --csv-bom > companies.csv
+xaffinity opportunity ls --all --csv --csv-bom > opportunities.csv
 
 echo "Export complete!"
 ```
@@ -296,7 +296,22 @@ For very large exports, monitor progress:
 
 ```bash
 # The CLI will show API call counts for large exports
-xaffinity list export 12345 --all --csv large-export.csv
+xaffinity list export 12345 --all --csv > large-export.csv
+```
+
+### 6. Composable with UNIX tools
+
+Since CSV goes to stdout, you can pipe to other tools:
+
+```bash
+# Count rows
+xaffinity person ls --all --csv | wc -l
+
+# Preview first 10 rows
+xaffinity person ls --all --csv | head -10
+
+# Filter with awk
+xaffinity list export 123 --all --csv | awk -F',' '$3 > 1000'
 ```
 
 ## Getting Help

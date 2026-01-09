@@ -225,8 +225,8 @@ Options:
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
 - `--filter <expression>`: V2 filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
-- `--csv <path>`: write CSV output (requires `--all`)
-- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+- `--csv`: output as CSV (to stdout)
+- `--csv-bom`: add UTF-8 BOM for Excel compatibility
 
 **Note:** `--filter` only works with custom fields. To filter on built-in properties like `type`, `firstName`, etc., use `--json` output with `jq`.
 
@@ -235,8 +235,8 @@ xaffinity person ls
 xaffinity person ls --page-size 50
 xaffinity person ls --field-type enriched --all
 xaffinity person ls --filter 'Email =~ "@acme.com"'
-xaffinity person ls --all --csv people.csv
-xaffinity person ls --all --csv people.csv --csv-bom
+xaffinity person ls --all --csv > people.csv
+xaffinity person ls --all --csv --csv-bom > people.csv
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.
@@ -351,8 +351,8 @@ Options:
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
 - `--filter <expression>`: V2 filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
-- `--csv <path>`: write CSV output (requires `--all`)
-- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+- `--csv`: output as CSV (to stdout)
+- `--csv-bom`: add UTF-8 BOM for Excel compatibility
 
 **Note:** `--filter` only works with custom fields. To filter on built-in properties like `name`, `domain`, etc., use `--json` output with `jq`.
 
@@ -361,8 +361,8 @@ xaffinity company ls
 xaffinity company ls --page-size 50
 xaffinity company ls --field-type enriched --all
 xaffinity company ls --filter 'Industry = "Software"'
-xaffinity company ls --all --csv companies.csv
-xaffinity company ls --all --csv companies.csv --csv-bom
+xaffinity company ls --all --csv > companies.csv
+xaffinity company ls --all --csv --csv-bom > companies.csv
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.
@@ -460,14 +460,14 @@ List opportunities (basic v2 representation).
 Options:
 
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
-- `--csv <path>`: write CSV output (requires `--all`)
-- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+- `--csv`: output as CSV (to stdout)
+- `--csv-bom`: add UTF-8 BOM for Excel compatibility
 
 ```bash
 xaffinity opportunity ls
 xaffinity opportunity ls --page-size 200 --all --json
-xaffinity opportunity ls --all --csv opportunities.csv
-xaffinity opportunity ls --all --csv opportunities.csv --csv-bom
+xaffinity opportunity ls --all --csv > opportunities.csv
+xaffinity opportunity ls --all --csv --csv-bom > opportunities.csv
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.
@@ -551,17 +551,17 @@ Exports list entries with selected fields. This is the most powerful CSV export 
 
 Options:
 
-- `--csv <path>`: write CSV output
-- `--csv-bom`: write UTF-8 BOM for Excel compatibility
+- `--csv`: output as CSV (to stdout)
+- `--csv-bom`: add UTF-8 BOM for Excel compatibility
 - `--field <id-or-name>` (repeatable): include specific fields
 - `--saved-view <name>`: use a saved view's field selection
 - `--filter <expression>`: V1 filter expression
 
 ```bash
-xaffinity list export 123 --csv out.csv
-xaffinity list export "My Pipeline" --saved-view "Board" --csv out.csv
-xaffinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv out.csv
-xaffinity list export 123 --csv out.csv --csv-bom
+xaffinity list export 123 --csv > out.csv
+xaffinity list export "My Pipeline" --saved-view "Board" --csv > out.csv
+xaffinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv > out.csv
+xaffinity list export 123 --csv --csv-bom > out.csv
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.

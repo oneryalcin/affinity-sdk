@@ -180,7 +180,7 @@ xaffinity list export 275454 \
   --filter "Status=Active" \
   --expand people \
   --expand-filter "Primary Email Status=Valid | Primary Email Status=Unknown | Primary Email Status!=*" \
-  --all --csv output.csv
+  --all --csv > output.csv
 ```
 
 ### Performance consideration

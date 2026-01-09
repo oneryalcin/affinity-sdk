@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
-import signal
 import sys
 import time
 import warnings as stdlib_warnings
 from collections.abc import Callable
 from contextlib import ExitStack
-from pathlib import Path
 from typing import Any, Literal, cast
 
 from rich.console import Console
@@ -33,7 +30,7 @@ from affinity.types import (
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
-from ..csv_utils import artifact_path, write_csv
+from ..csv_utils import write_csv_to_stdout
 from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
@@ -44,7 +41,7 @@ from ..resolve import (
     resolve_list_selector,
     resolve_saved_view,
 )
-from ..results import Artifact, CommandContext
+from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli, serialize_models_for_cli
 from ._v1_parsing import parse_json_value
@@ -377,7 +374,7 @@ ExpandOnError = Literal["raise", "skip"]
 )
 @click.option("--max-results", "-n", type=int, default=None, help="Stop after N rows total.")
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all rows.")
-@click.option("--csv", "csv_path", type=click.Path(), default=None, help="Write to CSV file.")
+@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV (to stdout).")
 @click.option(
     "--csv-header",
     type=click.Choice(["names", "ids"]),
@@ -385,7 +382,11 @@ ExpandOnError = Literal["raise", "skip"]
     show_default=True,
     help="Use field names or IDs for CSV headers.",
 )
-@click.option("--csv-bom", is_flag=True, help="Write UTF-8 BOM for Excel.")
+@click.option(
+    "--csv-bom",
+    is_flag=True,
+    help="Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv).",
+)
 @click.option("--dry-run", is_flag=True, help="Validate selectors and print export plan.")
 # Expand options (Phase 1)
 @click.option(
@@ -464,7 +465,7 @@ def list_export(
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
-    csv_path: str | None,
+    csv_flag: bool,
     csv_header: CsvHeaderMode,
     csv_bom: bool,
     dry_run: bool,
@@ -489,14 +490,22 @@ def list_export(
     Examples:
 
     - `xaffinity list export "Pipeline" --all`
-    - `xaffinity list export 12345 --csv pipeline.csv --all`
-    - `xaffinity list export "Pipeline" --saved-view "Active Deals" --csv deals.csv`
+    - `xaffinity list export 12345 --csv --all > pipeline.csv`
+    - `xaffinity list export "Pipeline" --saved-view "Active Deals" --csv > deals.csv`
     - `xaffinity list export "Pipeline" --field Status --field "Deal Size" --all`
-    - `xaffinity list export "Pipeline" --expand people --all --csv opps-with-people.csv`
+    - `xaffinity list export "Pipeline" --expand people --all --csv > opps-with-people.csv`
     - `xaffinity list export "Pipeline" --expand people --expand companies --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Check mutual exclusivity: --csv and --json
+        if csv_flag and ctx.output == "json":
+            raise CLIError(
+                "--csv and --json are mutually exclusive.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
         # Track start time for summary line
         export_start_time = time.time()
 
@@ -640,8 +649,8 @@ def list_export(
             ctx_modifiers["maxResults"] = max_results
         if all_pages:
             ctx_modifiers["all"] = True
-        if csv_path:
-            ctx_modifiers["csv"] = csv_path
+        if csv_flag:
+            ctx_modifiers["csv"] = True
         if expand:
             ctx_modifiers["expand"] = list(expand)
         if dry_run:
@@ -751,7 +760,7 @@ def list_export(
                     "listId": int(list_id),
                     "listName": resolved_list.list.name,
                     "listType": list_type.name.lower(),
-                    "csv": str(csv_path) if csv_path else None,
+                    "csv": csv_flag,
                 }
                 if filter_expr:
                     data["filter"] = filter_expr
@@ -766,7 +775,7 @@ def list_export(
                     "filter": filter_expr,
                     "pageSize": page_size,
                     "cursor": cursor,
-                    "csv": str(csv_path) if csv_path else None,
+                    "csv": csv_flag,
                 }
             if want_expand:
                 # Estimate API calls for expansion
@@ -774,7 +783,7 @@ def list_export(
                 expand_calls = entry_count  # 1 call per entry (optimized for dual)
                 data["expand"] = sorted(expand_set)
                 data["expandMaxResults"] = effective_expand_limit
-                data["csvMode"] = csv_mode if csv_path else None
+                data["csvMode"] = csv_mode if csv_flag else None
                 # Add dry run warnings
                 dry_run_warnings: list[str] = []
                 # Handle unreliable listSize from API (often returns 0 for non-empty lists)
@@ -842,8 +851,7 @@ def list_export(
             }
 
         # Prepare CSV writing.
-        csv_path_obj = Path(csv_path) if csv_path is not None else None
-        want_csv = csv_path_obj is not None
+        want_csv = csv_flag
         rows_written = 0
         next_cursor: str | None = None
 
@@ -918,7 +926,6 @@ def list_export(
                 )
 
             if want_csv:
-                assert csv_path_obj is not None
                 field_headers = [
                     (
                         (field_by_id[fid].name if fid in field_by_id else fid)
@@ -947,8 +954,6 @@ def list_export(
                 else:
                     header = base_header
 
-                pid = os.getpid()
-                temp_path = csv_path_obj.with_suffix(f"{csv_path_obj.suffix}.{pid}.tmp")
                 csv_iter_state: dict[str, Any] = {}
                 entries_with_truncated_assoc: list[int] = []
                 skipped_entries: list[int] = []
@@ -1209,80 +1214,53 @@ def list_export(
                                 progress.update(task_id, completed=rows_written)
                             yield expanded_row
 
-                # Set up interrupt handler to notify user of partial results
-                original_handler = signal.getsignal(signal.SIGINT)
-
-                def _interrupt_handler(_signum: int, _frame: Any) -> None:
-                    # Re-raise to stop the iteration
-                    raise KeyboardInterrupt()
-
+                # Write CSV to stdout
                 try:
-                    signal.signal(signal.SIGINT, _interrupt_handler)
-                    write_result = write_csv(
-                        path=temp_path,
+                    write_csv_to_stdout(
                         rows=iter_rows(),
                         fieldnames=header,
                         bom=csv_bom,
                     )
-                    temp_path.replace(csv_path_obj)
                 except KeyboardInterrupt:
-                    # Print interrupt notification with partial file info
-                    Console(file=sys.stderr).print(
-                        f"\nInterrupted. Partial results in: {temp_path} "
-                        f"({rows_written} rows written)"
-                    )
+                    # Partial output already sent to stdout
+                    Console(file=sys.stderr).print(f"\nInterrupted ({rows_written} rows written)")
                     sys.exit(130)
-                finally:
-                    signal.signal(signal.SIGINT, original_handler)
 
-                # Add truncation warning if any entries were truncated
+                # Print warnings to stderr before exit
                 if entries_with_truncated_assoc:
                     count = len(entries_with_truncated_assoc)
-                    warnings.append(
-                        f"{count} entries had associations truncated at {effective_expand_limit} "
-                        "(use --expand-all for complete data)"
+                    Console(file=sys.stderr).print(
+                        f"Warning: {count} entries had associations truncated at "
+                        f"{effective_expand_limit} (use --expand-all for complete data)"
                     )
 
-                # Add memory warning for large nested arrays
                 if entries_with_large_nested_assoc and csv_mode == "nested":
                     count = len(entries_with_large_nested_assoc)
                     first_id = entries_with_large_nested_assoc[0]
-                    warnings.append(
-                        f"{count} entries have >100 associations. "
+                    Console(file=sys.stderr).print(
+                        f"Warning: {count} entries have >100 associations. "
                         f"Large nested arrays may impact memory (e.g., entry {first_id}). "
                         "Consider --csv-mode flat."
                     )
 
-                # Add skipped entries summary with IDs
                 if skipped_entries:
                     if len(skipped_entries) <= 10:
                         ids_str = ", ".join(str(eid) for eid in skipped_entries)
-                        warnings.append(
-                            f"{len(skipped_entries)} entries skipped due to errors: {ids_str} "
-                            "(use --expand-on-error raise to fail on errors)"
+                        Console(file=sys.stderr).print(
+                            f"Warning: {len(skipped_entries)} entries skipped due to errors: "
+                            f"{ids_str} (use --expand-on-error raise to fail on errors)"
                         )
                     else:
                         first_ids = ", ".join(str(eid) for eid in skipped_entries[:5])
-                        warnings.append(
-                            f"{len(skipped_entries)} entries skipped due to errors "
+                        Console(file=sys.stderr).print(
+                            f"Warning: {len(skipped_entries)} entries skipped due to errors "
                             f"(first 5: {first_ids}, ...) "
                             "(use --expand-on-error raise to fail on errors)"
                         )
 
-                csv_ref, csv_is_relative = artifact_path(csv_path_obj)
-                csv_data: dict[str, Any] = {
-                    "listId": int(list_id),
-                    "rowsWritten": rows_written,
-                    "csv": csv_ref,
-                }
-                if want_expand:
-                    csv_data["entriesProcessed"] = csv_entries_processed + len(skipped_entries)
-                    csv_data["associationsFetched"] = {
-                        k: v for k, v in csv_associations_fetched.items() if k in expand_set
-                    }
                 if csv_iter_state.get("truncatedMidPage") is True:
-                    warnings.append(
-                        "Results limited by --max-results. Use --all to fetch all results."
+                    Console(file=sys.stderr).print(
+                        "Warning: Results limited by --max-results. Use --all to fetch all results."
                     )
 
                 # Print export summary to stderr
@@ -1292,36 +1270,16 @@ def list_export(
                     if filter_stats:
                         scanned = filter_stats.get("scanned", 0)
                         Console(file=sys.stderr).print(
-                            f"Exported {write_result.rows_written:,} rows "
+                            f"Exported {rows_written:,} rows "
                             f"(filtered from {scanned:,} scanned) "
                             f"in {format_duration(elapsed)}"
                         )
                     else:
                         Console(file=sys.stderr).print(
-                            f"Exported {write_result.rows_written:,} rows "
-                            f"in {format_duration(elapsed)}"
+                            f"Exported {rows_written:,} rows in {format_duration(elapsed)}"
                         )
 
-                return CommandOutput(
-                    data=csv_data,
-                    context=cmd_context,
-                    artifacts=[
-                        Artifact(
-                            type="csv",
-                            path=csv_ref,
-                            path_is_relative=csv_is_relative,
-                            rows_written=write_result.rows_written,
-                            bytes_written=write_result.bytes_written,
-                            partial=False,
-                        )
-                    ],
-                    pagination={"rows": {"nextCursor": next_cursor, "prevCursor": None}}
-                    if next_cursor
-                    else None,
-                    resolved=resolved,
-                    columns=columns,
-                    api_called=True,
-                )
+                sys.exit(0)
 
             # JSON/table rows in-memory (small exports).
             # Emit memory warning for large JSON exports with expansion

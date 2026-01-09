@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - CLI: Renamed `--json` to `--set-json` on `person field`, `company field`, `opportunity field` commands to avoid conflict with global `--json` output flag.
+- **BREAKING**: CLI: `--csv FILE` is now `--csv` flag that outputs CSV to stdout. Use shell redirection: `--csv > file.csv`. Applies to `person ls`, `company ls`, `opportunity ls`, `list export`.
+- CLI: `--csv` and `--json` are now mutually exclusive (error if both specified).
 
 ### Added
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.

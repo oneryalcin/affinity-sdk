@@ -47,13 +47,20 @@ xaffinity list ls --cursor "$CURSOR" --json
 
 Note: if you use `--max-results` and it truncates results mid-page, the CLI may omit pagination to avoid producing an unsafe resume token.
 
-## Artifacts (CSV)
+## CSV Output
 
-When a command writes a CSV file in `--json` mode, the JSON output includes a reference to the artifact path (and does not duplicate row data).
+The `--csv` flag outputs CSV to stdout, making it composable with UNIX tools:
 
 ```bash
-xaffinity list export 123 --csv out.csv --json | jq '.artifacts'
+# Save to file
+xaffinity list export 123 --csv > out.csv
+
+# Pipe to other tools
+xaffinity person ls --all --csv | wc -l
+xaffinity list export 123 --csv | head -10
 ```
+
+**Note:** `--csv` and `--json` are mutually exclusive. Use one or the other.
 
 ## Machine-Readable Help
 
