@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: CLI: `--csv FILE` is now `--csv` flag that outputs CSV to stdout. Use shell redirection: `--csv > file.csv`. Applies to `person ls`, `company ls`, `opportunity ls`, `list export`.
 - CLI: `--csv` and `--json` are now mutually exclusive (error if both specified).
 - CLI: `person ls --query` and `company ls --query` now support `--field` and `--field-type` options via hybrid V1→V2 fetch.
+- **BREAKING**: CLI: `interaction ls` date filter parameters renamed for consistency:
+  - `--start-time` → `--after`
+  - `--end-time` → `--before`
+  - Context metadata keys changed: `startTime`/`endTime` → `after`/`before`
+  - Note: Interaction object fields (`startTime`/`endTime`) are unchanged
+- **BREAKING**: CLI: `interaction ls` now requires `--type` (was optional but API required it).
 
 ### Added
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.

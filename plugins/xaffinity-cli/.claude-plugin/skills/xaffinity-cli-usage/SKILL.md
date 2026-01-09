@@ -128,14 +128,16 @@ xaffinity interaction ls --person-id 123 --type meeting ...
 xaffinity note ls --person-id 123 --json  # Filter for isMeeting: true
 ```
 
-### Interactions require BOTH dates (max 1 year)
+### Interactions require --type and entity ID
 ```bash
-# WRONG:
-xaffinity interaction ls --person-id 123 --type meeting --json
+# Requires --type and one of --person-id, --company-id, --opportunity-id
+# Date range defaults to last 7 days if not specified
 
-# CORRECT:
-xaffinity interaction ls --person-id 123 --type meeting \
-  --start-time 2025-01-01 --end-time 2025-12-31 --json
+xaffinity interaction ls --type meeting --person-id 123 --json
+
+# With custom date range (max 1 year):
+xaffinity interaction ls --type meeting --person-id 123 \
+  --after 2025-01-01 --before 2025-12-31 --json
 ```
 
 ### Smart Fields not in API

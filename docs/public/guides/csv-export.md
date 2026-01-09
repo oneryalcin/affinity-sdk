@@ -129,7 +129,7 @@ xaffinity note ls --person-id 123 --json --all | \
 
 **Export interactions:**
 ```bash
-xaffinity interaction ls --person-id 123 --json --all | \
+xaffinity interaction ls --type meeting --person-id 123 --json --all | \
   jq -r '.data.interactions[] | [.id, .date, .type] | @csv'
 ```
 

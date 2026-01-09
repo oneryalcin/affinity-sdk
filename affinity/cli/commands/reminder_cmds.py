@@ -146,8 +146,12 @@ def _validate_single_entity(
     default=None,
     help="Reminder status (active, completed, overdue).",
 )
-@click.option("--due-before", type=str, default=None, help="Due before (ISO-8601).")
-@click.option("--due-after", type=str, default=None, help="Due after (ISO-8601).")
+@click.option(
+    "--due-after", type=str, default=None, help="Filter reminders due after this date (ISO-8601)."
+)
+@click.option(
+    "--due-before", type=str, default=None, help="Filter reminders due before this date (ISO-8601)."
+)
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
@@ -168,14 +172,26 @@ def reminder_ls(
     reminder_type: str | None,
     reset_type: str | None,
     status: str | None,
-    due_before: str | None,
     due_after: str | None,
+    due_before: str | None,
     page_size: int | None,
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
 ) -> None:
-    """List reminders."""
+    """List reminders.
+
+    Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id,
+    --creator-id, --completer-id), type, status, or due date range (--due-after/--due-before).
+
+    Examples:
+
+    - `xaffinity reminder ls --person-id 123`
+
+    - `xaffinity reminder ls --status active --due-after 2024-01-01`
+
+    - `xaffinity reminder ls --owner-id 456 --type recurring`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -203,10 +219,10 @@ def reminder_ls(
             ctx_modifiers["resetType"] = reset_type
         if status:
             ctx_modifiers["status"] = status
-        if due_before:
-            ctx_modifiers["dueBefore"] = due_before
         if due_after:
             ctx_modifiers["dueAfter"] = due_after
+        if due_before:
+            ctx_modifiers["dueBefore"] = due_before
         if page_size is not None:
             ctx_modifiers["pageSize"] = page_size
         if cursor is not None:

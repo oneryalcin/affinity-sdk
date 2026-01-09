@@ -44,6 +44,10 @@
     "relatedCommands": ["list ls", "list export", "field-value get"],
     "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields."
   },
+  "interaction ls": {
+    "relatedCommands": ["interaction get", "interaction create", "note ls"],
+    "whenToUse": "List interactions for an entity. Requires --type (meeting, call, email, chat-message) and one entity selector (--person-id, --company-id, or --opportunity-id). Date range uses --after/--before (defaults to last 7 days)."
+  },
   "interaction create": {
     "relatedCommands": ["interaction ls", "note create"],
     "whenToUse": "Log a meeting, call, or email. Requires --type and --participants."
@@ -51,5 +55,9 @@
   "note create": {
     "relatedCommands": ["note ls", "interaction create"],
     "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes."
+  },
+  "reminder ls": {
+    "relatedCommands": ["reminder get", "reminder create", "note ls"],
+    "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before)."
   }
 }

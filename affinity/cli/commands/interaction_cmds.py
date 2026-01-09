@@ -70,11 +70,15 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
     "-t",
     "interaction_type",
     type=click.Choice(sorted(_INTERACTION_TYPE_MAP.keys())),
-    default=None,
-    help="Interaction type (meeting, call, chat-message, email).",
+    required=True,
+    help="Interaction type (required): meeting, call, chat-message, email.",
 )
-@click.option("--start-time", type=str, default=None, help="Start time (ISO-8601).")
-@click.option("--end-time", type=str, default=None, help="End time (ISO-8601).")
+@click.option(
+    "--after", type=str, default=None, help="Start of date range (ISO-8601). Default: 7 days ago."
+)
+@click.option(
+    "--before", type=str, default=None, help="End of date range (ISO-8601). Default: now."
+)
 @click.option("--person-id", type=int, default=None, help="Filter by person id.")
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
 @click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity id.")
@@ -89,9 +93,9 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
 def interaction_ls(
     ctx: CLIContext,
     *,
-    interaction_type: str | None,
-    start_time: str | None,
-    end_time: str | None,
+    interaction_type: str,
+    after: str | None,
+    before: str | None,
     person_id: int | None,
     company_id: int | None,
     opportunity_id: int | None,
@@ -100,10 +104,22 @@ def interaction_ls(
     max_results: int | None,
     all_pages: bool,
 ) -> None:
-    """List interactions."""
+    """List interactions.
+
+    Requires --type and one entity selector (--person-id, --company-id, or --opportunity-id).
+    Date range defaults to last 7 days. Max range is 1 year.
+
+    Examples:
+
+    - `xaffinity interaction ls --type meeting --person-id 123`
+
+    - `xaffinity interaction ls --type email --company-id 456 --after 2024-06-01`
+
+    - `xaffinity interaction ls -t call --person-id 789 --after 2024-01-01 --before 2024-12-31`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        nonlocal start_time, end_time
+        nonlocal after, before
 
         # Validate that at least one entity ID is provided
         entity_count = sum(1 for x in [person_id, company_id, opportunity_id] if x is not None)
@@ -121,10 +137,10 @@ def interaction_ls(
             )
 
         # Apply smart date defaults if no date filters provided
-        if not start_time and not end_time:
+        if not after and not before:
             now = datetime.now(timezone.utc)
-            start_time = (now - timedelta(days=7)).isoformat()
-            end_time = now.isoformat()
+            after = (now - timedelta(days=7)).isoformat()
+            before = now.isoformat()
             if not ctx.quiet:
                 click.echo(
                     "Note: Using default date range: last 7 days (API max: 1 year)",
@@ -140,10 +156,10 @@ def interaction_ls(
         ctx_modifiers: dict[str, object] = {}
         if interaction_type:
             ctx_modifiers["type"] = interaction_type
-        if start_time:
-            ctx_modifiers["startTime"] = start_time
-        if end_time:
-            ctx_modifiers["endTime"] = end_time
+        if after:
+            ctx_modifiers["after"] = after
+        if before:
+            ctx_modifiers["before"] = before
         if person_id is not None:
             ctx_modifiers["personId"] = person_id
         if company_id is not None:
@@ -170,8 +186,8 @@ def interaction_ls(
             _INTERACTION_TYPE_MAP,
             label="interaction type",
         )
-        start_value = parse_iso_datetime(start_time, label="start-time") if start_time else None
-        end_value = parse_iso_datetime(end_time, label="end-time") if end_time else None
+        start_value = parse_iso_datetime(after, label="after") if after else None
+        end_value = parse_iso_datetime(before, label="before") if before else None
         person_id_value = PersonId(person_id) if person_id is not None else None
         company_id_value = CompanyId(company_id) if company_id is not None else None
         opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None

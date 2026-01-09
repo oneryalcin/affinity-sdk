@@ -2,7 +2,7 @@
   "_generated": {
     "by": "tools/generate_cli_commands_registry.py",
     "cliVersion": "0.7.1",
-    "at": "2026-01-09T13:23:31Z"
+    "at": "2026-01-09T14:32:44Z"
   },
   "version": 1,
   "cliVersion": "0.7.1",
@@ -985,10 +985,20 @@
       "destructive": false,
       "progressCapable": false,
       "parameters": {
+        "--after": {
+          "type": "string",
+          "required": false,
+          "help": "Start of date range (ISO-8601). Default: 7 days ago."
+        },
         "--all": {
           "type": "flag",
           "required": false,
           "help": "Fetch all pages."
+        },
+        "--before": {
+          "type": "string",
+          "required": false,
+          "help": "End of date range (ISO-8601). Default: now."
         },
         "--company-id": {
           "type": "int",
@@ -999,11 +1009,6 @@
           "type": "string",
           "required": false,
           "help": "Resume from cursor (incompatible with --page-size)."
-        },
-        "--end-time": {
-          "type": "string",
-          "required": false,
-          "help": "End time (ISO-8601)."
         },
         "--max-results": {
           "type": "int",
@@ -1025,15 +1030,10 @@
           "required": false,
           "help": "Filter by person id."
         },
-        "--start-time": {
-          "type": "string",
-          "required": false,
-          "help": "Start time (ISO-8601)."
-        },
         "--type": {
           "type": "string",
-          "required": false,
-          "help": "Interaction type (meeting, call, chat-message, email).",
+          "required": true,
+          "help": "Interaction type (required): meeting, call, chat-message, email.",
           "choices": [
             "call",
             "chat",
@@ -1043,7 +1043,18 @@
           ]
         }
       },
-      "positionals": []
+      "positionals": [],
+      "examples": [
+        "interaction ls --type meeting --person-id 123",
+        "interaction ls --type email --company-id 456 --after 2024-06-01",
+        "interaction ls -t call --person-id 789 --after 2024-01-01 --before 2024-12-31"
+      ],
+      "relatedCommands": [
+        "interaction get",
+        "interaction create",
+        "note ls"
+      ],
+      "whenToUse": "List interactions for an entity. Requires --type (meeting, call, email, chat-message) and one entity selector (--person-id, --company-id, or --opportunity-id). Date range uses --after/--before (defaults to last 7 days)."
     },
     {
       "name": "interaction update",
@@ -2620,12 +2631,12 @@
         "--due-after": {
           "type": "string",
           "required": false,
-          "help": "Due after (ISO-8601)."
+          "help": "Filter reminders due after this date (ISO-8601)."
         },
         "--due-before": {
           "type": "string",
           "required": false,
-          "help": "Due before (ISO-8601)."
+          "help": "Filter reminders due before this date (ISO-8601)."
         },
         "--max-results": {
           "type": "int",
@@ -2682,7 +2693,18 @@
           ]
         }
       },
-      "positionals": []
+      "positionals": [],
+      "examples": [
+        "reminder ls --person-id 123",
+        "reminder ls --status active --due-after 2024-01-01",
+        "reminder ls --owner-id 456 --type recurring"
+      ],
+      "relatedCommands": [
+        "reminder get",
+        "reminder create",
+        "note ls"
+      ],
+      "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before)."
     },
     {
       "name": "reminder update",
