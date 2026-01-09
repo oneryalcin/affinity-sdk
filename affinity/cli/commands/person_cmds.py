@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
@@ -11,7 +11,6 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 
 from affinity.models.entities import Person, PersonCreate, PersonUpdate
-from affinity.models.pagination import PaginatedResponse, V1PaginatedResponse
 from affinity.models.types import FieldId
 from affinity.types import CompanyId, FieldType, ListId, PersonId
 
@@ -147,167 +146,6 @@ def person_group() -> None:
     """Person commands."""
 
 
-@category("read")
-@person_group.command(name="search", cls=RichCommand)
-@click.argument("query", type=str)
-@click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
-@click.option(
-    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
-)
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
-@click.option(
-    "--with-interaction-dates",
-    is_flag=True,
-    default=False,
-    help="Include interaction date data.",
-)
-@click.option(
-    "--with-interaction-persons",
-    is_flag=True,
-    default=False,
-    help="Include persons for interactions.",
-)
-@click.option(
-    "--with-opportunities",
-    is_flag=True,
-    default=False,
-    help="Include associated opportunity IDs.",
-)
-@output_options
-@click.pass_obj
-def person_search(
-    ctx: CLIContext,
-    query: str,
-    *,
-    page_size: int | None,
-    cursor: str | None,
-    max_results: int | None,
-    all_pages: bool,
-    with_interaction_dates: bool,
-    with_interaction_persons: bool,
-    with_opportunities: bool,
-) -> None:
-    """
-    Search people by name or email.
-
-    `QUERY` is a free-text term passed to Affinity's person search. Typical inputs:
-
-    - Email: `alice@example.com`
-    - Name: `Alice` (or `Alice Smith`)
-
-    Examples:
-
-    - `xaffinity person search alice@example.com`
-    - `xaffinity person search \"Alice\" --all`
-    - `xaffinity person search \"Alice\" --with-interaction-dates`
-    """
-
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        client = ctx.get_client(warnings=warnings)
-        results: list[dict[str, object]] = []
-        first_page = True
-
-        # Build CommandContext upfront for all return paths
-        ctx_modifiers: dict[str, object] = {}
-        if with_interaction_dates:
-            ctx_modifiers["withInteractionDates"] = True
-        if with_interaction_persons:
-            ctx_modifiers["withInteractionPersons"] = True
-        if with_opportunities:
-            ctx_modifiers["withOpportunities"] = True
-        if page_size is not None:
-            ctx_modifiers["pageSize"] = page_size
-        if cursor is not None:
-            ctx_modifiers["cursor"] = cursor
-        if max_results is not None:
-            ctx_modifiers["maxResults"] = max_results
-        if all_pages:
-            ctx_modifiers["allPages"] = True
-
-        cmd_context = CommandContext(
-            name="person search",
-            inputs={"query": query},
-            modifiers=ctx_modifiers,
-        )
-
-        show_progress = (
-            ctx.progress != "never"
-            and not ctx.quiet
-            and (ctx.progress == "always" or sys.stderr.isatty())
-        )
-
-        with ExitStack() as stack:
-            progress: Progress | None = None
-            task_id: TaskID | None = None
-            if show_progress:
-                progress = stack.enter_context(
-                    Progress(
-                        TextColumn("{task.description}"),
-                        BarColumn(),
-                        TextColumn("{task.completed} rows"),
-                        TimeElapsedColumn(),
-                        console=Console(file=sys.stderr),
-                        transient=True,
-                    )
-                )
-                task_id = progress.add_task("Searching", total=max_results)
-
-            for page in client.persons.search_pages(
-                query,
-                with_interaction_dates=with_interaction_dates,
-                with_interaction_persons=with_interaction_persons,
-                with_opportunities=with_opportunities,
-                page_size=page_size,
-                page_token=cursor,
-            ):
-                for idx, person in enumerate(page.data):
-                    results.append(_person_row(person))
-                    if progress and task_id is not None:
-                        progress.update(task_id, completed=len(results))
-                    if max_results is not None and len(results) >= max_results:
-                        stopped_mid_page = idx < (len(page.data) - 1)
-                        if stopped_mid_page:
-                            warnings.append(
-                                "Results limited by --max-results. Use --all to fetch all results."
-                            )
-                        return CommandOutput(
-                            data={"persons": results[:max_results]},
-                            context=cmd_context,
-                            pagination={
-                                "persons": {
-                                    "nextCursor": page.next_page_token,
-                                    "prevCursor": None,
-                                }
-                            }
-                            if page.next_page_token and not stopped_mid_page
-                            else None,
-                            api_called=True,
-                        )
-
-                if first_page and not all_pages and max_results is None:
-                    return CommandOutput(
-                        data={"persons": results},
-                        context=cmd_context,
-                        pagination={
-                            "persons": {"nextCursor": page.next_page_token, "prevCursor": None}
-                        }
-                        if page.next_page_token
-                        else None,
-                        api_called=True,
-                    )
-                first_page = False
-
-        return CommandOutput(
-            data={"persons": results},
-            context=cmd_context,
-            pagination=None,
-            api_called=True,
-        )
-
-    run_command(ctx, command="person search", fn=fn)
-
-
 def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     """Parse --field-type option values to FieldType enums."""
     if not values:
@@ -428,12 +266,6 @@ def person_ls(
                 hint="Use --query for free-text search or --filter for structured filtering.",
             )
 
-        if query is not None and (field_ids or field_types):
-            warnings.append(
-                "--query search does not support --field or --field-type. "
-                "These options are ignored."
-            )
-
         # Build CommandContext upfront for all return paths
         ctx_modifiers: dict[str, object] = {}
         if page_size is not None:
@@ -467,30 +299,16 @@ def person_ls(
         rows: list[dict[str, object]] = []
         first_page = True
         use_v1_search = query is not None
-
-        # Use V1 search when --query is provided, otherwise V2 list
-        pages_iter: Iterator[V1PaginatedResponse[Person]] | Iterator[PaginatedResponse[Person]]
-        if use_v1_search:
-            assert query is not None
-            pages_iter = client.persons.search_pages(
-                query,
-                page_size=page_size,
-                page_token=cursor,
-            )
-        else:
-            pages_iter = client.persons.pages(
-                field_ids=parsed_field_ids,
-                field_types=parsed_field_types,
-                filter=filter_expr,
-                limit=page_size,
-                cursor=cursor,
-            )
+        wants_fields = bool(field_ids or field_types)
 
         show_progress = (
             ctx.progress != "never"
             and not ctx.quiet
             and (ctx.progress == "always" or sys.stderr.isatty())
         )
+
+        # Progress description based on operation type
+        task_description = "Searching" if use_v1_search else "Fetching"
 
         with ExitStack() as stack:
             progress: Progress | None = None
@@ -506,59 +324,154 @@ def person_ls(
                         transient=True,
                     )
                 )
-                task_id = progress.add_task("Fetching", total=max_results)
+                task_id = progress.add_task(task_description, total=max_results)
 
-            for page in pages_iter:
-                # Get next cursor/token based on API type
-                if hasattr(page, "next_page_token"):
-                    next_cursor = page.next_page_token
+            # Helper to check max_results and return early if needed
+            def _check_max_results(
+                rows: list[dict[str, object]],
+                idx: int,
+                page_len: int,
+                next_cursor: str | None,
+                prev_cursor: str | None,
+            ) -> CommandOutput | None:
+                if max_results is not None and len(rows) >= max_results:
+                    stopped_mid_page = idx < (page_len - 1)
+                    if stopped_mid_page:
+                        warnings.append(
+                            "Results limited by --max-results. Use --all to fetch all results."
+                        )
+                    pagination = None
+                    if next_cursor and not stopped_mid_page and next_cursor != cursor:
+                        pagination = {
+                            "persons": {
+                                "nextCursor": next_cursor,
+                                "prevCursor": prev_cursor,
+                            }
+                        }
+                    return CommandOutput(
+                        data={"persons": rows[:max_results]},
+                        context=cmd_context,
+                        pagination=pagination,
+                        api_called=True,
+                    )
+                return None
+
+            # Three paths: V2-only, V1-only, or Hybrid (V1 search + V2 batch fetch)
+            if use_v1_search and wants_fields:
+                # Hybrid: V1 search for IDs, then V2 batch fetch with field data
+                assert query is not None
+                for v1_page in client.persons.search_pages(
+                    query,
+                    page_size=page_size,
+                    page_token=cursor,
+                ):
+                    next_cursor = v1_page.next_page_token
                     prev_cursor = None  # V1 doesn't have prev cursor
-                else:
+
+                    if v1_page.data:
+                        # Batch fetch from V2 with field data
+                        person_ids = [PersonId(p.id) for p in v1_page.data]
+                        v2_response = client.persons.list(
+                            ids=person_ids,
+                            field_ids=parsed_field_ids,
+                            field_types=parsed_field_types,
+                        )
+                        for idx, person in enumerate(v2_response.data):
+                            rows.append(_person_ls_row(person))
+                            if progress and task_id is not None:
+                                progress.update(task_id, completed=len(rows))
+                            result = _check_max_results(
+                                rows, idx, len(v2_response.data), next_cursor, prev_cursor
+                            )
+                            if result is not None:
+                                return result
+
+                    if first_page and not all_pages and max_results is None:
+                        return CommandOutput(
+                            data={"persons": rows},
+                            context=cmd_context,
+                            pagination=(
+                                {"persons": {"nextCursor": next_cursor, "prevCursor": None}}
+                                if next_cursor
+                                else None
+                            ),
+                            api_called=True,
+                        )
+                    first_page = False
+
+            elif use_v1_search:
+                # Search without field data
+                assert query is not None
+                for search_page in client.persons.search_pages(
+                    query,
+                    page_size=page_size,
+                    page_token=cursor,
+                ):
+                    next_cursor = search_page.next_page_token
+                    prev_cursor = None  # Search doesn't have prev cursor
+
+                    for idx, person in enumerate(search_page.data):
+                        rows.append(_person_ls_row(person))
+                        if progress and task_id is not None:
+                            progress.update(task_id, completed=len(rows))
+                        result = _check_max_results(
+                            rows, idx, len(search_page.data), next_cursor, prev_cursor
+                        )
+                        if result is not None:
+                            return result
+
+                    if first_page and not all_pages and max_results is None:
+                        return CommandOutput(
+                            data={"persons": rows},
+                            context=cmd_context,
+                            pagination=(
+                                {"persons": {"nextCursor": next_cursor, "prevCursor": None}}
+                                if next_cursor
+                                else None
+                            ),
+                            api_called=True,
+                        )
+                    first_page = False
+
+            else:
+                # List with optional field data
+                for page in client.persons.pages(
+                    field_ids=parsed_field_ids,
+                    field_types=parsed_field_types,
+                    filter=filter_expr,
+                    limit=page_size,
+                    cursor=cursor,
+                ):
                     next_cursor = page.pagination.next_cursor
                     prev_cursor = page.pagination.prev_cursor
 
-                for idx, person in enumerate(page.data):
-                    rows.append(_person_ls_row(person))
-                    if progress and task_id is not None:
-                        progress.update(task_id, completed=len(rows))
-                    if max_results is not None and len(rows) >= max_results:
-                        stopped_mid_page = idx < (len(page.data) - 1)
-                        if stopped_mid_page:
-                            warnings.append(
-                                "Results limited by --max-results. Use --all to fetch all results."
-                            )
-                        pagination = None
-                        if next_cursor and not stopped_mid_page and next_cursor != cursor:
-                            pagination = {
-                                "persons": {
-                                    "nextCursor": next_cursor,
-                                    "prevCursor": prev_cursor,
-                                }
-                            }
+                    for idx, person in enumerate(page.data):
+                        rows.append(_person_ls_row(person))
+                        if progress and task_id is not None:
+                            progress.update(task_id, completed=len(rows))
+                        result = _check_max_results(
+                            rows, idx, len(page.data), next_cursor, prev_cursor
+                        )
+                        if result is not None:
+                            return result
+
+                    if first_page and not all_pages and max_results is None:
                         return CommandOutput(
-                            data={"persons": rows[:max_results]},
+                            data={"persons": rows},
                             context=cmd_context,
-                            pagination=pagination,
+                            pagination=(
+                                {
+                                    "persons": {
+                                        "nextCursor": next_cursor,
+                                        "prevCursor": prev_cursor,
+                                    }
+                                }
+                                if next_cursor
+                                else None
+                            ),
                             api_called=True,
                         )
-
-                if first_page and not all_pages and max_results is None:
-                    return CommandOutput(
-                        data={"persons": rows},
-                        context=cmd_context,
-                        pagination=(
-                            {
-                                "persons": {
-                                    "nextCursor": next_cursor,
-                                    "prevCursor": prev_cursor,
-                                }
-                            }
-                            if next_cursor
-                            else None
-                        ),
-                        api_called=True,
-                    )
-                first_page = False
+                    first_page = False
 
         # CSV output to stdout
         if csv_flag:
@@ -587,19 +500,6 @@ def _person_ls_row(person: Person) -> dict[str, object]:
         "name": person.full_name,
         "primaryEmail": person.primary_email,
         "emails": person.emails,
-    }
-
-
-def _person_row(person: Person) -> dict[str, object]:
-    last_interaction = None
-    if person.interaction_dates is not None:
-        last_interaction = person.interaction_dates.last_interaction_date
-    return {
-        "id": int(person.id),
-        "name": person.full_name,
-        "primaryEmail": person.primary_email,
-        "emails": person.emails,
-        "lastInteractionDate": last_interaction,
     }
 
 
@@ -705,7 +605,7 @@ def _resolve_person_by_email(*, client: Any, email: str) -> PersonId:
             f'Person not found for email "{email}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `xaffinity person search "{email}"` to explore matches.',
+            hint=f'Run `xaffinity person ls --query "{email}"` to explore matches.',
             details={"email": email},
         )
     if len(matches) > 1:
@@ -749,7 +649,7 @@ def _resolve_person_by_name(*, client: Any, name: str) -> PersonId:
             f'Person not found for name "{name}"',
             exit_code=4,
             error_type="not_found",
-            hint=f'Run `xaffinity person search "{name}"` to explore matches.',
+            hint=f'Run `xaffinity person ls --query "{name}"` to explore matches.',
             details={"name": name},
         )
     if len(matches) > 1:

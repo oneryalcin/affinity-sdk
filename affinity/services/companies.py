@@ -54,6 +54,7 @@ class CompanyService:
     def list(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -64,6 +65,7 @@ class CompanyService:
         Get a page of companies.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include (e.g., ["enriched", "global"])
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
@@ -75,7 +77,7 @@ class CompanyService:
             Paginated response with companies
         """
         if cursor is not None:
-            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+            if any(p is not None for p in (ids, field_ids, field_types, filter, limit)):
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -84,6 +86,8 @@ class CompanyService:
             data = self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if field_ids:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
@@ -104,6 +108,7 @@ class CompanyService:
     def pages(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -116,6 +121,7 @@ class CompanyService:
         Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include (e.g., ["enriched", "global"])
             filter: V2 filter expression string or FilterExpression
@@ -125,7 +131,7 @@ class CompanyService:
         Yields:
             PaginatedResponse[Company] for each page
         """
-        other_params = (field_ids, field_types, filter, limit)
+        other_params = (ids, field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
@@ -135,7 +141,9 @@ class CompanyService:
         page = (
             self.list(cursor=cursor)
             if cursor is not None
-            else self.list(field_ids=field_ids, field_types=field_types, filter=filter, limit=limit)
+            else self.list(
+                ids=ids, field_ids=field_ids, field_types=field_types, filter=filter, limit=limit
+            )
         )
         while True:
             yield page
@@ -150,6 +158,7 @@ class CompanyService:
     def all(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -158,6 +167,7 @@ class CompanyService:
         Iterate through all companies with automatic pagination.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include
             field_types: Field types to include
             filter: V2 filter expression
@@ -171,6 +181,7 @@ class CompanyService:
                 data = self._client.get_url(next_url)
             else:
                 return self.list(
+                    ids=ids,
                     field_ids=field_ids,
                     field_types=field_types,
                     filter=filter,
@@ -185,6 +196,7 @@ class CompanyService:
     def iter(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -194,7 +206,7 @@ class CompanyService:
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+        return self.all(ids=ids, field_ids=field_ids, field_types=field_types, filter=filter)
 
     def get(
         self,
@@ -647,6 +659,7 @@ class AsyncCompanyService:
     async def list(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -657,6 +670,7 @@ class AsyncCompanyService:
         Get a page of companies.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include (e.g., ["enriched", "global"])
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
@@ -668,7 +682,7 @@ class AsyncCompanyService:
             Paginated response with companies
         """
         if cursor is not None:
-            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+            if any(p is not None for p in (ids, field_ids, field_types, filter, limit)):
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -677,6 +691,8 @@ class AsyncCompanyService:
             data = await self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if field_ids:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
@@ -697,6 +713,7 @@ class AsyncCompanyService:
     async def pages(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -709,6 +726,7 @@ class AsyncCompanyService:
         Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include (e.g., ["enriched", "global"])
             filter: V2 filter expression string or FilterExpression
@@ -718,7 +736,7 @@ class AsyncCompanyService:
         Yields:
             PaginatedResponse[Company] for each page
         """
-        other_params = (field_ids, field_types, filter, limit)
+        other_params = (ids, field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
@@ -729,6 +747,7 @@ class AsyncCompanyService:
             page = await self.list(cursor=cursor)
         else:
             page = await self.list(
+                ids=ids,
                 field_ids=field_ids,
                 field_types=field_types,
                 filter=filter,
@@ -747,6 +766,7 @@ class AsyncCompanyService:
     def all(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -755,6 +775,7 @@ class AsyncCompanyService:
         Iterate through all companies with automatic pagination.
 
         Args:
+            ids: Specific company IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include
             field_types: Field types to include
             filter: V2 filter expression
@@ -770,13 +791,16 @@ class AsyncCompanyService:
                     data=[Company.model_validate(c) for c in data.get("data", [])],
                     pagination=PaginationInfo.model_validate(data.get("pagination", {})),
                 )
-            return await self.list(field_ids=field_ids, field_types=field_types, filter=filter)
+            return await self.list(
+                ids=ids, field_ids=field_ids, field_types=field_types, filter=filter
+            )
 
         return AsyncPageIterator(fetch_page)
 
     def iter(
         self,
         *,
+        ids: Sequence[CompanyId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -786,7 +810,7 @@ class AsyncCompanyService:
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+        return self.all(ids=ids, field_ids=field_ids, field_types=field_types, filter=filter)
 
     async def get(
         self,

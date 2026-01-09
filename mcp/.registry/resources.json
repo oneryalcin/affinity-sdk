@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "version": 1,
-  "generatedAt": "2026-01-08T17:47:46Z",
+  "generatedAt": "2026-01-09T13:09:26Z",
   "items": [
     {
       "name": "xaffinity-data-model",
@@ -36,6 +36,6 @@
       "provider": "xaffinity"
     }
   ],
-  "hash": "98f459c33ea1f960d375b7f614dc472b3ecca9529764db72659cfd6928cb5987",
+  "hash": "ee3337c7116a3f02252fcbe6570e6347e472aa7d4d26855de4ce1dba5820e239",
   "total": 4
 }

@@ -94,6 +94,7 @@ class OpportunityService:
     def list(
         self,
         *,
+        ids: Sequence[OpportunityId] | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> PaginatedResponse[Opportunity]:
@@ -101,6 +102,7 @@ class OpportunityService:
         List all opportunities.
 
         Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
             limit: Maximum number of results per page
             cursor: Cursor to resume pagination (opaque; obtained from prior responses)
 
@@ -108,7 +110,7 @@ class OpportunityService:
         For full opportunity row data, use list entries explicitly.
         """
         if cursor is not None:
-            if limit is not None:
+            if ids is not None or limit is not None:
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -117,6 +119,8 @@ class OpportunityService:
             data = self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if limit is not None:
                 params["limit"] = limit
             data = self._client.get("/opportunities", params=params or None)
@@ -129,6 +133,7 @@ class OpportunityService:
     def pages(
         self,
         *,
+        ids: Sequence[OpportunityId] | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> Iterator[PaginatedResponse[Opportunity]]:
@@ -136,14 +141,20 @@ class OpportunityService:
         Iterate opportunity pages (not items), yielding `PaginatedResponse[Opportunity]`.
 
         This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+
+        Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
+            limit: Maximum results per page
+            cursor: Cursor to resume pagination
         """
-        if cursor is not None and limit is not None:
+        other_params = (ids, limit)
+        if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
                 "Start a new pagination sequence without a cursor to change parameters."
             )
         requested_cursor = cursor
-        page = self.list(cursor=cursor) if cursor is not None else self.list(limit=limit)
+        page = self.list(cursor=cursor) if cursor is not None else self.list(ids=ids, limit=limit)
         while True:
             yield page
             if not page.has_next:
@@ -154,8 +165,17 @@ class OpportunityService:
             requested_cursor = next_cursor
             page = self.list(cursor=next_cursor)
 
-    def all(self) -> Iterator[Opportunity]:
-        """Iterate through all opportunities with automatic pagination."""
+    def all(
+        self,
+        *,
+        ids: Sequence[OpportunityId] | None = None,
+    ) -> Iterator[Opportunity]:
+        """
+        Iterate through all opportunities with automatic pagination.
+
+        Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
+        """
 
         def fetch_page(next_url: str | None) -> PaginatedResponse[Opportunity]:
             if next_url:
@@ -164,17 +184,21 @@ class OpportunityService:
                     data=[Opportunity.model_validate(item) for item in data.get("data", [])],
                     pagination=PaginationInfo.model_validate(data.get("pagination", {})),
                 )
-            return self.list()
+            return self.list(ids=ids)
 
         return PageIterator(fetch_page)
 
-    def iter(self) -> Iterator[Opportunity]:
+    def iter(
+        self,
+        *,
+        ids: Sequence[OpportunityId] | None = None,
+    ) -> Iterator[Opportunity]:
         """
         Auto-paginate all opportunities.
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all()
+        return self.all(ids=ids)
 
     # =========================================================================
     # Search (V1 API)
@@ -708,6 +732,7 @@ class AsyncOpportunityService:
     async def list(
         self,
         *,
+        ids: Sequence[OpportunityId] | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> PaginatedResponse[Opportunity]:
@@ -715,6 +740,7 @@ class AsyncOpportunityService:
         List all opportunities.
 
         Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
             limit: Maximum number of results per page
             cursor: Cursor to resume pagination (opaque; obtained from prior responses)
 
@@ -722,7 +748,7 @@ class AsyncOpportunityService:
         For full opportunity row data, use list entries explicitly.
         """
         if cursor is not None:
-            if limit is not None:
+            if ids is not None or limit is not None:
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -731,6 +757,8 @@ class AsyncOpportunityService:
             data = await self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if limit is not None:
                 params["limit"] = limit
             data = await self._client.get("/opportunities", params=params or None)
@@ -743,6 +771,7 @@ class AsyncOpportunityService:
     async def pages(
         self,
         *,
+        ids: Sequence[OpportunityId] | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> AsyncIterator[PaginatedResponse[Opportunity]]:
@@ -750,15 +779,23 @@ class AsyncOpportunityService:
         Iterate opportunity pages (not items), yielding `PaginatedResponse[Opportunity]`.
 
         This is useful for ETL scripts that want checkpoint/resume via `page.next_cursor`.
+
+        Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
+            limit: Maximum results per page
+            cursor: Cursor to resume pagination
         """
-        if cursor is not None and limit is not None:
+        other_params = (ids, limit)
+        if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
                 "Start a new pagination sequence without a cursor to change parameters."
             )
         requested_cursor = cursor
         page = (
-            await self.list(cursor=cursor) if cursor is not None else await self.list(limit=limit)
+            await self.list(cursor=cursor)
+            if cursor is not None
+            else await self.list(ids=ids, limit=limit)
         )
         while True:
             yield page
@@ -770,8 +807,17 @@ class AsyncOpportunityService:
             requested_cursor = next_cursor
             page = await self.list(cursor=next_cursor)
 
-    def all(self) -> AsyncIterator[Opportunity]:
-        """Iterate through all opportunities with automatic pagination."""
+    def all(
+        self,
+        *,
+        ids: Sequence[OpportunityId] | None = None,
+    ) -> AsyncIterator[Opportunity]:
+        """
+        Iterate through all opportunities with automatic pagination.
+
+        Args:
+            ids: Specific opportunity IDs to fetch (batch lookup)
+        """
 
         async def fetch_page(next_url: str | None) -> PaginatedResponse[Opportunity]:
             if next_url:
@@ -780,17 +826,21 @@ class AsyncOpportunityService:
                     data=[Opportunity.model_validate(item) for item in data.get("data", [])],
                     pagination=PaginationInfo.model_validate(data.get("pagination", {})),
                 )
-            return await self.list()
+            return await self.list(ids=ids)
 
         return AsyncPageIterator(fetch_page)
 
-    def iter(self) -> AsyncIterator[Opportunity]:
+    def iter(
+        self,
+        *,
+        ids: Sequence[OpportunityId] | None = None,
+    ) -> AsyncIterator[Opportunity]:
         """
         Auto-paginate all opportunities.
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all()
+        return self.all(ids=ids)
 
     # =========================================================================
     # Search (V1 API)

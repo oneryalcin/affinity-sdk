@@ -74,7 +74,7 @@ You: xaffinity person delete 123 --yes
 
 ```bash
 # Search/Get entities
-xaffinity person search "John Smith" --json
+xaffinity person ls --query "John Smith" --json
 xaffinity person get 123 --json
 xaffinity person get email:alice@example.com --json
 xaffinity company get domain:acme.com --json
@@ -85,12 +85,12 @@ xaffinity company ls --all --json
 xaffinity list ls --json
 
 # Export to CSV
-xaffinity person ls --all --csv contacts.csv --csv-bom
-xaffinity list export LIST_ID --all --csv output.csv --csv-bom
+xaffinity person ls --all --csv --csv-bom > contacts.csv
+xaffinity list export LIST_ID --all --csv --csv-bom > output.csv
 
 # Export with expanded associations
-xaffinity list export LIST_ID --expand people --all --csv output.csv
-xaffinity list export LIST_ID --expand people --expand companies --all --csv output.csv
+xaffinity list export LIST_ID --expand people --all --csv > output.csv
+xaffinity list export LIST_ID --expand people --expand companies --all --csv > output.csv
 ```
 
 ## Filtering (Custom Fields Only)
@@ -141,8 +141,8 @@ xaffinity interaction ls --person-id 123 --type meeting \
 ### Smart Fields not in API
 "Last Meeting", "Next Meeting" are UI-only. Use:
 ```bash
-xaffinity person search "Alice" --with-interaction-dates --json
-xaffinity company search "Acme" --with-interaction-dates --json
+xaffinity person ls --query "Alice" --with-interaction-dates --json
+xaffinity company ls --query "Acme" --with-interaction-dates --json
 ```
 
 ### List filtering is client-side
@@ -170,8 +170,8 @@ Companies with `global: true` cannot be modified.
 |------|---------|
 | Find person by email | `person get email:user@example.com` |
 | Find company by domain | `company get domain:acme.com` |
-| Export all contacts | `person ls --all --csv contacts.csv --csv-bom` |
-| Export pipeline with people | `list export LIST_ID --expand people --all --csv out.csv` |
+| Export all contacts | `person ls --all --csv --csv-bom > contacts.csv` |
+| Export pipeline with people | `list export LIST_ID --expand people --all --csv > out.csv` |
 | Get command help | `xaffinity <command> --help` |
 
 ## Installation

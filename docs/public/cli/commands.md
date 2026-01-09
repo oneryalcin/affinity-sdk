@@ -198,43 +198,31 @@ xaffinity resolve-url "https://mydomain.affinity.com/companies/263169568" --json
 
 ## People
 
-### `xaffinity person search <query>`
-
-`<query>` is a free-text term (typically a name or email address) passed to Affinity's person search.
-
-Options:
-
-- `--with-interaction-dates`: include interaction date data
-- `--with-interaction-persons`: include persons for interactions
-- `--with-opportunities`: include associated opportunity IDs
-- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
-
-```bash
-xaffinity person search "alice@example.com"
-xaffinity person search "Alice" --all --json
-xaffinity person search "Alice" --with-interaction-dates
-```
-
 ### `xaffinity person ls`
 
-List persons with V2 pagination. Supports field selection and V2 filter expressions.
+List persons. Supports field selection, filter expressions, and free-text search.
 
 Options:
 
+- `--query <term>` / `-q <term>`: free-text search (name or email)
 - `--field <id-or-name>` (repeatable): field ID or name to include
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
-- `--filter <expression>`: V2 filter expression (custom fields only)
+- `--filter <expression>`: filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
 - `--csv`: output as CSV (to stdout)
 - `--csv-bom`: add UTF-8 BOM for Excel compatibility
 
 **Note:** `--filter` only works with custom fields. To filter on built-in properties like `type`, `firstName`, etc., use `--json` output with `jq`.
 
+**Note:** `--query` can be combined with `--field` and `--field-type` to search with field data.
+
 ```bash
 xaffinity person ls
 xaffinity person ls --page-size 50
 xaffinity person ls --field-type enriched --all
 xaffinity person ls --filter 'Email =~ "@acme.com"'
+xaffinity person ls --query "alice@example.com"
+xaffinity person ls --query "Alice" --field-type enriched --all
 xaffinity person ls --all --csv > people.csv
 xaffinity person ls --all --csv --csv-bom > people.csv
 ```
@@ -324,43 +312,31 @@ xaffinity person files upload 12345 --file a.pdf --file b.pdf
 
 ## Companies
 
-### `xaffinity company search <query>`
-
-`<query>` is a free-text term (typically a company name or domain) passed to Affinity's company search.
-
-Options:
-
-- `--with-interaction-dates`: include interaction date data
-- `--with-interaction-persons`: include persons for interactions
-- `--with-opportunities`: include associated opportunity IDs
-- `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
-
-```bash
-xaffinity company search "example.com"
-xaffinity company search "Example" --json
-xaffinity company search "Example" --with-interaction-dates
-```
-
 ### `xaffinity company ls`
 
-List companies with V2 pagination. Supports field selection and V2 filter expressions.
+List companies. Supports field selection, filter expressions, and free-text search.
 
 Options:
 
+- `--query <term>` / `-q <term>`: free-text search (name or domain)
 - `--field <id-or-name>` (repeatable): field ID or name to include
 - `--field-type <type>` (repeatable): field type to include (global, enriched, relationship-intelligence)
-- `--filter <expression>`: V2 filter expression (custom fields only)
+- `--filter <expression>`: filter expression (custom fields only)
 - `--page-size`, `--cursor`, `--max-results`, `--all`: pagination options
 - `--csv`: output as CSV (to stdout)
 - `--csv-bom`: add UTF-8 BOM for Excel compatibility
 
 **Note:** `--filter` only works with custom fields. To filter on built-in properties like `name`, `domain`, etc., use `--json` output with `jq`.
 
+**Note:** `--query` can be combined with `--field` and `--field-type` to search with field data.
+
 ```bash
 xaffinity company ls
 xaffinity company ls --page-size 50
 xaffinity company ls --field-type enriched --all
 xaffinity company ls --filter 'Industry = "Software"'
+xaffinity company ls --query "example.com"
+xaffinity company ls --query "Example" --field-type enriched --all
 xaffinity company ls --all --csv > companies.csv
 xaffinity company ls --all --csv --csv-bom > companies.csv
 ```
@@ -455,7 +431,7 @@ xaffinity company files upload 9876 --file a.pdf --file b.pdf
 
 ### `xaffinity opportunity ls`
 
-List opportunities (basic v2 representation).
+List opportunities.
 
 Options:
 
@@ -487,7 +463,7 @@ Notes:
 
 ### `xaffinity opportunity create`
 
-Create a new opportunity (V1 write path).
+Create a new opportunity.
 
 ```bash
 xaffinity opportunity create --name "Series A" --list "Dealflow"
@@ -538,7 +514,7 @@ xaffinity list create --name "People" --type person --public --owner-id 42
 
 Accepts a list ID or an exact list name.
 
-The Fields table includes a `valueType` column using V2 string types (e.g., `dropdown-multi`, `ranked-dropdown`).
+The Fields table includes a `valueType` column (e.g., `dropdown-multi`, `ranked-dropdown`).
 
 ```bash
 xaffinity list get 123
@@ -555,7 +531,7 @@ Options:
 - `--csv-bom`: add UTF-8 BOM for Excel compatibility
 - `--field <id-or-name>` (repeatable): include specific fields
 - `--saved-view <name>`: use a saved view's field selection
-- `--filter <expression>`: V1 filter expression
+- `--filter <expression>`: filter expression
 
 ```bash
 xaffinity list export 123 --csv > out.csv
@@ -725,7 +701,7 @@ xaffinity field delete field-123
 
 ### `xaffinity field history`
 
-Show field value change history for a specific field on an entity (V1).
+Show field value change history for a specific field on an entity.
 
 ```
 xaffinity field history FIELD_ID [OPTIONS]

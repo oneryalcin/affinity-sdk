@@ -1,4 +1,9 @@
 {
+  "_generated": {
+    "by": "tools/generate_cli_commands_registry.py",
+    "cliVersion": "0.7.1",
+    "at": "2026-01-09T13:23:31Z"
+  },
   "version": 1,
   "cliVersion": "0.7.1",
   "commands": [
@@ -277,14 +282,14 @@
           "help": "Fetch all pages."
         },
         "--csv": {
-          "type": "string",
+          "type": "flag",
           "required": false,
-          "help": "Write to CSV file."
+          "help": "Output as CSV (to stdout)."
         },
         "--csv-bom": {
           "type": "flag",
           "required": false,
-          "help": "Write UTF-8 BOM for Excel compatibility."
+          "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
         },
         "--cursor": {
           "type": "string",
@@ -331,14 +336,14 @@
         "company ls --field-type enriched --all",
         "company ls --filter 'Industry = \"Software\"'",
         "company ls --query \"Acme\" --all",
-        "company ls --all --csv companies.csv",
-        "company ls --all --csv companies.csv --csv-bom"
+        "company ls --all --csv > companies.csv",
+        "company ls --all --csv --csv-bom > companies.csv"
       ],
       "relatedCommands": [
         "company get",
-        "company search"
+        "company field"
       ],
-      "whenToUse": "Search ALL companies in CRM by core fields (name, domain). NOT for list-specific fields like Status."
+      "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status."
     },
     {
       "name": "company merge",
@@ -358,62 +363,6 @@
           "type": "int",
           "required": true
         }
-      ]
-    },
-    {
-      "name": "company search",
-      "description": "Search companies by name or domain.",
-      "category": "read",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--all": {
-          "type": "flag",
-          "required": false,
-          "help": "Fetch all pages."
-        },
-        "--cursor": {
-          "type": "string",
-          "required": false,
-          "help": "Resume from cursor (incompatible with --page-size)."
-        },
-        "--max-results": {
-          "type": "int",
-          "required": false,
-          "help": "Stop after N results total."
-        },
-        "--page-size": {
-          "type": "int",
-          "required": false,
-          "help": "Page size (max 500)."
-        },
-        "--with-interaction-dates": {
-          "type": "flag",
-          "required": false,
-          "help": "Include interaction date data."
-        },
-        "--with-interaction-persons": {
-          "type": "flag",
-          "required": false,
-          "help": "Include persons for interactions."
-        },
-        "--with-opportunities": {
-          "type": "flag",
-          "required": false,
-          "help": "Include associated opportunity IDs."
-        }
-      },
-      "positionals": [
-        {
-          "name": "QUERY",
-          "type": "string",
-          "required": true
-        }
-      ],
-      "examples": [
-        "company search longevitix",
-        "company search longevitix.co",
-        "company search longevitix --with-interaction-dates"
       ]
     },
     {
@@ -1403,14 +1352,14 @@
           "help": "Fetch all rows."
         },
         "--csv": {
-          "type": "string",
+          "type": "flag",
           "required": false,
-          "help": "Write to CSV file."
+          "help": "Output as CSV (to stdout)."
         },
         "--csv-bom": {
           "type": "flag",
           "required": false,
-          "help": "Write UTF-8 BOM for Excel."
+          "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
         },
         "--csv-header": {
           "type": "string",
@@ -1533,10 +1482,10 @@
       ],
       "examples": [
         "list export \"Pipeline\" --all",
-        "list export 12345 --csv pipeline.csv --all",
-        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv deals.csv",
+        "list export 12345 --csv --all > pipeline.csv",
+        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv",
         "list export \"Pipeline\" --field Status --field \"Deal Size\" --all",
-        "list export \"Pipeline\" --expand people --all --csv opps-with-people.csv",
+        "list export \"Pipeline\" --expand people --all --csv > opps-with-people.csv",
         "list export \"Pipeline\" --expand people --expand companies --all"
       ],
       "relatedCommands": [
@@ -2033,14 +1982,14 @@
           "help": "Fetch all pages."
         },
         "--csv": {
-          "type": "string",
+          "type": "flag",
           "required": false,
-          "help": "Write to CSV file."
+          "help": "Output as CSV (to stdout)."
         },
         "--csv-bom": {
           "type": "flag",
           "required": false,
-          "help": "Write UTF-8 BOM for Excel compatibility."
+          "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
         },
         "--cursor": {
           "type": "string",
@@ -2069,8 +2018,8 @@
         "opportunity ls --page-size 200",
         "opportunity ls --query \"Series A\" --all",
         "opportunity ls --cursor <cursor>",
-        "opportunity ls --all --csv opportunities.csv",
-        "opportunity ls --all --csv opportunities.csv --csv-bom"
+        "opportunity ls --all --csv > opportunities.csv",
+        "opportunity ls --all --csv --csv-bom > opportunities.csv"
       ],
       "relatedCommands": [
         "opportunity get",
@@ -2395,14 +2344,14 @@
           "help": "Fetch all pages."
         },
         "--csv": {
-          "type": "string",
+          "type": "flag",
           "required": false,
-          "help": "Write to CSV file."
+          "help": "Output as CSV (to stdout)."
         },
         "--csv-bom": {
           "type": "flag",
           "required": false,
-          "help": "Write UTF-8 BOM for Excel compatibility."
+          "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
         },
         "--cursor": {
           "type": "string",
@@ -2449,14 +2398,14 @@
         "person ls --field-type enriched --all",
         "person ls --filter 'Email =~ \"@acme.com\"'",
         "person ls --query \"alice@example.com\" --all",
-        "person ls --all --csv people.csv",
-        "person ls --all --csv people.csv --csv-bom"
+        "person ls --all --csv > people.csv",
+        "person ls --all --csv --csv-bom > people.csv"
       ],
       "relatedCommands": [
         "person get",
-        "person search"
+        "person field"
       ],
-      "whenToUse": "Search ALL persons in CRM by core fields (name, email). NOT for list-specific fields."
+      "whenToUse": "List or search ALL persons in CRM. Use --query for text search (name, email). NOT for list-specific fields."
     },
     {
       "name": "person merge",
@@ -2476,62 +2425,6 @@
           "type": "int",
           "required": true
         }
-      ]
-    },
-    {
-      "name": "person search",
-      "description": "Search people by name or email.",
-      "category": "read",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--all": {
-          "type": "flag",
-          "required": false,
-          "help": "Fetch all pages."
-        },
-        "--cursor": {
-          "type": "string",
-          "required": false,
-          "help": "Resume from cursor (incompatible with --page-size)."
-        },
-        "--max-results": {
-          "type": "int",
-          "required": false,
-          "help": "Stop after N results total."
-        },
-        "--page-size": {
-          "type": "int",
-          "required": false,
-          "help": "Page size (max 500)."
-        },
-        "--with-interaction-dates": {
-          "type": "flag",
-          "required": false,
-          "help": "Include interaction date data."
-        },
-        "--with-interaction-persons": {
-          "type": "flag",
-          "required": false,
-          "help": "Include persons for interactions."
-        },
-        "--with-opportunities": {
-          "type": "flag",
-          "required": false,
-          "help": "Include associated opportunity IDs."
-        }
-      },
-      "positionals": [
-        {
-          "name": "QUERY",
-          "type": "string",
-          "required": true
-        }
-      ],
-      "examples": [
-        "person search alice@example.com",
-        "person search \"Alice\" --all",
-        "person search \"Alice\" --with-interaction-dates"
       ]
     },
     {
@@ -2958,5 +2851,5 @@
       "positionals": []
     }
   ],
-  "total": 77
+  "total": 75
 }

@@ -31,11 +31,11 @@ Some commands include resume tokens in `meta.pagination`.
 - Resume cursor: `meta.pagination.<section>.nextCursor` (resume with `--cursor <cursor>`)
 - Treat cursors as opaque strings (some may look like URLs); don’t parse them.
 
-Example (search):
+Example (person list with query):
 
 ```bash
-xaffinity person search "alice" --json | jq -r '.meta.pagination.persons.nextCursor'
-xaffinity person search "alice" --cursor "$CURSOR" --json
+xaffinity person ls --query "alice" --json | jq -r '.meta.pagination.persons.nextCursor'
+xaffinity person ls --query "alice" --cursor "$CURSOR" --json
 ```
 
 Example (list inventory):

@@ -199,9 +199,9 @@ The pagination key always matches the data key (`persons`, `companies`, `opportu
 To fetch the next page, use the `--cursor` option:
 
 ```bash
-xaffinity person search "Alice" --json
+xaffinity person ls --query "Alice" --json
 # Get nextCursor from response
-xaffinity person search "Alice" --cursor "eyJpZCI6MTIzfQ==" --json
+xaffinity person ls --query "Alice" --cursor "eyJpZCI6MTIzfQ==" --json
 ```
 
 ## Rate Limit Metadata
@@ -303,18 +303,18 @@ Response:
 }
 ```
 
-### Person Search with Pagination
+### Person List with Query and Pagination
 
 Command:
 ```bash
-xaffinity person search "Alice" --json
+xaffinity person ls --query "Alice" --json
 ```
 
 Response:
 ```json
 {
   "ok": true,
-  "command": "person search",
+  "command": "person ls",
   "data": {
     "persons": [
       {
@@ -509,7 +509,7 @@ interface PersonGetResponse extends CLIResponse<{ person: Person }> {
   };
 }
 
-interface PersonSearchResponse extends CLIResponse<{ persons: Person[] }> {
+interface PersonListResponse extends CLIResponse<{ persons: Person[] }> {
   data: {
     persons: Person[];
   };

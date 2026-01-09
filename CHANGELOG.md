@@ -11,13 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: Renamed `--json` to `--set-json` on `person field`, `company field`, `opportunity field` commands to avoid conflict with global `--json` output flag.
 - **BREAKING**: CLI: `--csv FILE` is now `--csv` flag that outputs CSV to stdout. Use shell redirection: `--csv > file.csv`. Applies to `person ls`, `company ls`, `opportunity ls`, `list export`.
 - CLI: `--csv` and `--json` are now mutually exclusive (error if both specified).
+- CLI: `person ls --query` and `company ls --query` now support `--field` and `--field-type` options via hybrid V1→V2 fetch.
 
 ### Added
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.
 - CLI: `list export --saved-view` can now be combined with `--field` for server-side filtering with explicit field selection.
+- SDK: `ids` parameter added to `PersonService`, `CompanyService`, and `OpportunityService` for batch fetching by ID.
 
 ### Fixed
 - SDK: `FieldValues` now properly parses field arrays from API responses (previously showed `requested=False`).
+
+### Removed
+- CLI: `person search` and `company search` commands. Use `person ls --query` and `company ls --query` instead.
 
 ## 0.7.0 - 2026-01-08
 

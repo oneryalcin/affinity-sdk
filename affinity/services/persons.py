@@ -116,6 +116,7 @@ class PersonService:
     def list(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -126,6 +127,7 @@ class PersonService:
         Get a page of persons.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
@@ -136,7 +138,7 @@ class PersonService:
             Paginated response with persons
         """
         if cursor is not None:
-            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+            if any(p is not None for p in (ids, field_ids, field_types, filter, limit)):
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -145,6 +147,8 @@ class PersonService:
             data = self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if field_ids:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
@@ -165,6 +169,7 @@ class PersonService:
     def pages(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -177,6 +182,7 @@ class PersonService:
         Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include
             filter: V2 filter expression string or FilterExpression
@@ -186,7 +192,7 @@ class PersonService:
         Yields:
             PaginatedResponse[Person] for each page
         """
-        other_params = (field_ids, field_types, filter, limit)
+        other_params = (ids, field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
@@ -196,7 +202,9 @@ class PersonService:
         page = (
             self.list(cursor=cursor)
             if cursor is not None
-            else self.list(field_ids=field_ids, field_types=field_types, filter=filter, limit=limit)
+            else self.list(
+                ids=ids, field_ids=field_ids, field_types=field_types, filter=filter, limit=limit
+            )
         )
         while True:
             yield page
@@ -211,6 +219,7 @@ class PersonService:
     def all(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -219,6 +228,7 @@ class PersonService:
         Iterate through all persons with automatic pagination.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include
             field_types: Field types to include
             filter: V2 filter expression
@@ -235,6 +245,7 @@ class PersonService:
                     pagination=PaginationInfo.model_validate(data.get("pagination", {})),
                 )
             return self.list(
+                ids=ids,
                 field_ids=field_ids,
                 field_types=field_types,
                 filter=filter,
@@ -245,6 +256,7 @@ class PersonService:
     def iter(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -254,7 +266,7 @@ class PersonService:
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+        return self.all(ids=ids, field_ids=field_ids, field_types=field_types, filter=filter)
 
     def get(
         self,
@@ -654,6 +666,7 @@ class AsyncPersonService:
     async def list(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -664,6 +677,7 @@ class AsyncPersonService:
         Get a page of persons.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include
             filter: V2 filter expression string, or a FilterExpression built via `affinity.F`
@@ -674,7 +688,7 @@ class AsyncPersonService:
             Paginated response with persons
         """
         if cursor is not None:
-            if any(p is not None for p in (field_ids, field_types, filter, limit)):
+            if any(p is not None for p in (ids, field_ids, field_types, filter, limit)):
                 raise ValueError(
                     "Cannot combine 'cursor' with other parameters; cursor encodes all query "
                     "context. Start a new pagination sequence without a cursor to change "
@@ -683,6 +697,8 @@ class AsyncPersonService:
             data = await self._client.get_url(cursor)
         else:
             params: dict[str, Any] = {}
+            if ids:
+                params["ids"] = [int(id_) for id_ in ids]
             if field_ids:
                 params["fieldIds"] = [str(field_id) for field_id in field_ids]
             if field_types:
@@ -703,6 +719,7 @@ class AsyncPersonService:
     async def pages(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -715,6 +732,7 @@ class AsyncPersonService:
         Useful for ETL scripts that need checkpoint/resume via `page.next_cursor`.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include in response
             field_types: Field types to include
             filter: V2 filter expression string or FilterExpression
@@ -724,7 +742,7 @@ class AsyncPersonService:
         Yields:
             PaginatedResponse[Person] for each page
         """
-        other_params = (field_ids, field_types, filter, limit)
+        other_params = (ids, field_ids, field_types, filter, limit)
         if cursor is not None and any(p is not None for p in other_params):
             raise ValueError(
                 "Cannot combine 'cursor' with other parameters; cursor encodes all query context. "
@@ -735,6 +753,7 @@ class AsyncPersonService:
             page = await self.list(cursor=cursor)
         else:
             page = await self.list(
+                ids=ids,
                 field_ids=field_ids,
                 field_types=field_types,
                 filter=filter,
@@ -753,6 +772,7 @@ class AsyncPersonService:
     def all(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -761,6 +781,7 @@ class AsyncPersonService:
         Iterate through all persons with automatic pagination.
 
         Args:
+            ids: Specific person IDs to fetch (batch lookup)
             field_ids: Specific field IDs to include
             field_types: Field types to include
             filter: V2 filter expression
@@ -776,13 +797,16 @@ class AsyncPersonService:
                     data=[Person.model_validate(p) for p in data.get("data", [])],
                     pagination=PaginationInfo.model_validate(data.get("pagination", {})),
                 )
-            return await self.list(field_ids=field_ids, field_types=field_types, filter=filter)
+            return await self.list(
+                ids=ids, field_ids=field_ids, field_types=field_types, filter=filter
+            )
 
         return AsyncPageIterator(fetch_page)
 
     def iter(
         self,
         *,
+        ids: Sequence[PersonId] | None = None,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         filter: str | FilterExpression | None = None,
@@ -792,7 +816,7 @@ class AsyncPersonService:
 
         Alias for `all()` (FR-006 public contract).
         """
-        return self.all(field_ids=field_ids, field_types=field_types, filter=filter)
+        return self.all(ids=ids, field_ids=field_ids, field_types=field_types, filter=filter)
 
     async def get(
         self,

@@ -16,15 +16,15 @@ Always use `--readonly` unless the user explicitly approves data modification. C
 
 ```bash
 # Standard pattern for queries
-xaffinity --readonly person search "John Smith" --json
+xaffinity --readonly person ls --query "John Smith" --json
 xaffinity --readonly person get 123 --json
 xaffinity --readonly company get domain:acme.com --json
 
 # Export to CSV (no --json needed)
-xaffinity --readonly person ls --all --csv people.csv --csv-bom
+xaffinity --readonly person ls --all --csv --csv-bom > people.csv
 
 # Export list with associations
-xaffinity --readonly list export LIST_ID --expand people --all --csv output.csv
+xaffinity --readonly list export LIST_ID --expand people --all --csv > output.csv
 
 # Parse JSON with jq
 xaffinity --readonly person ls --json --all | jq '.data.persons[]'
@@ -46,8 +46,8 @@ xaffinity --readonly person ls --json --all | jq '.data.persons[]'
 |------|---------|
 | Find person by email | `person get email:user@example.com` |
 | Find company by domain | `company get domain:acme.com` |
-| Export all contacts | `person ls --all --csv contacts.csv --csv-bom` |
-| Export pipeline | `list export LIST_ID --all --csv out.csv` |
+| Export all contacts | `person ls --all --csv --csv-bom > contacts.csv` |
+| Export pipeline | `list export LIST_ID --all --csv > out.csv` |
 
 ## More Info
 

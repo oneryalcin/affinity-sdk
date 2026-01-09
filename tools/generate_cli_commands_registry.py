@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -128,8 +129,13 @@ def generate_registry(output_path: Path) -> None:
 
     sorted_commands = sort_registry(commands)
 
-    # Build registry (no generatedAt to avoid CI diff churn)
+    # Build registry with generation metadata
     registry = {
+        "_generated": {
+            "by": "tools/generate_cli_commands_registry.py",
+            "cliVersion": cli_version,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
         "version": 1,
         "cliVersion": cli_version,
         "commands": sorted_commands,

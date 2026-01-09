@@ -24,54 +24,6 @@ if respx is None:
     pytest.skip("respx is not installed", allow_module_level=True)
 
 
-class TestPersonSearch:
-    """Tests for person search command."""
-
-    def test_search_basic(self, respx_mock: respx.MockRouter) -> None:
-        """Basic person search should work."""
-        respx_mock.get("https://api.affinity.co/persons").mock(
-            return_value=Response(
-                200,
-                json={
-                    "persons": [
-                        {"id": 1, "first_name": "Alice", "last_name": "Smith"},
-                    ],
-                    "next_page_token": None,
-                },
-            )
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["--json", "person", "search", "alice"],
-            env={"AFFINITY_API_KEY": "test-key"},
-        )
-        assert result.exit_code == 0
-
-    def test_search_with_page_size(self, respx_mock: respx.MockRouter) -> None:
-        """Person search with page_size parameter."""
-        respx_mock.get("https://api.affinity.co/persons").mock(
-            return_value=Response(
-                200,
-                json={
-                    "persons": [
-                        {"id": 1, "first_name": "Alice", "last_name": "Smith"},
-                    ],
-                    "next_page_token": None,
-                },
-            )
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["--json", "person", "search", "alice", "--page-size", "10"],
-            env={"AFFINITY_API_KEY": "test-key"},
-        )
-        assert result.exit_code == 0
-
-
 class TestPersonLs:
     """Tests for person ls command."""
 
@@ -319,66 +271,6 @@ class TestPersonUpdateErrors:
         )
         # Should fail with exit code 2 (usage error)
         assert result.exit_code == 2
-
-
-class TestPersonSearchAllPages:
-    """Tests for person search with all pages."""
-
-    def test_search_with_all_flag(self, respx_mock: respx.MockRouter) -> None:
-        """Search with --all should fetch all pages."""
-        # First page
-        respx_mock.get("https://api.affinity.co/persons").mock(
-            side_effect=[
-                Response(
-                    200,
-                    json={
-                        "persons": [{"id": 1, "first_name": "Alice", "last_name": "Smith"}],
-                        "next_page_token": "page2",
-                    },
-                ),
-                Response(
-                    200,
-                    json={
-                        "persons": [{"id": 2, "first_name": "Bob", "last_name": "Jones"}],
-                        "next_page_token": None,
-                    },
-                ),
-            ]
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["--json", "person", "search", "test", "--all"],
-            env={"AFFINITY_API_KEY": "test-key"},
-        )
-        assert result.exit_code == 0
-
-    def test_search_with_max_results(self, respx_mock: respx.MockRouter) -> None:
-        """Search with --max-results should limit results."""
-        respx_mock.get("https://api.affinity.co/persons").mock(
-            return_value=Response(
-                200,
-                json={
-                    "persons": [
-                        {"id": 1, "first_name": "Alice", "last_name": "Smith"},
-                        {"id": 2, "first_name": "Bob", "last_name": "Jones"},
-                        {"id": 3, "first_name": "Carol", "last_name": "Lee"},
-                    ],
-                    "next_page_token": "more",
-                },
-            )
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["--json", "person", "search", "test", "--max-results", "2"],
-            env={"AFFINITY_API_KEY": "test-key"},
-        )
-        assert result.exit_code == 0
-        payload = json.loads(result.output.strip())
-        assert len(payload["data"]["persons"]) <= 2
 
 
 class TestPersonLsWithQuery:
