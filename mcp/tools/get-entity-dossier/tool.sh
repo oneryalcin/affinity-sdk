@@ -74,18 +74,9 @@ if [[ "$include_interactions" == "true" ]]; then
     fi
     mcp_progress "$current_step" "Fetching interactions" "$total_steps"
 
-    tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' EXIT
-
-    for itype in email meeting call chat-message; do
-        (
-            result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type "$itype" --days 365 --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-            echo "$result" | jq_tool -c '.data.interactions // []' > "$tmp_dir/$itype.json"
-        ) &
-    done
-    wait
-
-    interactions=$(cat "$tmp_dir"/*.json 2>/dev/null | jq_tool -s 'add | sort_by(.date) | reverse | .[:10]' || echo "[]")
+    # Use --type all to fetch all interaction types in one call (sorted by date descending)
+    result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type all --days 365 --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
+    interactions=$(echo "$result" | jq_tool -c '.data.interactions // []')
     ((++current_step))
 fi
 

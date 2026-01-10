@@ -46,10 +46,11 @@
   },
   "interaction ls": {
     "relatedCommands": ["interaction get", "interaction create", "note ls"],
-    "whenToUse": "List interactions for an entity. Requires --type, one entity selector (--person-id, --company-id, or --opportunity-id), and a date range (--days N or --after). Auto-chunks ranges > 1 year.",
+    "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year.",
     "examples": [
+      "interaction ls --type all --company-id 456",
+      "interaction ls --type email --type meeting --person-id 123 --days 30",
       "interaction ls --type meeting --person-id 123 --days 30",
-      "interaction ls --type email --company-id 456 --days 365",
       "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
     ]
   },

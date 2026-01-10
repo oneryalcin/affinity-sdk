@@ -7,8 +7,11 @@ CLI_MAX_VERSION="1.0.0"
 # MCP 1.7.0 requires CLI 0.8.0 for:
 # - `entry field` unified command (replaces set-field, set-fields, unset-field)
 # - Standardized date filter parameters (--after/--before)
-# - `interaction ls` auto-chunking: --cursor/--all removed, --days or --after required
-# - `interaction ls` output includes metadata.dateRange, metadata.chunksProcessed
+# - `interaction ls` auto-chunking: --cursor/--all removed
+# - `interaction ls` multi-type support: --type is repeatable, --type all supported
+# - `interaction ls` date range defaults to all-time when --days/--after omitted
+# - `interaction ls` output: modifiers.type → modifiers.types (always array)
+# - `interaction ls` output: metadata.chunksProcessed → metadata.typeStats[type].chunksProcessed
 #
 # MCP 1.0.0 requires CLI features introduced in 0.6.0:
 # - JSON output format with .data wrapper

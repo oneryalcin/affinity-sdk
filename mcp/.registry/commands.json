@@ -1030,8 +1030,9 @@
         "--type": {
           "type": "string",
           "required": true,
-          "help": "Interaction type (required): meeting, call, chat-message, email.",
+          "help": "Interaction type(s): call, chat-message, email, meeting, or 'all'. Repeatable.",
           "choices": [
+            "all",
             "call",
             "chat",
             "chat-message",
@@ -1049,7 +1050,7 @@
         "interaction create",
         "note ls"
       ],
-      "whenToUse": "List interactions for an entity. Requires --type, one entity selector (--person-id, --company-id, or --opportunity-id), and a date range (--days N or --after). Auto-chunks ranges > 1 year."
+      "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year."
     },
     {
       "name": "interaction update",

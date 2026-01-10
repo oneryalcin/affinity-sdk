@@ -55,6 +55,7 @@ def test_interaction_ls_date_params(respx_mock: respx.MockRouter) -> None:
         cli,
         [
             "--json",
+            "--quiet",
             "interaction",
             "ls",
             "--type",
