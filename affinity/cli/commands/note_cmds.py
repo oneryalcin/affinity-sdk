@@ -72,7 +72,9 @@ def _note_payload(note: Note) -> dict[str, object]:
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
 )
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N results total."
+)
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj

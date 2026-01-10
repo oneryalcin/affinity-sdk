@@ -330,7 +330,9 @@ def field_delete(ctx: CLIContext, field_id: str, yes: bool) -> None:
     default=None,
     help="Filter by action type.",
 )
-@click.option("--max-results", "-n", type=int, default=None, help="Limit number of results.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Limit number of results."
+)
 @output_options
 @click.pass_obj
 def field_history(

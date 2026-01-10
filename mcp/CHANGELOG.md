@@ -5,7 +5,16 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.0] - Unreleased
+## [1.7.1] - 2026-01-10
+
+### Changed
+- **CLI Gateway**: Now accepts option aliases (e.g., `--limit` for `--max-results`)
+- **Registry**: Option aliases now included in command registry
+
+### Fixed
+- **LLM compatibility**: Commands using `--limit` (common LLM pattern) now work correctly
+
+## [1.7.0] - 2026-01-10
 
 ### Changed
 - **CLI 0.8.0 required**: Updated minimum CLI version from 0.6.0 to 0.8.0

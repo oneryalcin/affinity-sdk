@@ -284,7 +284,9 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
 )
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N items total.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N items total."
+)
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @click.option(
     "--field",

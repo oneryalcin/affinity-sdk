@@ -210,9 +210,23 @@ validate_argv() {
         return 1
     fi
 
-    # Extract parameter metadata from registry
+    # Extract parameter metadata from registry (including aliases)
     local allowed_flags
-    allowed_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '.parameters // {} | keys | .[] | select(startswith("-"))' 2>/dev/null || printf '')
+    # Get primary flags and their aliases
+    allowed_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '
+        .parameters // {} | to_entries[] | select(.key | startswith("-")) |
+        .key, (.value.aliases // [] | .[])
+    ' 2>/dev/null || printf '')
+
+    # Build alias-to-primary map (JSON object for lookup)
+    local alias_map
+    alias_map=$(printf '%s' "$cmd_schema" | jq_tool -c '
+        .parameters // {} | to_entries | map(select(.key | startswith("-"))) |
+        map({primary: .key, aliases: (.value.aliases // [])}) |
+        map([{key: .primary, value: .primary}] + [.aliases[] as $a | {key: $a, value: .primary}]) |
+        flatten | from_entries
+    ' 2>/dev/null || printf '{}')
+
     local positional_defs
     positional_defs=$(printf '%s' "$cmd_schema" | jq_tool -c '.positionals // []' 2>/dev/null || printf '[]')
     local required_positional_count
@@ -247,9 +261,13 @@ validate_argv() {
                 return 1
             fi
 
-            # Get flag type from schema
+            # Resolve alias to primary flag name for type lookup
+            local primary_flag
+            primary_flag=$(printf '%s' "$alias_map" | jq_tool -r --arg f "$flag_name" '.[$f] // $f')
+
+            # Get flag type from schema (using primary flag name)
             local flag_type
-            flag_type=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$flag_name" '.parameters[$f].type // "string"')
+            flag_type=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$primary_flag" '.parameters[$f].type // "string"')
 
             if [[ "$flag_type" == "flag" ]]; then
                 # Boolean flag (no value expected) - reject ANY use of = syntax

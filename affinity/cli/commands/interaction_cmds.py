@@ -226,7 +226,9 @@ def _fetch_interactions_chunked(
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
 @click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity id.")
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N results total."
+)
 @click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV to stdout.")
 @click.option("--csv-bom", is_flag=True, help="Add UTF-8 BOM for Excel compatibility.")
 @output_options

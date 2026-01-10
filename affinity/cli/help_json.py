@@ -75,7 +75,7 @@ def _get_param_type(param: Option | Argument) -> str:
     return "string"
 
 
-def _extract_option(opt: Option) -> dict[str, Any]:
+def _extract_option(opt: Option, all_opt_names: list[str] | None = None) -> dict[str, Any]:
     """Extract option metadata for JSON output."""
     from click import Choice
 
@@ -95,6 +95,14 @@ def _extract_option(opt: Option) -> dict[str, Any]:
     # Add multiple flag if applicable
     if opt.multiple:
         result["multiple"] = True
+
+    # Add aliases if there are multiple option names (excluding the primary)
+    if all_opt_names and len(all_opt_names) > 1:
+        # Primary is the longest, aliases are the rest
+        primary = max(all_opt_names, key=len)
+        aliases = [name for name in all_opt_names if name != primary]
+        if aliases:
+            result["aliases"] = sorted(aliases, key=len, reverse=True)
 
     return result
 
@@ -205,9 +213,9 @@ def _extract_command(
             if any(opt in skip_option_flags for opt in param.opts):
                 continue
             # Get the primary option name (longest form, usually --flag)
-            opt_names = param.opts
+            opt_names = list(param.opts)
             primary_name = max(opt_names, key=len) if opt_names else f"--{param.name}"
-            parameters[primary_name] = _extract_option(param)
+            parameters[primary_name] = _extract_option(param, opt_names)
         elif isinstance(param, Argument):
             positionals.append(_extract_positional(param))
 

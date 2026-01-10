@@ -71,7 +71,9 @@ def _parse_list_type(value: str | None) -> ListType | None:
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
 )
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N items total.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N items total."
+)
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
@@ -371,7 +373,9 @@ ExpandOnError = Literal["raise", "skip"]
 @click.option(
     "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
 )
-@click.option("--max-results", "-n", type=int, default=None, help="Stop after N rows total.")
+@click.option(
+    "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N rows total."
+)
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all rows.")
 @click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV (to stdout).")
 @click.option(
