@@ -7,7 +7,6 @@ Provides operations for managing lists (spreadsheets) and their entries (rows).
 from __future__ import annotations
 
 import builtins
-import contextlib
 import re
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
@@ -17,7 +16,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
-from ..exceptions import AffinityError
+from ..exceptions import AffinityError, FilterParseError
 from ..filters import FilterExpression
 from ..filters import parse as parse_filter
 from ..models.entities import (
@@ -56,6 +55,25 @@ if TYPE_CHECKING:
 _LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\d+)/saved-views(?:/|$)")
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def _parse_filter_with_hint(filter_string: str) -> FilterExpression:
+    """Parse a filter string, adding helpful hints on failure.
+
+    Raises:
+        FilterParseError: If the filter cannot be parsed, with a hint about
+            quoting multi-word values.
+    """
+    try:
+        return parse_filter(filter_string)
+    except ValueError as e:
+        # Add hint about quoting for common issues
+        hint = (
+            f"Invalid filter: {e}\n"
+            "Hint: Multi-word values must be quoted. "
+            "Example: --filter 'Status=\"Intro Meeting\"'"
+        )
+        raise FilterParseError(hint) from e
 
 
 def _safe_model_validate(model: type[T], payload: Any, *, context: str | None = None) -> T:
@@ -511,13 +529,11 @@ class ListEntryService:
                 # Treat whitespace-only strings as no filter
                 stripped = filter.strip()
                 if stripped:
-                    with contextlib.suppress(ValueError):
-                        filter_expr = parse_filter(stripped)
+                    filter_expr = _parse_filter_with_hint(stripped)
             else:
                 filter_expr = filter
-            # Emit warning about client-side filtering (only if we have an actual filter)
-            if filter_expr is not None:
-                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            # Emit warning about client-side filtering
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         if cursor is not None:
             if field_ids or field_types or filter_expr is not None or limit is not None:
@@ -602,8 +618,7 @@ class ListEntryService:
             if isinstance(filter, str):
                 stripped = filter.strip()
                 if stripped:
-                    with contextlib.suppress(ValueError):
-                        filter_expr = parse_filter(stripped)
+                    filter_expr = _parse_filter_with_hint(stripped)
             else:
                 filter_expr = filter
 
@@ -724,13 +739,11 @@ class ListEntryService:
                 # Treat whitespace-only strings as no filter
                 stripped = filter.strip()
                 if stripped:
-                    with contextlib.suppress(ValueError):
-                        filter_expr = parse_filter(stripped)
+                    filter_expr = _parse_filter_with_hint(stripped)
             else:
                 filter_expr = filter
-            # Emit warning once for the entire iteration (only if we have an actual filter)
-            if filter_expr is not None:
-                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            # Emit warning once for the entire iteration
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:
@@ -1403,13 +1416,11 @@ class AsyncListEntryService:
                 # Treat whitespace-only strings as no filter
                 stripped = filter.strip()
                 if stripped:
-                    with contextlib.suppress(ValueError):
-                        filter_expr = parse_filter(stripped)
+                    filter_expr = _parse_filter_with_hint(stripped)
             else:
                 filter_expr = filter
-            # Emit warning about client-side filtering (only if we have an actual filter)
-            if filter_expr is not None:
-                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            # Emit warning about client-side filtering
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         if cursor is not None:
             if field_ids or field_types or filter_expr is not None or limit is not None:
@@ -1505,13 +1516,11 @@ class AsyncListEntryService:
                 # Treat whitespace-only strings as no filter
                 stripped = filter.strip()
                 if stripped:
-                    with contextlib.suppress(ValueError):
-                        filter_expr = parse_filter(stripped)
+                    filter_expr = _parse_filter_with_hint(stripped)
             else:
                 filter_expr = filter
-            # Emit warning once for the entire iteration (only if we have an actual filter)
-            if filter_expr is not None:
-                warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
+            # Emit warning once for the entire iteration
+            warnings.warn(_CLIENT_SIDE_FILTER_WARNING, UserWarning, stacklevel=2)
 
         async def fetch_page(next_url: str | None) -> PaginatedResponse[ListEntryWithEntity]:
             if next_url:

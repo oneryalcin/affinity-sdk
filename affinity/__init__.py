@@ -50,6 +50,7 @@ from .exceptions import (
     ConfigurationError,
     ConflictError,
     EntityNotFoundError,
+    FilterParseError,
     NetworkError,
     NotFoundError,
     OpportunityNotFoundError,
@@ -116,6 +117,7 @@ __all__ = [
     "WebhookInvalidPayloadError",
     "WebhookMissingKeyError",
     "WebhookInvalidSentAtError",
+    "FilterParseError",
     # Filter builder
     "Filter",
     "FilterExpression",

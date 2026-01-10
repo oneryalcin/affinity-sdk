@@ -562,12 +562,10 @@ def test_list_service_create_saved_views_and_list_entry_params() -> None:
         assert svc.get_saved_view(ListId(11), 1).name == "SV"
 
         entries = svc.entries(ListId(11))
-        _ = entries.list(field_ids=["field-1"], field_types=[FieldType.GLOBAL], filter="x", limit=1)
+        # Test list() with field_ids, field_types, and limit
+        _ = entries.list(field_ids=["field-1"], field_types=[FieldType.GLOBAL], limit=1)
         assert [
-            e.id
-            for e in list(
-                entries.iter(field_ids=["field-1"], field_types=[FieldType.GLOBAL], filter="x")
-            )
+            e.id for e in list(entries.iter(field_ids=["field-1"], field_types=[FieldType.GLOBAL]))
         ] == [ListEntryId(1)]
         existing = entries.ensure_company(2)
         assert existing.id == ListEntryId(2)
@@ -775,12 +773,12 @@ async def test_async_list_service_and_entry_list_all_iter_with_pagination() -> N
         assert [lst.id async for lst in lists.all()] == [ListId(10)]
 
         entries = AsyncListEntryService(client, ListId(10))
+        # Test with whitespace-only filter (treated as no filter)
         _ = await entries.list(
             field_ids=["field-1"], field_types=[FieldType.GLOBAL], filter=" ", limit=1
         )
-        _ = await entries.list(
-            field_ids=["field-1"], field_types=[FieldType.GLOBAL], filter="x", limit=1
-        )
+        # Test with no filter
+        _ = await entries.list(field_ids=["field-1"], field_types=[FieldType.GLOBAL], limit=1)
         _ = await entries.list()
         assert [
             e.id

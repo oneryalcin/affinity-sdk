@@ -591,3 +591,25 @@ class WebhookInvalidSentAtError(WebhookParseError):
     """Raised when a webhook `sent_at` field is missing or invalid."""
 
     pass
+
+
+# =============================================================================
+# Filter Parsing Errors
+# =============================================================================
+
+
+class FilterParseError(ValueError):
+    """
+    Raised when a filter expression cannot be parsed.
+
+    Common causes:
+    - Multi-word values not quoted: Status=Intro Meeting
+    - Invalid operators
+    - Malformed expressions
+
+    Example fix:
+        # Wrong: --filter 'Status=Intro Meeting'
+        # Right: --filter 'Status="Intro Meeting"'
+    """
+
+    pass
