@@ -49,13 +49,13 @@ The CLI uses **local time** for user convenience:
 
 ```bash
 # Date only = midnight in YOUR timezone
-xaffinity interaction ls --after 2024-01-01
+xaffinity interaction ls --type email --person-id 123 --after 2024-01-01
 
 # Explicit UTC (Z suffix)
-xaffinity interaction ls --after 2024-01-01T00:00:00Z
+xaffinity interaction ls --type email --person-id 123 --after 2024-01-01T00:00:00Z
 
 # Explicit timezone offset
-xaffinity interaction ls --after 2024-01-01T00:00:00-05:00
+xaffinity interaction ls --type email --person-id 123 --after 2024-01-01T00:00:00-05:00
 ```
 
 ### Example
@@ -91,10 +91,10 @@ For reproducible scripts that work regardless of timezone:
 
 ```bash
 # Always use explicit UTC for scripting
-xaffinity interaction ls --after 2024-01-01T00:00:00Z --json > interactions.json
+xaffinity interaction ls --type email --person-id 123 --after 2024-01-01T00:00:00Z --json > interactions.json
 
 # Or use explicit timezone offset
-xaffinity interaction ls --after 2024-01-01T00:00:00-05:00 --json > interactions.json
+xaffinity interaction ls --type email --person-id 123 --after 2024-01-01T00:00:00-05:00 --json > interactions.json
 ```
 
 For machine consumption, use `--json` output which always provides UTC timestamps.

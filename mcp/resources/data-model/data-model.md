@@ -104,8 +104,8 @@ list export Dealflow --field "Team Member" --field "Owner" --filter 'Status="New
 
 ### Get recent interactions for a company or person
 ```bash
-interaction ls --type meeting --company-id 12345 --max-results 10   # Recent meetings with company
-interaction ls --type email --person-id 67890 --max-results 5       # Recent emails with person
+interaction ls --type meeting --company-id 12345 --days 90 --max-results 10   # Recent meetings with company
+interaction ls --type email --person-id 67890 --days 30 --max-results 5       # Recent emails with person
 ```
 
 ### Search companies globally

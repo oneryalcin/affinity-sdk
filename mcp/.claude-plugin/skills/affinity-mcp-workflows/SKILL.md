@@ -94,7 +94,7 @@ Use `discover-commands` to find commands, then `execute-read-command` or `execut
 | `company get <id>` | Get company details |
 | `opportunity get <id>` | Get opportunity details |
 | `relationship-strength ls --external-id <id>` | Get relationship strength for a person |
-| `interaction ls --person-id <id> --type email` | Get interactions (types: email, meeting, call, chat-message) |
+| `interaction ls --person-id <id> --type email --days 365` | Get interactions (types: email, meeting, call, chat-message) |
 
 ### Write Operations
 

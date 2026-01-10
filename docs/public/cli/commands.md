@@ -673,12 +673,12 @@ xaffinity reminder delete 12345
 
 ### `xaffinity interaction ls`
 
-List interactions for an entity. Requires `--type` and one entity selector (`--person-id`, `--company-id`, or `--opportunity-id`). Date range defaults to last 7 days if not specified.
+List interactions for an entity. Requires `--type`, one entity selector (`--person-id`, `--company-id`, or `--opportunity-id`), and a date range (`--days` or `--after`). Auto-chunks date ranges > 1 year into API-compatible segments.
 
 ```bash
-xaffinity interaction ls --type email --person-id 123
+xaffinity interaction ls --type email --person-id 123 --days 30
 xaffinity interaction ls --type meeting --person-id 123 --after 2025-01-01 --before 2025-02-01
-xaffinity interaction ls --type call --company-id 456 --after 2025-06-01 --json
+xaffinity interaction ls --type call --company-id 456 --days 365 --json
 ```
 
 ### `xaffinity interaction get <interactionId>`

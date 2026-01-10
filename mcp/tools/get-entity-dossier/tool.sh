@@ -79,7 +79,7 @@ if [[ "$include_interactions" == "true" ]]; then
 
     for itype in email meeting call chat-message; do
         (
-            result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type "$itype" --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
+            result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type "$itype" --days 365 --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
             echo "$result" | jq_tool -c '.data.interactions // []' > "$tmp_dir/$itype.json"
         ) &
     done
