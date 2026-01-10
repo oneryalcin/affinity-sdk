@@ -17,6 +17,7 @@ from affinity.models.types import (
     ListEntryId,
     ListId,
     ListType,
+    OpportunityId,
     PersonId,
     PersonType,
 )
@@ -1931,3 +1932,521 @@ def test_company_service_search_all_flattens_results() -> None:
         assert companies[3].name == "Company12"
     finally:
         client.close()
+
+
+def test_person_service_get_associated_company_ids() -> None:
+    """Test get_associated_company_ids returns CompanyId list from V1 API."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "organization_ids": [100, 200, 300],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        company_ids = svc.get_associated_company_ids(PersonId(person_id))
+        assert company_ids == [CompanyId(100), CompanyId(200), CompanyId(300)]
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_company_ids_with_max_results() -> None:
+    """Test get_associated_company_ids respects max_results."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "organization_ids": [100, 200, 300],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        company_ids = svc.get_associated_company_ids(PersonId(person_id), max_results=2)
+        assert company_ids == [CompanyId(100), CompanyId(200)]
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_company_ids_empty() -> None:
+    """Test get_associated_company_ids returns empty list when no associations."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    # No organization_ids field
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        company_ids = svc.get_associated_company_ids(PersonId(person_id))
+        assert company_ids == []
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_company_ids_camelCase() -> None:
+    """Test get_associated_company_ids handles camelCase response keys."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "firstName": "Alice",
+                    "lastName": "Smith",
+                    "primaryEmailAddress": "alice@example.com",
+                    "organizationIds": [100, 200],  # camelCase
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        company_ids = svc.get_associated_company_ids(PersonId(person_id))
+        assert company_ids == [CompanyId(100), CompanyId(200)]
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_get_associated_company_ids() -> None:
+    """Test async get_associated_company_ids returns CompanyId list from V1 API."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "organization_ids": [100, 200, 300],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    async with client:
+        svc = AsyncPersonService(client)
+        company_ids = await svc.get_associated_company_ids(PersonId(person_id))
+        assert company_ids == [CompanyId(100), CompanyId(200), CompanyId(300)]
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_get_associated_company_ids_with_max_results() -> None:
+    """Test async get_associated_company_ids respects max_results."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "organization_ids": [100, 200, 300],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    async with client:
+        svc = AsyncPersonService(client)
+        company_ids = await svc.get_associated_company_ids(PersonId(person_id), max_results=1)
+        assert company_ids == [CompanyId(100)]
+
+
+# =============================================================================
+# PersonService.get_associated_opportunity_ids() Tests
+# =============================================================================
+
+
+def test_person_service_get_associated_opportunity_ids() -> None:
+    """Test get_associated_opportunity_ids returns OpportunityId list from V1 API."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "opportunity_ids": [500, 600, 700],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        opp_ids = svc.get_associated_opportunity_ids(PersonId(person_id))
+        assert opp_ids == [OpportunityId(500), OpportunityId(600), OpportunityId(700)]
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_opportunity_ids_with_max_results() -> None:
+    """Test get_associated_opportunity_ids respects max_results."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "opportunity_ids": [500, 600, 700],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        opp_ids = svc.get_associated_opportunity_ids(PersonId(person_id), max_results=2)
+        assert opp_ids == [OpportunityId(500), OpportunityId(600)]
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_get_associated_opportunity_ids() -> None:
+    """Test async get_associated_opportunity_ids returns OpportunityId list."""
+    person_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/persons/{person_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": person_id,
+                    "first_name": "Alice",
+                    "last_name": "Smith",
+                    "primary_email_address": "alice@example.com",
+                    "opportunity_ids": [500, 600],
+                    "type": 0,
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    async with client:
+        svc = AsyncPersonService(client)
+        opp_ids = await svc.get_associated_opportunity_ids(PersonId(person_id))
+        assert opp_ids == [OpportunityId(500), OpportunityId(600)]
+
+
+# =============================================================================
+# CompanyService.get_associated_opportunity_ids() Tests
+# =============================================================================
+
+
+def test_company_service_get_associated_opportunity_ids() -> None:
+    """Test get_associated_opportunity_ids returns OpportunityId list from V1 API."""
+    company_id = 456
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                    "opportunity_ids": [800, 900],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        opp_ids = svc.get_associated_opportunity_ids(CompanyId(company_id))
+        assert opp_ids == [OpportunityId(800), OpportunityId(900)]
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_opportunity_ids_with_max_results() -> None:
+    """Test get_associated_opportunity_ids respects max_results."""
+    company_id = 456
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                    "opportunity_ids": [800, 900, 1000],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        opp_ids = svc.get_associated_opportunity_ids(CompanyId(company_id), max_results=1)
+        assert opp_ids == [OpportunityId(800)]
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_opportunity_ids_empty() -> None:
+    """Test get_associated_opportunity_ids returns empty list when no associations."""
+    company_id = 456
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                    # No opportunity_ids field
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        opp_ids = svc.get_associated_opportunity_ids(CompanyId(company_id))
+        assert opp_ids == []
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_company_service_get_associated_opportunity_ids() -> None:
+    """Test async get_associated_opportunity_ids returns OpportunityId list."""
+    company_id = 456
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                    "opportunity_ids": [800, 900],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    async with client:
+        svc = AsyncCompanyService(client)
+        opp_ids = await svc.get_associated_opportunity_ids(CompanyId(company_id))
+        assert opp_ids == [OpportunityId(800), OpportunityId(900)]

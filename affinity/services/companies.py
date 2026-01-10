@@ -30,7 +30,7 @@ from ..models.pagination import (
     V1PaginatedResponse,
 )
 from ..models.secondary import MergeTask
-from ..models.types import AnyFieldId, CompanyId, FieldType, PersonId
+from ..models.types import AnyFieldId, CompanyId, FieldType, OpportunityId, PersonId
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
@@ -282,6 +282,41 @@ class CompanyService:
             data = self._client.get(f"/persons/{person_id}", v1=True)
             people.append(Person.model_validate(data))
         return people
+
+    def get_associated_opportunity_ids(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[OpportunityId]:
+        """
+        Get associated opportunity IDs for a company.
+
+        V1-only: V2 does not expose company -> opportunity associations directly.
+        Uses GET `/organizations/{id}` (V1) and returns `opportunity_ids`.
+
+        Args:
+            company_id: The company ID
+            max_results: Maximum number of opportunity IDs to return
+
+        Returns:
+            List of OpportunityId values associated with this company
+        """
+        data = self._client.get(f"/organizations/{company_id}", v1=True)
+        # Defensive: handle potential {"organization": {...}} wrapper
+        organization = data.get("organization") if isinstance(data, dict) else None
+        source = organization if isinstance(organization, dict) else data
+        opp_ids = None
+        if isinstance(source, dict):
+            opp_ids = source.get("opportunity_ids") or source.get("opportunityIds")
+
+        if not isinstance(opp_ids, list):
+            return []
+
+        ids = [OpportunityId(int(oid)) for oid in opp_ids if oid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
 
     def get_list_entries(
         self,
@@ -1126,6 +1161,41 @@ class AsyncCompanyService:
             data = await self._client.get(f"/persons/{person_id}", v1=True)
             people.append(Person.model_validate(data))
         return people
+
+    async def get_associated_opportunity_ids(
+        self,
+        company_id: CompanyId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[OpportunityId]:
+        """
+        Get associated opportunity IDs for a company.
+
+        V1-only: V2 does not expose company -> opportunity associations directly.
+        Uses GET `/organizations/{id}` (V1) and returns `opportunity_ids`.
+
+        Args:
+            company_id: The company ID
+            max_results: Maximum number of opportunity IDs to return
+
+        Returns:
+            List of OpportunityId values associated with this company
+        """
+        data = await self._client.get(f"/organizations/{company_id}", v1=True)
+        # Defensive: handle potential {"organization": {...}} wrapper
+        organization = data.get("organization") if isinstance(data, dict) else None
+        source = organization if isinstance(organization, dict) else data
+        opp_ids = None
+        if isinstance(source, dict):
+            opp_ids = source.get("opportunity_ids") or source.get("opportunityIds")
+
+        if not isinstance(opp_ids, list):
+            return []
+
+        ids = [OpportunityId(int(oid)) for oid in opp_ids if oid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
 
     # =========================================================================
     # Write Operations (V1 API)

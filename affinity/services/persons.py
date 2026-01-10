@@ -29,7 +29,7 @@ from ..models.pagination import (
     V1PaginatedResponse,
 )
 from ..models.secondary import MergeTask
-from ..models.types import AnyFieldId, FieldType, PersonId
+from ..models.types import AnyFieldId, CompanyId, FieldType, OpportunityId, PersonId
 
 if TYPE_CHECKING:
     from ..clients.http import AsyncHTTPClient, HTTPClient
@@ -369,6 +369,91 @@ class PersonService:
         )
 
         return [FieldMetadata.model_validate(f) for f in data.get("data", [])]
+
+    # =========================================================================
+    # Associations (V1 API)
+    # =========================================================================
+
+    def get_associated_company_ids(
+        self,
+        person_id: PersonId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[CompanyId]:
+        """
+        Get associated company IDs for a person.
+
+        V1-only: V2 does not expose person -> company associations directly.
+        Uses GET `/persons/{id}` (V1) and returns `organization_ids`.
+
+        Args:
+            person_id: The person ID
+            max_results: Maximum number of company IDs to return
+
+        Returns:
+            List of CompanyId values associated with this person
+
+        Note:
+            The Person model already has `company_ids` populated from V1's
+            `organizationIds` field. This method provides API parity with
+            `CompanyService.get_associated_person_ids()`.
+        """
+        data = self._client.get(f"/persons/{person_id}", v1=True)
+        # Defensive: handle potential {"person": {...}} wrapper
+        # (consistent with CompanyService.get_associated_person_ids pattern)
+        person = data.get("person") if isinstance(data, dict) else None
+        source = person if isinstance(person, dict) else data
+        org_ids = None
+        if isinstance(source, dict):
+            org_ids = source.get("organization_ids") or source.get("organizationIds")
+
+        if not isinstance(org_ids, list):
+            return []
+
+        ids = [CompanyId(int(cid)) for cid in org_ids if cid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    def get_associated_opportunity_ids(
+        self,
+        person_id: PersonId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[OpportunityId]:
+        """
+        Get associated opportunity IDs for a person.
+
+        V1-only: V2 does not expose person -> opportunity associations directly.
+        Uses GET `/persons/{id}` (V1) and returns `opportunity_ids`.
+
+        Args:
+            person_id: The person ID
+            max_results: Maximum number of opportunity IDs to return
+
+        Returns:
+            List of OpportunityId values associated with this person
+
+        Note:
+            The Person model already has `opportunity_ids` populated from V1's
+            `opportunityIds` field. This method provides API parity with
+            `OpportunityService.get_associated_person_ids()`.
+        """
+        data = self._client.get(f"/persons/{person_id}", v1=True)
+        # Defensive: handle potential {"person": {...}} wrapper
+        person = data.get("person") if isinstance(data, dict) else None
+        source = person if isinstance(person, dict) else data
+        opp_ids = None
+        if isinstance(source, dict):
+            opp_ids = source.get("opportunity_ids") or source.get("opportunityIds")
+
+        if not isinstance(opp_ids, list):
+            return []
+
+        ids = [OpportunityId(int(oid)) for oid in opp_ids if oid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
 
     # =========================================================================
     # Search (V1 API)
@@ -915,6 +1000,91 @@ class AsyncPersonService:
         )
 
         return [FieldMetadata.model_validate(f) for f in data.get("data", [])]
+
+    # =========================================================================
+    # Associations (V1 API)
+    # =========================================================================
+
+    async def get_associated_company_ids(
+        self,
+        person_id: PersonId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[CompanyId]:
+        """
+        Get associated company IDs for a person.
+
+        V1-only: V2 does not expose person -> company associations directly.
+        Uses GET `/persons/{id}` (V1) and returns `organization_ids`.
+
+        Args:
+            person_id: The person ID
+            max_results: Maximum number of company IDs to return
+
+        Returns:
+            List of CompanyId values associated with this person
+
+        Note:
+            The Person model already has `company_ids` populated from V1's
+            `organizationIds` field. This method provides API parity with
+            `CompanyService.get_associated_person_ids()`.
+        """
+        data = await self._client.get(f"/persons/{person_id}", v1=True)
+        # Defensive: handle potential {"person": {...}} wrapper
+        # (consistent with CompanyService.get_associated_person_ids pattern)
+        person = data.get("person") if isinstance(data, dict) else None
+        source = person if isinstance(person, dict) else data
+        org_ids = None
+        if isinstance(source, dict):
+            org_ids = source.get("organization_ids") or source.get("organizationIds")
+
+        if not isinstance(org_ids, list):
+            return []
+
+        ids = [CompanyId(int(cid)) for cid in org_ids if cid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
+
+    async def get_associated_opportunity_ids(
+        self,
+        person_id: PersonId,
+        *,
+        max_results: int | None = None,
+    ) -> builtins.list[OpportunityId]:
+        """
+        Get associated opportunity IDs for a person.
+
+        V1-only: V2 does not expose person -> opportunity associations directly.
+        Uses GET `/persons/{id}` (V1) and returns `opportunity_ids`.
+
+        Args:
+            person_id: The person ID
+            max_results: Maximum number of opportunity IDs to return
+
+        Returns:
+            List of OpportunityId values associated with this person
+
+        Note:
+            The Person model already has `opportunity_ids` populated from V1's
+            `opportunityIds` field. This method provides API parity with
+            `OpportunityService.get_associated_person_ids()`.
+        """
+        data = await self._client.get(f"/persons/{person_id}", v1=True)
+        # Defensive: handle potential {"person": {...}} wrapper
+        person = data.get("person") if isinstance(data, dict) else None
+        source = person if isinstance(person, dict) else data
+        opp_ids = None
+        if isinstance(source, dict):
+            opp_ids = source.get("opportunity_ids") or source.get("opportunityIds")
+
+        if not isinstance(opp_ids, list):
+            return []
+
+        ids = [OpportunityId(int(oid)) for oid in opp_ids if oid is not None]
+        if max_results is not None and max_results >= 0:
+            return ids[:max_results]
+        return ids
 
     # =========================================================================
     # Search (V1 API)
