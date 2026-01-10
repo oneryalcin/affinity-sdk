@@ -129,8 +129,12 @@ xaffinity note ls --person-id 123 --json --all | \
 
 **Export interactions:**
 ```bash
-xaffinity interaction ls --type meeting --person-id 123 --json --all | \
+# Use --days for relative date range (auto-chunks if > 1 year)
+xaffinity interaction ls --type meeting --person-id 123 --days 365 --json | \
   jq -r '.data.interactions[] | [.id, .date, .type] | @csv'
+
+# Or use built-in --csv flag
+xaffinity interaction ls --type meeting --person-id 123 --days 365 --csv
 ```
 
 **Add headers manually:**

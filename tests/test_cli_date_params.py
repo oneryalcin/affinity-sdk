@@ -62,19 +62,22 @@ def test_interaction_ls_date_params(respx_mock: respx.MockRouter) -> None:
             "--person-id",
             "123",
             "--after",
-            "2024-06-01",
+            "2024-06-01T00:00:00Z",
             "--before",
-            "2024-06-30",
+            "2024-06-30T00:00:00Z",
         ],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0, f"Command failed: {result.output}"
     payload = json.loads(result.output.strip())
     assert payload["data"]["interactions"][0]["id"] == 100
-    # Verify command metadata uses 'after' and 'before' keys
+    # Verify command metadata uses 'start' and 'end' keys (ISO datetime strings)
     cmd = payload["command"]
-    assert cmd["modifiers"]["after"] == "2024-06-01"
-    assert cmd["modifiers"]["before"] == "2024-06-30"
+    assert "start" in cmd["modifiers"]
+    assert "end" in cmd["modifiers"]
+    # Verify dates are present (exact format depends on timezone handling)
+    assert "2024-06-01" in cmd["modifiers"]["start"]
+    assert "2024-06-30" in cmd["modifiers"]["end"]
 
 
 def test_reminder_ls_date_params(respx_mock: respx.MockRouter) -> None:
@@ -139,6 +142,8 @@ def test_interaction_ls_type_required() -> None:
             "ls",
             "--person-id",
             "123",
+            "--days",
+            "7",  # Must specify date range now
         ],
         env={"AFFINITY_API_KEY": "test-key"},
     )

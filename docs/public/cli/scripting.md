@@ -29,13 +29,18 @@ Date/time flags (`--after`, `--before`, etc.) interpret naive strings as **local
 
 ```bash
 # Use Z suffix for explicit UTC
-xaffinity interaction ls --after 2024-01-01T00:00:00Z --json
+xaffinity interaction ls --type meeting --person-id 123 --after 2024-01-01T00:00:00Z --json
 
 # Or use explicit timezone offset
-xaffinity interaction ls --after 2024-01-01T00:00:00-05:00 --json
+xaffinity interaction ls --type meeting --person-id 123 --after 2024-01-01T00:00:00-05:00 --json
+
+# Or use --days for relative date ranges
+xaffinity interaction ls --type meeting --person-id 123 --days 30 --json
 ```
 
 JSON output always returns datetimes in UTC (with `+00:00` suffix). See the [Datetime Handling Guide](../guides/datetime-handling.md) for full details on SDK vs CLI behavior.
+
+**Note:** `interaction ls` auto-chunks date ranges > 1 year into API-compatible segments. For multi-year queries, dates are split transparently.
 
 ## Pagination and resume
 
@@ -43,7 +48,9 @@ Some commands include resume tokens in `meta.pagination`.
 
 - `meta.pagination` is keyed by section name.
 - Resume cursor: `meta.pagination.<section>.nextCursor` (resume with `--cursor <cursor>`)
-- Treat cursors as opaque strings (some may look like URLs); don’t parse them.
+- Treat cursors as opaque strings (some may look like URLs); don't parse them.
+
+**Note:** `interaction ls` does not use pagination cursors. Instead, it auto-fetches all results within the specified date range, chunking as needed for ranges > 1 year.
 
 Example (person list with query):
 

@@ -7,12 +7,15 @@ from datetime import datetime, timedelta, timezone
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeElapsedColumn
 
+from affinity.exceptions import AffinityError
 from affinity.models.secondary import Interaction, InteractionCreate, InteractionUpdate
 from affinity.models.types import InteractionDirection, InteractionType
 from affinity.types import CompanyId, InteractionId, OpportunityId, PersonId
 
 from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
+from ..csv_utils import write_csv_to_stdout
+from ..date_utils import ChunkedFetchResult, chunk_date_range
 from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
@@ -63,6 +66,133 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
     }
 
 
+def _resolve_date_range(
+    after: str | None,
+    before: str | None,
+    days: int | None,
+) -> tuple[datetime, datetime]:
+    """Resolve date flags to start/end datetimes."""
+    now = datetime.now(timezone.utc)
+
+    # Mutual exclusion
+    if days is not None and after is not None:
+        raise CLIError(
+            "--days and --after are mutually exclusive.",
+            error_type="usage_error",
+            exit_code=2,
+        )
+
+    # Must have at least one
+    if days is None and after is None:
+        raise CLIError(
+            "Specify --days or --after to set the date range.",
+            error_type="usage_error",
+            exit_code=2,
+        )
+
+    # Resolve start
+    if days is not None:
+        start = now - timedelta(days=days)
+    else:
+        # parse_iso_datetime returns UTC-aware datetime
+        # (naive strings interpreted as local time, then converted to UTC)
+        assert after is not None  # Guaranteed by validation above
+        start = parse_iso_datetime(after, label="after")
+
+    # Resolve end (parse_iso_datetime returns UTC-aware datetime)
+    end = parse_iso_datetime(before, label="before") if before is not None else now
+
+    # Validate
+    if start >= end:
+        raise CLIError(
+            f"Start date ({start.date()}) must be before end date ({end.date()}).",
+            error_type="usage_error",
+            exit_code=2,
+        )
+
+    return start, end
+
+
+def _fetch_interactions_chunked(
+    client: object,  # Affinity client (typed as object to avoid import cycle)
+    *,
+    interaction_type: InteractionType,
+    start: datetime,
+    end: datetime,
+    person_id: PersonId | None,
+    company_id: CompanyId | None,
+    opportunity_id: OpportunityId | None,
+    page_size: int | None,
+    max_results: int | None,
+    progress: Progress | None,
+    task_id: TaskID | None,
+) -> ChunkedFetchResult:
+    """
+    Fetch interactions across date chunks.
+
+    Returns ChunkedFetchResult with interactions and chunk count for metadata.
+
+    Note: Relies on API using exclusive end_time boundary.
+    If an interaction has timestamp exactly at chunk boundary,
+    it will appear in the later chunk (not both).
+    """
+    chunks = list(chunk_date_range(start, end))
+    total_chunks = len(chunks)
+    results: list[Interaction] = []
+    chunks_processed = 0
+
+    for chunk_idx, (chunk_start, chunk_end) in enumerate(chunks, 1):
+        chunks_processed = chunk_idx
+
+        # Update progress description with current chunk info
+        if progress and task_id is not None:
+            desc = f"{chunk_start.date()} - {chunk_end.date()} ({chunk_idx}/{total_chunks})"
+            progress.update(task_id, description=desc)
+
+        # Paginate within chunk
+        page_token: str | None = None
+        while True:
+            try:
+                page = client.interactions.list(  # type: ignore[attr-defined]
+                    type=interaction_type,
+                    start_time=chunk_start,
+                    end_time=chunk_end,
+                    person_id=person_id,
+                    company_id=company_id,
+                    opportunity_id=opportunity_id,
+                    page_size=page_size,
+                    page_token=page_token,
+                )
+            except AffinityError as e:
+                raise CLIError(
+                    f"Failed on chunk {chunk_idx}/{total_chunks} "
+                    f"({chunk_start.date()} \u2192 {chunk_end.date()}): {e}",
+                    error_type="api_error",
+                    exit_code=1,
+                ) from e
+
+            for interaction in page.data:
+                results.append(interaction)
+                if progress and task_id is not None:
+                    progress.update(task_id, completed=len(results))
+
+                # Check max_results limit
+                if max_results is not None and len(results) >= max_results:
+                    return ChunkedFetchResult(
+                        interactions=results[:max_results],
+                        chunks_processed=chunks_processed,
+                    )
+
+            page_token = page.next_page_token
+            if not page_token:
+                break
+
+    return ChunkedFetchResult(
+        interactions=results,
+        chunks_processed=chunks_processed,
+    )
+
+
 @category("read")
 @interaction_group.command(name="ls", cls=RichCommand)
 @click.option(
@@ -74,20 +204,31 @@ def _interaction_payload(interaction: Interaction) -> dict[str, object]:
     help="Interaction type (required): meeting, call, chat-message, email.",
 )
 @click.option(
-    "--after", type=str, default=None, help="Start of date range (ISO-8601). Default: 7 days ago."
+    "--after",
+    type=str,
+    default=None,
+    help="Start date (ISO-8601). Mutually exclusive with --days.",
 )
 @click.option(
-    "--before", type=str, default=None, help="End of date range (ISO-8601). Default: now."
+    "--before",
+    type=str,
+    default=None,
+    help="End date (ISO-8601). Default: now.",
+)
+@click.option(
+    "--days",
+    "-d",
+    type=int,
+    default=None,
+    help="Fetch last N days. Mutually exclusive with --after.",
 )
 @click.option("--person-id", type=int, default=None, help="Filter by person id.")
 @click.option("--company-id", type=int, default=None, help="Filter by company id.")
 @click.option("--opportunity-id", type=int, default=None, help="Filter by opportunity id.")
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
-@click.option(
-    "--cursor", type=str, default=None, help="Resume from cursor (incompatible with --page-size)."
-)
 @click.option("--max-results", "-n", type=int, default=None, help="Stop after N results total.")
-@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
+@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV to stdout.")
+@click.option("--csv-bom", is_flag=True, help="Add UTF-8 BOM for Excel compatibility.")
 @output_options
 @click.pass_obj
 def interaction_ls(
@@ -96,102 +237,72 @@ def interaction_ls(
     interaction_type: str,
     after: str | None,
     before: str | None,
+    days: int | None,
     person_id: int | None,
     company_id: int | None,
     opportunity_id: int | None,
     page_size: int | None,
-    cursor: str | None,
     max_results: int | None,
-    all_pages: bool,
+    csv_flag: bool,
+    csv_bom: bool,
 ) -> None:
-    """List interactions.
+    """List interactions with automatic date range handling.
 
     Requires --type and one entity selector (--person-id, --company-id, or --opportunity-id).
-    Date range defaults to last 7 days. Max range is 1 year.
+
+    Date range is specified with --days (relative) or --after/--before (absolute).
+    Ranges exceeding 1 year are automatically split into chunks.
 
     Examples:
 
-    - `xaffinity interaction ls --type meeting --person-id 123`
+      # Last 30 days of meetings with a person
+      xaffinity interaction ls --type meeting --person-id 123 --days 30
 
-    - `xaffinity interaction ls --type email --company-id 456 --after 2024-06-01`
+      # All emails with a company in 2023
+      xaffinity interaction ls -t email --company-id 456 --after 2023-01-01 --before 2024-01-01
 
-    - `xaffinity interaction ls -t call --person-id 789 --after 2024-01-01 --before 2024-12-31`
+      # Last 2 years of calls (auto-chunked)
+      xaffinity interaction ls -t call --person-id 789 --days 730
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        nonlocal after, before
-
-        # Validate that at least one entity ID is provided
+        # Validate entity selector
         entity_count = sum(1 for x in [person_id, company_id, opportunity_id] if x is not None)
         if entity_count == 0:
             raise CLIError(
-                "At least one of --person-id, --company-id, or --opportunity-id is required.",
+                "Specify --person-id, --company-id, or --opportunity-id.",
                 error_type="usage_error",
                 exit_code=2,
             )
         if entity_count > 1:
             raise CLIError(
-                "Only one of --person-id, --company-id, or --opportunity-id can be specified.",
+                "Only one entity selector allowed.",
                 error_type="usage_error",
                 exit_code=2,
             )
 
-        # Apply smart date defaults if no date filters provided
-        if not after and not before:
-            now = datetime.now(timezone.utc)
-            after = (now - timedelta(days=7)).isoformat()
-            before = now.isoformat()
-            if not ctx.quiet:
-                click.echo(
-                    "Note: Using default date range: last 7 days (API max: 1 year)",
-                    err=True,
-                )
+        # Resolve dates (validates mutual exclusion and required flags)
+        start, end = _resolve_date_range(after, before, days)
+
+        # CSV mutual exclusion
+        if csv_flag and ctx.output == "json":
+            raise CLIError(
+                "--csv and --json are mutually exclusive.",
+                exit_code=2,
+                error_type="usage_error",
+            )
 
         client = ctx.get_client(warnings=warnings)
-        results: list[dict[str, object]] = []
-        first_page = True
-        page_token = cursor
-
-        # Build CommandContext upfront for all return paths
-        ctx_modifiers: dict[str, object] = {}
-        if interaction_type:
-            ctx_modifiers["type"] = interaction_type
-        if after:
-            ctx_modifiers["after"] = after
-        if before:
-            ctx_modifiers["before"] = before
-        if person_id is not None:
-            ctx_modifiers["personId"] = person_id
-        if company_id is not None:
-            ctx_modifiers["companyId"] = company_id
-        if opportunity_id is not None:
-            ctx_modifiers["opportunityId"] = opportunity_id
-        if page_size is not None:
-            ctx_modifiers["pageSize"] = page_size
-        if cursor is not None:
-            ctx_modifiers["cursor"] = cursor
-        if max_results is not None:
-            ctx_modifiers["maxResults"] = max_results
-        if all_pages:
-            ctx_modifiers["allPages"] = True
-
-        cmd_context = CommandContext(
-            name="interaction ls",
-            inputs={},
-            modifiers=ctx_modifiers,
-        )
 
         parsed_type = parse_choice(
             interaction_type,
             _INTERACTION_TYPE_MAP,
             label="interaction type",
         )
-        start_value = parse_iso_datetime(after, label="after") if after else None
-        end_value = parse_iso_datetime(before, label="before") if before else None
-        person_id_value = PersonId(person_id) if person_id is not None else None
-        company_id_value = CompanyId(company_id) if company_id is not None else None
-        opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None
+        if parsed_type is None:
+            raise CLIError("Missing interaction type.", error_type="usage_error", exit_code=2)
 
+        # Determine if progress should be shown
         show_progress = (
             ctx.progress != "never"
             and not ctx.quiet
@@ -201,6 +312,7 @@ def interaction_ls(
         with ExitStack() as stack:
             progress: Progress | None = None
             task_id: TaskID | None = None
+
             if show_progress:
                 progress = stack.enter_context(
                     Progress(
@@ -212,72 +324,66 @@ def interaction_ls(
                         transient=True,
                     )
                 )
-                task_id = progress.add_task("Fetching", total=max_results)
+                task_id = progress.add_task("Fetching interactions", total=max_results)
 
-            while True:
-                page = client.interactions.list(
-                    type=parsed_type,
-                    start_time=start_value,
-                    end_time=end_value,
-                    person_id=person_id_value,
-                    company_id=company_id_value,
-                    opportunity_id=opportunity_id_value,
-                    page_size=page_size,
-                    page_token=page_token,
-                )
+            fetch_result = _fetch_interactions_chunked(
+                client,
+                interaction_type=parsed_type,
+                start=start,
+                end=end,
+                person_id=PersonId(person_id) if person_id else None,
+                company_id=CompanyId(company_id) if company_id else None,
+                opportunity_id=OpportunityId(opportunity_id) if opportunity_id else None,
+                page_size=page_size,
+                max_results=max_results,
+                progress=progress,
+                task_id=task_id,
+            )
 
-                for idx, interaction in enumerate(page.data):
-                    results.append(_interaction_payload(interaction))
-                    if progress and task_id is not None:
-                        progress.update(task_id, completed=len(results))
-                    if max_results is not None and len(results) >= max_results:
-                        stopped_mid_page = idx < (len(page.data) - 1)
-                        if stopped_mid_page:
-                            warnings.append(
-                                "Results limited by --max-results. Use --all to fetch all results."
-                            )
-                        pagination = None
-                        if page.next_page_token and not stopped_mid_page:
-                            pagination = {
-                                "interactions": {
-                                    "nextCursor": page.next_page_token,
-                                    "prevCursor": None,
-                                }
-                            }
-                        return CommandOutput(
-                            data={"interactions": results[:max_results]},
-                            context=cmd_context,
-                            pagination=pagination,
-                            api_called=True,
-                        )
+        # Check if truncated by max_results
+        if max_results and len(fetch_result.interactions) >= max_results:
+            warnings.append(f"Results limited to {max_results}. Remove --max-results for all.")
 
-                if first_page and not all_pages and max_results is None:
-                    pagination = (
-                        {
-                            "interactions": {
-                                "nextCursor": page.next_page_token,
-                                "prevCursor": None,
-                            }
-                        }
-                        if page.next_page_token
-                        else None
-                    )
-                    return CommandOutput(
-                        data={"interactions": results},
-                        context=cmd_context,
-                        pagination=pagination,
-                        api_called=True,
-                    )
-                first_page = False
+        # Sort by date descending (newest first) for consistent ordering across chunks
+        sorted_interactions = sorted(
+            fetch_result.interactions,
+            key=lambda i: i.date or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
 
-                page_token = page.next_page_token
-                if not page_token:
-                    break
+        # Convert to output format
+        results = [_interaction_payload(i) for i in sorted_interactions]
+
+        # CSV output
+        if csv_flag:
+            fieldnames = list(results[0].keys()) if results else []
+            write_csv_to_stdout(rows=results, fieldnames=fieldnames, bom=csv_bom)
+            sys.exit(0)
+
+        # Build context
+        cmd_context = CommandContext(
+            name="interaction ls",
+            inputs={},
+            modifiers={
+                "type": interaction_type,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                **({"personId": person_id} if person_id else {}),
+                **({"companyId": company_id} if company_id else {}),
+                **({"opportunityId": opportunity_id} if opportunity_id else {}),
+            },
+        )
 
         return CommandOutput(
-            data={"interactions": results},
+            data={
+                "interactions": results,
+                "metadata": {
+                    "dateRange": {"start": start.isoformat(), "end": end.isoformat()},
+                    "chunksProcessed": fetch_result.chunks_processed,
+                    "totalRows": len(results),
+                },
+            },
             context=cmd_context,
-            pagination=None,
             api_called=True,
         )
 

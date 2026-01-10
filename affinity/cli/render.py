@@ -816,6 +816,16 @@ def _format_scalar_value(*, key: str | None, value: Any) -> str:
             return ", ".join(parts)
         return f"list ({len(value):,} items)"
     if isinstance(value, dict):
+        # Special handling for date range objects (e.g., metadata.dateRange)
+        if set(value.keys()) == {"start", "end"}:
+            start_str = str(value.get("start", ""))
+            end_str = str(value.get("end", ""))
+            # Extract just the date portion if it's an ISO datetime
+            if "T" in start_str:
+                start_str = start_str.split("T")[0]
+            if "T" in end_str:
+                end_str = end_str.split("T")[0]
+            return f"{start_str} → {end_str}"
         return f"object ({len(value):,} keys)"
     if isinstance(value, bool):
         return str(value)
@@ -834,8 +844,18 @@ def _format_scalar_value(*, key: str | None, value: Any) -> str:
 
 
 def _is_simple_scalar_dict(obj: dict[str, Any]) -> bool:
-    """Check if a dict contains only simple scalar values (no nested structures)."""
-    return all(not isinstance(v, (list, dict)) for v in obj.values())
+    """Check if a dict contains only simple scalar values (no nested structures).
+
+    Date range dicts (with only 'start' and 'end' keys) are treated as simple
+    since they format to inline strings like "2024-01-01 → 2024-06-01".
+    """
+    for v in obj.values():
+        if isinstance(v, list):
+            return False
+        # Allow date range dicts (they format inline)
+        if isinstance(v, dict) and set(v.keys()) != {"start", "end"}:
+            return False
+    return True
 
 
 def _simple_kv_text(obj: dict[str, Any]) -> Text:

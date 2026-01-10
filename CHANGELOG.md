@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Context metadata keys changed: `startTime`/`endTime` → `after`/`before`
   - Note: Interaction object fields (`startTime`/`endTime`) are unchanged
 - **BREAKING**: CLI: `interaction ls` now requires `--type` (was optional but API required it).
+- **BREAKING**: CLI: `interaction ls` now requires explicit date range via `--days` or `--after` (removed 7-day default).
+- **BREAKING**: CLI: `interaction ls` removed `--cursor` and `--all` flags (auto-chunking replaces manual pagination).
 - **BREAKING**: CLI: Naive datetime strings (without timezone) are now interpreted as **local time** instead of UTC. Use explicit `Z` suffix or offset for UTC. See [datetime-handling guide](https://yaniv-golan.github.io/affinity-sdk/latest/guides/datetime-handling/) for details.
 - **BREAKING**: CLI: List entry field commands unified into single `entry field` command:
   - `entry set-field --field F --value V` → `entry field --set F V`
@@ -30,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Behavior change:** `--set` on multi-value field now replaces all values (use `--append` to add)
 
 ### Added
+- CLI: `interaction ls` auto-chunking for date ranges > 1 year (transparently splits into API-compatible chunks).
+- CLI: `interaction ls --days N` convenience flag for "last N days" queries.
+- CLI: `interaction ls --csv` and `--csv-bom` flags for CSV export.
+- CLI: `interaction ls` metadata in JSON output includes `dateRange`, `chunksProcessed`, `totalRows`.
 - SDK: `ListEntryService.from_saved_view()` now accepts `field_ids` and `field_types` parameters.
 - CLI: `list export --saved-view` can now be combined with `--field` for server-side filtering with explicit field selection.
 - SDK: `ids` parameter added to `PersonService`, `CompanyService`, and `OpportunityService` for batch fetching by ID.

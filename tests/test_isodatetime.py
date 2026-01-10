@@ -198,6 +198,7 @@ class TestCliDatetimeIntegration:
         respx_mock.get("https://api.affinity.co/interactions").mock(side_effect=capture_request)
 
         runner = CliRunner()
+        # Use --before within 365 days to avoid multi-chunk requests
         result = runner.invoke(
             cli,
             [
@@ -210,6 +211,8 @@ class TestCliDatetimeIntegration:
                 "123",
                 "--after",
                 "2024-06-01T00:00:00Z",
+                "--before",
+                "2024-12-01T00:00:00Z",
             ],
             env={"AFFINITY_API_KEY": "test-key"},
         )
@@ -258,6 +261,7 @@ class TestCliDatetimeIntegration:
 
         runner = CliRunner()
         # 12:00 EST (UTC-5) = 17:00 UTC
+        # Use --before within 365 days to avoid multi-chunk requests
         result = runner.invoke(
             cli,
             [
@@ -270,6 +274,8 @@ class TestCliDatetimeIntegration:
                 "123",
                 "--after",
                 "2024-06-01T12:00:00-05:00",
+                "--before",
+                "2024-12-01T12:00:00-05:00",
             ],
             env={"AFFINITY_API_KEY": "test-key"},
         )
@@ -319,6 +325,7 @@ class TestCliDatetimeIntegration:
         respx_mock.get("https://api.affinity.co/interactions").mock(side_effect=capture_request)
 
         runner = CliRunner()
+        # Use --before within 365 days to avoid multi-chunk requests
         result = runner.invoke(
             cli,
             [
@@ -331,6 +338,8 @@ class TestCliDatetimeIntegration:
                 "123",
                 "--after",
                 "2024-06-01T12:00:00",  # Naive - interpreted as local time
+                "--before",
+                "2024-12-01T12:00:00",  # Naive - interpreted as local time
             ],
             env={"AFFINITY_API_KEY": "test-key"},
         )

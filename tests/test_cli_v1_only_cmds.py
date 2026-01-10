@@ -266,7 +266,7 @@ def test_interaction_ls_minimal(respx_mock: respx.MockRouter) -> None:
                         "persons": [{"id": 1, "type": "external"}],
                     }
                 ],
-                "next_page_token": "next",
+                "next_page_token": None,
             },
         )
     )
@@ -274,13 +274,24 @@ def test_interaction_ls_minimal(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "-q", "interaction", "ls", "--type", "email", "--person-id", "1"],
+        [
+            "--json",
+            "-q",
+            "interaction",
+            "ls",
+            "--type",
+            "email",
+            "--person-id",
+            "1",
+            "--days",
+            "7",  # Required: must specify date range
+        ],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["data"]["interactions"][0]["id"] == 5
-    assert payload["meta"]["pagination"]["interactions"]["nextCursor"] == "next"
+    # Pagination is no longer returned for interaction ls (auto-chunking fetches all)
 
 
 def test_interaction_create_update_delete(respx_mock: respx.MockRouter) -> None:
