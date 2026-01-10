@@ -46,7 +46,12 @@
   },
   "interaction ls": {
     "relatedCommands": ["interaction get", "interaction create", "note ls"],
-    "whenToUse": "List interactions for an entity. Requires --type (meeting, call, email, chat-message) and one entity selector (--person-id, --company-id, or --opportunity-id). Date range uses --after/--before (defaults to last 7 days)."
+    "whenToUse": "List interactions for an entity. Requires --type, one entity selector (--person-id, --company-id, or --opportunity-id), and a date range (--days N or --after). Auto-chunks ranges > 1 year.",
+    "examples": [
+      "interaction ls --type meeting --person-id 123 --days 30",
+      "interaction ls --type email --company-id 456 --days 365",
+      "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
+    ]
   },
   "interaction create": {
     "relatedCommands": ["interaction ls", "note create"],

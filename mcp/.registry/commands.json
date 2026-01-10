@@ -918,7 +918,7 @@
     },
     {
       "name": "interaction ls",
-      "description": "List interactions.",
+      "description": "List interactions with automatic date range handling.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
@@ -926,27 +926,32 @@
         "--after": {
           "type": "string",
           "required": false,
-          "help": "Start of date range (ISO-8601). Default: 7 days ago."
-        },
-        "--all": {
-          "type": "flag",
-          "required": false,
-          "help": "Fetch all pages."
+          "help": "Start date (ISO-8601). Mutually exclusive with --days."
         },
         "--before": {
           "type": "string",
           "required": false,
-          "help": "End of date range (ISO-8601). Default: now."
+          "help": "End date (ISO-8601). Default: now."
         },
         "--company-id": {
           "type": "int",
           "required": false,
           "help": "Filter by company id."
         },
-        "--cursor": {
-          "type": "string",
+        "--csv": {
+          "type": "flag",
           "required": false,
-          "help": "Resume from cursor (incompatible with --page-size)."
+          "help": "Output as CSV to stdout."
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false,
+          "help": "Add UTF-8 BOM for Excel compatibility."
+        },
+        "--days": {
+          "type": "int",
+          "required": false,
+          "help": "Fetch last N days. Mutually exclusive with --after."
         },
         "--max-results": {
           "type": "int",
@@ -982,17 +987,12 @@
         }
       },
       "positionals": [],
-      "examples": [
-        "interaction ls --type meeting --person-id 123",
-        "interaction ls --type email --company-id 456 --after 2024-06-01",
-        "interaction ls -t call --person-id 789 --after 2024-01-01 --before 2024-12-31"
-      ],
       "relatedCommands": [
         "interaction get",
         "interaction create",
         "note ls"
       ],
-      "whenToUse": "List interactions for an entity. Requires --type (meeting, call, email, chat-message) and one entity selector (--person-id, --company-id, or --opportunity-id). Date range uses --after/--before (defaults to last 7 days)."
+      "whenToUse": "List interactions for an entity. Requires --type, one entity selector (--person-id, --company-id, or --opportunity-id), and a date range (--days N or --after). Auto-chunks ranges > 1 year."
     },
     {
       "name": "interaction update",
