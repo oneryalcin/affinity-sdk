@@ -5,6 +5,12 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-01-10
+
+### Fixed
+- **Registry**: `interaction ls --type` now correctly marked as `multiple: true`
+- **Prompts**: Updated `warm-intro` and `interaction-brief` to use `--type all` syntax
+
 ## [1.7.1] - 2026-01-10
 
 ### Changed
