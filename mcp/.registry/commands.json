@@ -1051,7 +1051,13 @@
         "interaction create",
         "note ls"
       ],
-      "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year."
+      "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year.",
+      "examples": [
+        "interaction ls --type all --company-id 456",
+        "interaction ls --type email --type meeting --person-id 123 --days 30",
+        "interaction ls --type meeting --person-id 123 --days 30",
+        "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
+      ]
     },
     {
       "name": "interaction update",
@@ -1411,7 +1417,7 @@
         "--filter": {
           "type": "string",
           "required": false,
-          "help": "Client-side filter. Syntax: 'field op value'. Ops: = != =~ =^ =$ > < >= <=."
+          "help": "Client-side filter (field op value). Quote multi-word: Status=\"Intro Meeting\"."
         },
         "--max-results": {
           "type": "int",
@@ -1445,18 +1451,16 @@
       ],
       "examples": [
         "list export \"Pipeline\" --all",
-        "list export 12345 --csv --all > pipeline.csv",
-        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv",
-        "list export \"Pipeline\" --field Status --field \"Deal Size\" --all",
-        "list export \"Pipeline\" --expand people --all --csv > opps-with-people.csv",
-        "list export \"Pipeline\" --expand people --expand companies --all"
+        "list export \"Pipeline\" --filter 'Status=New' --all",
+        "list export \"Pipeline\" --filter 'Status=\"Intro Meeting\"' --all",
+        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
       "relatedCommands": [
         "list ls",
         "field ls",
         "list-entry get"
       ],
-      "whenToUse": "Get entries from a list. Use --filter for field-based filtering (e.g., 'Status=\"New\"'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
+      "whenToUse": "Get entries from a list. Use --filter for field-based filtering. IMPORTANT: Multi-word values MUST be quoted (e.g., --filter 'Status=\"Intro Meeting\"'). Single-word values work unquoted (e.g., 'Status=New'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
     },
     {
       "name": "list get",

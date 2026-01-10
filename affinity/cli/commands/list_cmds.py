@@ -365,7 +365,7 @@ ExpandOnError = Literal["raise", "skip"]
     "filter_expr",
     type=str,
     default=None,
-    help="Client-side filter. Syntax: 'field op value'. Ops: = != =~ =^ =$ > < >= <=.",
+    help='Client-side filter (field op value). Quote multi-word: Status="Intro Meeting".',
 )
 @click.option(
     "--page-size", "-s", type=int, default=100, show_default=True, help="Page size (max 100)."

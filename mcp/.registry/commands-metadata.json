@@ -10,7 +10,13 @@
   },
   "list export": {
     "relatedCommands": ["list ls", "field ls", "list-entry get"],
-    "whenToUse": "Get entries from a list. Use --filter for field-based filtering (e.g., 'Status=\"New\"'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
+    "whenToUse": "Get entries from a list. Use --filter for field-based filtering. IMPORTANT: Multi-word values MUST be quoted (e.g., --filter 'Status=\"Intro Meeting\"'). Single-word values work unquoted (e.g., 'Status=New'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values.",
+    "examples": [
+      "list export \"Pipeline\" --all",
+      "list export \"Pipeline\" --filter 'Status=New' --all",
+      "list export \"Pipeline\" --filter 'Status=\"Intro Meeting\"' --all",
+      "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
+    ]
   },
   "list-entry get": {
     "relatedCommands": ["list export", "entry field"],

@@ -177,6 +177,9 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
 - **Use names directly**: Most commands accept names instead of IDs (e.g., `list export "Dealflow"`)
 - **Filter syntax**: `--filter 'field op "value"'` (ops: `=`, `!=`, `=~` contains, `=^` starts with)
+  - **IMPORTANT**: Multi-word values MUST be quoted: `--filter 'Status="Intro Meeting"'`
+  - Single-word values can be unquoted: `--filter 'Status=New'`
+  - Invalid (will fail): `--filter 'Status=Intro Meeting'` (unquoted multi-word value)
 
 ## Troubleshooting
 

@@ -112,6 +112,9 @@ def merge_metadata(commands: list[dict], metadata: dict[str, dict]) -> list[dict
                 cmd["relatedCommands"] = cmd_meta["relatedCommands"]
             if "whenToUse" in cmd_meta:
                 cmd["whenToUse"] = cmd_meta["whenToUse"]
+            # Merge examples (manual examples replace auto-generated ones)
+            if "examples" in cmd_meta:
+                cmd["examples"] = cmd_meta["examples"]
     return commands
 
 
