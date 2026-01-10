@@ -1460,7 +1460,7 @@
         "field ls",
         "list-entry get"
       ],
-      "whenToUse": "Get entries from a list. Use --filter for field-based filtering. IMPORTANT: Multi-word values MUST be quoted (e.g., --filter 'Status=\"Intro Meeting\"'). Single-word values work unquoted (e.g., 'Status=New'). Use --saved-view only for pre-configured Affinity views (check xaffinity://saved-views/{listId}). Note: saved view names are NOT field values."
+      "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word values MUST be quoted (e.g., --filter 'Status=\"Intro Meeting\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead."
     },
     {
       "name": "list get",

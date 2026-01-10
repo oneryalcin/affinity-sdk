@@ -180,6 +180,10 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
   - **IMPORTANT**: Multi-word values MUST be quoted: `--filter 'Status="Intro Meeting"'`
   - Single-word values can be unquoted: `--filter 'Status=New'`
   - Invalid (will fail): `--filter 'Status=Intro Meeting'` (unquoted multi-word value)
+- **Filter only works on list fields**: The `--filter` option for `list export` filters on **list-defined fields** (Status, Owner, etc.), NOT internal properties like `entityId`, `entityType`, or `listEntryId`. Use `field ls --list-id <id>` to see available filter fields.
+- **Finding a specific entity in a list**: To find a company/person in a list by their entity ID, either:
+  1. Use `company get <id> --expand list-entries` to see their list memberships directly
+  2. Or export the list and filter client-side (the tool will return `entityId` in results)
 
 ## Troubleshooting
 

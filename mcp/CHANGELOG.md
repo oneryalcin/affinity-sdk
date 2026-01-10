@@ -5,6 +5,14 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.4] - 2026-01-10
+
+### Changed
+- **SKILL.md**: Added guidance that `--filter` only works on list-defined fields (not `entityId`/`entityType`/`listEntryId`)
+- **SKILL.md**: Added alternative approaches for finding specific entities in lists
+- **Registry**: Enhanced `list export` `whenToUse` with filter field limitations
+- **env.sh**: `MCPBASH_DEBUG_PAYLOADS=1` now auto-enabled in debug mode for payload logging
+
 ## [1.7.3] - 2026-01-10
 
 ### Changed

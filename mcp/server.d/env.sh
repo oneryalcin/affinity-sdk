@@ -58,6 +58,9 @@ if [[ "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
 
     # Increase stderr tail limit for more context in errors
     export MCPBASH_TOOL_STDERR_TAIL_LIMIT="${MCPBASH_TOOL_STDERR_TAIL_LIMIT:-8192}"
+
+    # Log raw argument payloads for debugging parsing issues
+    export MCPBASH_DEBUG_PAYLOADS="${MCPBASH_DEBUG_PAYLOADS:-1}"
 fi
 
 # ==============================================================================
