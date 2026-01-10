@@ -1032,13 +1032,14 @@
           "required": true,
           "help": "Interaction type(s): call, chat-message, email, meeting, or 'all'. Repeatable.",
           "choices": [
-            "all",
             "call",
             "chat",
             "chat-message",
             "email",
-            "meeting"
+            "meeting",
+            "all"
           ],
+          "multiple": true,
           "aliases": [
             "-t"
           ]
