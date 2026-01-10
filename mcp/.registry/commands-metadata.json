@@ -28,15 +28,30 @@
   },
   "company get": {
     "relatedCommands": ["company ls", "company field"],
-    "whenToUse": "Get full details for a company by ID. Use --expand for list memberships."
+    "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. For list-entry fields: requires --expand list-entries AND --max-results N (N<=3) with --show-list-entry-fields.",
+    "examples": [
+      "company get 12345",
+      "company get domain:wellybox.com",
+      "company get domain:wellybox.com --expand list-entries",
+      "company get domain:wellybox.com --expand list-entries --show-list-entry-fields --max-results 3"
+    ]
   },
   "person ls": {
     "relatedCommands": ["person get", "person field"],
-    "whenToUse": "List or search ALL persons in CRM. Use --query for text search (name, email). NOT for list-specific fields."
+    "whenToUse": "Search persons by name/email. ALWAYS use --query for text search (simpler, more reliable). Avoid --filter with complex expressions containing quotes.",
+    "examples": [
+      "person ls --query 'John Smith'",
+      "person ls --query 'john@example.com'"
+    ]
   },
   "person get": {
     "relatedCommands": ["person ls", "person field"],
-    "whenToUse": "Get full details for a person by ID. Use --expand for list memberships."
+    "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships.",
+    "examples": [
+      "person get 12345",
+      "person get email:john@example.com",
+      "person get 12345 --expand list-entries"
+    ]
   },
   "opportunity ls": {
     "relatedCommands": ["opportunity get", "list ls"],

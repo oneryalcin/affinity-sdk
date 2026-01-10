@@ -1,10 +1,10 @@
 {
   "_generated": {
     "by": "tools/generate_cli_commands_registry.py",
-    "cliVersion": "0.8.5"
+    "cliVersion": "0.8.6"
   },
   "version": 1,
-  "cliVersion": "0.8.5",
+  "cliVersion": "0.8.6",
   "commands": [
     {
       "name": "company create",
@@ -264,18 +264,16 @@
         }
       ],
       "examples": [
-        "company get 223384905",
-        "company get https://mydomain.affinity.com/companies/223384905",
-        "company get domain:acme.com",
-        "company get name:\"Acme Inc\"",
-        "company get 223384905 --expand list-entries --list \"Portfolio\"",
-        "company get 223384905 --json  # Full data, ignores field filters"
+        "company get 12345",
+        "company get domain:wellybox.com",
+        "company get domain:wellybox.com --expand list-entries",
+        "company get domain:wellybox.com --expand list-entries --show-list-entry-fields --max-results 3"
       ],
       "relatedCommands": [
         "company ls",
         "company field"
       ],
-      "whenToUse": "Get full details for a company by ID. Use --expand for list memberships."
+      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. For list-entry fields: requires --expand list-entries AND --max-results N (N<=3) with --show-list-entry-fields."
     },
     {
       "name": "company ls",
@@ -2333,18 +2331,15 @@
         }
       ],
       "examples": [
-        "person get 223384905",
-        "person get https://mydomain.affinity.com/persons/223384905",
-        "person get email:alice@example.com",
-        "person get name:\"Alice Smith\"",
-        "person get 223384905 --expand list-entries --list \"Sales Pipeline\"",
-        "person get 223384905 --json  # Full data, ignores field filters"
+        "person get 12345",
+        "person get email:john@example.com",
+        "person get 12345 --expand list-entries"
       ],
       "relatedCommands": [
         "person ls",
         "person field"
       ],
-      "whenToUse": "Get full details for a person by ID. Use --expand for list memberships."
+      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships."
     },
     {
       "name": "person ls",
@@ -2421,19 +2416,14 @@
       },
       "positionals": [],
       "examples": [
-        "person ls",
-        "person ls --page-size 50",
-        "person ls --field-type enriched --all",
-        "person ls --filter 'Email =~ \"@acme.com\"'",
-        "person ls --query \"alice@example.com\" --all",
-        "person ls --all --csv > people.csv",
-        "person ls --all --csv --csv-bom > people.csv"
+        "person ls --query 'John Smith'",
+        "person ls --query 'john@example.com'"
       ],
       "relatedCommands": [
         "person get",
         "person field"
       ],
-      "whenToUse": "List or search ALL persons in CRM. Use --query for text search (name, email). NOT for list-specific fields."
+      "whenToUse": "Search persons by name/email. ALWAYS use --query for text search (simpler, more reliable). Avoid --filter with complex expressions containing quotes."
     },
     {
       "name": "person merge",
