@@ -27,6 +27,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
+
+
+def get_pyproject_version() -> str:
+    """Get version from pyproject.toml (source of truth)."""
+    repo_root = Path(__file__).parent.parent
+    pyproject_path = repo_root / "pyproject.toml"
+    with pyproject_path.open("rb") as f:
+        data = tomllib.load(f)
+    return data["project"]["version"]
+
 
 def get_cli_version() -> str:
     """Get xaffinity CLI version string."""
@@ -38,6 +52,24 @@ def get_cli_version() -> str:
     )
     # Output format: "xaffinity, version 0.7.0"
     return result.stdout.strip().split()[-1]
+
+
+def validate_cli_version(cli_version: str) -> None:
+    """Warn if installed CLI version doesn't match pyproject.toml."""
+    try:
+        pyproject_version = get_pyproject_version()
+        if cli_version != pyproject_version:
+            print(
+                f"WARNING: Installed CLI version ({cli_version}) doesn't match "
+                f"pyproject.toml ({pyproject_version}).",
+                file=sys.stderr,
+            )
+            print(
+                "Run 'pip install -e .[cli]' to update the CLI before committing.",
+                file=sys.stderr,
+            )
+    except (FileNotFoundError, KeyError):
+        pass  # Skip validation if pyproject.toml not found
 
 
 def get_commands_json() -> dict:
@@ -103,6 +135,9 @@ def generate_registry(output_path: Path) -> None:
         print(f"Error: Cannot get CLI version: {e}", file=sys.stderr)
         print("Make sure xaffinity CLI is installed and in PATH", file=sys.stderr)
         sys.exit(1)
+
+    # Warn if installed CLI doesn't match pyproject.toml
+    validate_cli_version(cli_version)
 
     try:
         commands_data = get_commands_json()
