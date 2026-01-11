@@ -2,6 +2,10 @@ name: Release Detection
 
 # Triggers releases automatically when version files change on main
 # Only runs AFTER CI passes successfully
+#
+# Detection strategy: Compare current version against existing release tags.
+# This is more robust than checking HEAD~1 because it works regardless of
+# how many commits are pushed together, squash merges, rebases, etc.
 
 on:
   workflow_run:
@@ -28,30 +32,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 2
-
-      - name: Detect version file changes
-        id: changes
-        run: |
-          set -euo pipefail
-
-          echo "Checking for version changes in commit ${{ github.event.workflow_run.head_sha }}..."
-
-          # Check if pyproject.toml version line changed
-          if git diff HEAD~1 --name-only | grep -q '^pyproject.toml$'; then
-            if git diff HEAD~1 pyproject.toml | grep -qE '^\+version = '; then
-              echo "sdk=true" >> $GITHUB_OUTPUT
-              echo "SDK version change detected"
-            else
-              echo "pyproject.toml changed but not the version line"
-            fi
-          fi
-
-          # Check if mcp/VERSION changed
-          if git diff HEAD~1 --name-only | grep -q '^mcp/VERSION$'; then
-            echo "mcp=true" >> $GITHUB_OUTPUT
-            echo "MCP version change detected"
-          fi
+          fetch-depth: 0  # Full history needed to check tags
 
       - name: Extract versions
         id: versions
@@ -61,8 +42,36 @@ jobs:
           MCP_VERSION=$(cat mcp/VERSION | tr -d '[:space:]')
           echo "sdk=$SDK_VERSION" >> $GITHUB_OUTPUT
           echo "mcp=$MCP_VERSION" >> $GITHUB_OUTPUT
-          echo "SDK version: $SDK_VERSION"
-          echo "MCP version: $MCP_VERSION"
+          echo "SDK version in pyproject.toml: $SDK_VERSION"
+          echo "MCP version in mcp/VERSION: $MCP_VERSION"
+
+      - name: Detect unreleased versions
+        id: changes
+        run: |
+          set -euo pipefail
+
+          SDK_VERSION="${{ steps.versions.outputs.sdk }}"
+          MCP_VERSION="${{ steps.versions.outputs.mcp }}"
+
+          echo "Checking if releases exist for current versions..."
+
+          # Check if SDK version has a release tag
+          SDK_TAG="v${SDK_VERSION}"
+          if git tag -l "$SDK_TAG" | grep -q "^${SDK_TAG}$"; then
+            echo "SDK tag $SDK_TAG already exists - no release needed"
+          else
+            echo "SDK tag $SDK_TAG does not exist - release needed"
+            echo "sdk=true" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if MCP version has a release tag
+          MCP_TAG="mcp-v${MCP_VERSION}"
+          if git tag -l "$MCP_TAG" | grep -q "^${MCP_TAG}$"; then
+            echo "MCP tag $MCP_TAG already exists - no release needed"
+          else
+            echo "MCP tag $MCP_TAG does not exist - release needed"
+            echo "mcp=true" >> $GITHUB_OUTPUT
+          fi
 
   trigger-sdk-release:
     needs: detect-changes
