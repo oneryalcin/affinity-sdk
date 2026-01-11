@@ -1,20 +1,23 @@
 name: Release Detection
 
 # Triggers releases automatically when version files change on main
-# This enables "merge to release" workflow - no tags required to trigger
+# Only runs AFTER CI passes successfully
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'pyproject.toml'
-      - 'mcp/VERSION'
 
 permissions:
   contents: read
 
 jobs:
   detect-changes:
+    # Only run if CI passed and it was a push (not PR)
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     outputs:
       sdk_changed: ${{ steps.changes.outputs.sdk }}
@@ -24,6 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - name: Detect version file changes
@@ -31,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Checking for version changes..."
+          echo "Checking for version changes in commit ${{ github.event.workflow_run.head_sha }}..."
 
           # Check if pyproject.toml version line changed
           if git diff HEAD~1 --name-only | grep -q '^pyproject.toml$'; then
