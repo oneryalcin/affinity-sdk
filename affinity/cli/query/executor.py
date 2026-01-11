@@ -247,8 +247,6 @@ class QueryExecutor:
         if schema is None:
             raise QueryExecutionError(f"Unknown entity: {step.entity}", step=step)
 
-        service = getattr(self.client, schema.service_attr)
-
         # Use page-level iteration for progress
         items_fetched = 0
 
@@ -258,16 +256,23 @@ class QueryExecutor:
             self.progress.on_step_progress(step, items_fetched, None)
 
         try:
-            async for page in service.all().pages(on_progress=on_progress):
-                for record in page.data:
-                    record_dict = record.model_dump(mode="json")
-                    ctx.records.append(record_dict)
+            # Special handling for listEntries - requires listId filter
+            if step.entity == "listEntries":
+                await self._fetch_list_entries(step, ctx)
+            else:
+                service = getattr(self.client, schema.service_attr)
+                async for page in service.all().pages(on_progress=on_progress):
+                    for record in page.data:
+                        record_dict = record.model_dump(mode="json", by_alias=True)
+                        ctx.records.append(record_dict)
 
-                    # Check limits
-                    if len(ctx.records) >= ctx.max_records:
-                        return
-                    if ctx.query.limit and len(ctx.records) >= ctx.query.limit:
-                        return
+                        # Check limits
+                        if len(ctx.records) >= ctx.max_records:
+                            return
+                        if ctx.query.limit and len(ctx.records) >= ctx.query.limit:
+                            return
+        except QueryExecutionError:
+            raise
         except Exception as e:
             raise QueryExecutionError(
                 f"Failed to fetch {step.entity}: {e}",
@@ -275,6 +280,81 @@ class QueryExecutor:
                 cause=e,
                 partial_results=ctx.records,
             ) from None
+
+    async def _fetch_list_entries(
+        self,
+        step: PlanStep,
+        ctx: ExecutionContext,
+    ) -> None:
+        """Fetch list entries for a specific list.
+
+        List entries are always scoped to a list, so this requires
+        a listId filter in the where clause.
+        """
+        from affinity.types import ListId
+
+        # Extract listId from where clause
+        list_id = self._extract_list_id_from_where(ctx.query.where)
+        if list_id is None:
+            raise QueryExecutionError(
+                "Query for 'listEntries' requires a 'listId' filter. "
+                "Example: "
+                '{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}}',
+                step=step,
+            )
+
+        # Get list entry service for this specific list
+        entry_service = self.client.lists.entries(ListId(list_id))
+
+        # List entries use AsyncIterator, not paginator with .pages()
+        items_fetched = 0
+        async for record in entry_service.all():
+            record_dict = record.model_dump(mode="json", by_alias=True)
+            ctx.records.append(record_dict)
+            items_fetched += 1
+
+            # Report progress periodically
+            if items_fetched % 100 == 0:
+                self.progress.on_step_progress(step, items_fetched, None)
+
+            # Check limits
+            if len(ctx.records) >= ctx.max_records:
+                return
+            if ctx.query.limit and len(ctx.records) >= ctx.query.limit:
+                return
+
+    def _extract_list_id_from_where(self, where: Any) -> int | None:
+        """Extract listId value from where clause.
+
+        Supports formats:
+        - {"path": "listId", "op": "eq", "value": 12345}
+        - {"and": [{"path": "listId", "op": "eq", "value": 12345}, ...]}
+        """
+        if where is None:
+            return None
+
+        # Handle WhereClause model
+        if hasattr(where, "model_dump"):
+            where = where.model_dump(mode="json")
+
+        if not isinstance(where, dict):
+            return None
+
+        # Check path/op/value format (the standard where clause format)
+        path = where.get("path")
+        op = where.get("op")
+        value = where.get("value")
+        if path == "listId" and op == "eq" and isinstance(value, int):
+            return value
+
+        # Check in "and" conditions
+        if "and" in where:
+            for condition in where["and"]:
+                result = self._extract_list_id_from_where(condition)
+                if result is not None:
+                    return result
+
+        return None
 
     def _execute_filter(self, _step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute a client-side filter step."""
