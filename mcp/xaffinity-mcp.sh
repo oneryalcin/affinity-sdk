@@ -159,7 +159,7 @@ fi
 # Tool allowlist (read-only vs full access)
 # CLI Gateway tools provide dynamic command discovery and execution
 AFFINITY_MCP_TOOLS_CLI_GATEWAY="discover-commands execute-read-command"
-AFFINITY_MCP_TOOLS_READONLY="get-entity-dossier read-xaffinity-resource ${AFFINITY_MCP_TOOLS_CLI_GATEWAY}"
+AFFINITY_MCP_TOOLS_READONLY="get-entity-dossier read-xaffinity-resource query ${AFFINITY_MCP_TOOLS_CLI_GATEWAY}"
 AFFINITY_MCP_TOOLS_ALL="${AFFINITY_MCP_TOOLS_READONLY} execute-write-command"
 
 if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "1" ]]; then
