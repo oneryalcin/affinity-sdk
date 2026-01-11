@@ -152,6 +152,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "affinity.cli.*"
 disallow_untyped_decorators = false
+# Allow type ignores that may be needed for pre-commit mypy version compatibility
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
