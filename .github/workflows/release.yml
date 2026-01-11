@@ -3,6 +3,17 @@ name: Release (PyPI)
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to release (without v prefix)"
+        required: true
+        type: string
+      triggered_by:
+        description: "What triggered this release"
+        required: false
+        type: string
+        default: "tag"
   workflow_dispatch:
     inputs:
       target:
@@ -30,6 +41,7 @@ jobs:
       tag_name: ${{ steps.meta.outputs.tag_name }}
       version_tag: ${{ steps.meta.outputs.version_tag }}
       publish_target: ${{ steps.meta.outputs.publish_target }}
+      is_workflow_call: ${{ steps.meta.outputs.is_workflow_call }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,26 +53,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          # For tag pushes, always publish to PyPI.
-          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          # Check if this is a workflow_call (version input provided)
+          if [[ -n "${{ inputs.version }}" ]]; then
+            echo "is_workflow_call=true" >> "$GITHUB_OUTPUT"
+            echo "version_tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
             echo "publish_target=pypi" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish_target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "Mode: workflow_call, version=${{ inputs.version }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            # Tag push
+            echo "is_workflow_call=false" >> "$GITHUB_OUTPUT"
+            echo "publish_target=pypi" >> "$GITHUB_OUTPUT"
+            echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             if [[ "${GITHUB_REF_NAME}" != v* ]]; then
               echo "Expected tag to start with 'v' (got: ${GITHUB_REF_NAME})" >&2
               exit 1
             fi
             echo "version_tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "Mode: tag push, tag=${GITHUB_REF_NAME}"
           else
+            # Manual workflow_dispatch
+            echo "is_workflow_call=false" >> "$GITHUB_OUTPUT"
+            echo "publish_target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             echo "version_tag=" >> "$GITHUB_OUTPUT"
+            echo "Mode: workflow_dispatch, target=${{ inputs.target }}"
           fi
 
-      - name: Require tag ref for publishing
-        if: ${{ steps.meta.outputs.publish_target == 'pypi' && github.ref_type != 'tag' }}
+      - name: Require tag ref for publishing (tag-triggered only)
+        if: ${{ steps.meta.outputs.publish_target == 'pypi' && steps.meta.outputs.is_workflow_call != 'true' && github.ref_type != 'tag' }}
         shell: bash
         run: |
           echo "Publishing requires running the workflow on a tag ref (vX.Y.Z)." >&2
@@ -71,20 +92,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate tag matches pyproject version
-        if: ${{ github.ref_type == 'tag' }}
+      - name: Validate version matches pyproject
         shell: bash
         run: |
           set -euo pipefail
           PYPROJECT_VERSION="$(python -c "import tomllib, pathlib; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text()); print(d['project']['version'])")"
-          TAG_VERSION="${{ steps.meta.outputs.version_tag }}"
-          if [[ "${PYPROJECT_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "Version mismatch: pyproject.toml=${PYPROJECT_VERSION} tag=${TAG_VERSION}" >&2
-            exit 1
+          EXPECTED_VERSION="${{ steps.meta.outputs.version_tag }}"
+
+          # Skip validation if no version to validate (e.g., testpypi dry run)
+          if [[ -z "$EXPECTED_VERSION" ]]; then
+            echo "No version to validate (dry run mode)"
+            exit 0
           fi
 
-      - name: Validate tag is on main
-        if: ${{ github.ref_type == 'tag' }}
+          if [[ "${PYPROJECT_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Version mismatch: pyproject.toml=${PYPROJECT_VERSION} expected=${EXPECTED_VERSION}" >&2
+            exit 1
+          fi
+          echo "Version validated: $PYPROJECT_VERSION"
+
+      - name: Validate commit is on main (tag-triggered only)
+        if: ${{ steps.meta.outputs.is_workflow_call != 'true' && github.ref_type == 'tag' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -208,6 +236,14 @@ jobs:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
 
+      - name: Create and push tag (workflow_call only)
+        if: ${{ needs.validate.outputs.is_workflow_call == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.validate.outputs.tag_name }}" -m "Release ${{ needs.validate.outputs.tag_name }}"
+          git push origin "${{ needs.validate.outputs.tag_name }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -216,3 +252,28 @@ jobs:
           body_path: release_notes.md
           files: dist/*
           fail_on_unmatched_files: true
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: [validate, publish]
+    if: ${{ needs.validate.outputs.publish_target == 'pypi' }}
+    steps:
+      - name: Wait for PyPI propagation
+        run: sleep 30
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Smoke test installation
+        run: |
+          pip install affinity-api==${{ needs.validate.outputs.version_tag }}
+          python -c "from affinity import Affinity; print('Import OK')"
+          python -c "from affinity.cli import app; print('CLI OK')"
+
+      - name: Warn on failure
+        if: failure()
+        run: |
+          echo "::warning::Release ${{ needs.validate.outputs.version_tag }} failed smoke test"
+          echo "::warning::Consider yanking the release if broken"

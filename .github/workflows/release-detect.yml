@@ -1,0 +1,85 @@
+name: Release Detection
+
+# Triggers releases automatically when version files change on main
+# This enables "merge to release" workflow - no tags required to trigger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - 'mcp/VERSION'
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      sdk_changed: ${{ steps.changes.outputs.sdk }}
+      mcp_changed: ${{ steps.changes.outputs.mcp }}
+      sdk_version: ${{ steps.versions.outputs.sdk }}
+      mcp_version: ${{ steps.versions.outputs.mcp }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect version file changes
+        id: changes
+        run: |
+          set -euo pipefail
+
+          echo "Checking for version changes..."
+
+          # Check if pyproject.toml version line changed
+          if git diff HEAD~1 --name-only | grep -q '^pyproject.toml$'; then
+            if git diff HEAD~1 pyproject.toml | grep -qE '^\+version = '; then
+              echo "sdk=true" >> $GITHUB_OUTPUT
+              echo "SDK version change detected"
+            else
+              echo "pyproject.toml changed but not the version line"
+            fi
+          fi
+
+          # Check if mcp/VERSION changed
+          if git diff HEAD~1 --name-only | grep -q '^mcp/VERSION$'; then
+            echo "mcp=true" >> $GITHUB_OUTPUT
+            echo "MCP version change detected"
+          fi
+
+      - name: Extract versions
+        id: versions
+        run: |
+          set -euo pipefail
+          SDK_VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
+          MCP_VERSION=$(cat mcp/VERSION | tr -d '[:space:]')
+          echo "sdk=$SDK_VERSION" >> $GITHUB_OUTPUT
+          echo "mcp=$MCP_VERSION" >> $GITHUB_OUTPUT
+          echo "SDK version: $SDK_VERSION"
+          echo "MCP version: $MCP_VERSION"
+
+  trigger-sdk-release:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sdk_changed == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.detect-changes.outputs.sdk_version }}
+      triggered_by: version-bump
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+  trigger-mcp-release:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mcp_changed == 'true'
+    uses: ./.github/workflows/plugin-release.yml
+    with:
+      version: ${{ needs.detect-changes.outputs.mcp_version }}
+      triggered_by: version-bump
+    secrets: inherit
+    permissions:
+      contents: write

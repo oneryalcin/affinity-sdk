@@ -56,26 +56,47 @@ The MCP server shells out to CLI commands. These changes require MCP updates:
 | Command renamed | **Breaking** | Update MCP, bump COMPATIBILITY |
 | Required flag added | **Breaking** | Update MCP, bump COMPATIBILITY |
 
-## How to Bump Versions
+## How to Release
 
-### SDK Version Bump
+Releases are triggered automatically when version files are updated on `main`.
+
+### SDK Release
 
 1. Update version in `pyproject.toml`
 2. Run pre-commit (syncs plugin versions automatically)
 3. Update `CHANGELOG.md` with changes
 4. If CLI output changed: check MCP compatibility
-5. Commit and tag: `git tag v0.6.6`
+5. Commit and push to `main` (or merge PR)
+6. **Release runs automatically** — tag created post-release
 
-### MCP Version Bump
+### MCP Release
 
 1. Update `mcp/VERSION`
 2. Update `mcp/.claude-plugin/plugin.json` version field
 3. Update `mcp/server.d/server.meta.json` version field
 4. If CLI requirements changed: update `mcp/COMPATIBILITY`
 5. Update `mcp/CHANGELOG.md`
-6. Commit and tag: `git tag plugin-v1.1.0`
+6. Commit and push to `main` (or merge PR)
+7. **Release runs automatically** — tag created post-release
 
-Note: `mcpb.conf` reads version from VERSION file automatically.
+### Manual Tag Release
+
+You can also trigger releases via tags:
+
+```bash
+# SDK
+git tag -a v0.9.1 -m "v0.9.1" && git push origin v0.9.1
+
+# MCP
+git tag -a mcp-v1.7.6 -m "MCP v1.7.6" && git push origin mcp-v1.7.6
+```
+
+## Tag Naming
+
+| Component | Tag Pattern | Example |
+|-----------|-------------|---------|
+| SDK | `vX.Y.Z` | `v0.9.0` |
+| MCP | `mcp-vX.Y.Z` | `mcp-v1.7.5` |
 
 ## Testing MCP Compatibility
 
@@ -125,17 +146,19 @@ git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git vX.Y.Z
 
 ## Release Checklist
 
-### SDK Release (vX.Y.Z)
+### SDK Release
 - [ ] Version bumped in `pyproject.toml`
 - [ ] Pre-commit ran (plugin versions synced)
 - [ ] `CHANGELOG.md` updated
 - [ ] If CLI output changed: MCP tested and COMPATIBILITY checked
-- [ ] Tag pushed: `git tag vX.Y.Z && git push --tags`
+- [ ] Changes merged to `main`
+- [ ] Verify release workflow completed successfully
 
-### MCP Release (plugin-vX.Y.Z)
+### MCP Release
 - [ ] Version bumped in `mcp/VERSION`
 - [ ] `mcp/.claude-plugin/plugin.json` version updated (CI validates match)
 - [ ] `mcp/server.d/server.meta.json` version updated
 - [ ] `mcp/COMPATIBILITY` CLI requirements verified
 - [ ] `mcp/CHANGELOG.md` updated
-- [ ] Tag pushed: `git tag plugin-vX.Y.Z && git push --tags`
+- [ ] Changes merged to `main`
+- [ ] Verify release workflow completed successfully

@@ -80,26 +80,15 @@ This copies the MCP server files (`xaffinity-mcp.sh`, `tools/`, `prompts/`, etc.
 
 The `mcp-plugin` job in `.github/workflows/ci.yml` automatically builds and validates the plugin structure on every push/PR.
 
-#### Releasing the plugin
-
-Plugin releases use a separate tag format (`plugin-vX.Y.Z`):
-
-```bash
-cd mcp
-make plugin                    # Build the plugin
-git tag -a plugin-v1.0.1 -m "Plugin v1.0.1"
-git push origin plugin-v1.0.1
-```
-
-The `.github/workflows/plugin-release.yml` workflow creates a GitHub Release with the plugin archive.
-
 ### Releasing (maintainers)
 
 This repo uses PyPI trusted publishing (OIDC) via `.github/workflows/release.yml`.
 
+Releases are triggered automatically when version files change on `main`.
+
 #### SDK Release steps
 
-1. Update version in `pyproject.toml` and add release notes (e.g., `CHANGELOG.md`).
+1. Update version in `pyproject.toml` and add release notes to `CHANGELOG.md`.
 2. Run quality checks locally:
 
 ```bash
@@ -109,15 +98,48 @@ mypy affinity
 pytest
 ```
 
-3. Create an annotated tag from `main` (the release workflow rejects tags not on `main`):
+3. Commit and push to `main` (or merge a PR):
 
 ```bash
 git checkout main
 git pull --ff-only
-git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin vX.Y.Z
+# Make version changes
+git add pyproject.toml CHANGELOG.md
+git commit -m "Release v0.9.1"
+git push origin main
+```
+
+The release workflow will:
+- Detect the version change
+- Build and publish to PyPI
+- Create a GitHub release
+- Create and push the `vX.Y.Z` tag
+
+#### MCP Plugin Release steps
+
+1. Update `mcp/VERSION` and `mcp/CHANGELOG.md`
+2. Update `mcp/.claude-plugin/plugin.json` version field
+3. Commit and push to `main`
+
+The release workflow will:
+- Detect the version change
+- Build the plugin and MCPB bundle
+- Create a GitHub release
+- Create and push the `mcp-vX.Y.Z` tag
+
+#### Manual tag release
+
+You can also trigger releases via tags:
+
+```bash
+# SDK
+git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+
+# MCP
+git tag -a mcp-vX.Y.Z -m "MCP vX.Y.Z" && git push origin mcp-vX.Y.Z
 ```
 
 Notes:
-- The workflow enforces `vX.Y.Z` == `pyproject.toml` version.
-- No PyPI API tokens are stored in GitHub; publishing relies on trusted publisher configuration in PyPI.
+- The workflow enforces `vX.Y.Z` == `pyproject.toml` version
+- MCP tags use `mcp-v*` prefix
+- No PyPI API tokens are stored in GitHub; publishing relies on trusted publisher configuration

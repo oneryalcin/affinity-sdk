@@ -2,11 +2,22 @@ name: Release MCP Plugin
 
 on:
   push:
-    tags: ["plugin-v*.*.*"]
+    tags: ["mcp-v*.*.*"]  # Renamed from plugin-v*
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to release (without prefix)"
+        required: true
+        type: string
+      triggered_by:
+        description: "What triggered this release"
+        required: false
+        type: string
+        default: "tag"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., plugin-v1.0.0)'
+        description: 'Tag to release (e.g., mcp-v1.0.0)'
         required: true
 
 permissions:
@@ -16,9 +27,40 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Determine version and tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.version }}" ]]; then
+            # Called via workflow_call
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag_name=mcp-v${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "is_workflow_call=true" >> $GITHUB_OUTPUT
+            echo "Mode: workflow_call, version=${{ inputs.version }}"
+          else
+            # Called via tag push or workflow_dispatch
+            TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
+            VERSION="${TAG_NAME#mcp-v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "is_workflow_call=false" >> $GITHUB_OUTPUT
+            echo "Mode: tag/dispatch, tag=$TAG_NAME, version=$VERSION"
+          fi
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ steps.version.outputs.is_workflow_call == 'true' && 'main' || (github.event.inputs.tag || github.ref) }}
+
+      - name: Validate version matches VERSION file
+        run: |
+          set -euo pipefail
+          FILE_VERSION=$(cat mcp/VERSION | tr -d '[:space:]')
+          INPUT_VERSION="${{ steps.version.outputs.version }}"
+          if [[ "$FILE_VERSION" != "$INPUT_VERSION" ]]; then
+            echo "::error::Version mismatch: mcp/VERSION=$FILE_VERSION, expected=$INPUT_VERSION"
+            exit 1
+          fi
+          echo "Version validated: $FILE_VERSION"
 
       - name: Install jq
         run: sudo apt-get install -y jq
@@ -76,15 +118,23 @@ jobs:
           "$EXTRACT_DIR/server/run-server.sh" --health || echo "Health check not available (expected if CLI not configured)"
           rm -rf "$EXTRACT_DIR"
 
+      - name: Create and push tag
+        if: steps.version.outputs.is_workflow_call == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag_name }}" -m "Release ${{ steps.version.outputs.tag_name }}"
+          git push origin "${{ steps.version.outputs.tag_name }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag_name }}
           files: |
             mcp/.claude-plugin/xaffinity-mcp-plugin.zip
             mcp/dist/*.mcpb
           generate_release_notes: true
-          name: MCP Plugin ${{ github.event.inputs.tag || github.ref_name }}
+          name: MCP Server ${{ steps.version.outputs.tag_name }}
           body: |
             ## Installation
 
