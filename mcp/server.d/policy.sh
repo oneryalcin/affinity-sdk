@@ -3,7 +3,7 @@
 
 # Read-only tools (safe for any context)
 # Includes CLI Gateway read tools: discover-commands, execute-read-command
-AFFINITY_MCP_TOOLS_READONLY="get-entity-dossier read-xaffinity-resource discover-commands execute-read-command"
+AFFINITY_MCP_TOOLS_READONLY="get-entity-dossier read-xaffinity-resource query discover-commands execute-read-command"
 
 # Write tools (require full access)
 # Includes CLI Gateway write tool: execute-write-command
