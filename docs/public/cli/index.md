@@ -4,6 +4,7 @@ The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as a
 
 ## Key Features
 
+- **Query Language**: Complex queries with filtering, aggregations, and includes ([Query Guide](../guides/query-command.md))
 - **CSV Export**: Export people, companies, opportunities, and list entries to CSV with `--csv` flag ([CSV Export Guide](../guides/csv-export.md))
 - **Filtering**: Server-side filtering on custom fields with `--filter` ([Filtering Guide](../guides/filtering.md))
 - **JSON Output**: All commands support `--json` for programmatic use ([Scripting Guide](scripting.md))

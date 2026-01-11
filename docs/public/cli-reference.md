@@ -9,6 +9,7 @@ This document describes the structure of JSON output from Affinity CLI commands.
 - [Pagination Metadata](#pagination-metadata)
 - [Rate Limit Metadata](#rate-limit-metadata)
 - [Error Responses](#error-responses)
+- [Query Command Output](#query-command-output)
 
 ## Standard Response Format
 
@@ -516,8 +517,45 @@ interface PersonListResponse extends CLIResponse<{ persons: Person[] }> {
 }
 ```
 
+## Query Command Output
+
+The `xaffinity query` command uses a different output format optimized for complex queries with includes and aggregations:
+
+```json
+{
+  "data": [
+    {"id": 1, "firstName": "Alice", "lastName": "Smith"},
+    {"id": 2, "firstName": "Bob", "lastName": "Jones"}
+  ],
+  "included": {
+    "companies": [
+      {"id": 100, "name": "Acme Corp"},
+      {"id": 101, "name": "TechCo"}
+    ]
+  },
+  "meta": {
+    "executionTime": 2.34,
+    "recordsFetched": 2,
+    "apiCalls": 3
+  },
+  "pagination": {
+    "nextCursor": "eyJpZCI6Mn0="
+  }
+}
+```
+
+### Query Output Fields
+
+- **data** (array): Query results as an array of records
+- **included** (object, optional): Related entities fetched via `include`, keyed by entity type
+- **meta** (object, optional): Execution metadata (requires `--include-meta`)
+- **pagination** (object, optional): Pagination cursors for continuing the query
+
+Note: Query output does not include `ok`, `command`, or `resolved` fields. Use `--include-meta` to include execution metadata.
+
 ## Related Documentation
 
 - [CLI Commands Reference](cli/commands.md) - Complete command documentation
 - [CLI Scripting Guide](cli/scripting.md) - Working with JSON output and pagination
 - [CSV Export Guide](guides/csv-export.md) - Exporting data to CSV files
+- [Query Language Reference](reference/query-language.md) - Complete query syntax

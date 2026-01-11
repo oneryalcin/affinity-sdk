@@ -196,6 +196,44 @@ xaffinity resolve-url "https://app.affinity.co/companies/263169568"
 xaffinity resolve-url "https://mydomain.affinity.com/companies/263169568" --json
 ```
 
+## Query
+
+### `xaffinity query`
+
+Execute structured JSON queries against Affinity data. Supports complex filtering, aggregations, grouping, and including related entities.
+
+```bash
+# Simple query
+xaffinity query --query '{"from": "persons", "limit": 10}'
+
+# Filter with conditions
+xaffinity query --query '{"from": "persons", "where": {"path": "email", "op": "contains", "value": "@acme.com"}}'
+
+# Include related entities
+xaffinity query --query '{"from": "persons", "include": ["companies"], "limit": 50}'
+
+# Aggregation
+xaffinity query --query '{"from": "opportunities", "groupBy": "status", "aggregate": {"count": {"count": true}}}'
+
+# Dry-run to preview execution plan
+xaffinity query --query '{"from": "persons", "include": ["companies"]}' --dry-run
+
+# From file
+xaffinity query --file query.json
+```
+
+**Key options:**
+
+- `--query <json>`: Inline JSON query string
+- `--file <path>`: Read query from JSON file
+- `--dry-run`: Show execution plan without running (estimated API calls)
+- `--dry-run-verbose`: Detailed plan with step breakdown
+- `--max-records <n>`: Safety limit (default: 10000)
+- `--timeout <secs>`: Query timeout (default: 300)
+- `--csv` / `--json`: Output format
+
+See [Query Language Reference](../reference/query-language.md) and [Query Guide](../guides/query-command.md) for full documentation.
+
 ## People
 
 ### `xaffinity person ls`

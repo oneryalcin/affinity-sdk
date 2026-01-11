@@ -19,6 +19,7 @@ MCP (Model Context Protocol) is an open standard. This server works with:
 ## Features
 
 - **Entity Search** - Find persons, companies, opportunities
+- **Query Language** - Complex queries with filtering, includes, and aggregations
 - **Relationship Intelligence** - Strength scores, warm intro paths
 - **Workflow Management** - Update pipeline status, manage list entries
 - **Interaction Logging** - Log calls, meetings, emails
