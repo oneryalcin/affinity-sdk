@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field
@@ -229,6 +230,47 @@ class CommandContext(AffinityModel):
         return ", ".join(parts)
 
 
+class DateRange(AffinityModel):
+    """Date range for time-bounded queries.
+
+    Display format: YYYY-MM-DD → YYYY-MM-DD (compact, for footer)
+    JSON format: Full ISO-8601 with timezone (via Pydantic serialization)
+    """
+
+    start: datetime
+    end: datetime
+
+    def format_display(self) -> str:
+        """Format as 'YYYY-MM-DD → YYYY-MM-DD' for human display."""
+        return f"{self.start.strftime('%Y-%m-%d')} → {self.end.strftime('%Y-%m-%d')}"
+
+
+class ResultSummary(AffinityModel):
+    """Metadata about query results - rendered as footer in table mode.
+
+    This is the standardized way to communicate summary information
+    about results. All commands should use this instead of ad-hoc
+    metadata dictionaries.
+
+    Attributes:
+        total_rows: Total number of rows in the result
+        date_range: For time-bounded queries (e.g., interaction ls)
+        type_breakdown: Count per type (e.g., {"email": 120, "call": 30})
+        included_counts: For query --include (e.g., {"companies": 10})
+        chunks_processed: For chunked fetches (interaction ls)
+        scanned_rows: For filtered queries (rows examined before filter)
+        custom_text: Escape hatch for one-off messages
+    """
+
+    total_rows: int | None = Field(None, alias="totalRows")
+    date_range: DateRange | None = Field(None, alias="dateRange")
+    type_breakdown: dict[str, int] | None = Field(None, alias="typeBreakdown")
+    included_counts: dict[str, int] | None = Field(None, alias="includedCounts")
+    chunks_processed: int | None = Field(None, alias="chunksProcessed")
+    scanned_rows: int | None = Field(None, alias="scannedRows")
+    custom_text: str | None = Field(None, alias="customText")
+
+
 class Artifact(AffinityModel):
     type: str
     path: str
@@ -253,6 +295,7 @@ class CommandMeta(AffinityModel):
     pagination: dict[str, Any] | None = None
     columns: list[dict[str, Any]] | None = None
     rate_limit: RateLimitSnapshot | None = Field(None, alias="rateLimit")
+    summary: ResultSummary | None = None
 
 
 class CommandResult(AffinityModel):

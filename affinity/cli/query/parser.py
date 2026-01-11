@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from .exceptions import QueryParseError, QueryValidationError
 from .models import Query, WhereClause
+from .schema import SCHEMA_REGISTRY, FetchStrategy
 
 # =============================================================================
 # Version Configuration
@@ -49,6 +50,7 @@ SUPPORTED_ENTITIES = frozenset(
         "persons",
         "companies",
         "opportunities",
+        "lists",
         "listEntries",
         "interactions",
         "notes",
@@ -195,6 +197,212 @@ def validate_where_clause(where: WhereClause, version: str = CURRENT_VERSION) ->
             validate_where_clause(where.exists_.where, version)
 
 
+# =============================================================================
+# Entity Queryability Validation
+# =============================================================================
+
+
+def extract_filter_fields(where: WhereClause | None, *, inside_not: bool = False) -> set[str]:
+    """Recursively extract all field paths from a where clause.
+
+    Args:
+        where: The where clause to extract from
+        inside_not: True if we're inside a NOT clause (used to track negated filters)
+
+    Returns:
+        Set of field paths found in the where clause
+    """
+    if where is None:
+        return set()
+
+    fields: set[str] = set()
+
+    # Direct condition
+    if where.path and not inside_not:
+        fields.add(where.path)
+
+    # Compound conditions
+    if where.and_:
+        for clause in where.and_:
+            fields.update(extract_filter_fields(clause, inside_not=inside_not))
+    if where.or_:
+        for clause in where.or_:
+            fields.update(extract_filter_fields(clause, inside_not=inside_not))
+    if where.not_:
+        # Don't extract fields from inside NOT - negated filters don't satisfy requirements
+        pass
+
+    return fields
+
+
+def extract_filter_operators(where: WhereClause | None, field: str) -> set[str]:
+    """Extract all operators used for a specific field in where clause.
+
+    NOTE: Does NOT traverse into NOT clauses - negated filters should be
+    rejected by validate_entity_queryable, not validated for operators.
+    """
+    if where is None:
+        return set()
+
+    ops: set[str] = set()
+
+    # Direct condition
+    if where.path == field and where.op:
+        ops.add(where.op)
+
+    # Compound conditions
+    if where.and_:
+        for clause in where.and_:
+            ops.update(extract_filter_operators(clause, field))
+    if where.or_:
+        for clause in where.or_:
+            ops.update(extract_filter_operators(clause, field))
+    # NOTE: "not" clauses are not traversed - negated required filters are invalid
+
+    return ops
+
+
+def _check_required_filter_in_not(
+    where: WhereClause | None, required_fields: frozenset[str]
+) -> bool:
+    """Check if any required filter field appears inside a NOT clause.
+
+    Returns True if a required filter is negated (which is invalid).
+    """
+    if where is None:
+        return False
+
+    # Check NOT clause for required fields
+    if where.not_ and _where_contains_field(where.not_, required_fields):
+        return True
+
+    # Recurse into compound conditions
+    if where.and_:
+        for clause in where.and_:
+            if _check_required_filter_in_not(clause, required_fields):
+                return True
+    if where.or_:
+        for clause in where.or_:
+            if _check_required_filter_in_not(clause, required_fields):
+                return True
+
+    return False
+
+
+def _where_contains_field(where: WhereClause | None, fields: frozenset[str]) -> bool:
+    """Check if a where clause contains any of the specified fields."""
+    if where is None:
+        return False
+
+    if where.path and where.path in fields:
+        return True
+
+    if where.and_:
+        for clause in where.and_:
+            if _where_contains_field(clause, fields):
+                return True
+    if where.or_:
+        for clause in where.or_:
+            if _where_contains_field(clause, fields):
+                return True
+    return bool(where.not_ and _where_contains_field(where.not_, fields))
+
+
+def _validate_or_branches_have_required_filter(
+    where: WhereClause | None,
+    required_fields: frozenset[str],
+) -> bool:
+    """Validate that all OR branches contain at least one required filter.
+
+    Returns True if valid, False if any OR branch is missing required filter.
+    """
+    if where is None:
+        return True
+
+    # Check OR branches - each branch must have a required filter
+    if where.or_:
+        for branch in where.or_:
+            branch_fields = extract_filter_fields(branch)
+            if not (branch_fields & required_fields):
+                return False
+
+    # Recurse into nested conditions
+    if where.and_:
+        for clause in where.and_:
+            if not _validate_or_branches_have_required_filter(clause, required_fields):
+                return False
+    if where.or_:
+        for clause in where.or_:
+            if not _validate_or_branches_have_required_filter(clause, required_fields):
+                return False
+
+    return True
+
+
+def validate_entity_queryable(query: Query) -> None:
+    """Validate that the entity can be queried directly.
+
+    Checks:
+    1. RELATIONSHIP_ONLY entities cannot be queried directly
+    2. REQUIRES_PARENT entities must have required filter with valid operator
+    3. Required filters cannot be negated (inside NOT clause)
+    4. All OR branches must have the required filter
+
+    Raises:
+        QueryParseError: If entity cannot be queried as specified
+    """
+    schema = SCHEMA_REGISTRY.get(query.from_)
+    if schema is None:
+        raise QueryParseError(f"Unknown entity: '{query.from_}'")
+
+    # Check if entity can be queried directly
+    if schema.fetch_strategy == FetchStrategy.RELATIONSHIP_ONLY:
+        raise QueryParseError(
+            f"'{query.from_}' cannot be queried directly. "
+            f"Use it as an 'include' on a parent entity instead. "
+            f'Example: {{"from": "persons", "include": ["{query.from_}"]}}'
+        )
+
+    # Check required filters for REQUIRES_PARENT entities
+    if schema.fetch_strategy == FetchStrategy.REQUIRES_PARENT:
+        present = extract_filter_fields(query.where)
+        # For listEntries, either listId OR listName is acceptable
+        if not (present & schema.required_filters):
+            example_filter = next(iter(schema.required_filters))
+            raise QueryParseError(
+                f"Query for '{query.from_}' requires a '{example_filter}' filter. "
+                f'Example: {{"from": "{query.from_}", "where": '
+                f'{{"path": "{example_filter}", "op": "eq", "value": 12345}}}}'
+            )
+
+        # Check for negated required filters
+        if _check_required_filter_in_not(query.where, schema.required_filters):
+            raise QueryParseError(
+                f"Cannot negate required filter for '{query.from_}'. "
+                f"A negated filter like NOT(listId=X) would match all other lists, "
+                f"which is unbounded. Use a positive filter instead."
+            )
+
+        # Validate operators for required filters (must be eq or in)
+        valid_ops = {"eq", "in"}
+        for required_field in schema.required_filters:
+            ops = extract_filter_operators(query.where, required_field)
+            invalid_ops = ops - valid_ops
+            if invalid_ops:
+                raise QueryParseError(
+                    f"Invalid operator '{next(iter(invalid_ops))}' for required filter "
+                    f"'{required_field}'. Only 'eq' and 'in' operators are supported. "
+                    f'Example: {{"path": "{required_field}", "op": "eq", "value": 12345}}'
+                )
+
+        # Validate all OR branches have required filter
+        if not _validate_or_branches_have_required_filter(query.where, schema.required_filters):
+            raise QueryParseError(
+                f"All OR branches must include a '{next(iter(schema.required_filters))}' filter. "
+                f"Each branch of an OR condition must specify which parent to fetch from."
+            )
+
+
 def validate_query_semantics(query: Query) -> list[str]:
     """Validate semantic constraints on the query.
 
@@ -329,6 +537,9 @@ def parse_query(
     # Validate WHERE clause operators
     if query.where is not None:
         validate_where_clause(query.where, resolved_version)
+
+    # Validate entity queryability (RELATIONSHIP_ONLY, REQUIRES_PARENT checks)
+    validate_entity_queryable(query)
 
     # Validate semantic constraints
     semantic_warnings = validate_query_semantics(query)

@@ -37,14 +37,51 @@ This document provides a complete reference for the Affinity CLI query language.
 
 ## Entity Types
 
-| Entity | Description | Service |
-|--------|-------------|---------|
-| `persons` | People in CRM | PersonService |
-| `companies` | Companies/organizations | CompanyService |
-| `opportunities` | Deals/opportunities | OpportunityService |
-| `listEntries` | Entries in Affinity lists | ListEntryService |
-| `interactions` | Emails, calls, meetings | InteractionService |
-| `notes` | Notes on entities | NoteService |
+| Entity | Description | Service | Query Type |
+|--------|-------------|---------|------------|
+| `persons` | People in CRM | PersonService | Direct |
+| `companies` | Companies/organizations | CompanyService | Direct |
+| `opportunities` | Deals/opportunities | OpportunityService | Direct |
+| `lists` | Affinity list definitions | ListService | Direct |
+| `listEntries` | Entries in Affinity lists | ListEntryService | Requires parent filter |
+| `interactions` | Emails, calls, meetings | InteractionService | Include only |
+| `notes` | Notes on entities | NoteService | Include only |
+
+### Query Type Details
+
+**Direct** - Can be queried without any required filters:
+```json
+{"from": "persons", "limit": 10}
+```
+
+**Requires parent filter** - Must specify parent context:
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listId", "op": "eq", "value": 12345}
+}
+```
+
+The `listEntries` entity supports:
+- `listId` filter with `eq` or `in` operator
+- `listName` filter (resolved to `listId` automatically)
+- Multiple lists via `in` operator or `or` conditions
+- `fields.*` paths with human-readable field names (resolved to field IDs automatically)
+
+**Include only** - Cannot be queried directly; use as relationship include:
+```json
+{
+  "from": "persons",
+  "include": ["interactions", "notes"]
+}
+```
+
+Direct queries for include-only entities will fail with helpful guidance:
+```
+QueryParseError: 'interactions' cannot be queried directly.
+Use it as an 'include' on a parent entity instead.
+Example: {"from": "persons", "include": ["interactions"]}
+```
 
 ## WHERE Clause
 
@@ -201,6 +238,16 @@ phones[-1]               # Last element
 fields["Field.With.Dots"]
 fields["Field With Spaces"]
 ```
+
+### Field Name Resolution
+
+For `listEntries` queries, `fields.*` paths support human-readable field names:
+
+```json
+{"path": "fields.Status", "op": "eq", "value": "Active"}
+```
+
+Field names are resolved case-insensitively against the list's field definitions. If a name is not found, it passes through unchanged (allowing direct use of field IDs like `fields.12345` or `fields.field-260415`).
 
 ## Date Values
 

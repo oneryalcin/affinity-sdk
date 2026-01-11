@@ -367,11 +367,20 @@ class QueryPlanner:
         """Analyze if filter can be pushed to server-side.
 
         Currently only supports listEntries with simple eq/neq on dropdown fields.
+        Also traverses AND conditions to find pushdown candidates.
 
         Returns:
             Filter string for server-side, or None if not pushable
         """
-        # Only simple conditions can be pushed down
+        # Handle AND conditions - traverse to find pushdown candidates
+        if where.and_ is not None:
+            for clause in where.and_:
+                result = self._analyze_filter_pushdown(clause)
+                if result is not None:
+                    return result
+            return None
+
+        # Simple condition - check if pushable
         if where.op not in ("eq", "neq"):
             return None
 

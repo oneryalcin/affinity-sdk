@@ -7,6 +7,7 @@ import pytest
 from affinity.cli.query.schema import (
     SCHEMA_REGISTRY,
     EntitySchema,
+    FetchStrategy,
     RelationshipDef,
     get_entity_relationships,
     get_entity_schema,
@@ -48,7 +49,15 @@ class TestSchemaRegistry:
 
     def test_supported_entities(self) -> None:
         """All expected entities are in registry."""
-        expected = {"persons", "companies", "opportunities", "listEntries", "interactions", "notes"}
+        expected = {
+            "persons",
+            "companies",
+            "opportunities",
+            "lists",
+            "listEntries",
+            "interactions",
+            "notes",
+        }
         actual = set(SCHEMA_REGISTRY.keys())
         assert expected == actual
 
@@ -197,10 +206,11 @@ class TestGetSupportedEntities:
         assert "persons" in entities
         assert "companies" in entities
         assert "opportunities" in entities
+        assert "lists" in entities
         assert "listEntries" in entities
         assert "interactions" in entities
         assert "notes" in entities
-        assert len(entities) == 6
+        assert len(entities) == 7
 
 
 class TestGetEntityRelationships:
@@ -281,3 +291,153 @@ class TestEntitySchema:
         )
         with pytest.raises(AttributeError):
             schema.name = "other"  # type: ignore
+
+
+# =============================================================================
+# FetchStrategy Tests
+# =============================================================================
+
+
+class TestEntityFetchStrategy:
+    """Tests for entity fetch strategies."""
+
+    @pytest.mark.req("QUERY-SCHEMA-004")
+    @pytest.mark.parametrize(
+        "entity,expected_strategy",
+        [
+            ("persons", FetchStrategy.GLOBAL),
+            ("companies", FetchStrategy.GLOBAL),
+            ("opportunities", FetchStrategy.GLOBAL),
+            ("lists", FetchStrategy.GLOBAL),
+            ("listEntries", FetchStrategy.REQUIRES_PARENT),
+            ("interactions", FetchStrategy.RELATIONSHIP_ONLY),
+            ("notes", FetchStrategy.RELATIONSHIP_ONLY),
+        ],
+    )
+    def test_entity_fetch_strategy(self, entity: str, expected_strategy: FetchStrategy) -> None:
+        """Verify each entity has the correct fetch strategy."""
+        schema = SCHEMA_REGISTRY[entity]
+        assert schema.fetch_strategy == expected_strategy
+
+    @pytest.mark.req("QUERY-SCHEMA-004")
+    def test_requires_parent_has_filter_config(self) -> None:
+        """Entities with REQUIRES_PARENT must specify filter config."""
+        for name, schema in SCHEMA_REGISTRY.items():
+            if schema.fetch_strategy == FetchStrategy.REQUIRES_PARENT:
+                assert schema.required_filters, (
+                    f"'{name}' has REQUIRES_PARENT but no required_filters"
+                )
+                assert schema.parent_filter_field, (
+                    f"'{name}' has REQUIRES_PARENT but no parent_filter_field"
+                )
+                assert schema.parent_method_name, (
+                    f"'{name}' has REQUIRES_PARENT but no parent_method_name"
+                )
+
+
+class TestSchemaValidation:
+    """Tests for EntitySchema __post_init__ validation."""
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_schema_validation_catches_invalid_type(self) -> None:
+        """Schema with invalid parent_id_type should fail at definition time."""
+        with pytest.raises(ValueError, match="unknown type 'NonExistentType'"):
+            EntitySchema(
+                name="test",
+                service_attr="test",
+                id_field="id",
+                filterable_fields=frozenset(),
+                computed_fields=frozenset(),
+                relationships={},
+                fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+                required_filters=frozenset(["parentId"]),
+                parent_filter_field="parentId",
+                parent_id_type="NonExistentType",  # Invalid type
+                parent_method_name="children",
+            )
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_schema_validation_catches_missing_parent_method(self) -> None:
+        """REQUIRES_PARENT without parent_method_name should fail at definition time."""
+        with pytest.raises(ValueError, match="must have parent_method_name"):
+            EntitySchema(
+                name="test",
+                service_attr="test",
+                id_field="id",
+                filterable_fields=frozenset(),
+                computed_fields=frozenset(),
+                relationships={},
+                fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+                required_filters=frozenset(["parentId"]),
+                parent_filter_field="parentId",
+                # Missing parent_method_name
+            )
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_schema_validation_catches_missing_required_filters(self) -> None:
+        """REQUIRES_PARENT without required_filters should fail at definition time."""
+        with pytest.raises(ValueError, match="must have required_filters"):
+            EntitySchema(
+                name="test",
+                service_attr="test",
+                id_field="id",
+                filterable_fields=frozenset(),
+                computed_fields=frozenset(),
+                relationships={},
+                fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+                # Missing required_filters
+                parent_filter_field="parentId",
+                parent_method_name="children",
+            )
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_schema_validation_catches_missing_parent_filter_field(self) -> None:
+        """REQUIRES_PARENT without parent_filter_field should fail at definition time."""
+        with pytest.raises(ValueError, match="must have parent_filter_field"):
+            EntitySchema(
+                name="test",
+                service_attr="test",
+                id_field="id",
+                filterable_fields=frozenset(),
+                computed_fields=frozenset(),
+                relationships={},
+                fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+                required_filters=frozenset(["parentId"]),
+                # Missing parent_filter_field
+                parent_method_name="children",
+            )
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_valid_parent_id_type_accepted(self) -> None:
+        """Valid parent_id_type (e.g., ListId) should pass validation."""
+        # This should not raise - ListId exists in affinity.types
+        schema = EntitySchema(
+            name="test",
+            service_attr="test",
+            id_field="id",
+            filterable_fields=frozenset(),
+            computed_fields=frozenset(),
+            relationships={},
+            fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+            required_filters=frozenset(["parentId"]),
+            parent_filter_field="parentId",
+            parent_id_type="ListId",
+            parent_method_name="children",
+        )
+        assert schema.parent_id_type == "ListId"
+
+    @pytest.mark.req("QUERY-SCHEMA-005")
+    def test_global_strategy_no_validation(self) -> None:
+        """GLOBAL strategy should not require parent-related fields."""
+        # This should not raise
+        schema = EntitySchema(
+            name="test",
+            service_attr="test",
+            id_field="id",
+            filterable_fields=frozenset(),
+            computed_fields=frozenset(),
+            relationships={},
+            fetch_strategy=FetchStrategy.GLOBAL,
+            # No parent-related fields needed
+        )
+        assert schema.fetch_strategy == FetchStrategy.GLOBAL

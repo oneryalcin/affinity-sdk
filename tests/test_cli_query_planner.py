@@ -180,13 +180,26 @@ class TestQueryPlanner:
         assert plan_with_limit.estimated_records_fetched <= plan_no_limit.estimated_records_fetched
 
     def test_plan_different_entities(self, planner: QueryPlanner) -> None:
-        """Plan works for different entity types."""
-        entities = ["persons", "companies", "opportunities", "interactions", "notes"]
+        """Plan works for different entity types that support direct querying."""
+        # Only GLOBAL entities can be queried directly without filters
+        entities = ["persons", "companies", "opportunities", "lists"]
 
         for entity in entities:
             result = parse_query({"from": entity, "limit": 10})
             plan = planner.plan(result.query)
             assert plan.steps[0].entity == entity
+
+    def test_plan_listentries_with_filter(self, planner: QueryPlanner) -> None:
+        """Plan works for listEntries with required listId filter."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "eq", "value": 123},
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+        assert plan.steps[0].entity == "listEntries"
 
 
 class TestExecutionLevels:
@@ -251,7 +264,12 @@ class TestFilterPushdown:
         result = parse_query(
             {
                 "from": "listEntries",
-                "where": {"path": "fields.Status", "op": "eq", "value": "Active"},
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "fields.Status", "op": "eq", "value": "Active"},
+                    ]
+                },
             }
         )
         plan = planner.plan(result.query)
@@ -266,7 +284,12 @@ class TestFilterPushdown:
         result = parse_query(
             {
                 "from": "listEntries",
-                "where": {"path": "fields.Status", "op": "eq", "value": "Active"},
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "fields.Status", "op": "eq", "value": "Active"},
+                    ]
+                },
             }
         )
         plan = planner.plan(result.query)
@@ -280,7 +303,12 @@ class TestFilterPushdown:
         result = parse_query(
             {
                 "from": "listEntries",
-                "where": {"path": "name", "op": "contains", "value": "test"},
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "name", "op": "contains", "value": "test"},
+                    ]
+                },
             }
         )
         plan = planner.plan(result.query)
@@ -306,7 +334,12 @@ class TestFilterPushdown:
         result = parse_query(
             {
                 "from": "listEntries",
-                "where": {"path": "fields.Status", "op": "contains", "value": "Act"},
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "fields.Status", "op": "contains", "value": "Act"},
+                    ]
+                },
             }
         )
         plan = planner.plan(result.query)

@@ -15,7 +15,7 @@ from rich.text import Text
 
 from affinity.models.rate_limit_snapshot import RateLimitSnapshot
 
-from .results import CommandResult
+from .results import CommandResult, ResultSummary
 
 # Columns likely to contain long content - used for column priority (drop first when limiting)
 _LONG_COLUMNS = frozenset(
@@ -269,6 +269,85 @@ def _rate_limit_footer(snapshot: RateLimitSnapshot) -> str:
     if not parts:
         return ""
     return "# Rate limit: " + " | ".join(parts)
+
+
+def _build_row_segment(summary: ResultSummary, verbosity: int) -> str | None:
+    """Build the row count segment, optionally with type breakdown.
+
+    Returns strings like:
+        "150 rows"
+        "150 rows: 30 call, 120 email"
+        "35 rows from 9,340 scanned"
+
+    Note: type_breakdown and scanned_rows are mutually exclusive in display
+    (scanned_rows implies a filter was applied, type_breakdown implies multi-type query)
+    """
+    if summary.total_rows is None:
+        return None
+
+    row_str = f"{summary.total_rows:,} row{'s' if summary.total_rows != 1 else ''}"
+
+    # Type breakdown OR scanned context (not both - would read awkwardly)
+    if summary.type_breakdown:
+        show_breakdown = len(summary.type_breakdown) > 1 or verbosity >= 1
+        if show_breakdown:
+            # Sort keys for consistent output
+            type_parts = [
+                f"{count:,} {type_}" for type_, count in sorted(summary.type_breakdown.items())
+            ]
+            row_str = f"{row_str}: {', '.join(type_parts)}"
+    elif summary.scanned_rows and summary.scanned_rows > summary.total_rows:
+        row_str = f"{row_str} from {summary.scanned_rows:,} scanned"
+
+    return row_str
+
+
+def _render_summary_footer(summary: ResultSummary | None, verbosity: int = 0) -> Text | None:
+    """Render ResultSummary as compact footer text.
+
+    Examples:
+        (0 rows)
+        (150 rows)
+        (150 rows: 30 call, 120 email)
+        (150 rows: 30 call, 120 email | 2023-07-26 → 2026-01-11)
+        (35 rows from 9,340 scanned)
+        (50 rows | included: 5 companies, 10 opportunities)
+    """
+    if not summary:
+        return None
+
+    segments: list[str] = []  # Joined with " | "
+
+    # Build row count segment (may include type breakdown)
+    row_segment = _build_row_segment(summary, verbosity)
+    if row_segment:
+        segments.append(row_segment)
+
+    # Date range segment
+    if summary.date_range:
+        segments.append(summary.date_range.format_display())
+
+    # Included counts segment (for query command)
+    if summary.included_counts:
+        # Sort keys for consistent output
+        inc_parts = [
+            f"{count:,} {entity}" for entity, count in sorted(summary.included_counts.items())
+        ]
+        segments.append(f"included: {', '.join(inc_parts)}")
+
+    # Chunks processed (verbose only)
+    if verbosity >= 1 and summary.chunks_processed:
+        segments.append(f"{summary.chunks_processed} chunks")
+
+    # Custom text (escape hatch for one-off messages)
+    if summary.custom_text:
+        segments.append(summary.custom_text)
+
+    if not segments:
+        return None
+
+    text = " | ".join(segments)
+    return Text(f"({text})", style="dim")
 
 
 def _table_from_rows(
@@ -1486,6 +1565,12 @@ def render_result(result: CommandResult, *, settings: RenderSettings) -> int:
                 stdout.print(renderable)
         else:
             stdout.print(renderable)
+
+    # Render summary footer (e.g., row counts, date ranges, type breakdowns)
+    if result.meta.summary is not None and not settings.quiet:
+        summary_footer = _render_summary_footer(result.meta.summary, settings.verbosity)
+        if summary_footer:
+            stdout.print(summary_footer)
 
     if result.meta.rate_limit is not None and not settings.quiet:
         footer = _rate_limit_footer(result.meta.rate_limit)

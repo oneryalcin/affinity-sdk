@@ -58,14 +58,70 @@ A complete query can include:
 
 ### Supported Entity Types
 
-| Entity | Description |
-|--------|-------------|
-| `persons` | People in your CRM |
-| `companies` | Companies/organizations |
-| `opportunities` | Deals/opportunities |
-| `listEntries` | Entries in Affinity lists |
-| `interactions` | Emails, calls, meetings |
-| `notes` | Notes on entities |
+| Entity | Description | Query Type |
+|--------|-------------|------------|
+| `persons` | People in your CRM | Direct query |
+| `companies` | Companies/organizations | Direct query |
+| `opportunities` | Deals/opportunities | Direct query |
+| `lists` | Affinity list definitions | Direct query |
+| `listEntries` | Entries in Affinity lists | Requires `listId` or `listName` filter |
+| `interactions` | Emails, calls, meetings | Include only (cannot query directly) |
+| `notes` | Notes on entities | Include only (cannot query directly) |
+
+#### Entity Query Limitations
+
+**`listEntries`** requires a `listId` or `listName` filter to specify which list to query:
+
+```json
+{
+  "from": "listEntries",
+  "where": { "path": "listId", "op": "eq", "value": 12345 },
+  "limit": 100
+}
+```
+
+Or using list name (resolved automatically):
+
+```json
+{
+  "from": "listEntries",
+  "where": { "path": "listName", "op": "eq", "value": "My Pipeline" },
+  "limit": 100
+}
+```
+
+**Field name resolution:** When filtering on `fields.*`, you can use human-readable field names instead of field IDs:
+
+```json
+{
+  "from": "listEntries",
+  "where": {
+    "and": [
+      { "path": "listName", "op": "eq", "value": "My Pipeline" },
+      { "path": "fields.Status", "op": "eq", "value": "Active" }
+    ]
+  }
+}
+```
+
+Field names are resolved case-insensitively. If a field name is not found, it passes through unchanged (allowing numeric field IDs like `fields.12345` to work).
+
+**`interactions` and `notes`** cannot be queried directly. Instead, include them on a parent entity:
+
+```json
+{
+  "from": "persons",
+  "include": ["interactions", "notes"],
+  "limit": 50
+}
+```
+
+Attempting to query `interactions` or `notes` directly will return an error:
+```
+QueryParseError: 'interactions' cannot be queried directly.
+Use it as an 'include' on a parent entity instead.
+Example: {"from": "persons", "include": ["interactions"]}
+```
 
 ## Filtering with WHERE
 

@@ -6,8 +6,22 @@ This module is CLI-only and NOT part of the public SDK API.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum, auto
 from typing import Literal
+
+
+class FetchStrategy(Enum):
+    """How an entity type can be fetched as a top-level query."""
+
+    # Can call service.all() directly - e.g., persons, companies, opportunities
+    GLOBAL = auto()
+
+    # Requires a parent ID filter - e.g., listEntries needs listId
+    REQUIRES_PARENT = auto()
+
+    # Can only be fetched as a relationship, not directly queried
+    RELATIONSHIP_ONLY = auto()
 
 
 @dataclass(frozen=True)
@@ -45,6 +59,11 @@ class EntitySchema:
         computed_fields: Fields that are computed (e.g., "firstEmail", "lastEmail")
         relationships: Dict of relationship name -> RelationshipDef
         api_version: Primary API version for this entity ("v1" or "v2")
+        fetch_strategy: How to fetch this entity as a top-level query
+        required_filters: Filter fields required for REQUIRES_PARENT entities
+        parent_filter_field: Field name in where clause (e.g., "listId")
+        parent_id_type: Type name to cast to (e.g., "ListId")
+        parent_method_name: Method to call on parent service (e.g., "entries")
     """
 
     name: str
@@ -54,6 +73,38 @@ class EntitySchema:
     computed_fields: frozenset[str]
     relationships: dict[str, RelationshipDef]
     api_version: Literal["v1", "v2"] = "v2"
+    fetch_strategy: FetchStrategy = FetchStrategy.GLOBAL
+    required_filters: frozenset[str] = field(default_factory=frozenset)
+    parent_filter_field: str | None = None
+    parent_id_type: str | None = None
+    parent_method_name: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate schema configuration at definition time."""
+        # Validate REQUIRES_PARENT has all required fields
+        if self.fetch_strategy == FetchStrategy.REQUIRES_PARENT:
+            if not self.required_filters:
+                raise ValueError(
+                    f"Entity '{self.name}' with REQUIRES_PARENT must have required_filters"
+                )
+            if not self.parent_filter_field:
+                raise ValueError(
+                    f"Entity '{self.name}' with REQUIRES_PARENT must have parent_filter_field"
+                )
+            if not self.parent_method_name:
+                raise ValueError(
+                    f"Entity '{self.name}' with REQUIRES_PARENT must have parent_method_name"
+                )
+
+        # Validate parent_id_type exists in affinity.types (fail-fast at import time)
+        if self.parent_id_type:
+            from affinity import types as affinity_types
+
+            if not hasattr(affinity_types, self.parent_id_type):
+                raise ValueError(
+                    f"Entity '{self.name}' references unknown type '{self.parent_id_type}'. "
+                    f"Must be a type in affinity.types module."
+                )
 
 
 # =============================================================================
@@ -111,6 +162,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 requires_n_plus_1=True,
             ),
         },
+        fetch_strategy=FetchStrategy.GLOBAL,
     ),
     "companies": EntitySchema(
         name="companies",
@@ -161,6 +213,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 requires_n_plus_1=True,
             ),
         },
+        fetch_strategy=FetchStrategy.GLOBAL,
     ),
     "opportunities": EntitySchema(
         name="opportunities",
@@ -198,6 +251,32 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             ),
         },
         api_version="v1",
+        fetch_strategy=FetchStrategy.GLOBAL,
+    ),
+    "lists": EntitySchema(
+        name="lists",
+        service_attr="lists",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "name",
+                "type",
+                "createdAt",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={
+            "entries": RelationshipDef(
+                target_entity="listEntries",
+                fetch_strategy="entity_method",
+                method_or_service="entries",
+                cardinality="many",
+                requires_n_plus_1=True,
+            ),
+        },
+        fetch_strategy=FetchStrategy.GLOBAL,
+        api_version="v2",
     ),
     "listEntries": EntitySchema(
         name="listEntries",
@@ -207,6 +286,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             [
                 "id",
                 "listId",
+                "listName",  # Alternative to listId (resolved at execution time)
                 "entityId",
                 "entityType",
                 "createdAt",
@@ -224,6 +304,11 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             ),
         },
         api_version="v2",
+        fetch_strategy=FetchStrategy.REQUIRES_PARENT,
+        required_filters=frozenset(["listId", "listName"]),  # Either listId OR listName
+        parent_filter_field="listId",
+        parent_id_type="ListId",
+        parent_method_name="entries",
     ),
     "interactions": EntitySchema(
         name="interactions",
@@ -248,6 +333,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             ),
         },
         api_version="v1",
+        fetch_strategy=FetchStrategy.RELATIONSHIP_ONLY,
     ),
     "notes": EntitySchema(
         name="notes",
@@ -264,6 +350,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         computed_fields=frozenset([]),
         relationships={},
         api_version="v1",
+        fetch_strategy=FetchStrategy.RELATIONSHIP_ONLY,
     ),
 }
 
@@ -316,12 +403,12 @@ def is_valid_field_path(entity_name: str, path: str) -> bool:
 
     # Simple field
     if len(parts) == 1:
-        field = parts[0]
+        field_name = parts[0]
         return (
-            field in schema.filterable_fields
-            or field in schema.computed_fields
-            or field == schema.id_field
-            or field.startswith("fields.")  # List entry fields
+            field_name in schema.filterable_fields
+            or field_name in schema.computed_fields
+            or field_name == schema.id_field
+            or field_name.startswith("fields.")  # List entry fields
         )
 
     # Relationship path (e.g., "companies._count")
