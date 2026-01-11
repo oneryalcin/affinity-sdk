@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.9.2 - 2026-01-11
 
+### Fixed
+- SDK: `AsyncListEntryService.pages()` now supports `progress_callback` parameter (sync/async parity fix).
+
 ### Changed
 - **BREAKING**: CLI: `interaction ls` JSON output restructured for consistency:
   - `.data.interactions` → `.data` (direct array)
