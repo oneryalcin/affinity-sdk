@@ -1154,8 +1154,8 @@ class TestFieldNameResolution:
         await executor._resolve_field_names_to_ids(where2, [12345])
 
         # Cache should exist
-        assert hasattr(executor, "_field_name_cache")
-        assert len(executor._field_name_cache) == 3  # All 3 fields cached
+        assert hasattr(executor, "_field_name_to_id_cache")
+        assert len(executor._field_name_to_id_cache) == 3  # All 3 fields cached
 
 
 # =============================================================================

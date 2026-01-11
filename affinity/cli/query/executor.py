@@ -463,7 +463,9 @@ class QueryExecutor:
         if where is not None:
             # Convert WhereClause to dict for resolution
             where_as_dict: dict[str, Any] = (
-                where.model_dump(mode="json") if hasattr(where, "model_dump") else where  # type: ignore[assignment]
+                where.model_dump(mode="json", by_alias=True)
+                if hasattr(where, "model_dump")
+                else where  # type: ignore[assignment]
             )
             where_dict = await self._resolve_list_names_to_ids(where_as_dict)
         else:
@@ -472,11 +474,17 @@ class QueryExecutor:
         # Extract ALL parent IDs from where clause (supports OR/IN conditions)
         parent_ids = self._extract_parent_ids(where_dict, schema.parent_filter_field)
 
+        # Store resolved where for use in filtering step
+        # NOTE: We store BEFORE field name→ID resolution because:
+        # - The normalized records have fields keyed by NAME (e.g., "Status")
+        # - Field ID resolution is only for the API call, not client-side filtering
+        if where_dict is not None:
+            ctx.resolved_where = where_dict
+
         # Resolve field names to IDs for listEntries queries (after we know parent IDs)
+        # This is only used for the API call, NOT for client-side filtering
         if where_dict is not None and parent_ids:
             where_dict = await self._resolve_field_names_to_ids(where_dict, parent_ids)
-            # Store resolved where for use in filtering step
-            ctx.resolved_where = where_dict
         if not parent_ids:
             # Should never happen - parser validates this
             raise QueryExecutionError(
@@ -652,7 +660,7 @@ class QueryExecutor:
             return []
 
         if hasattr(where, "model_dump"):
-            where = where.model_dump(mode="json")
+            where = where.model_dump(mode="json", by_alias=True)
 
         if not isinstance(where, dict):
             return []
@@ -687,12 +695,12 @@ class QueryExecutor:
                         ids.append(int_val)
 
         # Compound "and" conditions - traverse recursively
-        if "and" in where:
+        if where.get("and"):
             for condition in where["and"]:
                 ids.extend(self._extract_parent_ids(condition, field_name))
 
         # Compound "or" conditions - traverse recursively
-        if "or" in where:
+        if where.get("or"):
             for condition in where["or"]:
                 ids.extend(self._extract_parent_ids(condition, field_name))
 
@@ -758,7 +766,7 @@ class QueryExecutor:
         # Collect from where clause (recursive)
         if query.where:
             where_dict = (
-                query.where.model_dump(mode="json")
+                query.where.model_dump(mode="json", by_alias=True)
                 if hasattr(query.where, "model_dump")
                 else query.where
             )
@@ -936,9 +944,9 @@ class QueryExecutor:
 
         # Recursively process compound conditions
         result = dict(where)
-        if "and" in where:
+        if where.get("and"):
             result["and"] = [await self._resolve_list_names_to_ids(c) for c in where["and"]]
-        if "or" in where:
+        if where.get("or"):
             result["or"] = [await self._resolve_list_names_to_ids(c) for c in where["or"]]
 
         return result
@@ -999,11 +1007,11 @@ class QueryExecutor:
 
         # Recursively process compound conditions
         result = dict(where)
-        if "and" in where:
+        if where.get("and"):
             result["and"] = [
                 await self._resolve_field_names_to_ids(c, list_ids) for c in where["and"]
             ]
-        if "or" in where:
+        if where.get("or"):
             result["or"] = [
                 await self._resolve_field_names_to_ids(c, list_ids) for c in where["or"]
             ]
@@ -1014,7 +1022,7 @@ class QueryExecutor:
         """Execute a client-side filter step."""
         from .models import WhereClause as WC
 
-        # Use resolved where clause if available (has field names → IDs resolved)
+        # Use resolved where clause if available (has listName → listId resolved)
         where: WC | None
         if ctx.resolved_where is not None:
             # Convert dict back to WhereClause for compile_filter
@@ -1082,7 +1090,7 @@ class QueryExecutor:
                     filter_kwargs = {rel.filter_field: entity_id}
                     response = await service.list(**filter_kwargs)
                     for item in response.data:
-                        included_records.append(item.model_dump(mode="json"))
+                        included_records.append(item.model_dump(mode="json", by_alias=True))
                 except Exception:
                     continue
 
