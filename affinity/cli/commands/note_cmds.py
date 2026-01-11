@@ -179,11 +179,9 @@ def note_ls(
                             )
                         pagination = None
                         if page.next_page_token and not stopped_mid_page:
-                            pagination = {
-                                "notes": {"nextCursor": page.next_page_token, "prevCursor": None}
-                            }
+                            pagination = {"nextCursor": page.next_page_token, "prevCursor": None}
                         return CommandOutput(
-                            data={"notes": results[:max_results]},
+                            data=results[:max_results],  # Direct array, not wrapped
                             context=cmd_context,
                             pagination=pagination,
                             api_called=True,
@@ -191,12 +189,12 @@ def note_ls(
 
                 if first_page and not all_pages and max_results is None:
                     pagination = (
-                        {"notes": {"nextCursor": page.next_page_token, "prevCursor": None}}
+                        {"nextCursor": page.next_page_token, "prevCursor": None}
                         if page.next_page_token
                         else None
                     )
                     return CommandOutput(
-                        data={"notes": results},
+                        data=results,  # Direct array, not wrapped
                         context=cmd_context,
                         pagination=pagination,
                         api_called=True,
@@ -208,7 +206,7 @@ def note_ls(
                     break
 
         return CommandOutput(
-            data={"notes": results},
+            data=results,  # Direct array, not wrapped
             context=cmd_context,
             pagination=None,
             api_called=True,

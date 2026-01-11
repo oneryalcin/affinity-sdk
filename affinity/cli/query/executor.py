@@ -253,16 +253,28 @@ class ExecutionContext:
 
         Applies select clause projection if specified in the query.
         """
+        from ..results import ResultSummary
+
         # Apply select projection if specified
         data = self.records
         if self.query.select:
             data = _apply_select_projection(self.records, self.query.select)
 
+        # Build included counts for summary
+        included_counts: dict[str, int] | None = None
+        if self.included:
+            included_counts = {k: len(v) for k, v in self.included.items() if v}
+            if not included_counts:
+                included_counts = None
+
         return QueryResult(
             data=data,
             included=self.included,
+            summary=ResultSummary(
+                total_rows=len(data),
+                included_counts=included_counts,
+            ),
             meta={
-                "recordCount": len(data),
                 "executionTime": time.time() - self.start_time,
                 "interrupted": self.interrupted,
             },

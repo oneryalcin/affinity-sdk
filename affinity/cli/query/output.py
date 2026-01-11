@@ -42,7 +42,14 @@ def format_json(
         output["included"] = result.included
 
     if include_meta:
-        output["meta"] = result.meta
+        meta: dict[str, Any] = {}
+        # Add standardized summary (using camelCase aliases for consistency)
+        if result.summary:
+            meta["summary"] = result.summary.model_dump(by_alias=True, exclude_none=True)
+        # Add additional execution metadata
+        if result.meta:
+            meta.update(result.meta)
+        output["meta"] = meta
 
     if result.pagination:
         output["pagination"] = result.pagination
@@ -81,7 +88,7 @@ def format_table(result: QueryResult) -> str:  # pragma: no cover
         Rendered table string
     """
     # Use the CLI's standard table rendering
-    from ..render import _table_from_rows
+    from ..render import _render_summary_footer, _table_from_rows
 
     if not result.data:
         return "No results."
@@ -101,21 +108,18 @@ def format_table(result: QueryResult) -> str:  # pragma: no cover
 
     output = capture.get()
 
-    # Add summary line
-    summary_parts = [f"({len(result.data)} rows)"]
+    # Add standardized summary footer
+    footer_parts: list[str] = []
+    if result.summary:
+        footer = _render_summary_footer(result.summary)
+        if footer:
+            footer_parts.append(footer.plain)
+
+    # Column omission notice
     if omitted > 0:
-        summary_parts.append(f"({omitted} columns hidden — use --json for full data)")
+        footer_parts.append(f"({omitted} columns hidden — use --json for full data)")
 
-    # Note about included data
-    if result.included:
-        include_counts = []
-        for entity_type, entities in result.included.items():
-            if entities:
-                include_counts.append(f"{len(entities)} {entity_type}")
-        if include_counts:
-            summary_parts.append(f"(included: {', '.join(include_counts)} — use --json to see)")
-
-    return output + "\n".join(summary_parts)
+    return output + "\n".join(footer_parts)
 
 
 # =============================================================================

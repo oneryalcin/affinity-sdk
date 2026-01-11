@@ -52,7 +52,7 @@ from .config import LoadedConfig, ProfileConfig, config_file_permission_warnings
 from .errors import CLIError
 from .logging import set_redaction_api_key
 from .paths import CliPaths, get_paths
-from .results import CommandContext, CommandMeta, CommandResult, ErrorInfo
+from .results import CommandContext, CommandMeta, CommandResult, ErrorInfo, ResultSummary
 from .session_cache import SessionCache, SessionCacheConfig
 
 OutputFormat = Literal["table", "json"]
@@ -725,6 +725,7 @@ def build_result(
     pagination: dict[str, Any] | None = None,
     resolved: dict[str, Any] | None = None,
     columns: list[dict[str, Any]] | None = None,
+    summary: ResultSummary | None = None,
     error: ErrorInfo | None = None,
 ) -> CommandResult:
     duration_ms = int(max(0.0, (time.time() - started_at) * 1000))
@@ -735,6 +736,7 @@ def build_result(
         resolved=resolved,
         columns=columns,
         rate_limit=rate_limit,
+        summary=summary,
     )
     return CommandResult(
         ok=ok,

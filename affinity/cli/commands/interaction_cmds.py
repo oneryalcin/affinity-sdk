@@ -22,7 +22,7 @@ from ..date_utils import ChunkedFetchResult, chunk_date_range
 from ..decorators import category, destructive
 from ..errors import CLIError
 from ..options import output_options
-from ..results import CommandContext
+from ..results import CommandContext, DateRange, ResultSummary
 from ..runner import CommandOutput, run_command
 from ._v1_parsing import parse_choice, parse_iso_datetime
 
@@ -559,14 +559,13 @@ def interaction_ls(
             write_csv_to_stdout(rows=results, fieldnames=fieldnames, bom=csv_bom)
             sys.exit(0)
 
-        # Build typeStats for metadata (always include zero-count types)
-        type_stats_output = {
-            itype: {
-                "count": stats.count,
-                "chunksProcessed": stats.chunks_processed,
-            }
+        # Build type breakdown for summary (only types with results)
+        type_breakdown = {
+            itype: stats.count
             for itype, stats in fetch_result.type_stats.items()
+            if stats.count > 0
         }
+        total_chunks = sum(stats.chunks_processed for stats in fetch_result.type_stats.values())
 
         # Build context - types is always an array
         cmd_context = CommandContext(
@@ -582,16 +581,18 @@ def interaction_ls(
             },
         )
 
+        # Build summary for footer display
+        summary = ResultSummary(
+            total_rows=len(results),
+            date_range=DateRange(start=start, end=end),
+            type_breakdown=type_breakdown if type_breakdown else None,
+            chunks_processed=total_chunks if total_chunks > 0 else None,
+        )
+
         return CommandOutput(
-            data={
-                "interactions": results,
-                "metadata": {
-                    "dateRange": {"start": start.isoformat(), "end": end.isoformat()},
-                    "typeStats": type_stats_output,
-                    "totalRows": len(results),
-                },
-            },
+            data=results,  # Direct array, not wrapped
             context=cmd_context,
+            summary=summary,
             api_called=True,
         )
 

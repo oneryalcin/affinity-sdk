@@ -7,9 +7,12 @@ and NOT part of the public SDK API.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from ..results import ResultSummary
 
 # =============================================================================
 # Filter Condition Models
@@ -318,7 +321,8 @@ class QueryResult:
 
     data: list[dict[str, Any]]
     included: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    meta: dict[str, Any] = field(default_factory=dict)
+    summary: ResultSummary | None = None  # Standardized result summary
+    meta: dict[str, Any] = field(default_factory=dict)  # Additional metadata (executionTime, etc.)
     pagination: dict[str, Any] | None = None
     rate_limit: Any | None = None  # RateLimitSnapshot from client
     warnings: list[str] = field(default_factory=list)

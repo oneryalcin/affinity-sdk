@@ -608,6 +608,9 @@ def _table_from_rows(
                 return f"list ({len(data):,} items)"
             if isinstance(data, list) and all(isinstance(x, str) for x in data):
                 return truncate(", ".join(x.strip() for x in data if x.strip()))
+            # Handle lists of integers (e.g., personIds, companyIds)
+            if isinstance(data, list) and all(isinstance(x, int) for x in data):
+                return truncate(", ".join(str(x) for x in data))
             if isinstance(data, dict):
                 text = data.get("text")
                 if isinstance(text, str) and text.strip():
@@ -797,6 +800,12 @@ def _table_from_rows(
                     return truncate(", ".join(texts))
 
                 return f"list ({len(dict_items):,} items)"
+
+            # Handle lists of simple scalars (integers, strings)
+            if all(isinstance(x, int) for x in value):
+                return truncate(", ".join(str(x) for x in value))
+            if all(isinstance(x, str) for x in value):
+                return truncate(", ".join(x.strip() for x in value if x.strip()))
 
             return f"list ({len(value):,} items)"
         if isinstance(value, dict):

@@ -75,8 +75,8 @@ if [[ "$include_interactions" == "true" ]]; then
     mcp_progress "$current_step" "Fetching interactions" "$total_steps"
 
     # Use --type all to fetch all interaction types in one call (sorted by date descending)
-    result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type all --days 365 --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":{"interactions":[]}}')
-    interactions=$(echo "$result" | jq_tool -c '.data.interactions // []')
+    result=$(run_xaffinity_readonly interaction ls --"$entity_type"-id "$entity_id" --type all --days 365 --max-results 10 "${cli_args[@]}" 2>/dev/null || echo '{"data":[]}')
+    interactions=$(echo "$result" | jq_tool -c '.data // []')
     ((++current_step))
 fi
 
@@ -87,7 +87,7 @@ if [[ "$include_notes" == "true" ]]; then
         mcp_fail -32001 "Operation cancelled"
     fi
     mcp_progress "$current_step" "Fetching notes" "$total_steps"
-    notes=$(run_xaffinity_readonly note ls --"$entity_type"-id "$entity_id" --max-results 10 "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data.notes // []' || echo "[]")
+    notes=$(run_xaffinity_readonly note ls --"$entity_type"-id "$entity_id" --max-results 10 "${cli_args[@]}" 2>/dev/null | jq_tool -c '.data // []' || echo "[]")
     ((++current_step))
 fi
 

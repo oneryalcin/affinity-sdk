@@ -273,11 +273,11 @@ class TestInteractionLsIntegration:
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
         # Should have exactly 5 results
-        assert len(payload["data"]["interactions"]) == 5
+        assert len(payload["data"]) == 5
         # All chunks are fetched to ensure correct "most recent N" semantics
         assert call_count == 2  # Both chunks fetched
         # All 5 results should be from the newer chunk (2023)
-        for interaction in payload["data"]["interactions"]:
+        for interaction in payload["data"]:
             assert "2023-06-01" in interaction["date"]
 
     def test_csv_output_works(self, respx_mock) -> None:
@@ -358,8 +358,8 @@ class TestInteractionLsIntegration:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        # chunksProcessed is now per-type in typeStats
-        assert payload["data"]["metadata"]["typeStats"]["meeting"]["chunksProcessed"] == 1
+        # chunksProcessed is now in meta.summary
+        assert payload["meta"]["summary"]["chunksProcessed"] == 1
 
     def test_multiple_chunks_metadata(self, respx_mock) -> None:
         """Multiple chunks shows correct chunksProcessed in typeStats."""
@@ -393,8 +393,8 @@ class TestInteractionLsIntegration:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        # chunksProcessed is now per-type in typeStats
-        assert payload["data"]["metadata"]["typeStats"]["meeting"]["chunksProcessed"] == 2
+        # chunksProcessed is now in meta.summary (total across all chunks)
+        assert payload["meta"]["summary"]["chunksProcessed"] == 2
 
     def test_date_range_in_metadata(self, respx_mock) -> None:
         """Date range appears in metadata."""
@@ -427,10 +427,10 @@ class TestInteractionLsIntegration:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        metadata = payload["data"]["metadata"]
-        assert "dateRange" in metadata
-        assert "2024-01-01" in metadata["dateRange"]["start"]
-        assert "2024-06-01" in metadata["dateRange"]["end"]
+        summary = payload["meta"]["summary"]
+        assert "dateRange" in summary
+        assert "2024-01-01" in summary["dateRange"]["start"]
+        assert "2024-06-01" in summary["dateRange"]["end"]
 
     def test_csv_and_json_mutually_exclusive(self) -> None:
         """--csv and --json flags are mutually exclusive."""
@@ -485,7 +485,7 @@ class TestInteractionLsIntegration:
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
         # Should have date range starting from 2010
-        assert "2010-01-01" in payload["data"]["metadata"]["dateRange"]["start"]
+        assert "2010-01-01" in payload["meta"]["summary"]["dateRange"]["start"]
 
 
 @pytest.mark.req("CLI-INTERACTION-MULTI-TYPE")
@@ -657,10 +657,10 @@ class TestInteractionLsMultiType:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        type_stats = payload["data"]["metadata"]["typeStats"]
-        # email has 1 result, meeting has 0
-        assert type_stats["email"]["count"] == 1
-        assert type_stats["meeting"]["count"] == 0
+        type_breakdown = payload["meta"]["summary"]["typeBreakdown"]
+        # email has 1 result, meeting has 0 (but 0-count types are not included)
+        assert type_breakdown["email"] == 1
+        assert "meeting" not in type_breakdown  # 0-count types excluded
 
     def test_multi_type_results_sorted_by_date(self, respx_mock) -> None:
         """Multi-type results are sorted by date descending."""
@@ -713,7 +713,7 @@ class TestInteractionLsMultiType:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        interactions = payload["data"]["interactions"]
+        interactions = payload["data"]
         # Meeting should be first (newer date)
         assert interactions[0]["type"] == "meeting"
         assert interactions[1]["type"] == "email"
@@ -764,7 +764,7 @@ class TestInteractionLsMultiType:
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
-        interactions = payload["data"]["interactions"]
+        interactions = payload["data"]
         # Should have exactly 3 results
         assert len(interactions) == 3
         # All 3 should be meetings (newer dates)
@@ -798,13 +798,11 @@ class TestInteractionLsMultiType:
         assert result.exit_code == 0, f"Command failed: {result.output}"
         payload = json.loads(result.output.strip())
         # Should have empty interactions array
-        assert payload["data"]["interactions"] == []
-        # All 4 types should appear in typeStats with count 0
-        type_stats = payload["data"]["metadata"]["typeStats"]
-        assert len(type_stats) == 4
-        for itype in ["call", "chat-message", "email", "meeting"]:
-            assert type_stats[itype]["count"] == 0
-        assert payload["data"]["metadata"]["totalRows"] == 0
+        assert payload["data"] == []
+        # With no results, typeBreakdown is None (no types to report)
+        summary = payload["meta"]["summary"]
+        assert summary["typeBreakdown"] is None
+        assert summary["totalRows"] == 0
 
 
 @pytest.mark.req("CLI-INTERACTION-MULTI-TYPE")

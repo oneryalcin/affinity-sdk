@@ -52,9 +52,9 @@ def test_note_ls_minimal(respx_mock: respx.MockRouter) -> None:
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
-    assert payload["data"]["notes"][0]["id"] == 1
-    assert payload["data"]["notes"][0]["companyIds"] == [4]
-    assert payload["meta"]["pagination"]["notes"]["nextCursor"] == "next"
+    assert payload["data"][0]["id"] == 1
+    assert payload["data"][0]["companyIds"] == [4]
+    assert payload["meta"]["pagination"]["nextCursor"] == "next"
 
 
 def test_note_create_update_delete(respx_mock: respx.MockRouter) -> None:
@@ -290,7 +290,7 @@ def test_interaction_ls_minimal(respx_mock: respx.MockRouter) -> None:
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
-    assert payload["data"]["interactions"][0]["id"] == 5
+    assert payload["data"][0]["id"] == 5
     # Pagination is no longer returned for interaction ls (auto-chunking fetches all)
 
 

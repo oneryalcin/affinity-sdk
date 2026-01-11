@@ -71,7 +71,7 @@ def test_interaction_ls_date_params(respx_mock: respx.MockRouter) -> None:
     )
     assert result.exit_code == 0, f"Command failed: {result.output}"
     payload = json.loads(result.output.strip())
-    assert payload["data"]["interactions"][0]["id"] == 100
+    assert payload["data"][0]["id"] == 100
     # Verify command metadata uses 'start' and 'end' keys (ISO datetime strings)
     cmd = payload["command"]
     assert "start" in cmd["modifiers"]

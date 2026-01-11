@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.2 - 2026-01-11
+
+### Changed
+- **BREAKING**: CLI: `interaction ls` JSON output restructured for consistency:
+  - `.data.interactions` → `.data` (direct array)
+  - `.data.metadata.totalRows` → `.meta.summary.totalRows`
+  - `.data.metadata.dateRange` → `.meta.summary.dateRange`
+  - `.data.metadata.typeStats` → `.meta.summary.typeBreakdown`
+- **BREAKING**: CLI: `note ls` JSON output restructured for consistency:
+  - `.data.notes` → `.data` (direct array)
+  - Pagination: `.data.notes.nextCursor` → `.meta.pagination.nextCursor`
+- **BREAKING**: CLI: `query` JSON output (with `--include-meta`) restructured for consistency:
+  - `.meta.recordCount` → `.meta.summary.totalRows`
+  - Included entity counts now in `.meta.summary.includedCounts`
+- CLI: Standardized `ResultSummary` footer rendering across all commands (displays row counts, date ranges, type breakdowns as compact footer text instead of tables).
+
 ## 0.9.1 - 2026-01-11
 
 ### Added

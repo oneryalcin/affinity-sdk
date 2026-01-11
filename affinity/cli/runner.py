@@ -18,7 +18,7 @@ from .context import (
     normalize_exception,
 )
 from .render import RenderSettings, render_result
-from .results import Artifact, CommandContext, CommandResult
+from .results import Artifact, CommandContext, CommandResult, ResultSummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +31,7 @@ class CommandOutput:
     resolved: dict[str, Any] | None = None
     columns: list[dict[str, Any]] | None = None
     rate_limit: Any | None = None
+    summary: ResultSummary | None = None  # Standardized result summary for footer
     api_called: bool = False
     exit_code: int = 0  # Allow commands to specify non-zero exit codes (e.g., check-key)
 
@@ -128,6 +129,7 @@ def run_command(ctx: CLIContext, *, command: str, fn: CommandFn) -> None:
             pagination=out.pagination,
             resolved=out.resolved,
             columns=out.columns,
+            summary=out.summary,
         )
         emit_result(ctx, result)
         raise click.exceptions.Exit(out.exit_code)
