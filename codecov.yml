@@ -1,0 +1,24 @@
+# Codecov configuration
+# https://docs.codecov.io/docs/codecov-yaml
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+        threshold: 1%
+
+# Ignore paths that can't have test coverage
+ignore:
+  - ".github/**"
+  - "docs/**"
+  - "*.md"
+  - "*.yml"
+  - "*.yaml"
+  - "tools/**"
+  - "plugins/**"
+  - "mcp/**"
