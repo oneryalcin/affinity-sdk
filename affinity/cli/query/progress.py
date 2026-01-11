@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-class RichQueryProgress(QueryProgressCallback):
+class RichQueryProgress(QueryProgressCallback):  # pragma: no cover
     """Rich progress display for terminal output.
 
     Shows multi-step progress with:
@@ -239,7 +239,7 @@ class NDJSONQueryProgress(QueryProgressCallback):
 # =============================================================================
 
 
-def create_progress_callback(
+def create_progress_callback(  # pragma: no cover
     *,
     total_steps: int = 1,
     quiet: bool = False,

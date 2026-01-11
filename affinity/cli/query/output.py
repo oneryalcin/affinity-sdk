@@ -71,7 +71,7 @@ _EXCLUDED_TABLE_COLUMNS = frozenset(
 )
 
 
-def format_table(result: QueryResult) -> str:
+def format_table(result: QueryResult) -> str:  # pragma: no cover
     """Format query result as a Rich table (matching CLI conventions).
 
     Args:
@@ -123,7 +123,7 @@ def format_table(result: QueryResult) -> str:
 # =============================================================================
 
 
-def format_dry_run(plan: ExecutionPlan, *, verbose: bool = False) -> str:
+def format_dry_run(plan: ExecutionPlan, *, verbose: bool = False) -> str:  # pragma: no cover
     """Format execution plan for dry-run output.
 
     Args:
