@@ -179,7 +179,7 @@ class TestCliDatetimeIntegration:
         pytest.importorskip("rich")
         pytest.importorskip("platformdirs")
 
-        from affinity.cli.main import cli  # noqa: PLC0415
+        from affinity.cli.main import cli
 
         # Track the request URL
         captured_url = None
@@ -242,7 +242,7 @@ class TestCliDatetimeIntegration:
         pytest.importorskip("rich")
         pytest.importorskip("platformdirs")
 
-        from affinity.cli.main import cli  # noqa: PLC0415
+        from affinity.cli.main import cli
 
         captured_url = None
 
@@ -307,7 +307,7 @@ class TestCliDatetimeIntegration:
         pytest.importorskip("rich")
         pytest.importorskip("platformdirs")
 
-        from affinity.cli.main import cli  # noqa: PLC0415
+        from affinity.cli.main import cli
 
         captured_url = None
 

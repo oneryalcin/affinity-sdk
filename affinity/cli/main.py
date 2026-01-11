@@ -220,26 +220,26 @@ def cli(
 
 
 # Register commands
-from .commands.company_cmds import company_group as _company_group  # noqa: E402
-from .commands.completion_cmd import completion_cmd as _completion_cmd  # noqa: E402
-from .commands.config_cmds import config_group as _config_group  # noqa: E402
-from .commands.entry_cmds import entry_group as _entry_group  # noqa: E402
-from .commands.field_cmds import field_group as _field_group  # noqa: E402
-from .commands.interaction_cmds import interaction_group as _interaction_group  # noqa: E402
-from .commands.list_cmds import list_group as _list_group  # noqa: E402
-from .commands.note_cmds import note_group as _note_group  # noqa: E402
-from .commands.opportunity_cmds import opportunity_group as _opportunity_group  # noqa: E402
-from .commands.person_cmds import person_group as _person_group  # noqa: E402
-from .commands.query_cmd import query_cmd as _query_cmd  # noqa: E402
-from .commands.relationship_strength_cmds import (  # noqa: E402
+from .commands.company_cmds import company_group as _company_group
+from .commands.completion_cmd import completion_cmd as _completion_cmd
+from .commands.config_cmds import config_group as _config_group
+from .commands.entry_cmds import entry_group as _entry_group
+from .commands.field_cmds import field_group as _field_group
+from .commands.interaction_cmds import interaction_group as _interaction_group
+from .commands.list_cmds import list_group as _list_group
+from .commands.note_cmds import note_group as _note_group
+from .commands.opportunity_cmds import opportunity_group as _opportunity_group
+from .commands.person_cmds import person_group as _person_group
+from .commands.query_cmd import query_cmd as _query_cmd
+from .commands.relationship_strength_cmds import (
     relationship_strength_group as _relationship_strength_group,
 )
-from .commands.reminder_cmds import reminder_group as _reminder_group  # noqa: E402
-from .commands.resolve_url_cmd import resolve_url_cmd as _resolve_url_cmd  # noqa: E402
-from .commands.session_cmds import session_group as _session_group  # noqa: E402
-from .commands.task_cmds import task_group as _task_group  # noqa: E402
-from .commands.version_cmd import version_cmd as _version_cmd  # noqa: E402
-from .commands.whoami_cmd import whoami_cmd as _whoami_cmd  # noqa: E402
+from .commands.reminder_cmds import reminder_group as _reminder_group
+from .commands.resolve_url_cmd import resolve_url_cmd as _resolve_url_cmd
+from .commands.session_cmds import session_group as _session_group
+from .commands.task_cmds import task_group as _task_group
+from .commands.version_cmd import version_cmd as _version_cmd
+from .commands.whoami_cmd import whoami_cmd as _whoami_cmd
 
 cli.add_command(_completion_cmd)
 cli.add_command(_version_cmd)

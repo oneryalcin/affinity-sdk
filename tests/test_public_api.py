@@ -1,5 +1,5 @@
 """Tests for affinity package public API exports."""
-# ruff: noqa: PLC0415  # Imports inside functions are intentional - testing public API exports
+# Imports inside functions are intentional - testing public API exports
 
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ class TestLoggingSetup:
     def test_logger_does_not_propagate_by_default(self) -> None:
         """Logger should be configured but not spam the root logger."""
         # Just importing affinity should set up the logger
-        import affinity  # noqa: F401
+        import affinity
 
         logger = logging.getLogger("affinity_sdk")
         # Logger exists and has handlers

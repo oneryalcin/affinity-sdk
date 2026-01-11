@@ -147,13 +147,13 @@ pytest.importorskip("rich_click")
 pytest.importorskip("rich")
 pytest.importorskip("platformdirs")
 
-import json  # noqa: E402
-from urllib.parse import parse_qs, urlparse  # noqa: E402
+import json
+from urllib.parse import parse_qs, urlparse
 
-from click.testing import CliRunner  # noqa: E402
-from httpx import Response  # noqa: E402
+from click.testing import CliRunner
+from httpx import Response
 
-from affinity.cli.main import cli  # noqa: E402
+from affinity.cli.main import cli
 
 
 @pytest.mark.req("CLI-INTERACTION-DATE-CHUNKING")

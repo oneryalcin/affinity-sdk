@@ -232,7 +232,7 @@ class TestListServiceFieldOperations:
         assert fields[0].name == "Field1"
 
     def test_get_fields_with_field_types_filter(self) -> None:
-        from affinity.models.types import FieldType  # noqa: PLC0415
+        from affinity.models.types import FieldType
 
         def handler(request: httpx.Request) -> httpx.Response:
             url = request.url

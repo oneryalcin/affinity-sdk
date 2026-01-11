@@ -68,7 +68,7 @@ class TestEntityMethodsExist:
     @pytest.mark.req("QUERY-SCHEMA-002")
     def test_person_service_association_methods(self) -> None:
         """PersonService has required association methods."""
-        from affinity.services.persons import PersonService  # noqa: PLC0415
+        from affinity.services.persons import PersonService
 
         # Check sync methods exist
         assert hasattr(PersonService, "get_associated_company_ids")
@@ -79,7 +79,7 @@ class TestEntityMethodsExist:
     @pytest.mark.req("QUERY-SCHEMA-002")
     def test_company_service_association_methods(self) -> None:
         """CompanyService has required association methods."""
-        from affinity.services.companies import CompanyService  # noqa: PLC0415
+        from affinity.services.companies import CompanyService
 
         # Check sync methods exist
         assert hasattr(CompanyService, "get_associated_person_ids")
@@ -90,7 +90,7 @@ class TestEntityMethodsExist:
     @pytest.mark.req("QUERY-SCHEMA-002")
     def test_opportunity_service_association_methods(self) -> None:
         """OpportunityService has required association methods."""
-        from affinity.services.opportunities import OpportunityService  # noqa: PLC0415
+        from affinity.services.opportunities import OpportunityService
 
         # Check sync methods exist
         assert hasattr(OpportunityService, "get_associated_person_ids")
@@ -105,7 +105,7 @@ class TestGlobalServicesExist:
     @pytest.mark.req("QUERY-SCHEMA-003")
     def test_interaction_service_exists(self) -> None:
         """InteractionService exists and has list method."""
-        from affinity.services.v1_only import InteractionService  # noqa: PLC0415
+        from affinity.services.v1_only import InteractionService
 
         assert hasattr(InteractionService, "list")
         assert callable(InteractionService.list)
@@ -113,7 +113,7 @@ class TestGlobalServicesExist:
     @pytest.mark.req("QUERY-SCHEMA-003")
     def test_note_service_exists(self) -> None:
         """NoteService exists and has list method."""
-        from affinity.services.v1_only import NoteService  # noqa: PLC0415
+        from affinity.services.v1_only import NoteService
 
         assert hasattr(NoteService, "list")
         assert callable(NoteService.list)
