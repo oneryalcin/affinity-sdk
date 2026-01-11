@@ -368,12 +368,26 @@ def validate_entity_queryable(query: Query) -> None:
         present = extract_filter_fields(query.where)
         # For listEntries, either listId OR listName is acceptable
         if not (present & schema.required_filters):
-            example_filter = next(iter(schema.required_filters))
-            raise QueryParseError(
-                f"Query for '{query.from_}' requires a '{example_filter}' filter. "
-                f'Example: {{"from": "{query.from_}", "where": '
-                f'{{"path": "{example_filter}", "op": "eq", "value": 12345}}}}'
-            )
+            # Show all alternatives in error message
+            filter_options = sorted(schema.required_filters)
+            if len(filter_options) > 1:
+                filter_desc = " or ".join(f"'{f}'" for f in filter_options)
+                # For listEntries, show both ID and name examples
+                raise QueryParseError(
+                    f"Query for '{query.from_}' requires a {filter_desc} filter. "
+                    f"Examples:\n"
+                    f'  By ID: {{"from": "{query.from_}", "where": '
+                    f'{{"path": "listId", "op": "eq", "value": 12345}}}}\n'
+                    f'  By name: {{"from": "{query.from_}", "where": '
+                    f'{{"path": "listName", "op": "eq", "value": "My List"}}}}'
+                )
+            else:
+                example_filter = filter_options[0]
+                raise QueryParseError(
+                    f"Query for '{query.from_}' requires a '{example_filter}' filter. "
+                    f'Example: {{"from": "{query.from_}", "where": '
+                    f'{{"path": "{example_filter}", "op": "eq", "value": 12345}}}}'
+                )
 
         # Check for negated required filters
         if _check_required_filter_in_not(query.where, schema.required_filters):
@@ -397,8 +411,10 @@ def validate_entity_queryable(query: Query) -> None:
 
         # Validate all OR branches have required filter
         if not _validate_or_branches_have_required_filter(query.where, schema.required_filters):
+            filter_options = sorted(schema.required_filters)
+            filter_desc = " or ".join(f"'{f}'" for f in filter_options)
             raise QueryParseError(
-                f"All OR branches must include a '{next(iter(schema.required_filters))}' filter. "
+                f"All OR branches must include a {filter_desc} filter. "
                 f"Each branch of an OR condition must specify which parent to fetch from."
             )
 

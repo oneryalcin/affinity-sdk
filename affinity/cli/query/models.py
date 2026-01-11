@@ -321,6 +321,7 @@ class QueryResult:
     meta: dict[str, Any] = field(default_factory=dict)
     pagination: dict[str, Any] | None = None
     rate_limit: Any | None = None  # RateLimitSnapshot from client
+    warnings: list[str] = field(default_factory=list)
 
 
 # Enable forward references

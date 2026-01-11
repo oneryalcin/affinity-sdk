@@ -29,6 +29,144 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# Field Projection Utilities
+# =============================================================================
+
+
+def _set_nested_value(target: dict[str, Any], path: str, value: Any) -> None:
+    """Set a value at a nested path in a dict.
+
+    Creates intermediate dicts as needed.
+
+    Args:
+        target: Dict to set value in
+        path: Dot-separated path like "fields.Status"
+        value: Value to set
+    """
+    parts = path.split(".")
+    current = target
+    for part in parts[:-1]:
+        if part not in current:
+            current[part] = {}
+        current = current[part]
+    current[parts[-1]] = value
+
+
+def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """Normalize list entry field values from API format to query-friendly format.
+
+    The Affinity API returns field values on the entity inside the list entry::
+
+        {"entity": {"fields": {"requested": true, "data": {
+            "field-123": {"name": "Status", "value": {...}}
+        }}}}
+
+    This function extracts them into a top-level fields dict keyed by field name:
+        {"fields": {"Status": "Active"}}
+
+    This allows paths like "fields.Status" to work in filters/groupBy/aggregates.
+    """
+    # Field data is on entity.fields.data, not directly on the list entry
+    entity = record.get("entity")
+    if not entity or not isinstance(entity, dict):
+        return record
+
+    fields_container = entity.get("fields")
+    if not fields_container or not isinstance(fields_container, dict):
+        return record
+
+    fields_data = fields_container.get("data")
+    if not fields_data or not isinstance(fields_data, dict):
+        return record
+
+    # Extract field values into a dict keyed by field name
+    normalized_fields: dict[str, Any] = {}
+    for _field_id, field_obj in fields_data.items():
+        if not isinstance(field_obj, dict):
+            continue
+
+        field_name = field_obj.get("name")
+        if not field_name:
+            continue
+
+        value_wrapper = field_obj.get("value")
+        if value_wrapper is None:
+            normalized_fields[field_name] = None
+            continue
+
+        if isinstance(value_wrapper, dict):
+            data = value_wrapper.get("data")
+            # Handle dropdown/ranked-dropdown with text value
+            if isinstance(data, dict) and "text" in data:
+                normalized_fields[field_name] = data["text"]
+            # Handle multi-select (array of values)
+            elif isinstance(data, list):
+                # Extract text from each item if it's a dropdown list
+                extracted = []
+                for item in data:
+                    if isinstance(item, dict) and "text" in item:
+                        extracted.append(item["text"])
+                    else:
+                        extracted.append(item)
+                normalized_fields[field_name] = extracted
+            else:
+                normalized_fields[field_name] = data
+        else:
+            normalized_fields[field_name] = value_wrapper
+
+    # Replace the complex fields structure with a simple dict keyed by name
+    if normalized_fields:
+        record["fields"] = normalized_fields
+
+    return record
+
+
+def _apply_select_projection(
+    records: list[dict[str, Any]], select: list[str]
+) -> list[dict[str, Any]]:
+    """Apply select clause projection to records.
+
+    Filters each record to only include fields specified in select.
+    Supports:
+    - Simple fields: "id", "firstName"
+    - Nested paths: "fields.Status", "address.city"
+    - Wildcard for fields: "fields.*" (includes all custom fields)
+
+    Args:
+        records: List of record dicts to project
+        select: List of field paths to include
+
+    Returns:
+        New list of projected records
+    """
+    if not select:
+        return records
+
+    # Check for fields.* wildcard - means include all fields
+    include_all_fields = "fields.*" in select
+    # Filter out the wildcard from paths to process
+    paths = [p for p in select if p != "fields.*"]
+
+    projected: list[dict[str, Any]] = []
+    for record in records:
+        new_record: dict[str, Any] = {}
+
+        # Apply explicit paths
+        for path in paths:
+            value = resolve_field_path(record, path)
+            if value is not None:
+                _set_nested_value(new_record, path, value)
+
+        # Handle fields.* wildcard - copy entire fields dict
+        if include_all_fields and "fields" in record:
+            new_record["fields"] = record["fields"]
+
+        projected.append(new_record)
+
+    return projected
+
+
+# =============================================================================
 # Progress Callback Protocol
 # =============================================================================
 
@@ -87,6 +225,7 @@ class ExecutionContext:
     max_records: int = 10000
     interrupted: bool = False
     resolved_where: dict[str, Any] | None = None  # Where clause with resolved names
+    warnings: list[str] = field(default_factory=list)  # Warnings collected during execution
 
     def check_timeout(self, timeout: float) -> None:
         """Check if execution has exceeded timeout."""
@@ -110,15 +249,24 @@ class ExecutionContext:
             )
 
     def build_result(self) -> QueryResult:
-        """Build final query result."""
+        """Build final query result.
+
+        Applies select clause projection if specified in the query.
+        """
+        # Apply select projection if specified
+        data = self.records
+        if self.query.select:
+            data = _apply_select_projection(self.records, self.query.select)
+
         return QueryResult(
-            data=self.records,
+            data=data,
             included=self.included,
             meta={
-                "recordCount": len(self.records),
+                "recordCount": len(data),
                 "executionTime": time.time() - self.start_time,
                 "interrupted": self.interrupted,
             },
+            warnings=self.warnings,
         )
 
 
@@ -348,9 +496,22 @@ class QueryExecutor:
 
         nested_method = getattr(parent_service, schema.parent_method_name)
 
+        # Resolve field_ids for listEntries queries
+        # This auto-detects which custom fields are referenced in the query
+        field_ids: list[str] | None = None
+        if step.entity == "listEntries" and parent_ids:
+            # Use first parent_id to get field metadata (all lists in an OR should have same fields)
+            # parent_ids are already typed IDs, extract the raw int
+            raw_parent_id = (
+                parent_ids[0].value if hasattr(parent_ids[0], "value") else int(parent_ids[0])
+            )
+            field_ids = await self._resolve_field_ids_for_list_entries(ctx, raw_parent_id)
+
         # For single parent ID, use simple sequential fetch
         if len(parent_ids) == 1:
-            await self._fetch_from_single_parent(step, ctx, nested_method, parent_ids[0])
+            await self._fetch_from_single_parent(
+                step, ctx, nested_method, parent_ids[0], field_ids=field_ids
+            )
             return
 
         # For multiple parent IDs, fetch in parallel
@@ -361,7 +522,12 @@ class QueryExecutor:
 
             # Try paginated iteration first
             if hasattr(nested_service.all(), "pages"):
-                async for page in nested_service.all().pages():
+                # Build pages() kwargs, including field_ids if provided
+                pages_kwargs: dict[str, Any] = {}
+                if field_ids is not None:
+                    pages_kwargs["field_ids"] = field_ids
+
+                async for page in nested_service.all().pages(**pages_kwargs):
                     for record in page.data:
                         results.append(record.model_dump(mode="json", by_alias=True))
             else:
@@ -389,8 +555,18 @@ class QueryExecutor:
         ctx: ExecutionContext,
         nested_method: Callable[..., Any],
         parent_id: Any,
+        *,
+        field_ids: list[str] | None = None,
     ) -> None:
-        """Fetch from a single parent with progress reporting."""
+        """Fetch from a single parent with progress reporting.
+
+        Args:
+            step: The plan step being executed
+            ctx: Execution context
+            nested_method: Method to call with parent_id to get nested service
+            parent_id: The parent entity ID
+            field_ids: Optional list of field IDs to request for listEntries
+        """
         nested_service = nested_method(parent_id)
         items_fetched = 0
 
@@ -399,18 +575,50 @@ class QueryExecutor:
             items_fetched = p.items_so_far
             self.progress.on_step_progress(step, items_fetched, None)
 
-        # Try paginated iteration first (consistent with _fetch_global)
-        if hasattr(nested_service.all(), "pages"):
-            async for page in nested_service.all().pages(on_progress=on_progress):
+        # Check if service has a direct pages() method (e.g., AsyncListEntryService)
+        # This is preferred over all().pages() because it supports field_ids
+        if hasattr(nested_service, "pages") and callable(nested_service.pages):
+            # Build pages() kwargs
+            pages_kwargs: dict[str, Any] = {}
+            if field_ids is not None:
+                pages_kwargs["field_ids"] = field_ids
+
+            async for page in nested_service.pages(**pages_kwargs):
                 for record in page.data:
                     record_dict = record.model_dump(mode="json", by_alias=True)
+                    # Normalize list entry fields for query-friendly access
+                    record_dict = _normalize_list_entry_fields(record_dict)
+                    ctx.records.append(record_dict)
+                    items_fetched += 1
+                    if self._should_stop(ctx):
+                        return
+                # Report progress after each page
+                self.progress.on_step_progress(step, items_fetched, None)
+
+        # Try all().pages() for services that return PageIterator from all()
+        elif hasattr(nested_service.all(), "pages"):
+            pages_kwargs = {"on_progress": on_progress}
+            if field_ids is not None:
+                pages_kwargs["field_ids"] = field_ids
+
+            async for page in nested_service.all().pages(**pages_kwargs):
+                for record in page.data:
+                    record_dict = record.model_dump(mode="json", by_alias=True)
+                    # Normalize list entry fields for query-friendly access
+                    record_dict = _normalize_list_entry_fields(record_dict)
                     ctx.records.append(record_dict)
                     if self._should_stop(ctx):
                         return
         else:
-            # Fall back to async iteration for services without .pages()
-            async for record in nested_service.all():
+            # Fall back to async iteration for services without pages()
+            all_kwargs: dict[str, Any] = {}
+            if field_ids is not None:
+                all_kwargs["field_ids"] = field_ids
+
+            async for record in nested_service.all(**all_kwargs):
                 record_dict = record.model_dump(mode="json", by_alias=True)
+                # Normalize list entry fields for query-friendly access
+                record_dict = _normalize_list_entry_fields(record_dict)
                 ctx.records.append(record_dict)
                 items_fetched += 1
 
@@ -501,6 +709,187 @@ class QueryExecutor:
 
         return unique_ids
 
+    def _collect_field_refs_from_query(self, query: Query) -> set[str]:
+        """Collect all fields.* references from the query.
+
+        Scans select, groupBy, aggregate, and where clauses for fields.* paths
+        and returns the set of field names (without the "fields." prefix).
+
+        Supports the "fields.*" wildcard which indicates all fields are needed.
+
+        Returns:
+            Set of field names referenced, or {"*"} if all fields are needed.
+        """
+        field_names: set[str] = set()
+
+        # Check for fields.* wildcard in select
+        if query.select:
+            for path in query.select:
+                if path == "fields.*":
+                    return {"*"}  # Wildcard means all fields
+                if path.startswith("fields."):
+                    field_names.add(path[7:])  # Remove "fields." prefix
+
+        # Collect from groupBy
+        if query.group_by:
+            if query.group_by == "fields.*":
+                return {"*"}
+            if query.group_by.startswith("fields."):
+                field_names.add(query.group_by[7:])
+
+        # Collect from aggregates
+        if query.aggregate:
+            for agg in query.aggregate.values():
+                for attr in ["sum", "avg", "min", "max", "first", "last"]:
+                    field = getattr(agg, attr, None)
+                    if field and isinstance(field, str):
+                        if field == "fields.*":
+                            return {"*"}
+                        if field.startswith("fields."):
+                            field_names.add(field[7:])
+                # Handle percentile which has nested structure
+                if agg.percentile and isinstance(agg.percentile, dict):
+                    pct_field = agg.percentile.get("field", "")
+                    if pct_field == "fields.*":
+                        return {"*"}
+                    if pct_field.startswith("fields."):
+                        field_names.add(pct_field[7:])
+
+        # Collect from where clause (recursive)
+        if query.where:
+            where_dict = (
+                query.where.model_dump(mode="json")
+                if hasattr(query.where, "model_dump")
+                else query.where
+            )
+            self._collect_field_refs_from_where(where_dict, field_names)
+            if "*" in field_names:
+                return {"*"}
+
+        return field_names
+
+    def _collect_field_refs_from_where(
+        self, where: dict[str, Any] | Any, field_names: set[str]
+    ) -> None:
+        """Recursively collect fields.* references from a where clause.
+
+        Args:
+            where: The where clause dict or sub-clause
+            field_names: Set to add field names to (modified in place)
+        """
+        if not isinstance(where, dict):
+            return
+
+        # Check if this is a direct condition with fields.* path
+        path = where.get("path", "")
+        if isinstance(path, str):
+            if path == "fields.*":
+                field_names.add("*")
+                return
+            if path.startswith("fields."):
+                field_names.add(path[7:])
+
+        # Recurse into compound conditions
+        for key in ["and", "or", "and_", "or_"]:
+            if key in where and isinstance(where[key], list):
+                for sub_clause in where[key]:
+                    self._collect_field_refs_from_where(sub_clause, field_names)
+
+        # Recurse into not clause
+        for key in ["not", "not_"]:
+            if key in where:
+                self._collect_field_refs_from_where(where[key], field_names)
+
+    async def _resolve_field_ids_for_list_entries(
+        self,
+        ctx: ExecutionContext,
+        list_id: int,
+    ) -> list[str] | None:
+        """Resolve field names to IDs for listEntries queries.
+
+        Automatically detects which custom fields are referenced in the query
+        (in select, groupBy, aggregate, or where clauses) and requests them
+        from the API.
+
+        Args:
+            ctx: Execution context containing the query
+            list_id: The list ID to fetch field metadata from
+
+        Returns:
+            List of field IDs to request, or None if no custom fields needed.
+            If wildcard (fields.*) is used, returns all field IDs for the list.
+        """
+        from affinity.types import ListId
+
+        # Collect all field references from the query
+        field_names = self._collect_field_refs_from_query(ctx.query)
+
+        if not field_names:
+            # No field references in query - don't request any custom fields
+            # This avoids expensive API calls for lists with many fields
+            return None
+
+        # Ensure field name cache is populated for this list
+        if not hasattr(self, "_field_name_cache"):
+            self._field_name_cache: dict[str, dict[str, Any]] = {}
+
+        # Check if we need to fetch field metadata
+        cache_key = f"list_{list_id}"
+        if cache_key not in self._field_name_cache:
+            try:
+                fields = await self.client.lists.get_fields(ListId(list_id))
+                # Build a mapping of lowercase name -> field ID
+                field_map: dict[str, str] = {}
+                all_field_ids: list[str] = []
+                for field in fields:
+                    if field.name:
+                        field_map[field.name.lower()] = str(field.id)
+                    all_field_ids.append(str(field.id))
+                self._field_name_cache[cache_key] = {
+                    "by_name": field_map,
+                    "all_ids": all_field_ids,
+                }
+            except Exception:
+                # If we can't fetch fields, continue without custom field values
+                return None
+
+        cache = self._field_name_cache[cache_key]
+
+        # Handle wildcard: return all field IDs
+        if "*" in field_names:
+            all_ids: list[str] = cache["all_ids"]
+            return all_ids
+
+        # Resolve specific field names to IDs
+        field_ids: list[str] = []
+        missing_fields: list[str] = []
+        for name in field_names:
+            field_id = cache["by_name"].get(name.lower())
+            if field_id is not None:
+                field_ids.append(field_id)
+            else:
+                missing_fields.append(name)
+
+        # Add warning for missing fields (don't break query - typos shouldn't fail)
+        if missing_fields:
+            available_fields = sorted(cache["by_name"].keys())
+            if len(missing_fields) == 1:
+                ctx.warnings.append(
+                    f"Field 'fields.{missing_fields[0]}' not found on list. "
+                    f"Available fields: {', '.join(available_fields[:10])}"
+                    + ("..." if len(available_fields) > 10 else "")
+                )
+            else:
+                missing_str = ", ".join(f"fields.{f}" for f in missing_fields)
+                available_str = ", ".join(available_fields[:10])
+                suffix = "..." if len(available_fields) > 10 else ""
+                ctx.warnings.append(
+                    f"Fields not found on list: {missing_str}. "
+                    f"Available fields: {available_str}{suffix}"
+                )
+
+        return field_ids if field_ids else None
+
     async def _resolve_list_names_to_ids(self, where: dict[str, Any]) -> dict[str, Any]:
         """Resolve listName references to listId.
 
@@ -577,9 +966,9 @@ class QueryExecutor:
         if not isinstance(where, dict) or not list_ids:
             return where
 
-        # Build field name cache for all lists
-        if not hasattr(self, "_field_name_cache"):
-            self._field_name_cache: dict[str, str] = {}
+        # Build flat field name -> ID cache for all lists
+        if not hasattr(self, "_field_name_to_id_cache"):
+            self._field_name_to_id_cache: dict[str, str] = {}
 
             from affinity.types import ListId
 
@@ -589,7 +978,7 @@ class QueryExecutor:
                     for field in fields:
                         if field.name:
                             # Map lowercase name to field ID
-                            self._field_name_cache[field.name.lower()] = str(field.id)
+                            self._field_name_to_id_cache[field.name.lower()] = str(field.id)
                 except Exception:
                     # If we can't fetch fields, continue without resolution
                     pass
@@ -602,7 +991,7 @@ class QueryExecutor:
             # Skip if already a field ID (numeric or "field-" prefix)
             if not field_ref.isdigit() and not field_ref.startswith("field-"):
                 # Try to resolve by name (case-insensitive)
-                field_id = self._field_name_cache.get(field_ref.lower())
+                field_id = self._field_name_to_id_cache.get(field_ref.lower())
                 if field_id is not None:
                     result = dict(where)
                     result["path"] = f"fields.{field_id}"

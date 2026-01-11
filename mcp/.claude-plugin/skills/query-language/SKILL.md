@@ -143,9 +143,13 @@ Fetch related entities in a single query:
 
 | From | Can Include |
 |------|-------------|
-| `persons` | `companies`, `opportunities`, `interactions`, `notes` |
-| `companies` | `persons`, `opportunities`, `interactions`, `notes` |
-| `opportunities` | `persons`, `companies`, `interactions`, `notes` |
+| `persons` | `companies`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `companies` | `people`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `opportunities` | `people`, `companies`, `interactions` |
+| `lists` | `entries` |
+| `listEntries` | `entity` (dynamically resolves to person/company/opportunity based on entityType) |
+
+**Important**: Note that `companies` and `opportunities` use `people` (not `persons`) as the relationship name.
 
 ## Aggregations
 
@@ -190,6 +194,46 @@ Fetch related entities in a single query:
 }
 ```
 
+## Querying List Entries
+
+`listEntries` requires either `listId` or `listName` filter:
+
+```json
+// By ID
+{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}}
+
+// By name (executor resolves name → ID at runtime)
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}}
+```
+
+**Invalid paths:** `list.name`, `list.id` - use `listName` or `listId` directly.
+
+**Note:** When using `listName`, the query executor looks up the list by name and resolves it to a `listId` before fetching entries. This adds one API call but allows using human-readable names.
+
+### Custom Field Values
+
+When querying listEntries with `groupBy`, `aggregate`, or `where` on `fields.*` paths, the query engine automatically detects which fields are referenced and requests their values from the API.
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "groupBy": "fields.Status",
+  "aggregate": {"count": {"count": true}}
+}
+```
+
+To select all custom fields, use `fields.*` wildcard in `select`:
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listId", "op": "eq", "value": 12345},
+  "select": ["id", "entityId", "fields.*"],
+  "limit": 50
+}
+```
+
 ## Field Paths
 
 Access nested fields using dot notation:
@@ -203,6 +247,7 @@ Access nested fields using dot notation:
 
 Common paths:
 - `fields.<FieldName>` - Custom list fields on listEntries
+- `fields.*` - All custom fields (wildcard, use in `select`)
 - `emails[0]` - First email in array
 - `company.name` - Nested object field (on included relationships)
 

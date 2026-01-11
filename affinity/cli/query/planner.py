@@ -149,10 +149,24 @@ class QueryPlanner:
                 # Validate relationship exists
                 rel = get_relationship(query.from_, include_path)
                 if rel is None:
-                    raise QueryValidationError(
-                        f"Unknown relationship '{include_path}' for entity '{query.from_}'",
-                        field="include",
+                    # Get available relationships for helpful error message
+                    entity_schema = get_entity_schema(query.from_)
+                    available = (
+                        sorted(entity_schema.relationships.keys())
+                        if entity_schema and entity_schema.relationships
+                        else []
                     )
+                    if available:
+                        raise QueryValidationError(
+                            f"Unknown relationship '{include_path}' for entity '{query.from_}'. "
+                            f"Available: {', '.join(available)}",
+                            field="include",
+                        )
+                    else:
+                        raise QueryValidationError(
+                            f"Entity '{query.from_}' does not support includes",
+                            field="include",
+                        )
 
                 include_calls = self._estimate_include_calls(estimated_records, include_path, rel)
                 include_step = PlanStep(

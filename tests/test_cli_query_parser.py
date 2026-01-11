@@ -359,6 +359,18 @@ class TestParseQuery:
         result = parse_query({"from": "persons", "limit": 0})
         assert any("limit=0" in w for w in result.warnings)
 
+    def test_listentries_requires_listid_or_listname_error(self) -> None:
+        """Error for listEntries without required filter shows both options."""
+        with pytest.raises(QueryParseError) as exc:
+            parse_query({"from": "listEntries"})
+
+        error_msg = str(exc.value)
+        # Error should mention both listId and listName as alternatives
+        assert "listId" in error_msg
+        assert "listName" in error_msg
+        # Should show example for both
+        assert "By ID:" in error_msg or "By name:" in error_msg
+
 
 class TestParseQueryFromFile:
     """Tests for parse_query_from_file function."""

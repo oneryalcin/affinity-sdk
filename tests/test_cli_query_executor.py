@@ -17,6 +17,7 @@ from affinity.cli.query.executor import (
     NullProgressCallback,
     QueryExecutor,
     QueryProgressCallback,
+    _normalize_list_entry_fields,
     execute_query,
 )
 from affinity.cli.query.models import (
@@ -171,6 +172,276 @@ class TestExecutionContext:
         assert len(result.data) == 2
         assert result.included == {"companies": [{"id": 10}]}
         assert result.meta["recordCount"] == 2
+
+
+class TestSelectProjection:
+    """Tests for select clause projection in build_result."""
+
+    def test_no_select_returns_all_fields(self) -> None:
+        """When select is None, all fields are returned."""
+        query = Query(from_="persons")
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {"id": 1, "firstName": "John", "lastName": "Doe", "email": "john@example.com"}
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [
+            {"id": 1, "firstName": "John", "lastName": "Doe", "email": "john@example.com"}
+        ]
+
+    def test_simple_field_projection(self) -> None:
+        """Projects simple top-level fields."""
+        query = Query(from_="persons", select=["id", "firstName"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {"id": 1, "firstName": "John", "lastName": "Doe", "email": "john@example.com"}
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [{"id": 1, "firstName": "John"}]
+
+    def test_nested_field_projection(self) -> None:
+        """Projects nested fields like fields.Status."""
+        query = Query(from_="listEntries", select=["id", "fields.Status"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {"id": 1, "entityId": 100, "fields": {"Status": "Active", "Priority": "High"}}
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [{"id": 1, "fields": {"Status": "Active"}}]
+
+    def test_fields_wildcard_projection(self) -> None:
+        """Projects fields.* wildcard includes all custom fields."""
+        query = Query(from_="listEntries", select=["id", "fields.*"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {
+                "id": 1,
+                "entityId": 100,
+                "entityType": "person",
+                "fields": {"Status": "Active", "Priority": "High"},
+            }
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [{"id": 1, "fields": {"Status": "Active", "Priority": "High"}}]
+
+    def test_mixed_projection(self) -> None:
+        """Projects mix of simple and nested fields."""
+        query = Query(from_="listEntries", select=["id", "entityId", "fields.Status"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {
+                "id": 1,
+                "entityId": 100,
+                "entityType": "person",
+                "listId": 5,
+                "fields": {"Status": "New", "Owner": "Jane"},
+            }
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [{"id": 1, "entityId": 100, "fields": {"Status": "New"}}]
+
+    def test_missing_field_not_included(self) -> None:
+        """Fields that don't exist in record are not included."""
+        query = Query(from_="persons", select=["id", "nonexistent"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [{"id": 1, "firstName": "John"}]
+
+        result = ctx.build_result()
+
+        # Only id is included since nonexistent doesn't exist
+        assert result.data == [{"id": 1}]
+
+    def test_multiple_records_projection(self) -> None:
+        """Projects all records in result."""
+        query = Query(from_="persons", select=["id", "email"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {"id": 1, "firstName": "John", "email": "john@example.com"},
+            {"id": 2, "firstName": "Jane", "email": "jane@example.com"},
+            {"id": 3, "firstName": "Bob", "email": "bob@example.com"},
+        ]
+
+        result = ctx.build_result()
+
+        assert result.data == [
+            {"id": 1, "email": "john@example.com"},
+            {"id": 2, "email": "jane@example.com"},
+            {"id": 3, "email": "bob@example.com"},
+        ]
+
+
+class TestNormalizeListEntryFields:
+    """Tests for _normalize_list_entry_fields function.
+
+    The function normalizes FieldValues format (from model_dump) to simple dict
+    keyed by field name. Field data is located at entity.fields.data (not at
+    top-level fields).
+
+    Input format::
+
+        {"entity": {"fields": {"data": {"field-123": {"name": "Status", ...}}}}}
+
+    Output format: {"fields": {"Status": "Active"}}
+    """
+
+    def test_normalizes_dropdown_field(self) -> None:
+        """Normalizes dropdown field with text value."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-123": {
+                            "id": "field-123",
+                            "name": "Status",
+                            "value": {"data": {"text": "Active", "id": 123}},
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Status": "Active"}
+
+    def test_normalizes_simple_field(self) -> None:
+        """Normalizes simple field with direct data value."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-456": {"id": "field-456", "name": "Amount", "value": {"data": 50000}}
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Amount": 50000}
+
+    def test_normalizes_multiple_fields(self) -> None:
+        """Normalizes multiple fields from entity.fields.data."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Status",
+                            "value": {"data": {"text": "New"}},
+                        },
+                        "field-2": {
+                            "id": "field-2",
+                            "name": "Priority",
+                            "value": {"data": {"text": "High"}},
+                        },
+                        "field-3": {"id": "field-3", "name": "Amount", "value": {"data": 10000}},
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Status": "New", "Priority": "High", "Amount": 10000}
+
+    def test_handles_null_value(self) -> None:
+        """Handles field with null value."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {"field-123": {"id": "field-123", "name": "Status", "value": None}},
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Status": None}
+
+    def test_handles_multi_select(self) -> None:
+        """Handles multi-select field with array of values."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-789": {
+                            "id": "field-789",
+                            "name": "Tags",
+                            "value": {
+                                "data": [
+                                    {"text": "VIP", "id": 1},
+                                    {"text": "Priority", "id": 2},
+                                ]
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Tags": ["VIP", "Priority"]}
+
+    def test_returns_unchanged_if_no_entity(self) -> None:
+        """Returns record unchanged if no entity container."""
+        record = {"id": 1, "firstName": "John"}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result == {"id": 1, "firstName": "John"}
+
+    def test_returns_unchanged_if_entity_has_no_fields(self) -> None:
+        """Returns record unchanged if entity has no fields."""
+        record = {"id": 1, "entity": {"id": 100, "name": "Test"}}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result == {"id": 1, "entity": {"id": 100, "name": "Test"}}
+
+    def test_returns_unchanged_if_fields_not_requested(self) -> None:
+        """Returns record unchanged if entity.fields has no data."""
+        record = {"id": 1, "entity": {"id": 100, "fields": {"requested": False}}}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result == {"id": 1, "entity": {"id": 100, "fields": {"requested": False}}}
+
+    def test_returns_unchanged_if_fields_data_empty(self) -> None:
+        """Returns record unchanged if entity.fields.data is empty."""
+        record = {"id": 1, "entity": {"id": 100, "fields": {"requested": True, "data": {}}}}
+
+        result = _normalize_list_entry_fields(record)
+
+        # fields structure preserved since no normalization happened
+        assert result.get("fields") is None  # No normalization occurred
 
 
 # =============================================================================
@@ -885,3 +1156,303 @@ class TestFieldNameResolution:
         # Cache should exist
         assert hasattr(executor, "_field_name_cache")
         assert len(executor._field_name_cache) == 3  # All 3 fields cached
+
+
+# =============================================================================
+# Tests for Field Reference Collection and Field ID Resolution
+# =============================================================================
+
+
+class TestCollectFieldRefs:
+    """Tests for _collect_field_refs_from_query method."""
+
+    @pytest.fixture
+    def executor(self, mock_client: AsyncMock) -> QueryExecutor:
+        """Create executor for testing."""
+        return QueryExecutor(mock_client, max_records=100)
+
+    def test_collects_from_select(self, executor: QueryExecutor) -> None:
+        """Collects field names from select clause."""
+        query = Query(
+            from_="listEntries",
+            select=["id", "fields.Status", "fields.Owner", "entityName"],
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Status", "Owner"}
+
+    def test_collects_from_groupby(self, executor: QueryExecutor) -> None:
+        """Collects field names from groupBy clause."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.Status",
+            aggregate={"count": AggregateFunc(count=True)},
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Status"}
+
+    def test_collects_from_aggregate(self, executor: QueryExecutor) -> None:
+        """Collects field names from aggregate functions."""
+        query = Query(
+            from_="listEntries",
+            aggregate={
+                "total": AggregateFunc(sum="fields.Deal Value"),
+                "avg_amount": AggregateFunc(avg="fields.Amount"),
+            },
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Deal Value", "Amount"}
+
+    def test_collects_from_where(self, executor: QueryExecutor) -> None:
+        """Collects field names from where clause."""
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(path="fields.Status", op="eq", value="Active"),
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Status"}
+
+    def test_collects_from_compound_where(self, executor: QueryExecutor) -> None:
+        """Collects field names from compound where clause."""
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(
+                and_=[
+                    WhereClause(path="listId", op="eq", value=123),
+                    WhereClause(path="fields.Status", op="eq", value="Active"),
+                    WhereClause(path="fields.Priority", op="in", value=["High", "Medium"]),
+                ]
+            ),
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Status", "Priority"}
+
+    def test_returns_wildcard_for_fields_star_in_select(self, executor: QueryExecutor) -> None:
+        """Returns wildcard when fields.* is in select."""
+        query = Query(from_="listEntries", select=["id", "fields.*"])
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"*"}
+
+    def test_returns_wildcard_for_fields_star_in_groupby(self, executor: QueryExecutor) -> None:
+        """Returns wildcard when fields.* is in groupBy."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.*",
+            aggregate={"count": AggregateFunc(count=True)},
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"*"}
+
+    def test_returns_empty_for_no_field_refs(self, executor: QueryExecutor) -> None:
+        """Returns empty set when no fields.* references."""
+        query = Query(
+            from_="listEntries",
+            select=["id", "entityName", "entityType"],
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == set()
+
+    def test_collects_from_all_clauses(self, executor: QueryExecutor) -> None:
+        """Collects from select, groupBy, aggregate, and where."""
+        query = Query(
+            from_="listEntries",
+            select=["fields.A", "fields.B"],
+            group_by="fields.C",
+            aggregate={"total": AggregateFunc(sum="fields.D")},
+            where=WhereClause(path="fields.E", op="eq", value="X"),
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"A", "B", "C", "D", "E"}
+
+    def test_collects_from_percentile_aggregate(self, executor: QueryExecutor) -> None:
+        """Collects field names from percentile aggregate."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"p90": AggregateFunc(percentile={"field": "fields.Amount", "p": 90})},
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Amount"}
+
+
+class TestResolveFieldIdsForListEntries:
+    """Tests for _resolve_field_ids_for_list_entries method."""
+
+    @pytest.fixture
+    def mock_fields(self) -> list[MagicMock]:
+        """Create mock field objects."""
+        fields = []
+        for i, name in enumerate(["Status", "Priority", "Amount"]):
+            field = MagicMock()
+            field.id = f"field-{100 + i}"
+            field.name = name
+            fields.append(field)
+        return fields
+
+    @pytest.fixture
+    def executor(self, mock_client: AsyncMock, mock_fields: list[MagicMock]) -> QueryExecutor:
+        """Create executor with mocked get_fields."""
+        mock_client.lists.get_fields = AsyncMock(return_value=mock_fields)
+        return QueryExecutor(mock_client, max_records=100)
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_resolves_field_names_to_ids(
+        self, executor: QueryExecutor, mock_client: AsyncMock
+    ) -> None:
+        """Resolves field names to field IDs."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.Status",
+            aggregate={"count": AggregateFunc(count=True)},
+        )
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert field_ids == ["field-100"]
+        mock_client.lists.get_fields.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_resolves_multiple_fields(self, executor: QueryExecutor) -> None:
+        """Resolves multiple field names."""
+        query = Query(
+            from_="listEntries",
+            select=["fields.Status", "fields.Priority"],
+        )
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert sorted(field_ids) == ["field-100", "field-101"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_returns_all_fields_for_wildcard(self, executor: QueryExecutor) -> None:
+        """Returns all field IDs for fields.* wildcard."""
+        query = Query(from_="listEntries", select=["fields.*"])
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert sorted(field_ids) == ["field-100", "field-101", "field-102"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_returns_none_for_no_field_refs(self, executor: QueryExecutor) -> None:
+        """Returns None when no field references in query."""
+        query = Query(from_="listEntries", select=["id", "entityName"])
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert field_ids is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_skips_unknown_field_names(self, executor: QueryExecutor) -> None:
+        """Skips field names not found in list metadata."""
+        query = Query(
+            from_="listEntries",
+            select=["fields.Status", "fields.UnknownField"],
+        )
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        # Should only include Status, not UnknownField
+        assert field_ids == ["field-100"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_case_insensitive_field_lookup(self, executor: QueryExecutor) -> None:
+        """Field names are resolved case-insensitively."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.status",  # lowercase
+        )
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert field_ids == ["field-100"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_caches_field_metadata(
+        self, executor: QueryExecutor, mock_client: AsyncMock
+    ) -> None:
+        """Field metadata is cached per list ID."""
+        query = Query(from_="listEntries", group_by="fields.Status")
+        ctx = ExecutionContext(query=query)
+
+        # First call
+        await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+        # Second call for same list
+        await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        # Should only fetch fields once
+        assert mock_client.lists.get_fields.call_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-011")
+    async def test_handles_get_fields_error(self, mock_client: AsyncMock) -> None:
+        """Returns None if get_fields fails."""
+        mock_client.lists.get_fields = AsyncMock(side_effect=Exception("API Error"))
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(from_="listEntries", group_by="fields.Status")
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        assert field_ids is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-013")
+    async def test_warns_on_missing_field(self, executor: QueryExecutor) -> None:
+        """Adds warning when referenced field doesn't exist on list."""
+        query = Query(from_="listEntries", group_by="fields.NonExistentField")
+        ctx = ExecutionContext(query=query)
+
+        await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        # Should have warning about missing field
+        assert len(ctx.warnings) == 1
+        assert "NonExistentField" in ctx.warnings[0]
+        assert "Available fields:" in ctx.warnings[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXECUTOR-013")
+    async def test_warns_on_multiple_missing_fields(self, mock_client: AsyncMock) -> None:
+        """Adds warning listing all missing fields."""
+        mock_client.lists.get_fields = AsyncMock(
+            return_value=[
+                type("Field", (), {"id": "field-100", "name": "Status"})(),
+            ]
+        )
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(
+            from_="listEntries",
+            select=["fields.Missing1", "fields.Missing2", "fields.Status"],
+        )
+        ctx = ExecutionContext(query=query)
+
+        field_ids = await executor._resolve_field_ids_for_list_entries(ctx, 12345)
+
+        # Should return the one valid field
+        assert field_ids == ["field-100"]
+        # Should warn about both missing fields
+        assert len(ctx.warnings) == 1
+        assert "Missing1" in ctx.warnings[0]
+        assert "Missing2" in ctx.warnings[0]
+
+
+# =============================================================================
+# Integration Tests for Field Value Fetching
+# =============================================================================
+# NOTE: Full integration tests using httpx.MockTransport with AsyncAffinity client
+# are deferred due to complexity with pytest-asyncio + MockTransport async handler
+# setup. The unit tests above verify all field extraction and resolution logic.
+# Integration testing should be done via manual testing or a dedicated integration
+# test suite that runs against a test environment.

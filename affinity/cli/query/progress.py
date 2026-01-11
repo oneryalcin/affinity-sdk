@@ -46,7 +46,6 @@ class RichQueryProgress(QueryProgressCallback):  # pragma: no cover
         """
         from rich.console import Console
         from rich.progress import (
-            BarColumn,
             Progress,
             SpinnerColumn,
             TextColumn,
@@ -57,11 +56,11 @@ class RichQueryProgress(QueryProgressCallback):  # pragma: no cover
         self.total_steps = total_steps
         self.completed_steps = 0
 
+        # Simple progress: spinner + description + elapsed time
+        # No percentage/bar since total records are unknown for most operations
         self.progress = Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
             console=self.console,
             transient=False,
@@ -107,7 +106,12 @@ class RichQueryProgress(QueryProgressCallback):  # pragma: no cover
             if total is not None:
                 self.progress.update(task_id, completed=current, total=total)
             else:
-                self.progress.update(task_id, completed=current)
+                # No total known - show record count in description instead
+                self.progress.update(
+                    task_id,
+                    completed=current,
+                    description=f"[cyan]{step.description} ({current:,} records)",
+                )
 
     def on_step_complete(self, step: PlanStep, records: int) -> None:
         """Called when a step completes."""

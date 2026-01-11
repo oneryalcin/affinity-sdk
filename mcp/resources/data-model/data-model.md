@@ -102,6 +102,17 @@ list export Dealflow --field "Team Member" --field "Owner" --filter 'Status="New
 
 **Tip:** `--saved-view` can be combined with `--field` to get server-side filtering (from the saved view) with explicit field selection.
 
+### Query tool field selection
+When using the `query` tool with listEntries, custom field values are **auto-fetched** when referenced in `groupBy`, `aggregate`, or `where` clauses:
+```json
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}
+```
+
+To select all custom fields explicitly, use `fields.*` wildcard:
+```json
+{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["id", "fields.*"]}
+```
+
 ### Get interactions for a company or person
 ```bash
 interaction ls --type all --company-id 12345                                   # All interactions ever with company

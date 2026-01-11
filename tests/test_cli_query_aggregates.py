@@ -208,7 +208,7 @@ class TestGroupAndAggregate:
         assert group_b["count"] == 2
 
     def test_group_by_with_null_key(self) -> None:
-        """Group by handles null keys."""
+        """Group by handles null keys with '(no value)' display and sorts to end."""
         records = [
             {"category": "A", "amount": 100},
             {"category": None, "amount": 200},
@@ -218,7 +218,9 @@ class TestGroupAndAggregate:
         results = group_and_aggregate(records, "category", aggs)
 
         assert len(results) == 2
-        null_group = next(r for r in results if r["category"] is None)
+        # Null group should display as "(no value)" and appear at end
+        null_group = results[-1]
+        assert null_group["category"] == "(no value)"
         assert null_group["count"] == 1
 
 

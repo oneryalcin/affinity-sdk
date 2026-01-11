@@ -149,7 +149,7 @@ class TestQueryPlanner:
         assert agg_steps[0].is_client_side
 
     def test_plan_rejects_unknown_include(self, planner: QueryPlanner) -> None:
-        """Plan rejects unknown include relationship."""
+        """Plan rejects unknown include relationship with helpful error."""
         result = parse_query(
             {
                 "from": "persons",
@@ -159,7 +159,12 @@ class TestQueryPlanner:
 
         with pytest.raises(QueryValidationError) as exc:
             planner.plan(result.query)
-        assert "unknownRelation" in str(exc.value)
+        error_msg = str(exc.value)
+        # Error should mention the unknown relationship
+        assert "unknownRelation" in error_msg
+        # Error should suggest available relationships
+        assert "Available:" in error_msg
+        assert "companies" in error_msg  # persons can include companies
 
     def test_plan_estimates_memory(self, planner: QueryPlanner) -> None:
         """Plan estimates memory usage."""

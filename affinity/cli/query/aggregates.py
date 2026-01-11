@@ -261,7 +261,7 @@ def group_and_aggregate(
         aggregates: Dict of aggregate name -> AggregateFunc
 
     Returns:
-        List of result dicts, one per group
+        List of result dicts, one per group, sorted with null values at end
     """
     groups: dict[Any, list[dict[str, Any]]] = defaultdict(list)
 
@@ -270,10 +270,24 @@ def group_and_aggregate(
         groups[key].append(record)
 
     results: list[dict[str, Any]] = []
+    null_result: dict[str, Any] | None = None
+
     for key, group_records in groups.items():
         agg_values = compute_aggregates(group_records, aggregates)
-        result = {group_by: key, **agg_values}
-        results.append(result)
+
+        # Use "(no value)" for null/None keys for clarity
+        display_key = "(no value)" if key is None else key
+        result = {group_by: display_key, **agg_values}
+
+        # Collect null group separately to append at end
+        if key is None:
+            null_result = result
+        else:
+            results.append(result)
+
+    # Append null group at end if present
+    if null_result is not None:
+        results.append(null_result)
 
     return results
 
