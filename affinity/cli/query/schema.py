@@ -146,14 +146,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="global_service",
                 method_or_service="interactions",
                 filter_field="person_id",
-                requires_n_plus_1=False,
+                requires_n_plus_1=True,  # API requires one entity ID per call
             ),
             "notes": RelationshipDef(
                 target_entity="notes",
                 fetch_strategy="global_service",
                 method_or_service="notes",
                 filter_field="person_id",
-                requires_n_plus_1=False,
+                requires_n_plus_1=True,  # API requires one entity ID per call
             ),
             "listEntries": RelationshipDef(
                 target_entity="listEntries",
@@ -197,14 +197,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="global_service",
                 method_or_service="interactions",
                 filter_field="company_id",
-                requires_n_plus_1=False,
+                requires_n_plus_1=True,  # API requires one entity ID per call
             ),
             "notes": RelationshipDef(
                 target_entity="notes",
                 fetch_strategy="global_service",
                 method_or_service="notes",
                 filter_field="company_id",
-                requires_n_plus_1=False,
+                requires_n_plus_1=True,  # API requires one entity ID per call
             ),
             "listEntries": RelationshipDef(
                 target_entity="listEntries",
@@ -247,7 +247,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="global_service",
                 method_or_service="interactions",
                 filter_field="opportunity_id",
-                requires_n_plus_1=False,
+                requires_n_plus_1=True,  # API requires one entity ID per call
             ),
         },
         api_version="v1",
