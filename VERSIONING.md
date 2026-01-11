@@ -60,6 +60,19 @@ The MCP server shells out to CLI commands. These changes require MCP updates:
 
 Releases are triggered automatically when version files are updated on `main`.
 
+### How Release Detection Works
+
+The release detection workflow compares the current version in version files against existing release tags:
+
+1. **After CI passes** on `main`, the release detection workflow runs
+2. It reads the SDK version from `pyproject.toml` and MCP version from `mcp/VERSION`
+3. It checks if release tags exist:
+   - SDK: checks for `v{version}` tag (e.g., `v0.9.2`)
+   - MCP: checks for `mcp-v{version}` tag (e.g., `mcp-v1.7.6`)
+4. If no tag exists for the current version, it triggers the release workflow
+
+This approach is robust regardless of how many commits are pushed together, squash merges, rebases, or any other git workflow.
+
 ### SDK Release
 
 1. Update version in `pyproject.toml`
