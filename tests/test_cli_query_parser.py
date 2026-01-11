@@ -389,3 +389,481 @@ class TestParseQueryFromFile:
         with pytest.raises(QueryParseError) as exc:
             parse_query_from_file(str(tmp_path / "nonexistent.json"))
         assert "Failed to read" in str(exc.value)
+
+
+# =============================================================================
+# Tests for OR Branch Validation
+# =============================================================================
+
+
+class TestOrBranchValidation:
+    """Tests for validation of OR branches in REQUIRES_PARENT entities."""
+
+    def test_or_branches_each_need_required_filter(self) -> None:
+        """Each OR branch must have the required filter."""
+        with pytest.raises(QueryParseError, match="OR branches"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {
+                        "or": [
+                            {"path": "listId", "op": "eq", "value": 123},
+                            {"path": "status", "op": "eq", "value": "active"},  # Missing listId
+                        ]
+                    },
+                }
+            )
+
+    def test_or_branches_all_have_required_filter_passes(self) -> None:
+        """OR branches all having required filter passes validation."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "or": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "listId", "op": "eq", "value": 456},
+                    ]
+                },
+            }
+        )
+        assert result.query.where is not None
+        assert result.query.where.or_ is not None
+
+    def test_or_inside_and_with_required_filter_accepted(self) -> None:
+        """OR inside AND that has required filter is valid.
+
+        This is the key fix - when AND has listId, nested OR branches
+        don't need their own listId filters.
+        """
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 12345},
+                        {
+                            "or": [
+                                {"path": "fields.Status", "op": "eq", "value": "Passed"},
+                                {"path": "fields.Status", "op": "eq", "value": "Lost"},
+                            ]
+                        },
+                    ]
+                },
+            }
+        )
+        assert result.query.where is not None
+        assert result.query.where.and_ is not None
+
+    def test_or_inside_and_without_required_filter_rejected(self) -> None:
+        """OR inside AND without required filter is rejected.
+
+        When the AND clause doesn't have the required filter (listId/listName),
+        the query fails at the 'required filter missing' check.
+        """
+        with pytest.raises(QueryParseError, match=r"requires.*listId.*listName"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {
+                        "and": [
+                            {
+                                "path": "status",
+                                "op": "eq",
+                                "value": "active",
+                            },  # Not a required filter
+                            {
+                                "or": [
+                                    {"path": "type", "op": "eq", "value": "A"},
+                                    {"path": "type", "op": "eq", "value": "B"},
+                                ]
+                            },
+                        ]
+                    },
+                }
+            )
+
+    def test_nested_or_each_branch_has_required(self) -> None:
+        """Nested OR with each branch having required filter is valid."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "or": [
+                        {
+                            "and": [
+                                {"path": "listId", "op": "eq", "value": 111},
+                                {"path": "status", "op": "eq", "value": "active"},
+                            ]
+                        },
+                        {
+                            "and": [
+                                {"path": "listId", "op": "eq", "value": 222},
+                                {"path": "status", "op": "eq", "value": "inactive"},
+                            ]
+                        },
+                    ]
+                },
+            }
+        )
+        assert result.query.where is not None
+
+    def test_listname_accepted_as_required_filter(self) -> None:
+        """listName is accepted as alternative to listId."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listName", "op": "eq", "value": "My Deals"},
+            }
+        )
+        assert result.query.where is not None
+
+    def test_or_with_mixed_listid_listname(self) -> None:
+        """OR branches can mix listId and listName."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "or": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "listName", "op": "eq", "value": "My List"},
+                    ]
+                },
+            }
+        )
+        assert result.query.where is not None
+
+
+# =============================================================================
+# Tests for Negated Required Filter Validation
+# =============================================================================
+
+
+class TestNegatedFilterValidation:
+    """Tests for validation of negated required filters."""
+
+    def test_not_listid_rejected(self) -> None:
+        """NOT(listId=X) is rejected - would match all other lists."""
+        with pytest.raises(QueryParseError, match=r"negate.*required"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {
+                        "and": [
+                            {"path": "listId", "op": "eq", "value": 123},
+                            {"not": {"path": "listId", "op": "eq", "value": 456}},
+                        ]
+                    },
+                }
+            )
+
+    def test_not_wrapping_listid_inside_and_rejected(self) -> None:
+        """NOT containing listId is rejected even when nested."""
+        with pytest.raises(QueryParseError, match=r"negate.*required"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {
+                        "and": [
+                            {"path": "listId", "op": "eq", "value": 123},
+                            {
+                                "not": {
+                                    "and": [
+                                        {"path": "listId", "op": "eq", "value": 456},
+                                        {"path": "status", "op": "eq", "value": "x"},
+                                    ]
+                                }
+                            },
+                        ]
+                    },
+                }
+            )
+
+    def test_not_on_non_required_field_accepted(self) -> None:
+        """NOT on non-required fields is allowed."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"not": {"path": "status", "op": "eq", "value": "deleted"}},
+                    ]
+                },
+            }
+        )
+        assert result.query.where is not None
+
+
+# =============================================================================
+# Tests for Required Filter Operator Validation
+# =============================================================================
+
+
+class TestRequiredFilterOperators:
+    """Tests for operator validation on required filters."""
+
+    def test_eq_operator_allowed(self) -> None:
+        """eq operator is allowed for listId."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "eq", "value": 123},
+            }
+        )
+        assert result.query.where is not None
+
+    def test_in_operator_allowed(self) -> None:
+        """in operator is allowed for listId (multi-list queries)."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "in", "value": [123, 456]},
+            }
+        )
+        assert result.query.where is not None
+
+    def test_invalid_operator_for_required_filter_rejected(self) -> None:
+        """Operators other than eq/in are rejected for required filters."""
+        with pytest.raises(QueryParseError, match="Invalid operator"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {"path": "listId", "op": "gt", "value": 100},
+                }
+            )
+
+    def test_contains_operator_for_listname_rejected(self) -> None:
+        """contains operator for listName is rejected."""
+        with pytest.raises(QueryParseError, match="Invalid operator"):
+            parse_query(
+                {
+                    "from": "listEntries",
+                    "where": {"path": "listName", "op": "contains", "value": "Deal"},
+                }
+            )
+
+
+# =============================================================================
+# Tests for Extract Filter Fields
+# =============================================================================
+
+
+class TestExtractFilterFields:
+    """Tests for extract_filter_fields helper."""
+
+    def test_extracts_direct_path(self) -> None:
+        """Extracts path from direct condition."""
+        from affinity.cli.query.models import WhereClause
+        from affinity.cli.query.parser import extract_filter_fields
+
+        where = WhereClause(path="listId", op="eq", value=123)
+        fields = extract_filter_fields(where)
+        assert fields == {"listId"}
+
+    def test_extracts_from_and(self) -> None:
+        """Extracts paths from AND conditions."""
+        from affinity.cli.query.models import WhereClause
+        from affinity.cli.query.parser import extract_filter_fields
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="status", op="eq", value="active"),
+            ]
+        )
+        fields = extract_filter_fields(where)
+        assert fields == {"listId", "status"}
+
+    def test_extracts_from_or(self) -> None:
+        """Extracts paths from OR conditions."""
+        from affinity.cli.query.models import WhereClause
+        from affinity.cli.query.parser import extract_filter_fields
+
+        where = WhereClause(
+            or_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="listId", op="eq", value=456),
+            ]
+        )
+        fields = extract_filter_fields(where)
+        assert fields == {"listId"}
+
+    def test_does_not_extract_from_not(self) -> None:
+        """Does not extract paths from inside NOT clause."""
+        from affinity.cli.query.models import WhereClause
+        from affinity.cli.query.parser import extract_filter_fields
+
+        where = WhereClause(not_=WhereClause(path="listId", op="eq", value=123))
+        fields = extract_filter_fields(where)
+        # listId is inside NOT, so it's not extracted (negated filters don't satisfy requirements)
+        assert fields == set()
+
+    def test_extracts_none_returns_empty(self) -> None:
+        """Returns empty set for None where clause."""
+        from affinity.cli.query.parser import extract_filter_fields
+
+        fields = extract_filter_fields(None)
+        assert fields == set()
+
+
+# =============================================================================
+# Tests for Additional Parser Edge Cases
+# =============================================================================
+
+
+class TestParserEdgeCases:
+    """Additional edge case tests for parser."""
+
+    def test_condition_without_path_or_expr_rejected(self) -> None:
+        """Condition must have path or expr."""
+        with pytest.raises(QueryValidationError, match=r"path.*expr"):
+            parse_query(
+                {
+                    "from": "persons",
+                    "where": {"op": "eq", "value": "test"},  # Missing path/expr
+                }
+            )
+
+    def test_value_required_for_comparison_operators(self) -> None:
+        """Comparison operators require a value."""
+        with pytest.raises(QueryValidationError, match=r"requires.*value"):
+            parse_query(
+                {
+                    "from": "persons",
+                    "where": {"path": "name", "op": "eq"},  # Missing value
+                }
+            )
+
+    def test_is_null_does_not_require_value(self) -> None:
+        """is_null operator doesn't require value."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "is_null"},
+            }
+        )
+        assert result.query.where is not None
+
+    def test_is_not_null_does_not_require_value(self) -> None:
+        """is_not_null operator doesn't require value."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "is_not_null"},
+            }
+        )
+        assert result.query.where is not None
+
+    def test_invalid_select_path_rejected(self) -> None:
+        """Empty or invalid select paths are rejected."""
+        with pytest.raises(QueryValidationError, match="select"):
+            parse_query(
+                {
+                    "from": "persons",
+                    "select": ["name", "", "email"],  # Empty string
+                }
+            )
+
+    def test_invalid_include_path_rejected(self) -> None:
+        """Empty or invalid include paths are rejected."""
+        with pytest.raises(QueryValidationError, match="include"):
+            parse_query(
+                {
+                    "from": "persons",
+                    "include": ["companies", ""],  # Empty string
+                }
+            )
+
+    def test_negative_limit_rejected(self) -> None:
+        """Negative limit is rejected."""
+        with pytest.raises(QueryValidationError, match="limit"):
+            parse_query({"from": "persons", "limit": -1})
+
+    def test_exists_with_unknown_entity_rejected(self) -> None:
+        """EXISTS with unknown entity type is rejected."""
+        with pytest.raises(QueryValidationError, match=r"Unknown entity.*EXISTS"):
+            parse_query(
+                {
+                    "from": "persons",
+                    "where": {
+                        "exists": {
+                            "from": "unknownEntity",
+                            "via": "personId",
+                        }
+                    },
+                }
+            )
+
+    def test_query_not_dict_rejected(self) -> None:
+        """Query must be a dict/object."""
+        with pytest.raises(QueryParseError, match="must be a JSON object"):
+            parse_query([1, 2, 3])  # type: ignore[arg-type]
+
+    def test_query_missing_from_rejected(self) -> None:
+        """Query must have 'from' field."""
+        with pytest.raises(QueryParseError, match="must have a 'from' field"):
+            parse_query({"limit": 10})
+
+    def test_pydantic_single_validation_error(self) -> None:
+        """Single Pydantic validation error is formatted properly."""
+        with pytest.raises(QueryParseError):
+            # Invalid orderBy format triggers a Pydantic validation error
+            parse_query(
+                {
+                    "from": "persons",
+                    "orderBy": "invalid",  # Should be a list
+                }
+            )
+
+    def test_pydantic_multiple_validation_errors(self) -> None:
+        """Multiple Pydantic validation errors are listed."""
+        with pytest.raises(QueryParseError, match="Multiple validation errors"):
+            # Multiple invalid fields trigger multiple errors
+            parse_query(
+                {
+                    "from": "persons",
+                    "orderBy": "invalid",
+                    "aggregate": "invalid",
+                }
+            )
+
+
+# =============================================================================
+# Tests for ParseResult
+# =============================================================================
+
+
+class TestParseResult:
+    """Tests for ParseResult class."""
+
+    def test_version_property_with_version(self) -> None:
+        """ParseResult.version returns query version when present."""
+        result = parse_query({"$version": "1.0", "from": "persons"})
+        assert result.version == "1.0"
+
+    def test_version_property_without_version(self) -> None:
+        """ParseResult.version returns default when query version is None."""
+        result = parse_query({"from": "persons"})
+        # Query was parsed without version, so query.version may be set by parser
+        # but the property should return CURRENT_VERSION as fallback
+        assert result.version == "1.0"
+
+
+# =============================================================================
+# Tests for Relationship-Only Entity Validation
+# =============================================================================
+
+
+class TestRelationshipOnlyEntities:
+    """Tests for entities that can only be accessed via relationships."""
+
+    def test_notes_cannot_be_queried_directly(self) -> None:
+        """Notes entity cannot be queried directly."""
+        with pytest.raises(QueryParseError, match="cannot be queried directly"):
+            parse_query({"from": "notes"})
+
+    def test_interactions_cannot_be_queried_directly(self) -> None:
+        """Interactions entity cannot be queried directly."""
+        with pytest.raises(QueryParseError, match="cannot be queried directly"):
+            parse_query({"from": "interactions"})

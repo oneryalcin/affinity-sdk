@@ -58,7 +58,7 @@ def create_mock_page_iterator(records: list[dict]):
                 page = MagicMock()
                 page.data = [create_mock_record(r) for r in records]
                 if on_progress:
-                    from affinity.models.pagination import PaginationProgress  # noqa: PLC0415
+                    from affinity.models.pagination import PaginationProgress
 
                     on_progress(
                         PaginationProgress(
@@ -171,7 +171,10 @@ class TestExecutionContext:
 
         assert len(result.data) == 2
         assert result.included == {"companies": [{"id": 10}]}
-        assert result.meta["recordCount"] == 2
+        # Summary contains row count and included counts
+        assert result.summary is not None
+        assert result.summary.total_rows == 2
+        assert result.summary.included_counts == {"companies": 1}
 
 
 class TestSelectProjection:
@@ -1446,6 +1449,1264 @@ class TestResolveFieldIdsForListEntries:
         assert len(ctx.warnings) == 1
         assert "Missing1" in ctx.warnings[0]
         assert "Missing2" in ctx.warnings[0]
+
+
+# =============================================================================
+# Edge Case Tests for Normalize List Entry Fields
+# =============================================================================
+
+
+class TestNormalizeListEntryFieldsEdgeCases:
+    """Additional edge case tests for _normalize_list_entry_fields."""
+
+    def test_entity_not_dict(self) -> None:
+        """Returns unchanged when entity is not a dict."""
+        record = {"id": 1, "entity": "not a dict"}
+        result = _normalize_list_entry_fields(record)
+        assert result == {"id": 1, "entity": "not a dict"}
+
+    def test_fields_container_not_dict(self) -> None:
+        """Returns unchanged when entity.fields is not a dict."""
+        record = {"id": 1, "entity": {"id": 100, "fields": "not a dict"}}
+        result = _normalize_list_entry_fields(record)
+        assert result == {"id": 1, "entity": {"id": 100, "fields": "not a dict"}}
+
+    def test_fields_data_not_dict(self) -> None:
+        """Returns unchanged when entity.fields.data is not a dict."""
+        record = {"id": 1, "entity": {"id": 100, "fields": {"data": "not a dict"}}}
+        result = _normalize_list_entry_fields(record)
+        assert result == {"id": 1, "entity": {"id": 100, "fields": {"data": "not a dict"}}}
+
+    def test_field_obj_not_dict(self) -> None:
+        """Skips field objects that are not dicts."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": "not a dict",  # Should be skipped
+                        "field-2": {"id": "field-2", "name": "Status", "value": {"data": "Active"}},
+                    },
+                },
+            },
+        }
+        result = _normalize_list_entry_fields(record)
+        assert result["fields"] == {"Status": "Active"}
+
+    def test_field_without_name(self) -> None:
+        """Skips fields that don't have a name."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {"id": "field-1", "value": {"data": "NoName"}},  # Missing name
+                        "field-2": {"id": "field-2", "name": "Status", "value": {"data": "Active"}},
+                    },
+                },
+            },
+        }
+        result = _normalize_list_entry_fields(record)
+        assert result["fields"] == {"Status": "Active"}
+
+    def test_value_wrapper_not_dict(self) -> None:
+        """Handles value wrapper that is not a dict (direct value)."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "DirectValue",
+                            "value": "just a string",
+                        },
+                    },
+                },
+            },
+        }
+        result = _normalize_list_entry_fields(record)
+        assert result["fields"] == {"DirectValue": "just a string"}
+
+    def test_multi_select_with_non_dict_items(self) -> None:
+        """Handles multi-select with mixed dict and non-dict items."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Tags",
+                            "value": {"data": ["simple_tag", {"text": "complex_tag"}]},
+                        },
+                    },
+                },
+            },
+        }
+        result = _normalize_list_entry_fields(record)
+        assert result["fields"] == {"Tags": ["simple_tag", "complex_tag"]}
+
+
+# =============================================================================
+# Edge Case Tests for Sort
+# =============================================================================
+
+
+class TestSortEdgeCases:
+    """Tests for _execute_sort edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_sort_with_null_values_asc(self, mock_client: AsyncMock) -> None:
+        """Sort with null values - nulls go to end in ascending order."""
+        service = MagicMock()
+        records = [
+            {"id": 1, "name": None},
+            {"id": 2, "name": "Alice"},
+            {"id": 3, "name": "Bob"},
+        ]
+        service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = service
+
+        query = Query(
+            from_="persons",
+            order_by=[OrderByClause(field="name", direction="asc")],
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="sort", description="Sort", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=3,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Nulls should be at end for ascending
+        assert result.data[0]["name"] == "Alice"
+        assert result.data[1]["name"] == "Bob"
+        assert result.data[2]["name"] is None
+
+    @pytest.mark.asyncio
+    async def test_sort_with_null_values_desc(self, mock_client: AsyncMock) -> None:
+        """Sort with null values - nulls go to end in descending order."""
+        service = MagicMock()
+        records = [
+            {"id": 1, "name": None},
+            {"id": 2, "name": "Alice"},
+            {"id": 3, "name": "Bob"},
+        ]
+        service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = service
+
+        query = Query(
+            from_="persons",
+            order_by=[OrderByClause(field="name", direction="desc")],
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="sort", description="Sort", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=3,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # For desc, Bob > Alice, then null at end
+        assert result.data[0]["name"] == "Bob"
+        assert result.data[1]["name"] == "Alice"
+        assert result.data[2]["name"] is None
+
+    @pytest.mark.asyncio
+    async def test_sort_mixed_types_fallback(self, mock_client: AsyncMock) -> None:
+        """Sort with mixed types falls back to string comparison."""
+        service = MagicMock()
+        records = [
+            {"id": 1, "value": "text"},
+            {"id": 2, "value": 100},
+            {"id": 3, "value": "another"},
+        ]
+        service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = service
+
+        query = Query(
+            from_="persons",
+            order_by=[OrderByClause(field="value", direction="asc")],
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="sort", description="Sort", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=3,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should not raise - falls back to string comparison
+        assert len(result.data) == 3
+
+    @pytest.mark.asyncio
+    async def test_sort_no_order_by(self, mock_client: AsyncMock, mock_service: AsyncMock) -> None:
+        """Sort step with no order_by is a no-op."""
+        mock_client.persons = mock_service
+
+        query = Query(from_="persons")  # No order_by
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="sort", description="Sort", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should return records unchanged
+        assert len(result.data) == 2
+
+
+# =============================================================================
+# Edge Case Tests for _extract_parent_ids
+# =============================================================================
+
+
+class TestExtractParentIdsEdgeCases:
+    """Additional edge case tests for _extract_parent_ids."""
+
+    @pytest.fixture
+    def executor(self) -> QueryExecutor:
+        """Create QueryExecutor with minimal mock client."""
+        mock_client = MagicMock()
+        return QueryExecutor(mock_client, max_records=100)
+
+    def test_where_not_dict(self, executor: QueryExecutor) -> None:
+        """Returns empty list when where is not a dict."""
+        assert executor._extract_parent_ids("not a dict", "listId") == []
+
+    def test_float_value_ignored(self, executor: QueryExecutor) -> None:
+        """Float values are not converted to int."""
+        where = {"path": "listId", "op": "eq", "value": 123.45}
+        # Float is not int or str, so to_int returns None
+        assert executor._extract_parent_ids(where, "listId") == []
+
+    def test_deeply_nested_and_or(self, executor: QueryExecutor) -> None:
+        """Handles deeply nested AND/OR structures."""
+        where = {
+            "and": [
+                {
+                    "or": [
+                        {"and": [{"path": "listId", "op": "eq", "value": 111}]},
+                        {"path": "listId", "op": "eq", "value": 222},
+                    ]
+                },
+                {"path": "listId", "op": "eq", "value": 333},
+            ]
+        }
+        result = executor._extract_parent_ids(where, "listId")
+        assert sorted(result) == [111, 222, 333]
+
+    def test_not_clause_ignored(self, executor: QueryExecutor) -> None:
+        """NOT clauses are intentionally not traversed."""
+        where = {
+            "and": [
+                {"path": "listId", "op": "eq", "value": 123},
+                {"not": {"path": "listId", "op": "eq", "value": 456}},  # Should be ignored
+            ]
+        }
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == [123]
+
+    def test_string_ids_in_list_converted(self, executor: QueryExecutor) -> None:
+        """String IDs in 'in' operator list are converted."""
+        where = {"path": "listId", "op": "in", "value": ["100", "200", "300"]}
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == [100, 200, 300]
+
+
+# =============================================================================
+# Edge Case Tests for _collect_field_refs_from_where
+# =============================================================================
+
+
+class TestCollectFieldRefsEdgeCases:
+    """Additional edge case tests for field reference collection."""
+
+    @pytest.fixture
+    def executor(self, mock_client: AsyncMock) -> QueryExecutor:
+        """Create executor for testing."""
+        return QueryExecutor(mock_client, max_records=100)
+
+    def test_collects_from_nested_not_condition(self, executor: QueryExecutor) -> None:
+        """Collects field names from nested NOT conditions."""
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(not_=WhereClause(path="fields.Status", op="eq", value="Inactive")),
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Status"}
+
+    def test_collects_from_deeply_nested_where(self, executor: QueryExecutor) -> None:
+        """Collects from deeply nested where clause."""
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(
+                and_=[
+                    WhereClause(
+                        or_=[
+                            WhereClause(path="fields.A", op="eq", value="X"),
+                            WhereClause(not_=WhereClause(path="fields.B", op="eq", value="Y")),
+                        ]
+                    ),
+                    WhereClause(path="fields.C", op="gt", value=100),
+                ]
+            ),
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"A", "B", "C"}
+
+    def test_where_clause_non_string_path(self, executor: QueryExecutor) -> None:
+        """Handles where clause with non-string path gracefully."""
+        # This tests the defensive check in _collect_field_refs_from_where
+        where_dict = {"path": 123, "op": "eq", "value": "X"}  # path is not a string
+        field_names: set[str] = set()
+        executor._collect_field_refs_from_where(where_dict, field_names)
+        assert field_names == set()  # No crash, no fields collected
+
+    def test_collects_from_min_max_first_last(self, executor: QueryExecutor) -> None:
+        """Collects from min, max, first, last aggregate functions."""
+        query = Query(
+            from_="listEntries",
+            aggregate={
+                "min_val": AggregateFunc(min="fields.Min"),
+                "max_val": AggregateFunc(max="fields.Max"),
+                "first_val": AggregateFunc(first="fields.First"),
+                "last_val": AggregateFunc(last="fields.Last"),
+            },
+        )
+        field_names = executor._collect_field_refs_from_query(query)
+        assert field_names == {"Min", "Max", "First", "Last"}
+
+
+# =============================================================================
+# Edge Case Tests for _should_stop
+# =============================================================================
+
+
+class TestShouldStop:
+    """Tests for _should_stop helper method."""
+
+    def test_stops_at_max_records(self) -> None:
+        """Stops when max_records reached."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=10)
+
+        query = Query(from_="persons")
+        ctx = ExecutionContext(query=query, max_records=10)
+        ctx.records = [{"id": i} for i in range(10)]
+
+        assert executor._should_stop(ctx) is True
+
+    def test_stops_at_query_limit(self) -> None:
+        """Stops when query limit reached."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(from_="persons", limit=5)
+        ctx = ExecutionContext(query=query, max_records=100)
+        ctx.records = [{"id": i} for i in range(5)]
+
+        assert executor._should_stop(ctx) is True
+
+    def test_does_not_stop_when_under_limits(self) -> None:
+        """Does not stop when under both limits."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(from_="persons", limit=10)
+        ctx = ExecutionContext(query=query, max_records=100)
+        ctx.records = [{"id": i} for i in range(3)]
+
+        assert executor._should_stop(ctx) is False
+
+    def test_no_limit_checks_only_max_records(self) -> None:
+        """When no query limit, only checks max_records."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=5)
+
+        query = Query(from_="persons")  # No limit
+        ctx = ExecutionContext(query=query, max_records=5)
+        ctx.records = [{"id": i} for i in range(3)]
+
+        assert executor._should_stop(ctx) is False
+
+
+# =============================================================================
+# Edge Case Tests for _resolve_list_names_to_ids
+# =============================================================================
+
+
+class TestResolveListNamesEdgeCases:
+    """Additional edge case tests for _resolve_list_names_to_ids."""
+
+    @pytest.mark.asyncio
+    async def test_non_dict_where_passthrough(self) -> None:
+        """Non-dict where passes through unchanged."""
+        mock_client = MagicMock()
+        mock_client.whoami = AsyncMock(return_value={"id": 1})
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        result = await executor._resolve_list_names_to_ids("not a dict")  # type: ignore[arg-type]
+        assert result == "not a dict"
+
+    @pytest.mark.asyncio
+    async def test_unknown_list_in_multiple_raises(self) -> None:
+        """Unknown list in 'in' operator raises error."""
+        mock_list = MagicMock()
+        mock_list.name = "Known List"
+        mock_list.id = 12345
+
+        async def mock_lists_all():
+            yield mock_list
+
+        mock_client = MagicMock()
+        mock_client.lists.all = mock_lists_all
+        mock_client.whoami = AsyncMock(return_value={"id": 1})
+
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        where = {"path": "listName", "op": "in", "value": ["Known List", "Unknown List"]}
+        with pytest.raises(QueryExecutionError, match="List not found: 'Unknown List'"):
+            await executor._resolve_list_names_to_ids(where)
+
+    @pytest.mark.asyncio
+    async def test_or_conditions_resolved(self) -> None:
+        """OR conditions are recursively resolved."""
+        mock_list = MagicMock()
+        mock_list.name = "Deals"
+        mock_list.id = 111
+
+        async def mock_lists_all():
+            yield mock_list
+
+        mock_client = MagicMock()
+        mock_client.lists.all = mock_lists_all
+        mock_client.whoami = AsyncMock(return_value={"id": 1})
+
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        where = {
+            "or": [
+                {"path": "listName", "op": "eq", "value": "Deals"},
+                {"path": "status", "op": "eq", "value": "active"},
+            ]
+        }
+        result = await executor._resolve_list_names_to_ids(where)
+        assert result["or"][0] == {"path": "listId", "op": "eq", "value": 111}
+        assert result["or"][1] == {"path": "status", "op": "eq", "value": "active"}
+
+
+# =============================================================================
+# Edge Case Tests for Aggregation Step
+# =============================================================================
+
+
+class TestAggregateStepEdgeCases:
+    """Tests for _execute_aggregate edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_aggregate_no_aggregate_clause(
+        self, mock_client: AsyncMock, mock_service: AsyncMock
+    ) -> None:
+        """Aggregate step with no aggregate clause is a no-op."""
+        mock_client.persons = mock_service
+
+        query = Query(from_="persons")  # No aggregate
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="aggregate", description="Aggregate", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Records should be unchanged (no aggregation)
+        assert len(result.data) == 2
+
+
+# =============================================================================
+# Tests for _execute_include (N+1 Relationship Fetching)
+# =============================================================================
+
+
+class TestExecuteInclude:
+    """Tests for _execute_include method."""
+
+    @pytest.mark.asyncio
+    async def test_include_entity_method_strategy(self, mock_client: AsyncMock) -> None:
+        """Test include with entity_method fetch strategy."""
+        # Setup persons service
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        # Setup entity method that returns related IDs
+        persons_service.get_associated_company_ids = AsyncMock(side_effect=[[100, 101], [102]])
+        mock_client.persons = persons_service
+
+        query = Query(from_="persons", include=["companies"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="companies",
+                    description="Include companies",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=3,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=True,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        assert len(result.data) == 2
+        assert "companies" in result.included
+        # 3 total IDs returned (2 from Alice, 1 from Bob)
+        assert len(result.included["companies"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_include_global_service_strategy(self, mock_client: AsyncMock) -> None:
+        """Test include with global_service fetch strategy."""
+        # Setup persons service
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = persons_service
+
+        # Setup notes service (global_service strategy)
+        notes_service = MagicMock()
+        note1 = MagicMock()
+        note1.model_dump = MagicMock(return_value={"id": 10, "content": "Note for Alice"})
+        note2 = MagicMock()
+        note2.model_dump = MagicMock(return_value={"id": 20, "content": "Note for Bob"})
+        notes_service.list = AsyncMock(
+            side_effect=[
+                MagicMock(data=[note1]),
+                MagicMock(data=[note2]),
+            ]
+        )
+        mock_client.notes = notes_service
+
+        query = Query(from_="persons", include=["notes"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="notes",
+                    description="Include notes",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=3,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=True,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        assert len(result.data) == 2
+        assert "notes" in result.included
+        assert len(result.included["notes"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_include_unknown_relationship_raises(self, mock_client: AsyncMock) -> None:
+        """Test include with unknown relationship raises error."""
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = persons_service
+
+        query = Query(from_="persons", include=["unknown_rel"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="unknown_rel",
+                    description="Include unknown",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        with pytest.raises(QueryExecutionError, match="Unknown relationship"):
+            await executor.execute(plan)
+
+    @pytest.mark.asyncio
+    async def test_include_with_missing_entity_skipped(self, mock_client: AsyncMock) -> None:
+        """Test include step with no entity/relationship is skipped."""
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = persons_service
+
+        query = Query(from_="persons")
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity=None,  # Missing entity
+                    relationship=None,  # Missing relationship
+                    description="No-op include",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should complete without error
+        assert len(result.data) == 1
+
+    @pytest.mark.asyncio
+    async def test_include_entity_method_handles_errors(self, mock_client: AsyncMock) -> None:
+        """Test include gracefully handles errors in entity method calls."""
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        # First call succeeds, second raises error
+        persons_service.get_associated_company_ids = AsyncMock(
+            side_effect=[[100], Exception("API Error")]
+        )
+        mock_client.persons = persons_service
+
+        query = Query(from_="persons", include=["companies"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="companies",
+                    description="Include companies",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=3,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=True,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should complete with partial results (only Alice's companies)
+        assert len(result.data) == 2
+        assert "companies" in result.included
+        assert len(result.included["companies"]) == 1  # Only from Alice
+
+    @pytest.mark.asyncio
+    async def test_include_record_missing_id(self, mock_client: AsyncMock) -> None:
+        """Test include skips records without id field."""
+        persons_service = MagicMock()
+        # Record without id field
+        records = [{"name": "No ID"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        persons_service.get_associated_company_ids = AsyncMock(return_value=[100])
+        mock_client.persons = persons_service
+
+        query = Query(from_="persons", include=["companies"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="companies",
+                    description="Include companies",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=True,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should complete but no companies included
+        assert len(result.data) == 1
+        assert result.included["companies"] == []
+
+
+# =============================================================================
+# Tests for Aggregate with GroupBy + HAVING
+# =============================================================================
+
+
+class TestAggregateWithGroupByAndHaving:
+    """Tests for _execute_aggregate with groupBy and HAVING."""
+
+    @pytest.mark.asyncio
+    async def test_aggregate_groupby_with_having(self, mock_client: AsyncMock) -> None:
+        """Test aggregate with groupBy and HAVING filter."""
+        from affinity.cli.query.models import HavingClause
+
+        service = MagicMock()
+        records = [
+            {"id": 1, "status": "Active", "amount": 100},
+            {"id": 2, "status": "Active", "amount": 200},
+            {"id": 3, "status": "Inactive", "amount": 50},
+            {"id": 4, "status": "Pending", "amount": 300},
+        ]
+        service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = service
+
+        query = Query(
+            from_="persons",
+            group_by="status",
+            aggregate={"total": AggregateFunc(sum="amount"), "count": AggregateFunc(count=True)},
+            having=HavingClause(path="total", op="gt", value=100),
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="aggregate", description="Aggregate", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=4,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Only Active (total=300) and Pending (total=300) should pass having filter
+        assert len(result.data) == 2
+        statuses = [r["status"] for r in result.data]
+        assert "Active" in statuses
+        assert "Pending" in statuses
+        assert "Inactive" not in statuses
+
+    @pytest.mark.asyncio
+    async def test_aggregate_groupby_without_having(self, mock_client: AsyncMock) -> None:
+        """Test aggregate with groupBy but no HAVING."""
+        service = MagicMock()
+        records = [
+            {"id": 1, "status": "A", "amount": 100},
+            {"id": 2, "status": "B", "amount": 200},
+            {"id": 3, "status": "A", "amount": 150},
+        ]
+        service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = service
+
+        query = Query(
+            from_="persons",
+            group_by="status",
+            aggregate={"total": AggregateFunc(sum="amount")},
+            # No having clause
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="aggregate", description="Aggregate", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=3,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Both groups should be present
+        assert len(result.data) == 2
+
+
+# =============================================================================
+# Tests for KeyboardInterrupt with allow_partial
+# =============================================================================
+
+
+class TestKeyboardInterruptHandling:
+    """Tests for KeyboardInterrupt handling."""
+
+    @pytest.mark.asyncio
+    async def test_interrupt_without_allow_partial_raises(self, mock_client: AsyncMock) -> None:
+        """KeyboardInterrupt without allow_partial raises QueryInterruptedError."""
+        from affinity.cli.query import QueryInterruptedError
+
+        service = MagicMock()
+
+        # Create a mock page iterator that raises KeyboardInterrupt
+        class InterruptingPageIterator:
+            def pages(self, _on_progress=None):
+                async def generator():
+                    raise KeyboardInterrupt()
+                    yield  # Make it a generator
+
+                return generator()
+
+        service.all.return_value = InterruptingPageIterator()
+        mock_client.persons = service
+
+        query = Query(from_="persons")
+        plan = ExecutionPlan(
+            query=query,
+            steps=[PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch")],
+            total_api_calls=1,
+            estimated_records_fetched=100,
+            estimated_memory_mb=0.1,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client, allow_partial=False)
+        with pytest.raises(QueryInterruptedError) as exc:
+            await executor.execute(plan)
+
+        assert "interrupted" in str(exc.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_interrupt_with_allow_partial_returns_results(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """KeyboardInterrupt with allow_partial returns partial results."""
+        service = MagicMock()
+
+        # Create a mock page iterator that yields one page then raises KeyboardInterrupt
+        class PartialPageIterator:
+            def pages(self, _on_progress=None):
+                async def generator():
+                    # Yield one page of records
+                    page = MagicMock()
+                    page.data = [
+                        create_mock_record({"id": 1, "name": "Alice"}),
+                        create_mock_record({"id": 2, "name": "Bob"}),
+                    ]
+                    yield page
+                    # Then raise interrupt
+                    raise KeyboardInterrupt()
+
+                return generator()
+
+        service.all.return_value = PartialPageIterator()
+        mock_client.persons = service
+
+        query = Query(from_="persons")
+        plan = ExecutionPlan(
+            query=query,
+            steps=[PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch")],
+            total_api_calls=1,
+            estimated_records_fetched=100,
+            estimated_memory_mb=0.1,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client, allow_partial=True)
+        result = await executor.execute(plan)
+
+        # Should return partial results
+        assert len(result.data) == 2
+        assert result.meta["interrupted"] is True
+
+
+# =============================================================================
+# Tests for Parent ID Extraction with IN Operator
+# =============================================================================
+
+
+class TestExtractParentIdsWithInOperator:
+    """Tests for _extract_parent_ids with IN operator."""
+
+    @pytest.fixture
+    def executor(self) -> QueryExecutor:
+        """Create executor for testing."""
+        return QueryExecutor(MagicMock(), max_records=100)
+
+    def test_in_operator_extracts_multiple_ids(self, executor: QueryExecutor) -> None:
+        """IN operator extracts all IDs from list."""
+        where = {"path": "listId", "op": "in", "value": [100, 200, 300]}
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == [100, 200, 300]
+
+    def test_in_operator_with_string_ids(self, executor: QueryExecutor) -> None:
+        """IN operator converts string IDs to int."""
+        where = {"path": "listId", "op": "in", "value": ["100", "200"]}
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == [100, 200]
+
+    def test_in_operator_skips_invalid_values(self, executor: QueryExecutor) -> None:
+        """IN operator skips non-convertible values."""
+        where = {"path": "listId", "op": "in", "value": [100, "abc", 200, None]}
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == [100, 200]
+
+    def test_in_operator_with_non_list_returns_empty(self, executor: QueryExecutor) -> None:
+        """IN operator with non-list value returns empty."""
+        where = {"path": "listId", "op": "in", "value": "not a list"}
+        result = executor._extract_parent_ids(where, "listId")
+        assert result == []
+
+    def test_combined_eq_and_in_in_or(self, executor: QueryExecutor) -> None:
+        """OR with eq and in operators extracts all IDs."""
+        where = {
+            "or": [
+                {"path": "listId", "op": "eq", "value": 100},
+                {"path": "listId", "op": "in", "value": [200, 300]},
+            ]
+        }
+        result = executor._extract_parent_ids(where, "listId")
+        assert sorted(result) == [100, 200, 300]
+
+
+# =============================================================================
+# Tests for Field Refs Collection from Aggregates
+# =============================================================================
+
+
+class TestCollectFieldRefsFromAggregates:
+    """Tests for collecting field references from aggregate clauses."""
+
+    @pytest.fixture
+    def executor(self, mock_client: AsyncMock) -> QueryExecutor:
+        """Create executor for testing."""
+        return QueryExecutor(mock_client, max_records=100)
+
+    def test_collects_from_sum_aggregate(self, executor: QueryExecutor) -> None:
+        """Collects field from sum aggregate."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"total": AggregateFunc(sum="fields.Amount")},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"Amount"}
+
+    def test_collects_from_avg_aggregate(self, executor: QueryExecutor) -> None:
+        """Collects field from avg aggregate."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"average": AggregateFunc(avg="fields.Score")},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"Score"}
+
+    def test_collects_from_percentile_aggregate(self, executor: QueryExecutor) -> None:
+        """Collects field from percentile aggregate."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"p90": AggregateFunc(percentile={"field": "fields.Value", "p": 90})},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"Value"}
+
+    def test_wildcard_in_aggregate_returns_star(self, executor: QueryExecutor) -> None:
+        """Wildcard in aggregate returns {'*'}."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"first": AggregateFunc(first="fields.*")},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"*"}
+
+    def test_wildcard_in_groupby_returns_star(self, executor: QueryExecutor) -> None:
+        """Wildcard in groupBy returns {'*'}."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.*",
+            aggregate={"count": AggregateFunc(count=True)},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"*"}
+
+    def test_collects_from_multiple_aggregates(self, executor: QueryExecutor) -> None:
+        """Collects fields from multiple aggregates."""
+        query = Query(
+            from_="listEntries",
+            aggregate={
+                "sum": AggregateFunc(sum="fields.Amount"),
+                "avg": AggregateFunc(avg="fields.Score"),
+                "min": AggregateFunc(min="fields.Price"),
+            },
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"Amount", "Score", "Price"}
+
+    def test_no_fields_refs_returns_empty(self, executor: QueryExecutor) -> None:
+        """Query without field refs returns empty set."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"count": AggregateFunc(count=True)},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == set()
+
+    def test_percentile_wildcard_returns_star(self, executor: QueryExecutor) -> None:
+        """Percentile with wildcard field returns {'*'}."""
+        query = Query(
+            from_="listEntries",
+            aggregate={"p50": AggregateFunc(percentile={"field": "fields.*", "p": 50})},
+        )
+        fields = executor._collect_field_refs_from_query(query)
+        assert fields == {"*"}
+
+
+# =============================================================================
+# Tests for _execute_filter with Resolved Where
+# =============================================================================
+
+
+class TestExecuteFilterWithResolvedWhere:
+    """Tests for _execute_filter using resolved where clause."""
+
+    @pytest.mark.asyncio
+    async def test_filter_uses_resolved_where(self, mock_client: AsyncMock) -> None:
+        """Filter step uses resolved where clause when available."""
+        # Create executor context directly to test resolved_where
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(path="listName", op="eq", value="My List"),
+        )
+        ctx = ExecutionContext(query=query, max_records=100)
+
+        # Simulate records already fetched
+        ctx.records = [
+            {"id": 1, "listId": 123, "name": "Entry 1"},
+            {"id": 2, "listId": 456, "name": "Entry 2"},
+        ]
+
+        # Set resolved_where (as if listName was resolved to listId)
+        ctx.resolved_where = {"path": "listId", "op": "eq", "value": 123}
+
+        executor = QueryExecutor(mock_client, max_records=100)
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+
+        executor._execute_filter(step, ctx)
+
+        # Only record with listId=123 should remain
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["listId"] == 123
+
+    @pytest.mark.asyncio
+    async def test_filter_without_resolved_where_uses_query_where(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """Filter step uses query.where when resolved_where is None."""
+        query = Query(
+            from_="persons",
+            where=WhereClause(path="name", op="eq", value="Alice"),
+        )
+        ctx = ExecutionContext(query=query, max_records=100)
+        ctx.records = [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ]
+        ctx.resolved_where = None  # Not resolved
+
+        executor = QueryExecutor(mock_client, max_records=100)
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+
+        executor._execute_filter(step, ctx)
+
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_filter_with_no_where_clause_keeps_all(self, mock_client: AsyncMock) -> None:
+        """Filter step with no where clause keeps all records."""
+        query = Query(from_="persons")  # No where
+        ctx = ExecutionContext(query=query, max_records=100)
+        ctx.records = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+        executor = QueryExecutor(mock_client, max_records=100)
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+
+        executor._execute_filter(step, ctx)
+
+        assert len(ctx.records) == 3
+
+
+# =============================================================================
+# Tests for Fetch Errors
+# =============================================================================
+
+
+class TestFetchErrors:
+    """Tests for fetch error handling."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_missing_entity_raises(self, mock_client: AsyncMock) -> None:
+        """Fetch step without entity raises error."""
+        query = Query(from_="persons")
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity=None,  # Missing entity
+                    description="Fetch",
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        with pytest.raises(QueryExecutionError, match="missing entity"):
+            await executor.execute(plan)
+
+    @pytest.mark.asyncio
+    async def test_fetch_unknown_entity_raises(self, mock_client: AsyncMock) -> None:
+        """Fetch step with unknown entity raises error."""
+        query = Query(from_="unknown_entity")
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity="unknown_entity",
+                    description="Fetch",
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        with pytest.raises(QueryExecutionError, match="Unknown entity"):
+            await executor.execute(plan)
 
 
 # =============================================================================

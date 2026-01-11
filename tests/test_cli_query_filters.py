@@ -252,3 +252,287 @@ class TestCompileFilter:
     def test_matches_with_none_where(self) -> None:
         """matches() with None where matches all."""
         assert matches({"any": "record"}, None)
+
+
+# =============================================================================
+# Edge Case Tests for Filter Operators
+# =============================================================================
+
+
+class TestFilterOperatorEdgeCases:
+    """Edge case tests for individual filter operators."""
+
+    def test_neq_with_none_field(self) -> None:
+        """Test neq with None field value."""
+        where = WhereClause(path="name", op="neq", value="Alice")
+        # None != "Alice" should be True
+        assert matches({"name": None}, where)
+
+    def test_neq_with_none_value(self) -> None:
+        """Test neq when comparing to None value."""
+        where = WhereClause(path="name", op="neq", value=None)
+        # "Alice" != None should be True
+        assert matches({"name": "Alice"}, where)
+        # None != None should be False
+        assert not matches({"name": None}, where)
+
+    def test_gt_with_none_field(self) -> None:
+        """Greater than with None field returns False."""
+        where = WhereClause(path="age", op="gt", value=30)
+        assert not matches({"age": None}, where)
+
+    def test_gt_with_none_value(self) -> None:
+        """Greater than with None value returns False."""
+        where = WhereClause(path="age", op="gt", value=None)
+        assert not matches({"age": 35}, where)
+
+    def test_comparison_type_mismatch_string_fallback(self) -> None:
+        """Comparison operators fall back to string comparison on type mismatch."""
+        # Comparing string to int - should fall back to string comparison
+        where = WhereClause(path="value", op="gt", value="50")
+        # "100" > "50" as strings is False (lexicographic), but this tests the fallback
+        assert not matches({"value": 100}, where)
+
+    def test_in_with_non_list_value(self) -> None:
+        """in operator with non-list value returns False."""
+        where = WhereClause(path="status", op="in", value="active")  # not a list
+        assert not matches({"status": "active"}, where)
+
+    def test_in_with_none_field(self) -> None:
+        """in operator with None field returns False."""
+        where = WhereClause(path="status", op="in", value=["active", "pending"])
+        assert not matches({"status": None}, where)
+
+    def test_between_invalid_list_length(self) -> None:
+        """between operator with wrong list length returns False."""
+        where = WhereClause(path="age", op="between", value=[20])  # Only one value
+        assert not matches({"age": 25}, where)
+
+    def test_between_not_a_list(self) -> None:
+        """between operator with non-list returns False."""
+        where = WhereClause(path="age", op="between", value=25)
+        assert not matches({"age": 25}, where)
+
+    def test_between_with_none_field(self) -> None:
+        """between operator with None field returns False."""
+        where = WhereClause(path="age", op="between", value=[20, 30])
+        assert not matches({"age": None}, where)
+
+    def test_between_type_error(self) -> None:
+        """between operator with incomparable types returns False."""
+        where = WhereClause(path="value", op="between", value=["a", "z"])
+        # Can't compare int to string range
+        assert not matches({"value": 25}, where)
+
+    def test_contains_with_none_field(self) -> None:
+        """contains operator with None field returns False."""
+        where = WhereClause(path="bio", op="contains", value="test")
+        assert not matches({"bio": None}, where)
+
+    def test_contains_with_none_value(self) -> None:
+        """contains operator with None value returns False."""
+        where = WhereClause(path="bio", op="contains", value=None)
+        assert not matches({"bio": "some text"}, where)
+
+    def test_starts_with_with_none(self) -> None:
+        """starts_with operator with None returns False."""
+        where = WhereClause(path="name", op="starts_with", value="A")
+        assert not matches({"name": None}, where)
+
+        where2 = WhereClause(path="name", op="starts_with", value=None)
+        assert not matches({"name": "Alice"}, where2)
+
+    def test_contains_any_with_none_field(self) -> None:
+        """contains_any with None field returns False."""
+        where = WhereClause(path="bio", op="contains_any", value=["python", "java"])
+        assert not matches({"bio": None}, where)
+
+    def test_contains_any_with_non_list(self) -> None:
+        """contains_any with non-list value returns False."""
+        where = WhereClause(path="bio", op="contains_any", value="python")
+        assert not matches({"bio": "I love Python"}, where)
+
+    def test_contains_all_with_none_field(self) -> None:
+        """contains_all with None field returns False."""
+        where = WhereClause(path="bio", op="contains_all", value=["python", "developer"])
+        assert not matches({"bio": None}, where)
+
+    def test_contains_all_with_non_list(self) -> None:
+        """contains_all with non-list value returns False."""
+        where = WhereClause(path="bio", op="contains_all", value="python")
+        assert not matches({"bio": "Python developer"}, where)
+
+
+# =============================================================================
+# Edge Case Tests for Field Path Resolution
+# =============================================================================
+
+
+class TestFieldPathEdgeCases:
+    """Edge case tests for resolve_field_path and _parse_field_path."""
+
+    def test_empty_path(self) -> None:
+        """Empty path returns None."""
+        record = {"name": "Alice"}
+        assert resolve_field_path(record, "") is None
+
+    def test_intermediate_none(self) -> None:
+        """Returns None when intermediate value is None."""
+        record = {"address": None}
+        assert resolve_field_path(record, "address.city") is None
+
+    def test_intermediate_not_dict(self) -> None:
+        """Returns None when intermediate value is not a dict."""
+        record = {"address": "123 Main St"}  # String, not dict
+        assert resolve_field_path(record, "address.city") is None
+
+    def test_array_negative_index(self) -> None:
+        """Negative array index returns None."""
+        record = {"items": ["a", "b", "c"]}
+        assert resolve_field_path(record, "items[-1]") is None
+
+    def test_array_on_non_list(self) -> None:
+        """Array access on non-list returns None."""
+        record = {"items": "not a list"}
+        assert resolve_field_path(record, "items[0]") is None
+
+    def test_non_numeric_array_index(self) -> None:
+        """Non-numeric array index is treated as dict key."""
+        record = {"items": {"foo": "bar"}}
+        # [foo] should be treated as dict key access
+        assert resolve_field_path(record, "items[foo]") == "bar"
+
+    def test_unclosed_bracket_error(self) -> None:
+        """Unclosed bracket raises QueryValidationError."""
+        from affinity.cli.query import QueryValidationError
+
+        record = {"items": ["a", "b"]}
+        with pytest.raises(QueryValidationError, match="Unclosed bracket"):
+            resolve_field_path(record, "items[0")
+
+    def test_complex_path_with_arrays_and_nesting(self) -> None:
+        """Complex path with multiple arrays and nested objects."""
+        record = {
+            "users": [
+                {"name": "Alice", "addresses": [{"city": "NYC"}, {"city": "LA"}]},
+                {"name": "Bob", "addresses": [{"city": "SF"}]},
+            ]
+        }
+        assert resolve_field_path(record, "users[0].addresses[1].city") == "LA"
+        assert resolve_field_path(record, "users[1].addresses[0].city") == "SF"
+
+
+# =============================================================================
+# Edge Case Tests for compile_filter
+# =============================================================================
+
+
+class TestCompileFilterEdgeCases:
+    """Edge case tests for compile_filter function."""
+
+    def test_unknown_operator_raises(self) -> None:
+        """Unknown operator raises QueryValidationError."""
+        from affinity.cli.query import QueryValidationError
+
+        where = WhereClause(path="name", op="unknown_op", value="Alice")
+        with pytest.raises(QueryValidationError, match="Unknown operator"):
+            compile_filter(where)
+
+    def test_all_quantifier_passthrough(self) -> None:
+        """all_ quantifier passes through (placeholder)."""
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="tags", where=WhereClause(path="value", op="eq", value="vip")
+            )
+        )
+        filter_fn = compile_filter(where)
+        # Placeholder always returns True
+        assert filter_fn({"tags": ["other"]}) is True
+
+    def test_none_quantifier_passthrough(self) -> None:
+        """none_ quantifier passes through (placeholder)."""
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            none_=QuantifierClause(
+                path="tags", where=WhereClause(path="value", op="eq", value="spam")
+            )
+        )
+        filter_fn = compile_filter(where)
+        # Placeholder always returns True
+        assert filter_fn({"tags": ["spam"]}) is True
+
+    def test_exists_passthrough(self) -> None:
+        """exists_ passes through (placeholder)."""
+        from affinity.cli.query.models import ExistsClause
+
+        where = WhereClause(
+            # Use alias 'from' for the from_ field
+            exists_=ExistsClause(**{"from": "related", "via": "personId"})
+        )
+        filter_fn = compile_filter(where)
+        # Placeholder always returns True
+        assert filter_fn({"any": "record"}) is True
+
+    def test_count_pseudo_field_passthrough(self) -> None:
+        """_count pseudo-field passes through (placeholder)."""
+        where = WhereClause(path="companies._count", op="gt", value=5)
+        filter_fn = compile_filter(where)
+        # Placeholder always returns True
+        assert filter_fn({"companies": []}) is True
+
+    def test_condition_with_no_op_matches_all(self) -> None:
+        """Condition with None op matches all."""
+        # This tests _compile_condition when op is None
+        where = WhereClause(path="name")  # op is None
+        filter_fn = compile_filter(where)
+        assert filter_fn({"name": "Alice"}) is True
+        assert filter_fn({"name": "Bob"}) is True
+
+    def test_condition_with_none_path_matches_all(self) -> None:
+        """Condition with None path matches all."""
+        where = WhereClause(op="eq", value="Alice")  # path is None
+        filter_fn = compile_filter(where)
+        assert filter_fn({"name": "Alice"}) is True
+
+
+# =============================================================================
+# Edge Case Tests for Date Parsing in Filters
+# =============================================================================
+
+
+class TestDateParsingInFilters:
+    """Tests for date parsing integration in filters."""
+
+    def test_relative_date_in_filter(self) -> None:
+        """Relative date values are parsed in filters."""
+        import datetime
+
+        from affinity.cli.query.dates import parse_date_value
+
+        # This tests the parse_date_value integration
+        # "today" is parsed into a timezone-aware datetime object
+        where = WhereClause(path="createdAt", op="gte", value="today")
+        filter_fn = compile_filter(where)
+
+        # Get the parsed "today" value to know the timezone
+        today_parsed = parse_date_value("today")
+        assert today_parsed is not None
+
+        # Create timezone-aware datetimes matching the parser's output
+        tomorrow = today_parsed + datetime.timedelta(days=1)
+        yesterday = today_parsed - datetime.timedelta(days=1)
+
+        # Today or later should match gte today
+        assert filter_fn({"createdAt": today_parsed}) is True
+        assert filter_fn({"createdAt": tomorrow}) is True
+        # Yesterday should not match gte today
+        assert filter_fn({"createdAt": yesterday}) is False
+
+    def test_non_date_string_passthrough(self) -> None:
+        """Non-date strings pass through unchanged."""
+        where = WhereClause(path="status", op="eq", value="active")
+        filter_fn = compile_filter(where)
+        assert filter_fn({"status": "active"}) is True
