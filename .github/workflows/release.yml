@@ -197,18 +197,21 @@ jobs:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
 
+      # Note: attestations are disabled for workflow_call because PyPI's Trusted
+      # Publishing attestation feature doesn't support reusable workflows.
+      # See: https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github
       - name: Publish to PyPI (trusted publishing)
         if: ${{ needs.validate.outputs.publish_target == 'pypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          attestations: true
+          attestations: ${{ needs.validate.outputs.is_workflow_call != 'true' }}
 
       - name: Publish to TestPyPI (trusted publishing)
         if: ${{ needs.validate.outputs.publish_target == 'testpypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          attestations: true
+          attestations: ${{ needs.validate.outputs.is_workflow_call != 'true' }}
 
   github-release:
     runs-on: ubuntu-latest
