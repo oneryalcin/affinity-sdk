@@ -137,6 +137,31 @@ class TestEntityQueryability:
                 }
             )
 
+    @pytest.mark.req("QUERY-INTEGRATION-003")
+    def test_or_inside_and_with_required_filter_accepted(self) -> None:
+        """OR inside AND is valid when AND has the required filter."""
+        # This pattern: AND [listId=X, OR[A, B]] should be valid because
+        # the listId applies to the whole AND, covering the OR branches
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {
+                            "or": [
+                                {"path": "fields.Status", "op": "eq", "value": "Active"},
+                                {"path": "fields.Status", "op": "eq", "value": "Passed"},
+                            ]
+                        },
+                    ]
+                },
+            }
+        )
+        assert result.query.from_ == "listEntries"
+        assert result.query.where is not None
+        assert result.query.where.and_ is not None
+
     @pytest.mark.req("QUERY-INTEGRATION-004")
     def test_global_entities_parse_without_filters(self) -> None:
         """GLOBAL entities should parse without any filters."""

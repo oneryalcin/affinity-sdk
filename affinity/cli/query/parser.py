@@ -311,29 +311,58 @@ def _where_contains_field(where: WhereClause | None, fields: frozenset[str]) -> 
 def _validate_or_branches_have_required_filter(
     where: WhereClause | None,
     required_fields: frozenset[str],
+    parent_has_required: bool = False,
 ) -> bool:
     """Validate that all OR branches contain at least one required filter.
 
+    Args:
+        where: Where clause to validate
+        required_fields: Set of required field names (e.g., {"listId", "listName"})
+        parent_has_required: True if an ancestor AND clause already has the required filter
+
     Returns True if valid, False if any OR branch is missing required filter.
+
+    Example valid structures:
+    - AND [listName=X, OR[A, B]]  # OR branches covered by sibling listName in AND
+    - OR [AND[listName=X, A], AND[listName=Y, B]]  # Each OR branch has its own
     """
     if where is None:
         return True
 
-    # Check OR branches - each branch must have a required filter
-    if where.or_:
+    # Check OR branches - each must have required filter UNLESS parent AND has it
+    if where.or_ and not parent_has_required:
         for branch in where.or_:
             branch_fields = extract_filter_fields(branch)
             if not (branch_fields & required_fields):
                 return False
 
-    # Recurse into nested conditions
+    # For AND clauses: check if any sibling clause provides the required filter
+    # If so, nested OR clauses within this AND don't need their own
     if where.and_:
+        # Check if this AND has the required filter at its level
+        and_has_required = parent_has_required
         for clause in where.and_:
-            if not _validate_or_branches_have_required_filter(clause, required_fields):
+            # Only check direct (non-compound) conditions at this level
+            if clause.path and clause.path in required_fields:
+                and_has_required = True
+                break
+
+        # Recurse into AND clauses with updated context
+        for clause in where.and_:
+            if not _validate_or_branches_have_required_filter(
+                clause, required_fields, and_has_required
+            ):
                 return False
+
+    # Recurse into OR clauses - each branch is independent
     if where.or_:
         for clause in where.or_:
-            if not _validate_or_branches_have_required_filter(clause, required_fields):
+            # Each OR branch provides its own context
+            clause_fields = extract_filter_fields(clause)
+            branch_has_required = parent_has_required or bool(clause_fields & required_fields)
+            if not _validate_or_branches_have_required_filter(
+                clause, required_fields, branch_has_required
+            ):
                 return False
 
     return True
