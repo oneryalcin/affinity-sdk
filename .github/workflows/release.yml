@@ -322,7 +322,7 @@ jobs:
 
       - name: Smoke test installation
         run: |
-          pip install affinity-api==${{ needs.validate.outputs.version_tag }}
+          pip install affinity-sdk==${{ needs.validate.outputs.version_tag }}
           python -c "from affinity import Affinity; print('Import OK')"
           python -c "from affinity.cli import app; print('CLI OK')"
 
