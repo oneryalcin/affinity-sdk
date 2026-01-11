@@ -34,6 +34,8 @@ fi
 declare -a cmd_args=("xaffinity" "query")
 cmd_args+=("--max-records" "$max_records")
 cmd_args+=("--timeout" "$timeout_secs")
+cmd_args+=("--quiet")  # Suppress progress output (MCP handles progress separately)
+cmd_args+=("--json")   # Force JSON output
 
 if [[ "$dry_run" == "true" ]]; then
     cmd_args+=("--dry-run")
