@@ -87,6 +87,8 @@ This approach is robust regardless of how many commits are pushed together, squa
 5. Commit and push to `main` (or merge PR)
 6. **Release runs automatically** — tag created post-release
 
+SDK releases include MCPB bundles (built from the same commit) for convenience, so users don't need to find separate MCP releases.
+
 ### MCP Release
 
 1. Update `mcp/VERSION`
