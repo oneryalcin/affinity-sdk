@@ -582,7 +582,7 @@ class TestQueryExecutor:
         service = MagicMock()
 
         class MultiPageIterator:
-            def pages(self, _on_progress=None):
+            def pages(self, on_progress=None):  # noqa: ARG002
                 async def generator():
                     for i in range(10):
                         page = MagicMock()
@@ -768,7 +768,7 @@ class TestQueryExecutorErrors:
         service = MagicMock()
 
         class ErrorPageIterator:
-            def pages(self, _on_progress=None):
+            def pages(self, on_progress=None):  # noqa: ARG002
                 async def generator():
                     raise Exception("API Error")
                     yield  # Make it a generator
@@ -2355,7 +2355,7 @@ class TestKeyboardInterruptHandling:
 
         # Create a mock page iterator that raises KeyboardInterrupt
         class InterruptingPageIterator:
-            def pages(self, _on_progress=None):
+            def pages(self, on_progress=None):  # noqa: ARG002
                 async def generator():
                     raise KeyboardInterrupt()
                     yield  # Make it a generator
@@ -2393,7 +2393,7 @@ class TestKeyboardInterruptHandling:
 
         # Create a mock page iterator that yields one page then raises KeyboardInterrupt
         class PartialPageIterator:
-            def pages(self, _on_progress=None):
+            def pages(self, on_progress=None):  # noqa: ARG002
                 async def generator():
                     # Yield one page of records
                     page = MagicMock()
