@@ -57,9 +57,9 @@ stdout_file=$(mktemp)
 stderr_file=$(mktemp)
 trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
-# Execute CLI with query on stdin
+# Execute CLI with query on stdin (CLI handles timeout via --timeout flag)
 set +e
-printf '%s' "$query_json" | timeout "$timeout_secs" "${cmd_args[@]}" >"$stdout_file" 2>"$stderr_file"
+printf '%s' "$query_json" | "${cmd_args[@]}" >"$stdout_file" 2>"$stderr_file"
 exit_code=$?
 set -e
 
@@ -103,10 +103,6 @@ if [[ $exit_code -eq 0 ]]; then
         mcp_result_error "$(jq_tool -n --rawfile stdout "$stdout_file" --argjson cmd "$cmd_json" \
             '{type: "invalid_json_output", message: "CLI returned non-JSON output", output: $stdout, executed: $cmd}')"
     fi
-elif [[ $exit_code -eq 124 ]]; then
-    # Timeout exit code
-    mcp_result_error "$(jq_tool -n --argjson cmd "$cmd_json" --argjson timeout "$timeout_secs" \
-        '{type: "timeout", message: "Query timed out", timeout: $timeout, executed: $cmd}')"
 else
     # Use temp files to avoid "Argument list too long" error with large outputs
     printf '%s' "$stderr_content" > "$stderr_file"
