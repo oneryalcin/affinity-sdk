@@ -5,6 +5,12 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2026-01-11
+
+### Fixed
+- **query tool**: Now properly passes `--json` and `--quiet` flags to CLI for correct output formatting
+- **macOS compatibility**: Removed Linux-specific `timeout` command usage that caused failures on macOS
+
 ## [1.7.5] - 2026-01-11
 
 ### Added

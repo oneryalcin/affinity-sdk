@@ -1,7 +1,7 @@
 {
   "name": "xaffinity-mcp",
   "description": "MCP server for Affinity CRM - structured workflow tools, relationship intelligence, and pipeline management",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "author": {
     "name": "Yaniv Golan"
   },
@@ -20,5 +20,7 @@
       "command": "${CLAUDE_PLUGIN_ROOT}/xaffinity-mcp.sh"
     }
   },
-  "skills": ["./skills"]
+  "skills": [
+    "./skills"
+  ]
 }

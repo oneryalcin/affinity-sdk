@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.1 - 2026-01-11
+
+### Added
+- CLI: `query` command now validates entity queryability and provides clear error messages for unsupported entities.
+- CLI: `query` command resolves field names to IDs automatically (e.g., `"field": "Status"` works alongside `"fieldId": 123`).
+
+### Fixed
+- CLI: `query` for `listEntries` entity now correctly requires `listId` filter.
+- CLI: `query` relationship definitions now correctly set `requires_n_plus_1` flag for proper query planning.
+
 ## 0.9.0 - 2026-01-11
 
 ### Added
