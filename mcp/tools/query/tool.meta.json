@@ -1,0 +1,94 @@
+{
+  "name": "query",
+  "description": "Execute a structured JSON query against Affinity data. Supports filtering, includes, aggregates, and multiple output formats.\n\nQuery structure:\n- from: Entity type ('persons', 'companies', 'opportunities', 'listEntries', 'interactions', 'notes')\n- where: Filter conditions with operators (eq, neq, gt, gte, lt, lte, contains, starts_with, in, between, is_null, is_not_null)\n- include: Related entities to fetch (e.g., ['companies', 'opportunities'] for persons)\n- select: Fields to return (default: all)\n- orderBy: Sort results [{field, direction}]\n- groupBy: Group by field for aggregates\n- aggregate: Compute aggregates {alias: {sum/avg/count/min/max: field}}\n- limit: Max records to return\n\nExamples:\n- {\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"limit\": 50}\n- {\"from\": \"opportunities\", \"include\": [\"companies\"], \"orderBy\": [{\"field\": \"created_at\", \"direction\": \"desc\"}]}\n- {\"from\": \"listEntries\", \"where\": {\"path\": \"fields.Status\", \"op\": \"eq\", \"value\": \"Active\"}, \"aggregate\": {\"count\": {\"count\": true}}}\n\nUse dryRun=true to preview the execution plan with estimated API calls before running.",
+  "inputSchema": {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+      "query": {
+        "type": "object",
+        "description": "JSON query object with 'from' (required) and optional where, include, select, orderBy, groupBy, aggregate, having, limit fields.",
+        "properties": {
+          "$version": {
+            "type": "string",
+            "description": "Query version (default: '1.0')"
+          },
+          "from": {
+            "type": "string",
+            "enum": ["persons", "companies", "opportunities", "listEntries", "interactions", "notes"],
+            "description": "Entity type to query"
+          },
+          "where": {
+            "type": "object",
+            "description": "Filter conditions. Simple: {path, op, value}. Compound: {and_: [...]} or {or_: [...]}"
+          },
+          "include": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Related entities to include (e.g., ['companies', 'opportunities'])"
+          },
+          "select": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Fields to return (default: all)"
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "direction": { "type": "string", "enum": ["asc", "desc"] }
+              }
+            },
+            "description": "Sort order"
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "Field to group by for aggregates"
+          },
+          "aggregate": {
+            "type": "object",
+            "description": "Aggregate functions: {alias: {sum/avg/count/min/max/percentile: field}}"
+          },
+          "having": {
+            "type": "object",
+            "description": "Filter on aggregate results"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum records to return"
+          }
+        },
+        "required": ["from"]
+      },
+      "dryRun": {
+        "type": "boolean",
+        "default": false,
+        "description": "If true, return the execution plan with estimated API calls without running the query."
+      },
+      "maxRecords": {
+        "type": "integer",
+        "default": 1000,
+        "description": "Safety limit for maximum records to fetch (default 1000, max 10000)."
+      },
+      "timeout": {
+        "type": "integer",
+        "default": 120,
+        "description": "Query timeout in seconds (default 120)."
+      },
+      "maxOutputBytes": {
+        "type": "integer",
+        "default": 50000,
+        "description": "Maximum output size in bytes (default 50000). Larger outputs are truncated."
+      }
+    }
+  },
+  "timeoutSecs": 180,
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": true
+  }
+}

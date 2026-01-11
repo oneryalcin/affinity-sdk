@@ -1,0 +1,267 @@
+"""Output formatters for query results.
+
+Formats query results as JSON or table.
+This module is CLI-only and NOT part of the public SDK API.
+
+Note: CSV output uses the standard write_csv_to_stdout() from csv_utils.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from rich.console import Console
+
+from .models import ExecutionPlan, QueryResult
+
+# =============================================================================
+# JSON Output
+# =============================================================================
+
+
+def format_json(
+    result: QueryResult,
+    *,
+    pretty: bool = False,
+    include_meta: bool = False,
+) -> str:
+    """Format query result as JSON.
+
+    Args:
+        result: Query result
+        pretty: If True, pretty-print with indentation
+        include_meta: If True, include metadata in output
+
+    Returns:
+        JSON string
+    """
+    output: dict[str, Any] = {"data": result.data}
+
+    if result.included:
+        output["included"] = result.included
+
+    if include_meta:
+        output["meta"] = result.meta
+
+    if result.pagination:
+        output["pagination"] = result.pagination
+
+    indent = 2 if pretty else None
+    return json.dumps(output, indent=indent, default=str)
+
+
+# =============================================================================
+# Table Output (Rich Table)
+# =============================================================================
+
+# Columns to exclude from table output by default (following CLI conventions)
+# These are complex nested structures that don't display well in tables
+# Use --json to see full data including these columns
+_EXCLUDED_TABLE_COLUMNS = frozenset(
+    {
+        "fields",  # Custom field values - use --json or entity get --all-fields
+        "interaction_dates",  # Complex nested dates
+        "list_entries",  # List entry associations
+        "interactions",  # Null unless explicitly loaded
+        "company_ids",  # Empty array unless relationships loaded
+        "opportunity_ids",  # Empty array unless relationships loaded
+        "current_company_ids",  # Empty array unless relationships loaded
+    }
+)
+
+
+def format_table(result: QueryResult) -> str:
+    """Format query result as a Rich table (matching CLI conventions).
+
+    Args:
+        result: Query result
+
+    Returns:
+        Rendered table string
+    """
+    # Use the CLI's standard table rendering
+    from ..render import _table_from_rows
+
+    if not result.data:
+        return "No results."
+
+    # Filter out excluded columns (following CLI convention - ls commands don't show fields)
+    filtered_data = [
+        {k: v for k, v in row.items() if k not in _EXCLUDED_TABLE_COLUMNS} for row in result.data
+    ]
+
+    # Build Rich table using CLI's standard function
+    table, omitted = _table_from_rows(filtered_data)
+
+    # Render to string
+    console = Console(force_terminal=False, width=None)
+    with console.capture() as capture:
+        console.print(table)
+
+    output = capture.get()
+
+    # Add summary line
+    summary_parts = [f"({len(result.data)} rows)"]
+    if omitted > 0:
+        summary_parts.append(f"({omitted} columns hidden — use --json for full data)")
+
+    # Note about included data
+    if result.included:
+        include_counts = []
+        for entity_type, entities in result.included.items():
+            if entities:
+                include_counts.append(f"{len(entities)} {entity_type}")
+        if include_counts:
+            summary_parts.append(f"(included: {', '.join(include_counts)} — use --json to see)")
+
+    return output + "\n".join(summary_parts)
+
+
+# =============================================================================
+# Dry-Run Output
+# =============================================================================
+
+
+def format_dry_run(plan: ExecutionPlan, *, verbose: bool = False) -> str:
+    """Format execution plan for dry-run output.
+
+    Args:
+        plan: Execution plan
+        verbose: If True, show detailed API call breakdown
+
+    Returns:
+        Formatted plan string
+    """
+    lines: list[str] = []
+
+    lines.append("Query Execution Plan")
+    lines.append("=" * 40)
+    lines.append("")
+
+    # Query summary
+    lines.append("Query:")
+    lines.append(f"  $version: {plan.version}")
+    lines.append(f"  from: {plan.query.from_}")
+
+    if plan.query.where is not None:
+        lines.append("  where: <filter condition>")
+
+    if plan.query.include is not None:
+        lines.append(f"  include: {', '.join(plan.query.include)}")
+
+    if plan.query.order_by is not None:
+        order_fields = [ob.field or "expr" for ob in plan.query.order_by]
+        lines.append(f"  orderBy: {', '.join(order_fields)}")
+
+    if plan.query.limit is not None:
+        lines.append(f"  limit: {plan.query.limit}")
+
+    lines.append("")
+
+    # Execution summary
+    lines.append("Execution Summary:")
+    lines.append(f"  Total steps: {len(plan.steps)}")
+    lines.append(f"  Estimated API calls: {plan.total_api_calls}")
+
+    if plan.estimated_records_fetched is not None:
+        lines.append(f"  Estimated records: {plan.estimated_records_fetched}")
+
+    if plan.estimated_memory_mb is not None:
+        lines.append(f"  Estimated memory: {plan.estimated_memory_mb:.1f} MB")
+
+    lines.append("")
+
+    # Steps
+    lines.append("Execution Steps:")
+    for step in plan.steps:
+        status = "[client]" if step.is_client_side else f"[~{step.estimated_api_calls} calls]"
+        lines.append(f"  {step.step_id}. {step.description} {status}")
+
+        if verbose:
+            if step.depends_on:
+                lines.append(f"      depends on: step {', '.join(map(str, step.depends_on))}")
+            if step.filter_pushdown:
+                lines.append(f"      pushdown: {step.pushdown_filter}")
+            for warning in step.warnings:
+                lines.append(f"      [!] {warning}")
+
+    lines.append("")
+
+    # Warnings
+    if plan.warnings:
+        lines.append("Warnings:")
+        for warning in plan.warnings:
+            lines.append(f"  [!] {warning}")
+        lines.append("")
+
+    # Recommendations
+    if plan.recommendations:
+        lines.append("Recommendations:")
+        for rec in plan.recommendations:
+            lines.append(f"  - {rec}")
+        lines.append("")
+
+    # Assumptions (always show in verbose, or when includes present)
+    has_includes = plan.query.include is not None and len(plan.query.include) > 0
+    if verbose or has_includes:
+        lines.append("Assumptions:")
+        if plan.query.limit is not None:
+            lines.append(f"  - Record count: {plan.query.limit} (from limit)")
+        else:
+            lines.append(f"  - Record count: {plan.estimated_records_fetched} (heuristic estimate)")
+        if plan.query.where is not None:
+            lines.append("  - Filter selectivity: 50% (heuristic)")
+        if has_includes:
+            lines.append("  - Include calls: 1 API call per parent record (N+1)")
+        lines.append("  - Actual counts may vary; use --dry-run to preview before execution")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_dry_run_json(plan: ExecutionPlan) -> str:
+    """Format execution plan as JSON for MCP.
+
+    Args:
+        plan: Execution plan
+
+    Returns:
+        JSON string
+    """
+    output = {
+        "version": plan.version,
+        "query": {
+            "from": plan.query.from_,
+            "where": plan.query.where.model_dump() if plan.query.where else None,
+            "include": plan.query.include,
+            "orderBy": [ob.model_dump() for ob in plan.query.order_by]
+            if plan.query.order_by
+            else None,
+            "limit": plan.query.limit,
+        },
+        "execution": {
+            "totalSteps": len(plan.steps),
+            "estimatedApiCalls": plan.total_api_calls,
+            "estimatedRecords": plan.estimated_records_fetched,
+            "estimatedMemoryMb": plan.estimated_memory_mb,
+        },
+        "steps": [
+            {
+                "stepId": step.step_id,
+                "operation": step.operation,
+                "description": step.description,
+                "estimatedApiCalls": step.estimated_api_calls,
+                "isClientSide": step.is_client_side,
+                "dependsOn": step.depends_on,
+                "warnings": step.warnings,
+            }
+            for step in plan.steps
+        ],
+        "warnings": plan.warnings,
+        "recommendations": plan.recommendations,
+        "hasExpensiveOperations": plan.has_expensive_operations,
+        "requiresFullScan": plan.requires_full_scan,
+    }
+
+    return json.dumps(output, indent=2, default=str)

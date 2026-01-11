@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.0 - 2026-01-11
+
+### Added
+- CLI: New `query` command for structured JSON queries with complex filtering, includes, aggregations, and sorting. Use `--dry-run` to preview execution plans. Supports entities: persons, companies, opportunities, listEntries, interactions, notes.
+- MCP: New `query` tool for complex data queries via JSON query language. Supports filtering (AND/OR/NOT), includes (related entities), aggregations (count/sum/avg/min/max), groupBy, and sorting.
+- CLI: `--limit` alias for `--max-results` on `company get`, `person get`, and `opportunity get` commands (consistency with `ls` commands).
+
+### Changed
+- CLI: `--list`, `--list-entry-field`, and `--show-list-entry-fields` now auto-imply `--expand list-entries` on `company get` and `person get` commands (improved DX).
+
 ## 0.8.6 - 2026-01-10
 
 ### Added

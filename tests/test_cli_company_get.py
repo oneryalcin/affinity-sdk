@@ -243,9 +243,21 @@ def test_company_get_expand_people_v1(respx_mock: respx.MockRouter) -> None:
     assert "people" in payload["meta"]["resolved"]["expand"]
 
 
-def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -> None:
+def test_company_get_list_filter_auto_implies_expand(respx_mock: respx.MockRouter) -> None:
+    """Test that --list auto-implies --expand list-entries for better DX."""
     respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Acme Corp"})
+    )
+    respx_mock.get("https://api.affinity.co/v2/companies/123/list-entries?limit=100").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {"id": 1, "listId": 10, "creatorId": 1, "createdAt": "2024-01-01T00:00:00Z"}
+                ],
+                "pagination": {"prevUrl": None, "nextUrl": None},
+            },
+        )
     )
 
     runner = CliRunner()
@@ -254,10 +266,11 @@ def test_company_get_list_filter_requires_expand(respx_mock: respx.MockRouter) -
         ["--json", "company", "get", "123", "--list", "10"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
-    assert result.exit_code == 2
+    assert result.exit_code == 0
     payload = json.loads(result.output.strip())
-    assert payload["ok"] is False
-    assert payload["error"]["type"] == "usage_error"
+    assert payload["ok"] is True
+    # Verify list-entries was auto-expanded
+    assert "list-entries" in payload["meta"]["resolved"]["expand"]
 
 
 def test_company_get_human_output_hides_envelope_pagination(respx_mock: respx.MockRouter) -> None:

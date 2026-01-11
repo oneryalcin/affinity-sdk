@@ -1076,7 +1076,7 @@ def company_files_upload(
     default=None,
     help=(
         "Filter list-entries expansion to a list id or exact list name "
-        "(requires --expand list-entries)."
+        "(implies --expand list-entries)."
     ),
 )
 @click.option(
@@ -1084,7 +1084,7 @@ def company_files_upload(
     "list_entry_fields",
     multiple=True,
     help=(
-        "Project a list-entry field into its own column (repeatable; requires --expand "
+        "Project a list-entry field into its own column (repeatable; implies --expand "
         "list-entries)."
     ),
 )
@@ -1093,8 +1093,8 @@ def company_files_upload(
     "show_list_entry_fields",
     is_flag=True,
     help=(
-        "Render per-list-entry Fields tables in human output (requires --expand list-entries "
-        "and --max-results <= 3)."
+        "Render per-list-entry Fields tables in human output (implies --expand list-entries; "
+        "requires --max-results <= 3)."
     ),
 )
 @click.option(
@@ -1107,6 +1107,8 @@ def company_files_upload(
 )
 @click.option(
     "--max-results",
+    "--limit",
+    "-n",
     type=int,
     default=None,
     help="Maximum items to fetch per expansion section (applies to --expand).",
@@ -1212,6 +1214,14 @@ def company_get(
         )
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
+
+        # Auto-imply --expand list-entries when list-entry-related flags are used.
+        # This improves DX by removing a redundant flag requirement.
+        if (list_selector or list_entry_fields or show_list_entry_fields) and (
+            "list-entries" not in expand_set
+        ):
+            expand_set.add("list-entries")
+
         effective_list_entry_fields = tuple(list_entry_fields)
         effective_show_list_entry_fields = bool(show_list_entry_fields)
         effective_list_entry_fields_scope: ListEntryFieldsScope = list_entry_fields_scope
@@ -1242,13 +1252,7 @@ def company_get(
                 error_type="usage_error",
             )
 
-        if list_selector and "list-entries" not in expand_set:
-            raise CLIError(
-                "--list requires --expand list-entries.",
-                exit_code=2,
-                error_type="usage_error",
-                details={"list": list_selector, "expand": sorted(expand_set)},
-            )
+        # Note: --list now auto-implies --expand list-entries (handled above)
 
         if no_fields and (fields or field_types or all_fields):
             raise CLIError(
@@ -1257,14 +1261,7 @@ def company_get(
                 error_type="usage_error",
             )
 
-        if (
-            effective_list_entry_fields or effective_show_list_entry_fields
-        ) and "list-entries" not in expand_set:
-            raise CLIError(
-                "--list-entry-field/--show-list-entry-fields requires --expand list-entries.",
-                exit_code=2,
-                error_type="usage_error",
-            )
+        # Note: --list-entry-field/--show-list-entry-fields now auto-imply --expand list-entries
 
         if effective_list_entry_fields and effective_show_list_entry_fields:
             raise CLIError(

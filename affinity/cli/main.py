@@ -230,6 +230,7 @@ from .commands.list_cmds import list_group as _list_group  # noqa: E402
 from .commands.note_cmds import note_group as _note_group  # noqa: E402
 from .commands.opportunity_cmds import opportunity_group as _opportunity_group  # noqa: E402
 from .commands.person_cmds import person_group as _person_group  # noqa: E402
+from .commands.query_cmd import query_cmd as _query_cmd  # noqa: E402
 from .commands.relationship_strength_cmds import (  # noqa: E402
     relationship_strength_group as _relationship_strength_group,
 )
@@ -257,3 +258,4 @@ cli.add_command(_field_group)
 cli.add_command(_relationship_strength_group)
 cli.add_command(_session_group)
 cli.add_command(_task_group)
+cli.add_command(_query_cmd)

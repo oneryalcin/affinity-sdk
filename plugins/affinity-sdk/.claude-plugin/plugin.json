@@ -1,7 +1,7 @@
 {
   "name": "affinity-sdk",
   "description": "Python SDK for Affinity CRM - typed IDs, async support, pagination patterns, and error handling for developers",
-  "version": "0.8.6",
+  "version": "0.9.0",
   "author": {
     "name": "Yaniv Golan"
   },

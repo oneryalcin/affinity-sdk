@@ -1,0 +1,352 @@
+"""Entity schema registry.
+
+Defines entity types, their fields, and relationships for the query engine.
+This module is CLI-only and NOT part of the public SDK API.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True)
+class RelationshipDef:
+    """Defines how to fetch related entities.
+
+    Attributes:
+        target_entity: The entity type being related to
+        fetch_strategy: How to fetch the related entities:
+            - "entity_method": Call method on entity service
+            - "global_service": Call global service with filter
+        method_or_service: Method name for entity_method, service attr for global
+        filter_field: For global_service: the filter param name
+        cardinality: Whether the relationship is one-to-one or one-to-many
+        requires_n_plus_1: Does fetching require per-record API calls?
+    """
+
+    target_entity: str
+    fetch_strategy: Literal["entity_method", "global_service"]
+    method_or_service: str
+    filter_field: str | None = None
+    cardinality: Literal["one", "many"] = "many"
+    requires_n_plus_1: bool = True
+
+
+@dataclass(frozen=True)
+class EntitySchema:
+    """Schema definition for an entity type.
+
+    Attributes:
+        name: Entity type name (e.g., "persons", "companies")
+        service_attr: Attribute name on Affinity client (e.g., "persons")
+        id_field: Name of the ID field (usually "id")
+        filterable_fields: Fields that can be used in WHERE clauses
+        computed_fields: Fields that are computed (e.g., "firstEmail", "lastEmail")
+        relationships: Dict of relationship name -> RelationshipDef
+        api_version: Primary API version for this entity ("v1" or "v2")
+    """
+
+    name: str
+    service_attr: str
+    id_field: str
+    filterable_fields: frozenset[str]
+    computed_fields: frozenset[str]
+    relationships: dict[str, RelationshipDef]
+    api_version: Literal["v1", "v2"] = "v2"
+
+
+# =============================================================================
+# Schema Registry
+# =============================================================================
+
+SCHEMA_REGISTRY: dict[str, EntitySchema] = {
+    "persons": EntitySchema(
+        name="persons",
+        service_attr="persons",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "firstName",
+                "lastName",
+                "primaryEmail",
+                "emails",
+                "createdAt",
+                "updatedAt",
+            ]
+        ),
+        computed_fields=frozenset(["firstEmail", "lastEmail"]),
+        relationships={
+            "companies": RelationshipDef(
+                target_entity="companies",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_company_ids",
+                requires_n_plus_1=True,
+            ),
+            "opportunities": RelationshipDef(
+                target_entity="opportunities",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_opportunity_ids",
+                requires_n_plus_1=True,
+            ),
+            "interactions": RelationshipDef(
+                target_entity="interactions",
+                fetch_strategy="global_service",
+                method_or_service="interactions",
+                filter_field="person_id",
+                requires_n_plus_1=False,
+            ),
+            "notes": RelationshipDef(
+                target_entity="notes",
+                fetch_strategy="global_service",
+                method_or_service="notes",
+                filter_field="person_id",
+                requires_n_plus_1=False,
+            ),
+            "listEntries": RelationshipDef(
+                target_entity="listEntries",
+                fetch_strategy="entity_method",
+                method_or_service="get_list_entries",
+                requires_n_plus_1=True,
+            ),
+        },
+    ),
+    "companies": EntitySchema(
+        name="companies",
+        service_attr="companies",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "name",
+                "domain",
+                "domains",
+                "createdAt",
+                "updatedAt",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={
+            "people": RelationshipDef(
+                target_entity="persons",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_person_ids",
+                requires_n_plus_1=True,
+            ),
+            "opportunities": RelationshipDef(
+                target_entity="opportunities",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_opportunity_ids",
+                requires_n_plus_1=True,
+            ),
+            "interactions": RelationshipDef(
+                target_entity="interactions",
+                fetch_strategy="global_service",
+                method_or_service="interactions",
+                filter_field="company_id",
+                requires_n_plus_1=False,
+            ),
+            "notes": RelationshipDef(
+                target_entity="notes",
+                fetch_strategy="global_service",
+                method_or_service="notes",
+                filter_field="company_id",
+                requires_n_plus_1=False,
+            ),
+            "listEntries": RelationshipDef(
+                target_entity="listEntries",
+                fetch_strategy="entity_method",
+                method_or_service="get_list_entries",
+                requires_n_plus_1=True,
+            ),
+        },
+    ),
+    "opportunities": EntitySchema(
+        name="opportunities",
+        service_attr="opportunities",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "name",
+                "listId",
+                "createdAt",
+                "updatedAt",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={
+            "people": RelationshipDef(
+                target_entity="persons",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_person_ids",
+                requires_n_plus_1=True,
+            ),
+            "companies": RelationshipDef(
+                target_entity="companies",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_company_ids",
+                requires_n_plus_1=True,
+            ),
+            "interactions": RelationshipDef(
+                target_entity="interactions",
+                fetch_strategy="global_service",
+                method_or_service="interactions",
+                filter_field="opportunity_id",
+                requires_n_plus_1=False,
+            ),
+        },
+        api_version="v1",
+    ),
+    "listEntries": EntitySchema(
+        name="listEntries",
+        service_attr="lists",  # Uses list service, then .entries()
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "listId",
+                "entityId",
+                "entityType",
+                "createdAt",
+                "updatedAt",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={
+            "entity": RelationshipDef(
+                target_entity="entity",  # Dynamic based on entityType
+                fetch_strategy="entity_method",
+                method_or_service="get_entity",
+                cardinality="one",
+                requires_n_plus_1=True,
+            ),
+        },
+        api_version="v2",
+    ),
+    "interactions": EntitySchema(
+        name="interactions",
+        service_attr="interactions",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "type",
+                "subject",
+                "createdAt",
+                "happenedAt",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={
+            "persons": RelationshipDef(
+                target_entity="persons",
+                fetch_strategy="entity_method",
+                method_or_service="get_associated_person_ids",
+                requires_n_plus_1=True,
+            ),
+        },
+        api_version="v1",
+    ),
+    "notes": EntitySchema(
+        name="notes",
+        service_attr="notes",
+        id_field="id",
+        filterable_fields=frozenset(
+            [
+                "id",
+                "content",
+                "createdAt",
+                "creatorId",
+            ]
+        ),
+        computed_fields=frozenset([]),
+        relationships={},
+        api_version="v1",
+    ),
+}
+
+
+def get_entity_schema(entity_name: str) -> EntitySchema | None:
+    """Get schema for an entity type.
+
+    Args:
+        entity_name: Entity type name (e.g., "persons")
+
+    Returns:
+        EntitySchema or None if not found
+    """
+    return SCHEMA_REGISTRY.get(entity_name)
+
+
+def get_relationship(entity_name: str, relationship_name: str) -> RelationshipDef | None:
+    """Get relationship definition.
+
+    Args:
+        entity_name: Source entity type (e.g., "persons")
+        relationship_name: Relationship name (e.g., "companies")
+
+    Returns:
+        RelationshipDef or None if not found
+    """
+    schema = SCHEMA_REGISTRY.get(entity_name)
+    if schema is None:
+        return None
+    return schema.relationships.get(relationship_name)
+
+
+def is_valid_field_path(entity_name: str, path: str) -> bool:
+    """Check if a field path is valid for an entity.
+
+    Handles nested paths like "companies._count" or "fields.Status".
+
+    Args:
+        entity_name: Entity type name
+        path: Field path to validate
+
+    Returns:
+        True if the path is valid
+    """
+    schema = SCHEMA_REGISTRY.get(entity_name)
+    if schema is None:
+        return False
+
+    parts = path.split(".")
+
+    # Simple field
+    if len(parts) == 1:
+        field = parts[0]
+        return (
+            field in schema.filterable_fields
+            or field in schema.computed_fields
+            or field == schema.id_field
+            or field.startswith("fields.")  # List entry fields
+        )
+
+    # Relationship path (e.g., "companies._count")
+    first_part = parts[0]
+    if first_part in schema.relationships:
+        remaining = ".".join(parts[1:])
+        # _count is always valid for relationships
+        if remaining == "_count":
+            return True
+        # Validate against target entity
+        rel = schema.relationships[first_part]
+        return is_valid_field_path(rel.target_entity, remaining)
+
+    # fields.* for list entries
+    return first_part == "fields"
+
+
+def get_supported_entities() -> list[str]:
+    """Get list of all supported entity types."""
+    return list(SCHEMA_REGISTRY.keys())
+
+
+def get_entity_relationships(entity_name: str) -> list[str]:
+    """Get list of relationship names for an entity."""
+    schema = SCHEMA_REGISTRY.get(entity_name)
+    if schema is None:
+        return []
+    return list(schema.relationships.keys())

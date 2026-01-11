@@ -1,10 +1,10 @@
 {
   "_generated": {
     "by": "tools/generate_cli_commands_registry.py",
-    "cliVersion": "0.8.6"
+    "cliVersion": "0.9.0"
   },
   "version": 1,
-  "cliVersion": "0.8.6",
+  "cliVersion": "0.9.0",
   "commands": [
     {
       "name": "company create",
@@ -223,12 +223,12 @@
         "--list": {
           "type": "string",
           "required": false,
-          "help": "Filter list-entries expansion to a list id or exact list name (requires --expand list-entries)."
+          "help": "Filter list-entries expansion to a list id or exact list name (implies --expand list-entries)."
         },
         "--list-entry-field": {
           "type": "string",
           "required": false,
-          "help": "Project a list-entry field into its own column (repeatable; requires --expand list-entries).",
+          "help": "Project a list-entry field into its own column (repeatable; implies --expand list-entries).",
           "multiple": true
         },
         "--list-entry-fields-scope": {
@@ -243,7 +243,11 @@
         "--max-results": {
           "type": "int",
           "required": false,
-          "help": "Maximum items to fetch per expansion section (applies to --expand)."
+          "help": "Maximum items to fetch per expansion section (applies to --expand).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         },
         "--no-fields": {
           "type": "flag",
@@ -253,7 +257,7 @@
         "--show-list-entry-fields": {
           "type": "flag",
           "required": false,
-          "help": "Render per-list-entry Fields tables in human output (requires --expand list-entries and --max-results <= 3)."
+          "help": "Render per-list-entry Fields tables in human output (implies --expand list-entries; requires --max-results <= 3)."
         }
       },
       "positionals": [
@@ -1938,7 +1942,11 @@
         "--max-results": {
           "type": "int",
           "required": false,
-          "help": "Maximum items per expansion (default: 100)."
+          "help": "Maximum items per expansion (default: 100).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         }
       },
       "positionals": [
@@ -2290,12 +2298,12 @@
         "--list": {
           "type": "string",
           "required": false,
-          "help": "Filter list-entries expansion to a list id or exact list name (requires --expand list-entries)."
+          "help": "Filter list-entries expansion to a list id or exact list name (implies --expand list-entries)."
         },
         "--list-entry-field": {
           "type": "string",
           "required": false,
-          "help": "Project a list-entry field into its own column (repeatable; requires --expand list-entries).",
+          "help": "Project a list-entry field into its own column (repeatable; implies --expand list-entries).",
           "multiple": true
         },
         "--list-entry-fields-scope": {
@@ -2310,7 +2318,11 @@
         "--max-results": {
           "type": "int",
           "required": false,
-          "help": "Maximum items to fetch per expansion section (applies to --expand)."
+          "help": "Maximum items to fetch per expansion section (applies to --expand).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         },
         "--no-fields": {
           "type": "flag",
@@ -2320,7 +2332,7 @@
         "--show-list-entry-fields": {
           "type": "flag",
           "required": false,
-          "help": "Render per-list-entry Fields tables in human output (requires --expand list-entries and --max-results <= 3)."
+          "help": "Render per-list-entry Fields tables in human output (implies --expand list-entries; requires --max-results <= 3)."
         }
       },
       "positionals": [
@@ -2481,6 +2493,107 @@
           "type": "int",
           "required": true
         }
+      ]
+    },
+    {
+      "name": "query",
+      "description": "Execute a structured query against Affinity data.",
+      "category": "read",
+      "destructive": false,
+      "progressCapable": true,
+      "parameters": {
+        "--confirm": {
+          "type": "flag",
+          "required": false,
+          "help": "Require confirmation before expensive operations."
+        },
+        "--csv": {
+          "type": "flag",
+          "required": false,
+          "help": "Output as CSV."
+        },
+        "--csv-bom": {
+          "type": "flag",
+          "required": false,
+          "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
+        },
+        "--dry-run": {
+          "type": "flag",
+          "required": false,
+          "help": "Show execution plan without running."
+        },
+        "--dry-run-verbose": {
+          "type": "flag",
+          "required": false,
+          "help": "Show detailed plan with API call breakdown."
+        },
+        "--file": {
+          "type": "string",
+          "required": false,
+          "help": "Read query from JSON file.",
+          "aliases": [
+            "-f"
+          ]
+        },
+        "--include-meta": {
+          "type": "flag",
+          "required": false,
+          "help": "Include execution metadata in output."
+        },
+        "--max-records": {
+          "type": "int",
+          "required": false,
+          "help": "Safety limit on total records fetched."
+        },
+        "--pretty": {
+          "type": "flag",
+          "required": false,
+          "help": "Pretty-print JSON output."
+        },
+        "--query": {
+          "type": "string",
+          "required": false,
+          "help": "Inline JSON query string."
+        },
+        "--query-version": {
+          "type": "string",
+          "required": false,
+          "help": "Override $version in query (e.g., '1.0')."
+        },
+        "--quiet": {
+          "type": "flag",
+          "required": false,
+          "help": "Suppress progress output.",
+          "aliases": [
+            "-q"
+          ]
+        },
+        "--timeout": {
+          "type": "string",
+          "required": false,
+          "help": "Overall timeout in seconds."
+        },
+        "--verbose": {
+          "type": "flag",
+          "required": false,
+          "help": "Show detailed progress.",
+          "aliases": [
+            "-v"
+          ]
+        }
+      },
+      "positionals": [],
+      "relatedCommands": [
+        "person ls",
+        "company ls",
+        "opportunity ls",
+        "list export"
+      ],
+      "whenToUse": "For complex data queries requiring: multi-condition AND/OR filtering, related entity includes (persons with companies), aggregations (count/sum/avg), groupBy analysis, or multi-field sorting. Use individual commands (person get, list export) for simple lookups.",
+      "examples": [
+        "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
+        "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"]}' --dry-run",
+        "query --query '{\"from\": \"opportunities\", \"groupBy\": \"status\", \"aggregate\": {\"count\": {\"count\": true}, \"total\": {\"sum\": \"amount\"}}}' --dry-run"
       ]
     },
     {
@@ -2893,5 +3006,5 @@
       "positionals": []
     }
   ],
-  "total": 71
+  "total": 72
 }

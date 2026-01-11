@@ -86,5 +86,14 @@
   "reminder ls": {
     "relatedCommands": ["reminder get", "reminder create", "note ls"],
     "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before)."
+  },
+  "query": {
+    "relatedCommands": ["person ls", "company ls", "opportunity ls", "list export"],
+    "whenToUse": "For complex data queries requiring: multi-condition AND/OR filtering, related entity includes (persons with companies), aggregations (count/sum/avg), groupBy analysis, or multi-field sorting. Use individual commands (person get, list export) for simple lookups.",
+    "examples": [
+      "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
+      "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"]}' --dry-run",
+      "query --query '{\"from\": \"opportunities\", \"groupBy\": \"status\", \"aggregate\": {\"count\": {\"count\": true}, \"total\": {\"sum\": \"amount\"}}}' --dry-run"
+    ]
   }
 }

@@ -314,7 +314,8 @@ class Affinity:
 
     def __del__(self) -> None:
         """Warn if client was not properly closed."""
-        if not self._closed and not self._entered_context:
+        # Use getattr to handle case where __init__ failed before setting _closed
+        if not getattr(self, "_closed", True) and not getattr(self, "_entered_context", True):
             warnings.warn(
                 "Affinity client was not closed. "
                 "Use 'with Affinity.from_env() as client:' "
@@ -742,7 +743,8 @@ class AsyncAffinity:
 
     def __del__(self) -> None:
         """Warn if client was not properly closed."""
-        if not self._closed and not self._entered_context:
+        # Use getattr to handle case where __init__ failed before setting _closed
+        if not getattr(self, "_closed", True) and not getattr(self, "_entered_context", True):
             warnings.warn(
                 "AsyncAffinity client was not closed. "
                 "Use 'async with AsyncAffinity.from_env() as client:' "

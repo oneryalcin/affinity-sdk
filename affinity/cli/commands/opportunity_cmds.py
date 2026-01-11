@@ -316,6 +316,8 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
 )
 @click.option(
     "--max-results",
+    "--limit",
+    "-n",
     type=int,
     default=None,
     help="Maximum items per expansion (default: 100).",

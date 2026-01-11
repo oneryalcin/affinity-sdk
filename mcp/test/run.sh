@@ -354,6 +354,66 @@ else
     ((++failed)) || true
 fi
 
+printf "\n--- Query tool tests (dry-run) ---\n"
+
+# Basic query validation
+run_dry_run "query" '{"query":{"from":"persons","limit":10},"dryRun":true}'
+
+# Query with where clause
+printf "  query (with where clause)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","where":{"path":"email","op":"contains","value":"@test.com"}},"dryRun":true}' 2>&1)
+if echo "$output" | grep -q '"from".*persons\|execution\|steps'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (expected dry-run plan output)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Query with include
+printf "  query (with include)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","include":["companies"],"limit":5},"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'include\|INCLUDE\|N+1\|companies'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (expected include in plan)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Query with aggregation
+printf "  query (with aggregation)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"opportunities","aggregate":{"count":{"count":true}}},"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'aggregate\|AGGREGATE'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (expected aggregate in plan)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Invalid query (missing from)
+printf "  query (invalid - missing from)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"limit":10},"dryRun":true}' 2>&1)
+if echo "$output" | grep -qi 'error\|from\|required\|invalid'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject query missing from)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Invalid query (unknown entity)
+printf "  query (invalid - unknown entity)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"unknownEntity"},"dryRun":true}' 2>&1)
+if echo "$output" | grep -qi 'error\|unknown\|invalid\|unknownEntity'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (should reject unknown entity)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
 if [[ "${API_CONFIGURED}" != "1" ]]; then
     skip_test "get-entity-dossier (live)" "API not configured"
 elif [[ "${SKIP_LIVE:-0}" == "1" ]]; then
