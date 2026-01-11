@@ -60,3 +60,9 @@ repos:
         language: python
         files: ^(pyproject\.toml|affinity/cli/commands/.*\.py)$
         pass_filenames: false
+      - id: sync-mcp-version
+        name: Sync MCP version files
+        entry: python tools/sync_mcp_version.py
+        language: python
+        files: ^(mcp/VERSION|mcp/\.claude-plugin/plugin\.json|mcp/server\.d/server\.meta\.json)$
+        pass_filenames: false

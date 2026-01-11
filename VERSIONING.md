@@ -72,12 +72,11 @@ Releases are triggered automatically when version files are updated on `main`.
 ### MCP Release
 
 1. Update `mcp/VERSION`
-2. Update `mcp/.claude-plugin/plugin.json` version field
-3. Update `mcp/server.d/server.meta.json` version field
-4. If CLI requirements changed: update `mcp/COMPATIBILITY`
-5. Update `mcp/CHANGELOG.md`
-6. Commit and push to `main` (or merge PR)
-7. **Release runs automatically** — tag created post-release
+2. Update `mcp/CHANGELOG.md`
+3. If CLI requirements changed: update `mcp/COMPATIBILITY`
+4. Run pre-commit (syncs plugin.json and server.meta.json automatically)
+5. Commit and push to `main` (or merge PR)
+6. **Release runs automatically** — tag created post-release
 
 ### Manual Tag Release
 
@@ -123,9 +122,9 @@ run_xaffinity_readonly person ls --query "test" --output json --quiet
 | `plugins/affinity-sdk/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
 | `plugins/xaffinity-cli/.claude-plugin/plugin.json` | Plugin version | Pre-commit hook |
 | `mcp/VERSION` | MCP distribution version | Manual |
-| `mcp/server.d/server.meta.json` | MCP server metadata (version for MCP protocol) | Manual |
+| `mcp/server.d/server.meta.json` | MCP server metadata | Pre-commit hook |
+| `mcp/.claude-plugin/plugin.json` | MCP plugin version | Pre-commit hook |
 | `mcp/COMPATIBILITY` | CLI version requirements | Manual |
-| `mcp/.claude-plugin/plugin.json` | MCP plugin version | Manual (CI validates) |
 | `mcp/mcpb.conf` | MCPB bundle config | Manual (version from VERSION) |
 | `mcp/mcp-bash.lock` | MCP-bash framework version + commit hash | Manual |
 
@@ -156,9 +155,8 @@ git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git vX.Y.Z
 
 ### MCP Release
 - [ ] Version bumped in `mcp/VERSION`
-- [ ] `mcp/.claude-plugin/plugin.json` version updated (CI validates match)
-- [ ] `mcp/server.d/server.meta.json` version updated
-- [ ] `mcp/COMPATIBILITY` CLI requirements verified
 - [ ] `mcp/CHANGELOG.md` updated
+- [ ] If CLI requirements changed: `mcp/COMPATIBILITY` verified
+- [ ] Pre-commit ran (syncs plugin.json and server.meta.json)
 - [ ] Changes merged to `main`
 - [ ] Verify release workflow completed successfully

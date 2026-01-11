@@ -118,7 +118,7 @@ The release workflow will:
 #### MCP Plugin Release steps
 
 1. Update `mcp/VERSION` and `mcp/CHANGELOG.md`
-2. Update `mcp/.claude-plugin/plugin.json` version field
+2. Run pre-commit (syncs plugin.json and server.meta.json)
 3. Commit and push to `main`
 
 The release workflow will:
