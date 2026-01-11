@@ -265,9 +265,24 @@ def group_and_aggregate(
     """
     groups: dict[Any, list[dict[str, Any]]] = defaultdict(list)
 
+    def make_hashable(value: Any) -> Any:
+        """Convert unhashable types (lists) to hashable types (tuples).
+
+        For multi-select fields, we sort the values so that different orderings
+        (e.g., ["Team", "Market"] vs ["Market", "Team"]) are treated as the same group.
+        """
+        if isinstance(value, list):
+            try:
+                return tuple(sorted(value))
+            except TypeError:
+                # If values aren't sortable, fall back to original order
+                return tuple(value)
+        return value
+
     for record in records:
         key = resolve_field_path(record, group_by)
-        groups[key].append(record)
+        hashable_key = make_hashable(key)
+        groups[hashable_key].append(record)
 
     results: list[dict[str, Any]] = []
     null_result: dict[str, Any] | None = None
@@ -275,8 +290,14 @@ def group_and_aggregate(
     for key, group_records in groups.items():
         agg_values = compute_aggregates(group_records, aggregates)
 
-        # Use "(no value)" for null/None keys for clarity
-        display_key = "(no value)" if key is None else key
+        # Convert tuple back to list for display, use "(no value)" for null
+        display_key: Any
+        if key is None:
+            display_key = "(no value)"
+        elif isinstance(key, tuple):
+            display_key = list(key)
+        else:
+            display_key = key
         result = {group_by: display_key, **agg_values}
 
         # Collect null group separately to append at end
