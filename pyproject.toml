@@ -132,9 +132,11 @@ ignore = [
 ]
 "affinity/cli/**/*.py" = [
     "PLC0415",  # CLI uses local imports for lazy loading to reduce startup time
+    "E402",     # CLI main.py registers commands after cli() definition - intentional
 ]
 "tests/**/*.py" = [
     "PLC0415",  # Tests use local imports for isolation and clarity
+    "E402",     # Tests may import after pytest.importorskip() - intentional
 ]
 
 [tool.ruff.lint.isort]

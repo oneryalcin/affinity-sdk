@@ -153,7 +153,7 @@ class TestLoggingSetup:
     def test_logger_does_not_propagate_by_default(self) -> None:
         """Logger should be configured but not spam the root logger."""
         # Just importing affinity should set up the logger
-        import affinity
+        import affinity  # noqa: F401 - import side effect is the test
 
         logger = logging.getLogger("affinity_sdk")
         # Logger exists and has handlers
