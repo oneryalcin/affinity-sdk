@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  actions: write  # Required for workflow_dispatch API
 
 jobs:
   detect-changes:
@@ -76,23 +77,59 @@ jobs:
   trigger-sdk-release:
     needs: detect-changes
     if: needs.detect-changes.outputs.sdk_changed == 'true'
-    uses: ./.github/workflows/release.yml
-    with:
-      version: ${{ needs.detect-changes.outputs.sdk_version }}
-      triggered_by: version-bump
-    secrets: inherit
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger SDK release workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Use toJSON for safe string interpolation
+            const version = ${{ toJSON(needs.detect-changes.outputs.sdk_version) }};
+            console.log(`Triggering SDK release workflow for version ${version}`);
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'release.yml',
+                ref: 'main',
+                inputs: {
+                  version: version,
+                  triggered_by: 'release-detect'
+                }
+              });
+              console.log(`✅ SDK release workflow triggered successfully for v${version}`);
+            } catch (error) {
+              console.error(`❌ Failed to trigger SDK release: ${error.message}`);
+              core.setFailed(`Failed to trigger SDK release workflow: ${error.message}`);
+            }
 
   trigger-mcp-release:
     needs: detect-changes
     if: needs.detect-changes.outputs.mcp_changed == 'true'
-    uses: ./.github/workflows/plugin-release.yml
-    with:
-      version: ${{ needs.detect-changes.outputs.mcp_version }}
-      triggered_by: version-bump
-    secrets: inherit
-    permissions:
-      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger MCP plugin release workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Use toJSON for safe string interpolation
+            const version = ${{ toJSON(needs.detect-changes.outputs.mcp_version) }};
+            console.log(`Triggering MCP plugin release workflow for version ${version}`);
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'plugin-release.yml',
+                ref: 'main',
+                inputs: {
+                  version: version,
+                  triggered_by: 'release-detect'
+                }
+              });
+              console.log(`✅ MCP release workflow triggered successfully for v${version}`);
+            } catch (error) {
+              console.error(`❌ Failed to trigger MCP release: ${error.message}`);
+              core.setFailed(`Failed to trigger MCP release workflow: ${error.message}`);
+            }

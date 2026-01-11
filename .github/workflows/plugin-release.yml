@@ -3,22 +3,20 @@ name: Release MCP Plugin
 on:
   push:
     tags: ["mcp-v*.*.*"]  # Renamed from plugin-v*
-  workflow_call:
+  workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (without prefix)"
-        required: true
+        description: "Version to release (without prefix, for API trigger)"
+        required: false
         type: string
       triggered_by:
         description: "What triggered this release"
         required: false
         type: string
-        default: "tag"
-  workflow_dispatch:
-    inputs:
+        default: "manual"
       tag:
-        description: 'Tag to release (e.g., mcp-v1.0.0)'
-        required: true
+        description: 'Tag to release manually (e.g., mcp-v1.0.0, ignored if version set)'
+        required: false
 
 permissions:
   contents: write
@@ -32,24 +30,37 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${{ inputs.version }}" ]]; then
-            # Called via workflow_call
+            # API-triggered release (from release-detect)
+            # Note: Version validation happens post-checkout in "Validate version matches VERSION file" step
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
             echo "tag_name=mcp-v${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "is_workflow_call=true" >> $GITHUB_OUTPUT
-            echo "Mode: workflow_call, version=${{ inputs.version }}"
-          else
-            # Called via tag push or workflow_dispatch
-            TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
+            echo "is_api_trigger=true" >> $GITHUB_OUTPUT
+            echo "Mode: workflow_dispatch (API), version=${{ inputs.version }}, triggered_by=${{ inputs.triggered_by }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            # Tag push
+            TAG_NAME="${GITHUB_REF_NAME}"
             VERSION="${TAG_NAME#mcp-v}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "is_workflow_call=false" >> $GITHUB_OUTPUT
-            echo "Mode: tag/dispatch, tag=$TAG_NAME, version=$VERSION"
+            echo "is_api_trigger=false" >> $GITHUB_OUTPUT
+            echo "Mode: tag push, tag=$TAG_NAME, version=$VERSION"
+          else
+            # Manual workflow_dispatch with tag input
+            TAG_NAME="${{ inputs.tag }}"
+            if [[ -z "$TAG_NAME" ]]; then
+              echo "::error::Manual dispatch requires either 'version' or 'tag' input"
+              exit 1
+            fi
+            VERSION="${TAG_NAME#mcp-v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "is_api_trigger=false" >> $GITHUB_OUTPUT
+            echo "Mode: workflow_dispatch (manual), tag=$TAG_NAME, version=$VERSION"
           fi
 
       - uses: actions/checkout@v6
         with:
-          ref: ${{ steps.version.outputs.is_workflow_call == 'true' && 'main' || (github.event.inputs.tag || github.ref) }}
+          ref: ${{ steps.version.outputs.is_api_trigger == 'true' && 'main' || (github.event.inputs.tag || github.ref) }}
 
       - name: Validate version matches VERSION file
         run: |
@@ -118,8 +129,8 @@ jobs:
           "$EXTRACT_DIR/server/run-server.sh" --health || echo "Health check not available (expected if CLI not configured)"
           rm -rf "$EXTRACT_DIR"
 
-      - name: Create and push tag
-        if: steps.version.outputs.is_workflow_call == 'true'
+      - name: Create and push tag (API trigger only)
+        if: steps.version.outputs.is_api_trigger == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -3,22 +3,20 @@ name: Release (PyPI)
 on:
   push:
     tags: ["v*.*.*"]
-  workflow_call:
+  workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (without v prefix)"
-        required: true
+        description: "Version to release (without v prefix, for API trigger)"
+        required: false
         type: string
       triggered_by:
         description: "What triggered this release"
         required: false
         type: string
-        default: "tag"
-  workflow_dispatch:
-    inputs:
+        default: "manual"
       target:
-        description: "Publish target (manual runs only)"
-        required: true
+        description: "Publish target (manual TestPyPI only, ignored if version set)"
+        required: false
         default: "none"
         type: choice
         options:
@@ -31,7 +29,8 @@ permissions:
   attestations: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  # Use version for API triggers, ref_name for tag pushes
+  group: release-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -41,7 +40,7 @@ jobs:
       tag_name: ${{ steps.meta.outputs.tag_name }}
       version_tag: ${{ steps.meta.outputs.version_tag }}
       publish_target: ${{ steps.meta.outputs.publish_target }}
-      is_workflow_call: ${{ steps.meta.outputs.is_workflow_call }}
+      is_api_trigger: ${{ steps.meta.outputs.is_api_trigger }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -53,16 +52,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Check if this is a workflow_call (version input provided)
           if [[ -n "${{ inputs.version }}" ]]; then
-            echo "is_workflow_call=true" >> "$GITHUB_OUTPUT"
+            # API-triggered release (from release-detect)
+            # IMPORTANT: Verify version matches pyproject.toml to prevent mismatches
+            PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
+            if [[ "${{ inputs.version }}" != "$PYPROJECT_VERSION" ]]; then
+              echo "::error::Version mismatch: input=${{ inputs.version }}, pyproject.toml=$PYPROJECT_VERSION"
+              exit 1
+            fi
+            echo "is_api_trigger=true" >> "$GITHUB_OUTPUT"
             echo "version_tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
             echo "tag_name=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
             echo "publish_target=pypi" >> "$GITHUB_OUTPUT"
-            echo "Mode: workflow_call, version=${{ inputs.version }}"
+            echo "Mode: workflow_dispatch (API), version=${{ inputs.version }}, triggered_by=${{ inputs.triggered_by }}"
           elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
             # Tag push
-            echo "is_workflow_call=false" >> "$GITHUB_OUTPUT"
+            echo "is_api_trigger=false" >> "$GITHUB_OUTPUT"
             echo "publish_target=pypi" >> "$GITHUB_OUTPUT"
             echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             if [[ "${GITHUB_REF_NAME}" != v* ]]; then
@@ -72,16 +77,16 @@ jobs:
             echo "version_tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "Mode: tag push, tag=${GITHUB_REF_NAME}"
           else
-            # Manual workflow_dispatch
-            echo "is_workflow_call=false" >> "$GITHUB_OUTPUT"
+            # Manual workflow_dispatch (TestPyPI dry run)
+            echo "is_api_trigger=false" >> "$GITHUB_OUTPUT"
             echo "publish_target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
             echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             echo "version_tag=" >> "$GITHUB_OUTPUT"
-            echo "Mode: workflow_dispatch, target=${{ inputs.target }}"
+            echo "Mode: workflow_dispatch (manual), target=${{ inputs.target }}"
           fi
 
       - name: Require tag ref for publishing (tag-triggered only)
-        if: ${{ steps.meta.outputs.publish_target == 'pypi' && steps.meta.outputs.is_workflow_call != 'true' && github.ref_type != 'tag' }}
+        if: ${{ steps.meta.outputs.publish_target == 'pypi' && steps.meta.outputs.is_api_trigger != 'true' && github.ref_type != 'tag' }}
         shell: bash
         run: |
           echo "Publishing requires running the workflow on a tag ref (vX.Y.Z)." >&2
@@ -112,7 +117,7 @@ jobs:
           echo "Version validated: $PYPROJECT_VERSION"
 
       - name: Validate commit is on main (tag-triggered only)
-        if: ${{ steps.meta.outputs.is_workflow_call != 'true' && github.ref_type == 'tag' }}
+        if: ${{ steps.meta.outputs.is_api_trigger != 'true' && github.ref_type == 'tag' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -197,21 +202,18 @@ jobs:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
 
-      # Note: attestations are disabled for workflow_call because PyPI's Trusted
-      # Publishing attestation feature doesn't support reusable workflows.
-      # See: https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github
       - name: Publish to PyPI (trusted publishing)
         if: ${{ needs.validate.outputs.publish_target == 'pypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          attestations: ${{ needs.validate.outputs.is_workflow_call != 'true' }}
+          attestations: true
 
       - name: Publish to TestPyPI (trusted publishing)
         if: ${{ needs.validate.outputs.publish_target == 'testpypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          attestations: ${{ needs.validate.outputs.is_workflow_call != 'true' }}
+          attestations: true
 
   github-release:
     runs-on: ubuntu-latest
@@ -239,8 +241,8 @@ jobs:
           name: dist-${{ needs.validate.outputs.tag_name }}
           path: dist/
 
-      - name: Create and push tag (workflow_call only)
-        if: ${{ needs.validate.outputs.is_workflow_call == 'true' }}
+      - name: Create and push tag (API trigger only)
+        if: ${{ needs.validate.outputs.is_api_trigger == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -69,7 +69,12 @@ The release detection workflow compares the current version in version files aga
 3. It checks if release tags exist:
    - SDK: checks for `v{version}` tag (e.g., `v0.9.2`)
    - MCP: checks for `mcp-v{version}` tag (e.g., `mcp-v1.7.6`)
-4. If no tag exists for the current version, it triggers the release workflow
+4. If no tag exists for the current version, it triggers the release workflow via `workflow_dispatch` API
+
+The release workflows are triggered via GitHub's workflow_dispatch API (not reusable workflows). This enables:
+- **PyPI attestations**: Full provenance attestation support for all releases
+- **GITHUB_TOKEN**: No PATs or GitHub Apps required
+- **Tag creation post-publish**: Tags are created after successful PyPI publish (SDK) or GitHub release (MCP)
 
 This approach is robust regardless of how many commits are pushed together, squash merges, rebases, or any other git workflow.
 
