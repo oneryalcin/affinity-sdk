@@ -324,7 +324,7 @@ jobs:
         run: |
           pip install affinity-sdk==${{ needs.validate.outputs.version_tag }}
           python -c "from affinity import Affinity; print('Import OK')"
-          python -c "from affinity.cli import app; print('CLI OK')"
+          python -c "from affinity.cli import cli; print('CLI OK')"
 
       - name: Warn on failure
         if: failure()
