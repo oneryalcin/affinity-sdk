@@ -95,6 +95,7 @@ Use `discover-commands` to find commands, then `execute-read-command` or `execut
 | `opportunity get <id>` | Get opportunity details |
 | `relationship-strength ls --external-id <id>` | Get relationship strength for a person |
 | `interaction ls --person-id <id> --type all` | Get all interactions (or use specific type: email, meeting, call, chat-message) |
+| `field history <field-id> --person-id <id>` | View field value change history. **Requires exactly one entity selector**: `--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id` |
 
 ### Write Operations
 
@@ -177,9 +178,11 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
 - **Use names directly**: Most commands accept names instead of IDs (e.g., `list export "Dealflow"`)
 - **Filter syntax**: `--filter 'field op "value"'` (ops: `=`, `!=`, `=~` contains, `=^` starts with, `=$` ends with, `>`, `<`, `>=`, `<=`)
-  - **IMPORTANT**: Multi-word values MUST be quoted: `--filter 'Status="Intro Meeting"'`
-  - Single-word values can be unquoted: `--filter 'Status=New'`
-  - Invalid (will fail): `--filter 'Status=Intro Meeting'` (unquoted multi-word value)
+  - **Multi-word field names** MUST be quoted: `--filter '"Team Member"=~"LB"'`
+  - **Multi-word values** MUST be quoted: `--filter 'Status="Intro Meeting"'`
+  - **Both multi-word**: `--filter '"Referred By"="John Smith"'`
+  - Single-word field/value can be unquoted: `--filter 'Status=New'`
+  - Invalid (will fail): `--filter 'Team Member=LB'` (unquoted multi-word field name)
 - **Filter only works on list fields**: The `--filter` option for `list export` filters on **list-defined fields** (Status, Owner, etc.), NOT internal properties like `entityId`, `entityType`, or `listEntryId`. Use `field ls --list-id <id>` to see available filter fields.
 - **Finding a specific entity in a list**: To find a company/person in a list by their entity ID, either:
   1. Use `company get <id> --expand list-entries` to see their list memberships directly

@@ -795,10 +795,17 @@
         }
       ],
       "examples": [
-        "field history field-123 --person-id 456",
-        "field history field-260415 --list-entry-id 789 --action-type update",
-        "field history field-123 --company-id 100 --max-results 10"
-      ]
+        "field history field-123456 --person-id 789",
+        "field history field-123456 --company-id 456",
+        "field history field-123456 --list-entry-id 999 --max-results 50"
+      ],
+      "relatedCommands": [
+        "field ls",
+        "list-entry get",
+        "person get",
+        "company get"
+      ],
+      "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector."
     },
     {
       "name": "field ls",
@@ -1455,6 +1462,7 @@
         "list export \"Pipeline\" --all",
         "list export \"Pipeline\" --filter 'Status=New' --all",
         "list export \"Pipeline\" --filter 'Status=\"Intro Meeting\"' --all",
+        "list export \"Pipeline\" --filter '\"Team Member\"=~\"LB\"' --all",
         "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
       "relatedCommands": [
@@ -1462,7 +1470,7 @@
         "field ls",
         "list-entry get"
       ],
-      "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word values MUST be quoted (e.g., --filter 'Status=\"Intro Meeting\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead."
+      "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word field names AND values MUST be quoted (e.g., --filter '\"Team Member\"=\"John Smith\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead."
     },
     {
       "name": "list get",
