@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.5 - 2026-01-12
+
+### Fixed
+- CLI: `query` command with `limit` now correctly returns results when combined with client-side filters (like `has_any` on multi-select fields). Previously, the limit was applied during fetch before filtering, causing empty results when the first N records didn't match the filter criteria.
+
 ## 0.9.4 - 2026-01-12
 
 ### Added
