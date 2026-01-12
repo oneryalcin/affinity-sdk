@@ -150,8 +150,54 @@ Example: {"from": "persons", "include": ["interactions"]}
 | `between` | Value in range | `[1000, 5000]` |
 | `is_null` | Field is null | (no value needed) |
 | `is_not_null` | Field is not null | (no value needed) |
-| `contains_any` | Array contains any | `["vip", "hot"]` |
-| `contains_all` | Array contains all | `["verified", "active"]` |
+| `contains_any` | String contains any substring (case-insensitive) | `["vip", "hot"]` |
+| `contains_all` | String contains all substrings (case-insensitive) | `["verified", "active"]` |
+| `has_any` | Array contains any of the values | `["LB", "MA"]` |
+| `has_all` | Array contains all of the values | `["LB", "MA"]` |
+
+### Multi-Select Field Filtering
+
+Multi-select dropdown fields (like "Team Member") return arrays from the API. The query engine handles these automatically:
+
+```json
+{
+  "from": "listEntries",
+  "where": {
+    "and_": [
+      { "path": "listName", "op": "eq", "value": "Dealflow" },
+      { "path": "fields.Team Member", "op": "eq", "value": "LB" }
+    ]
+  }
+}
+```
+
+**Operator behavior with array fields:**
+
+| Operator | Single-value field | Multi-select field |
+|----------|-------------------|-------------------|
+| `eq` | Exact match | Scalar: membership check / List: set equality |
+| `neq` | Not equal | Scalar: not in array / List: set inequality |
+| `in` | Value in list | Any intersection between arrays |
+| `has_any` | Returns false | Any specified value present |
+| `has_all` | Returns false | All specified values present |
+
+**Examples:**
+
+```json
+// Find entries where Team Member includes "LB"
+{ "path": "fields.Team Member", "op": "eq", "value": "LB" }
+
+// Find entries where Team Member is exactly ["LB", "MA"] (order-insensitive)
+{ "path": "fields.Team Member", "op": "eq", "value": ["LB", "MA"] }
+
+// Find entries where Team Member includes any of ["LB", "DW"]
+{ "path": "fields.Team Member", "op": "has_any", "value": ["LB", "DW"] }
+
+// Find entries where Team Member includes both "LB" and "MA"
+{ "path": "fields.Team Member", "op": "has_all", "value": ["LB", "MA"] }
+```
+
+**Note:** Array operators are case-sensitive because dropdown values from the Affinity API are exact matches.
 
 ### Compound Conditions
 

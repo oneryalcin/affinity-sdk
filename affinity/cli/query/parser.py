@@ -41,6 +41,8 @@ SUPPORTED_OPERATORS_V1 = frozenset(
         "is_not_null",
         "contains_any",
         "contains_all",
+        "has_any",
+        "has_all",
     ]
 )
 

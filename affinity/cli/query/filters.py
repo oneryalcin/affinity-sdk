@@ -33,16 +33,49 @@ def _safe_compare(a: Any, b: Any, op: Callable[[Any, Any], bool]) -> bool:
 
 
 def _eq(a: Any, b: Any) -> bool:
-    """Equality operator."""
+    """Equality operator with array membership support.
+
+    For scalar fields: standard equality (a == b)
+    For array fields (multi-select dropdowns):
+      - eq with scalar: checks if scalar is IN the array (membership)
+      - eq with array: checks set equality (order-insensitive, same elements)
+
+    This semantic shift is intentional - the query engine does client-side
+    filtering without field-type knowledge, so eq needs to "do the right thing"
+    for both single-value and multi-select fields.
+    """
     if a is None:
         return b is None
+    # If field value is a list, check if filter value is IN the list
+    if isinstance(a, list):
+        # If comparing list to list, check set equality (order-insensitive)
+        if isinstance(b, list):
+            try:
+                return set(a) == set(b)
+            except TypeError:
+                # Unhashable elements - fall back to sorted comparison
+                try:
+                    return sorted(a) == sorted(b)
+                except TypeError:
+                    return a == b  # Last resort: order-sensitive equality
+        return b in a
     return bool(a == b)
 
 
 def _neq(a: Any, b: Any) -> bool:
-    """Not equal operator."""
+    """Not equal operator with array membership support."""
     if a is None:
         return b is not None
+    if isinstance(a, list):
+        if isinstance(b, list):
+            try:
+                return set(a) != set(b)
+            except TypeError:
+                try:
+                    return sorted(a) != sorted(b)
+                except TypeError:
+                    return a != b
+        return b not in a
     return bool(a != b)
 
 
@@ -81,11 +114,20 @@ def _starts_with(a: Any, b: Any) -> bool:
 
 
 def _in(a: Any, b: Any) -> bool:
-    """In operator (value in list)."""
+    """In operator - checks if value(s) exist in filter list.
+
+    For scalar fields: checks if field value is in filter list
+    For array fields: checks if ANY element of field array is in filter list
+
+    Use case: "Find entries where Team Member includes anyone from ['LB', 'MA']"
+    """
     if a is None:
         return False
     if not isinstance(b, list):
         return False
+    # If a is a list, check if ANY element of a is in b
+    if isinstance(a, list):
+        return any(item in b for item in a)
     return a in b
 
 
@@ -125,6 +167,32 @@ def _contains_all(a: Any, b: Any) -> bool:
     return all(str(term).lower() in a_lower for term in b)
 
 
+def _has_any(a: Any, b: Any) -> bool:
+    """Check if array field contains ANY of the specified elements.
+
+    Unlike contains_any (which does case-insensitive substring matching),
+    this does exact array membership checking.
+    """
+    if not isinstance(a, list) or not isinstance(b, list):
+        return False
+    if not b:  # Empty filter list = no match
+        return False
+    return any(elem in a for elem in b)
+
+
+def _has_all(a: Any, b: Any) -> bool:
+    """Check if array field contains ALL of the specified elements.
+
+    Unlike contains_all (which does case-insensitive substring matching),
+    this does exact array membership checking.
+    """
+    if not isinstance(a, list) or not isinstance(b, list):
+        return False
+    if not b:  # Empty filter list = no match (avoid vacuous truth)
+        return False
+    return all(elem in a for elem in b)
+
+
 # Operator registry
 OPERATORS: dict[str, OperatorFunc] = {
     "eq": _eq,
@@ -141,6 +209,8 @@ OPERATORS: dict[str, OperatorFunc] = {
     "is_not_null": _is_not_null,
     "contains_any": _contains_any,
     "contains_all": _contains_all,
+    "has_any": _has_any,
+    "has_all": _has_all,
 }
 
 

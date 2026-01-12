@@ -536,3 +536,287 @@ class TestDateParsingInFilters:
         where = WhereClause(path="status", op="eq", value="active")
         filter_fn = compile_filter(where)
         assert filter_fn({"status": "active"}) is True
+
+
+# =============================================================================
+# Array Field Filtering Tests (Multi-select dropdown support)
+# =============================================================================
+
+
+class TestArrayFieldFiltering:
+    """Test filtering on multi-select/array fields."""
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_on_array_field_checks_membership(self) -> None:
+        """eq operator should check if value is IN the array."""
+        record = {"fields": {"Team Member": ["LB", "MA", "RK"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where) is True
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_on_array_field_no_match(self) -> None:
+        """eq returns False when value not in array."""
+        record = {"fields": {"Team Member": ["MA", "RK"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_list_to_list_set_equality(self) -> None:
+        """eq with list value checks set equality (order-insensitive)."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value=["LB", "MA"])
+        assert matches(record, where) is True
+
+        # Order doesn't matter - set equality
+        where2 = WhereClause(path="fields.Team Member", op="eq", value=["MA", "LB"])
+        assert matches(record, where2) is True
+
+        # Different elements - not equal
+        where3 = WhereClause(path="fields.Team Member", op="eq", value=["LB", "RK"])
+        assert matches(record, where3) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_neq_on_array_field_value_absent(self) -> None:
+        """neq returns True when value is NOT in array."""
+        record = {"fields": {"Team Member": ["MA", "RK"]}}
+        where = WhereClause(path="fields.Team Member", op="neq", value="LB")
+        assert matches(record, where) is True
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_neq_on_array_field_value_present(self) -> None:
+        """neq returns False when value IS in array."""
+        record = {"fields": {"Team Member": ["LB", "MA", "RK"]}}
+        where = WhereClause(path="fields.Team Member", op="neq", value="LB")
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_in_with_array_field(self) -> None:
+        """in operator with array field checks any intersection."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="in", value=["LB", "DW"])
+        assert matches(record, where) is True
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_all(self) -> None:
+        """has_all requires all specified values present."""
+        record = {"fields": {"Team Member": ["LB", "MA", "RK"]}}
+        where = WhereClause(path="fields.Team Member", op="has_all", value=["LB", "MA"])
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Team Member", op="has_all", value=["LB", "DW"])
+        assert matches(record, where2) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_any(self) -> None:
+        """has_any requires any specified value present."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="has_any", value=["LB", "DW"])
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Team Member", op="has_any", value=["XX", "YY"])
+        assert matches(record, where2) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_any_with_empty_array_field(self) -> None:
+        """Empty array field should not match any value."""
+        record = {"fields": {"Team Member": []}}
+        where = WhereClause(path="fields.Team Member", op="has_any", value=["LB"])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_all_with_empty_array_field(self) -> None:
+        """Empty array field should not match any value."""
+        record = {"fields": {"Team Member": []}}
+        where = WhereClause(path="fields.Team Member", op="has_all", value=["LB"])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_any_with_non_list_field(self) -> None:
+        """has_any returns False when field is not a list."""
+        record = {"fields": {"Status": "New"}}
+        where = WhereClause(path="fields.Status", op="has_any", value=["New"])
+        assert matches(record, where) is False  # Status is scalar, not list
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_all_with_non_list_value(self) -> None:
+        """has_all requires list value."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="has_all", value="LB")  # scalar
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_any_with_empty_filter_list(self) -> None:
+        """has_any with empty filter list returns False."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="has_any", value=[])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_all_with_empty_filter_list(self) -> None:
+        """has_all with empty filter list returns False (not vacuous true)."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="has_all", value=[])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_on_single_value_field_unchanged(self) -> None:
+        """eq on non-array fields should work as before."""
+        record = {"fields": {"Status": "New"}}
+        where = WhereClause(path="fields.Status", op="eq", value="New")
+        assert matches(record, where) is True
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_empty_array_field(self) -> None:
+        """Empty array should not match any value."""
+        record = {"fields": {"Team Member": []}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where) is False
+
+    # --- Additional edge cases ---
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_single_element_array(self) -> None:
+        """Single-element array should match its element."""
+        record = {"fields": {"Team Member": ["LB"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where) is True
+
+        # Single-element array vs single-element list
+        where2 = WhereClause(path="fields.Team Member", op="eq", value=["LB"])
+        assert matches(record, where2) is True  # Exact match
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_null_in_array(self) -> None:
+        """Arrays containing None should handle null comparisons."""
+        record = {"fields": {"Team Member": [None, "LB"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Team Member", op="eq", value=None)
+        assert matches(record, where2) is True  # None is in the array
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_empty_string_in_array(self) -> None:
+        """Arrays containing empty string should match empty string."""
+        record = {"fields": {"Team Member": ["", "LB"]}}
+        where = WhereClause(path="fields.Team Member", op="eq", value="")
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Team Member", op="eq", value="LB")
+        assert matches(record, where2) is True
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_in_with_empty_array_field(self) -> None:
+        """in operator with empty array field returns False."""
+        record = {"fields": {"Team Member": []}}
+        where = WhereClause(path="fields.Team Member", op="in", value=["LB", "MA"])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_neq_list_to_list_set_equality(self) -> None:
+        """neq with list value checks set inequality."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        # Same sets (different order) - should be False (not not-equal)
+        where = WhereClause(path="fields.Team Member", op="neq", value=["MA", "LB"])
+        assert matches(record, where) is False
+
+        # Different sets - should be True (they are not-equal)
+        where2 = WhereClause(path="fields.Team Member", op="neq", value=["LB", "RK"])
+        assert matches(record, where2) is True
+
+    # --- Compound filters with multi-select fields ---
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_and_with_array_fields(self) -> None:
+        """AND compound condition with array fields."""
+        record = {"fields": {"Team Member": ["LB", "MA"], "Status": "Active"}}
+        where = WhereClause(
+            and_=[
+                WhereClause(path="fields.Team Member", op="eq", value="LB"),
+                WhereClause(path="fields.Status", op="eq", value="Active"),
+            ]
+        )
+        assert matches(record, where) is True
+
+        # Fails when one condition doesn't match
+        where2 = WhereClause(
+            and_=[
+                WhereClause(path="fields.Team Member", op="eq", value="XX"),
+                WhereClause(path="fields.Status", op="eq", value="Active"),
+            ]
+        )
+        assert matches(record, where2) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_or_with_array_fields(self) -> None:
+        """OR compound condition with array fields."""
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(
+            or_=[
+                WhereClause(path="fields.Team Member", op="eq", value="LB"),
+                WhereClause(path="fields.Team Member", op="eq", value="XX"),
+            ]
+        )
+        assert matches(record, where) is True
+
+        # Both conditions fail
+        where2 = WhereClause(
+            or_=[
+                WhereClause(path="fields.Team Member", op="eq", value="XX"),
+                WhereClause(path="fields.Team Member", op="eq", value="YY"),
+            ]
+        )
+        assert matches(record, where2) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_compound_with_has_any_has_all(self) -> None:
+        """Compound filters using has_any and has_all operators."""
+        record = {"fields": {"Team Member": ["LB", "MA", "RK"]}}
+        # has_all AND has_any
+        where = WhereClause(
+            and_=[
+                WhereClause(path="fields.Team Member", op="has_all", value=["LB", "MA"]),
+                WhereClause(path="fields.Team Member", op="has_any", value=["RK", "XX"]),
+            ]
+        )
+        assert matches(record, where) is True
+
+    # --- Type mismatch edge cases ---
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_array_with_int_value(self) -> None:
+        """eq on array field with integer value."""
+        record = {"fields": {"IDs": [1, 2, 3]}}
+        where = WhereClause(path="fields.IDs", op="eq", value=2)
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.IDs", op="eq", value=99)
+        assert matches(record, where2) is False
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_eq_mixed_type_array(self) -> None:
+        """eq on array with mixed types."""
+        record = {"fields": {"Mixed": ["a", 1, None]}}
+        where = WhereClause(path="fields.Mixed", op="eq", value="a")
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Mixed", op="eq", value=1)
+        assert matches(record, where2) is True
+
+    @pytest.mark.req("QUERY-FILT-007")
+    def test_in_with_type_mismatch(self) -> None:
+        """in operator with type mismatch between array and filter list."""
+        # String array, integer in filter list - no match expected
+        record = {"fields": {"Team Member": ["LB", "MA"]}}
+        where = WhereClause(path="fields.Team Member", op="in", value=[1, 2, 3])
+        assert matches(record, where) is False
+
+    @pytest.mark.req("QUERY-FILT-008")
+    def test_has_any_with_mixed_types(self) -> None:
+        """has_any with mixed type values."""
+        record = {"fields": {"Values": [1, "two", 3.0]}}
+        where = WhereClause(path="fields.Values", op="has_any", value=["two", 99])
+        assert matches(record, where) is True
+
+        where2 = WhereClause(path="fields.Values", op="has_any", value=[1, 99])
+        assert matches(record, where2) is True

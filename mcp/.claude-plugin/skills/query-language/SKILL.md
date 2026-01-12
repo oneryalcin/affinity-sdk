@@ -79,8 +79,35 @@ For simple lookups, prefer `execute-read-command` with individual commands.
 |----------|-------------|---------|
 | `in` | Value in list | `{"path": "status", "op": "in", "value": ["New", "Active"]}` |
 | `between` | Value in range | `{"path": "amount", "op": "between", "value": [1000, 5000]}` |
-| `contains_any` | Array contains any | `{"path": "tags", "op": "contains_any", "value": ["vip", "hot"]}` |
-| `contains_all` | Array contains all | `{"path": "tags", "op": "contains_all", "value": ["verified", "active"]}` |
+| `contains_any` | String contains any substring (case-insensitive) | `{"path": "bio", "op": "contains_any", "value": ["python", "java"]}` |
+| `contains_all` | String contains all substrings (case-insensitive) | `{"path": "bio", "op": "contains_all", "value": ["senior", "engineer"]}` |
+| `has_any` | Array field contains any of the values | `{"path": "fields.Team Member", "op": "has_any", "value": ["LB", "MA"]}` |
+| `has_all` | Array field contains all of the values | `{"path": "fields.Team Member", "op": "has_all", "value": ["LB", "MA"]}` |
+
+### Multi-Select Field Filtering
+
+Multi-select dropdown fields (like "Team Member") return arrays from the API. The `eq` and `neq` operators handle these automatically:
+
+| Operator | Single-value field | Multi-select field |
+|----------|-------------------|-------------------|
+| `eq` | Exact match | Scalar: membership check / List: set equality |
+| `neq` | Not equal | Scalar: not in array / List: set inequality |
+| `in` | Value in list | Any intersection between arrays |
+| `has_any` | Returns false | Any specified value present |
+| `has_all` | Returns false | All specified values present |
+
+**Examples:**
+
+```json
+// Find entries where Team Member includes "LB"
+{ "path": "fields.Team Member", "op": "eq", "value": "LB" }
+
+// Find entries where Team Member includes any of ["LB", "DW"]
+{ "path": "fields.Team Member", "op": "has_any", "value": ["LB", "DW"] }
+
+// Find entries where Team Member includes both "LB" and "MA"
+{ "path": "fields.Team Member", "op": "has_all", "value": ["LB", "MA"] }
+```
 
 ### Null Checks
 

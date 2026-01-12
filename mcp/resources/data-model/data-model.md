@@ -113,6 +113,18 @@ To select all custom fields explicitly, use `fields.*` wildcard:
 {"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["id", "fields.*"]}
 ```
 
+### Multi-select field filtering
+Multi-select dropdown fields (like "Team Member") return arrays from the API. The query engine handles these automatically:
+- `eq` with scalar: checks if value is IN the array (membership)
+- `eq` with array: checks set equality (order-insensitive)
+- `has_any`: checks if array contains any of the specified values
+- `has_all`: checks if array contains all of the specified values
+
+```json
+// Find entries where Team Member includes "LB"
+{"from": "listEntries", "where": {"and_": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "fields.Team Member", "op": "eq", "value": "LB"}]}}
+```
+
 ### Get interactions for a company or person
 ```bash
 interaction ls --type all --company-id 12345                                   # All interactions ever with company
