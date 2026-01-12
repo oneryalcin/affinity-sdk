@@ -656,6 +656,77 @@ class TestQueryExecutor:
         # Should stop at max_records
         assert len(result.data) <= 25
 
+    @pytest.mark.req("QUERY-EXEC-007b")
+    @pytest.mark.asyncio
+    async def test_max_records_with_filter_fetches_all_then_truncates(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """max_records doesn't stop fetch when filter exists, but truncates after."""
+        # Create service that returns 50 records, but only last 10 match filter
+        service = MagicMock()
+
+        class MultiPageIterator:
+            def pages(self, on_progress=None):  # noqa: ARG002
+                async def generator():
+                    # Page 1: records 0-24, none match (status="inactive")
+                    page1 = MagicMock()
+                    page1.data = [
+                        create_mock_record({"id": i, "status": "inactive"}) for i in range(25)
+                    ]
+                    yield page1
+                    # Page 2: records 25-49, all match (status="active")
+                    page2 = MagicMock()
+                    page2.data = [
+                        create_mock_record({"id": 25 + i, "status": "active"}) for i in range(25)
+                    ]
+                    yield page2
+
+                return generator()
+
+        service.all.return_value = MultiPageIterator()
+        mock_client.persons = service
+
+        # Query with filter - should find records in page 2
+        query = Query(
+            from_="persons",
+            where=WhereClause(path="status", op="eq", value="active"),
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity="persons",
+                    description="Fetch",
+                    estimated_api_calls=2,
+                ),
+                PlanStep(
+                    step_id=1,
+                    operation="filter",
+                    description="Filter",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=2,
+            estimated_records_fetched=50,
+            estimated_memory_mb=0.1,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=True,
+        )
+
+        # Set max_records to 20, which is less than position of matching records (25+)
+        # Without fix: would stop at 20, find 0 matches
+        # With fix: fetches all 50, filters to 25 matches, truncates to 20
+        executor = QueryExecutor(mock_client, max_records=20)
+        result = await executor.execute(plan)
+
+        # Should find matching records from page 2, truncated to max_records
+        assert len(result.data) == 20
+        assert all(r["status"] == "active" for r in result.data)
+
     @pytest.mark.req("QUERY-EXEC-009")
     @pytest.mark.asyncio
     async def test_limit_propagation_stops_early(

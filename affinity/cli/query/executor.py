@@ -666,16 +666,22 @@ class QueryExecutor:
     def _should_stop(self, ctx: ExecutionContext) -> bool:
         """Check if we should stop fetching.
 
-        The limit is only applied during fetch when there's NO client-side filter.
-        If there's a client-side filter, we must fetch all records first, then
-        filter, then apply limit - otherwise we might stop fetching before finding
-        any matching records.
+        The limit and max_records are only applied during fetch when there's
+        NO client-side filter. If there's a client-side filter, we must fetch
+        all records first, then filter, then apply limits - otherwise we might
+        stop fetching before finding any matching records.
+
+        Note: When there's a client-side filter, we rely on the underlying
+        entity's total count and per-list limits rather than max_records.
+        After filtering, the final results are truncated to max_records.
         """
-        if len(ctx.records) >= ctx.max_records:
-            return True
-        # Only apply limit during fetch if there's no client-side filter
+        # Only apply limits during fetch if there's no client-side filter
         if ctx.has_client_side_filter:
             return False
+        # Stop at max_records safety limit
+        if len(ctx.records) >= ctx.max_records:
+            return True
+        # Stop at query limit
         return bool(ctx.query.limit and len(ctx.records) >= ctx.query.limit)
 
     def _extract_parent_ids(self, where: Any, field_name: str | None) -> list[int]:
@@ -1070,6 +1076,11 @@ class QueryExecutor:
 
         filter_func = compile_filter(where)
         ctx.records = [r for r in ctx.records if filter_func(r)]
+
+        # Apply max_records limit after filtering (not during fetch)
+        # This ensures we find matching records even if they're beyond position max_records
+        if len(ctx.records) > ctx.max_records:
+            ctx.records = ctx.records[: ctx.max_records]
 
     async def _execute_include(self, step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute an include step (N+1 fetching)."""
