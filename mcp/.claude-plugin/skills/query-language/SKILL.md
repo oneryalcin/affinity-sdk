@@ -258,10 +258,23 @@ To select all custom fields, use `fields.*` wildcard in `select`:
 {
   "from": "listEntries",
   "where": {"path": "listId", "op": "eq", "value": 12345},
-  "select": ["id", "entityId", "fields.*"],
+  "select": ["listEntryId", "entityName", "fields.*"],
   "limit": 50
 }
 ```
+
+### Available Select Fields
+
+| Field | Description |
+|-------|-------------|
+| `listEntryId` | List entry ID (same as `id`) |
+| `entityId` | ID of the company/person/opportunity |
+| `entityName` | Name of the entity |
+| `entityType` | "company", "person", or "opportunity" |
+| `listId` | Parent list ID |
+| `createdAt` | Entry creation timestamp |
+| `fields.<Name>` | Custom field value by name |
+| `fields.*` | All custom fields (wildcard) |
 
 ## Field Paths
 

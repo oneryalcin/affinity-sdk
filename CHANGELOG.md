@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.6 - 2026-01-12
+
+### Added
+- CLI: `listEntries` queries now include convenience aliases: `listEntryId`, `entityId`, `entityName`, `entityType`. These intuitive field names work in both `select` and `where` clauses.
+- CLI: `listEntries` records now always include a `fields` key (defaults to `{}` if no custom fields).
+
+### Changed
+- CLI: Query projection now includes null values for explicitly selected fields. Previously, `select: ["entityName", "fields.Status"]` would return `{}` if Status was null; now returns `{"entityName": "Acme", "fields": {"Status": null}}`.
+
 ## 0.9.5 - 2026-01-12
 
 ### Added

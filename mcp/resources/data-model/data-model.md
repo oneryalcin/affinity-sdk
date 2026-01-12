@@ -110,7 +110,7 @@ When using the `query` tool with listEntries, custom field values are **auto-fet
 
 To select all custom fields explicitly, use `fields.*` wildcard:
 ```json
-{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["id", "fields.*"]}
+{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["listEntryId", "entityName", "fields.*"]}
 ```
 
 ### Multi-select field filtering

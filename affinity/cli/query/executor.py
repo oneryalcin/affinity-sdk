@@ -61,62 +61,72 @@ def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
             "field-123": {"name": "Status", "value": {...}}
         }}}}
 
-    This function extracts them into a top-level fields dict keyed by field name:
-        {"fields": {"Status": "Active"}}
+    This function:
+    1. Extracts custom fields into a top-level fields dict keyed by field name:
+       {"fields": {"Status": "Active"}}
+    2. Adds convenience aliases: listEntryId, entityId, entityName, entityType
+    3. Ensures fields key always exists (defaults to {})
 
-    This allows paths like "fields.Status" to work in filters/groupBy/aggregates.
+    This allows paths like "fields.Status", "entityName" to work in filters/select.
     """
-    # Field data is on entity.fields.data, not directly on the list entry
     entity = record.get("entity")
-    if not entity or not isinstance(entity, dict):
-        return record
 
-    fields_container = entity.get("fields")
-    if not fields_container or not isinstance(fields_container, dict):
-        return record
-
-    fields_data = fields_container.get("data")
-    if not fields_data or not isinstance(fields_data, dict):
-        return record
-
-    # Extract field values into a dict keyed by field name
+    # Extract custom field values if available
     normalized_fields: dict[str, Any] = {}
-    for _field_id, field_obj in fields_data.items():
-        if not isinstance(field_obj, dict):
-            continue
+    if entity and isinstance(entity, dict):
+        fields_container = entity.get("fields")
+        if fields_container and isinstance(fields_container, dict):
+            fields_data = fields_container.get("data")
+            if fields_data and isinstance(fields_data, dict):
+                # Extract field values into a dict keyed by field name
+                for _field_id, field_obj in fields_data.items():
+                    if not isinstance(field_obj, dict):
+                        continue
 
-        field_name = field_obj.get("name")
-        if not field_name:
-            continue
+                    field_name = field_obj.get("name")
+                    if not field_name:
+                        continue
 
-        value_wrapper = field_obj.get("value")
-        if value_wrapper is None:
-            normalized_fields[field_name] = None
-            continue
+                    value_wrapper = field_obj.get("value")
+                    if value_wrapper is None:
+                        normalized_fields[field_name] = None
+                        continue
 
-        if isinstance(value_wrapper, dict):
-            data = value_wrapper.get("data")
-            # Handle dropdown/ranked-dropdown with text value
-            if isinstance(data, dict) and "text" in data:
-                normalized_fields[field_name] = data["text"]
-            # Handle multi-select (array of values)
-            elif isinstance(data, list):
-                # Extract text from each item if it's a dropdown list
-                extracted = []
-                for item in data:
-                    if isinstance(item, dict) and "text" in item:
-                        extracted.append(item["text"])
+                    if isinstance(value_wrapper, dict):
+                        data = value_wrapper.get("data")
+                        # Handle dropdown/ranked-dropdown with text value
+                        if isinstance(data, dict) and "text" in data:
+                            normalized_fields[field_name] = data["text"]
+                        # Handle multi-select (array of values)
+                        elif isinstance(data, list):
+                            # Extract text from each item if it's a dropdown list
+                            extracted = []
+                            for item in data:
+                                if isinstance(item, dict) and "text" in item:
+                                    extracted.append(item["text"])
+                                else:
+                                    extracted.append(item)
+                            normalized_fields[field_name] = extracted
+                        else:
+                            normalized_fields[field_name] = data
                     else:
-                        extracted.append(item)
-                normalized_fields[field_name] = extracted
-            else:
-                normalized_fields[field_name] = data
-        else:
-            normalized_fields[field_name] = value_wrapper
+                        normalized_fields[field_name] = value_wrapper
 
     # Replace the complex fields structure with a simple dict keyed by name
     if normalized_fields:
         record["fields"] = normalized_fields
+
+    # Add top-level convenience aliases for common entity properties
+    # These allow LLMs to use intuitive field names like "entityName" instead of "entity.name"
+    record["listEntryId"] = record.get("id")
+    if entity and isinstance(entity, dict):
+        record["entityId"] = entity.get("id")
+        record["entityName"] = entity.get("name")
+    record["entityType"] = record.get("type")
+
+    # Ensure fields key always exists for predictable output
+    if "fields" not in record:
+        record["fields"] = {}
 
     return record
 
@@ -151,11 +161,11 @@ def _apply_select_projection(
     for record in records:
         new_record: dict[str, Any] = {}
 
-        # Apply explicit paths
+        # Apply explicit paths - always include value even if None
+        # This ensures explicitly selected fields appear in output
         for path in paths:
             value = resolve_field_path(record, path)
-            if value is not None:
-                _set_nested_value(new_record, path, value)
+            _set_nested_value(new_record, path, value)
 
         # Handle fields.* wildcard - copy entire fields dict
         if include_all_fields and "fields" in record:

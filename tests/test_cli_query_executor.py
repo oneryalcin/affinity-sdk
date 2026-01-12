@@ -253,16 +253,29 @@ class TestSelectProjection:
 
         assert result.data == [{"id": 1, "entityId": 100, "fields": {"Status": "New"}}]
 
-    def test_missing_field_not_included(self) -> None:
-        """Fields that don't exist in record are not included."""
+    def test_missing_field_included_as_null(self) -> None:
+        """Fields that don't exist in record are included as null when explicitly selected."""
         query = Query(from_="persons", select=["id", "nonexistent"])
         ctx = ExecutionContext(query=query)
         ctx.records = [{"id": 1, "firstName": "John"}]
 
         result = ctx.build_result()
 
-        # Only id is included since nonexistent doesn't exist
-        assert result.data == [{"id": 1}]
+        # Explicitly selected fields appear even if null
+        assert result.data == [{"id": 1, "nonexistent": None}]
+
+    def test_null_field_included_when_selected(self) -> None:
+        """Null field values are included when explicitly selected."""
+        query = Query(from_="listEntries", select=["id", "entityName", "fields.Status"])
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {"id": 1, "entityName": "Acme", "fields": {"Status": None, "Priority": "High"}}
+        ]
+
+        result = ctx.build_result()
+
+        # Status is null but should appear since explicitly selected
+        assert result.data == [{"id": 1, "entityName": "Acme", "fields": {"Status": None}}]
 
     def test_multiple_records_projection(self) -> None:
         """Projects all records in result."""
@@ -280,6 +293,19 @@ class TestSelectProjection:
             {"id": 1, "email": "john@example.com"},
             {"id": 2, "email": "jane@example.com"},
             {"id": 3, "email": "bob@example.com"},
+        ]
+
+    def test_no_select_returns_full_records(self) -> None:
+        """Without select clause, returns full records without projection."""
+        query = Query(from_="listEntries")  # No select
+        ctx = ExecutionContext(query=query)
+        ctx.records = [{"id": 1, "entityName": "Acme", "listId": 5, "fields": {"Status": None}}]
+
+        result = ctx.build_result()
+
+        # Full record returned as-is, no projection applied
+        assert result.data == [
+            {"id": 1, "entityName": "Acme", "listId": 5, "fields": {"Status": None}}
         ]
 
 
@@ -413,38 +439,47 @@ class TestNormalizeListEntryFields:
 
         assert result["fields"] == {"Tags": ["VIP", "Priority"]}
 
-    def test_returns_unchanged_if_no_entity(self) -> None:
-        """Returns record unchanged if no entity container."""
-        record = {"id": 1, "firstName": "John"}
+    def test_adds_aliases_without_entity(self) -> None:
+        """Adds listEntryId and entityType aliases even without entity."""
+        record = {"id": 1, "type": "company", "firstName": "John"}
 
         result = _normalize_list_entry_fields(record)
 
-        assert result == {"id": 1, "firstName": "John"}
+        assert result["listEntryId"] == 1
+        assert result["entityType"] == "company"
+        assert result["fields"] == {}  # Always added
 
-    def test_returns_unchanged_if_entity_has_no_fields(self) -> None:
-        """Returns record unchanged if entity has no fields."""
-        record = {"id": 1, "entity": {"id": 100, "name": "Test"}}
-
-        result = _normalize_list_entry_fields(record)
-
-        assert result == {"id": 1, "entity": {"id": 100, "name": "Test"}}
-
-    def test_returns_unchanged_if_fields_not_requested(self) -> None:
-        """Returns record unchanged if entity.fields has no data."""
-        record = {"id": 1, "entity": {"id": 100, "fields": {"requested": False}}}
+    def test_adds_entity_aliases(self) -> None:
+        """Adds entityId and entityName from entity object."""
+        record = {"id": 1, "type": "company", "entity": {"id": 100, "name": "Acme Corp"}}
 
         result = _normalize_list_entry_fields(record)
 
-        assert result == {"id": 1, "entity": {"id": 100, "fields": {"requested": False}}}
+        assert result["listEntryId"] == 1
+        assert result["entityId"] == 100
+        assert result["entityName"] == "Acme Corp"
+        assert result["entityType"] == "company"
+        assert result["fields"] == {}
 
-    def test_returns_unchanged_if_fields_data_empty(self) -> None:
-        """Returns record unchanged if entity.fields.data is empty."""
+    def test_adds_aliases_without_fields_data(self) -> None:
+        """Adds aliases even when entity.fields.data doesn't exist."""
+        record = {"id": 1, "entity": {"id": 100, "name": "Test", "fields": {"requested": False}}}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["listEntryId"] == 1
+        assert result["entityId"] == 100
+        assert result["entityName"] == "Test"
+        assert result["fields"] == {}
+
+    def test_fields_key_always_exists(self) -> None:
+        """Fields key is always present, defaulting to empty dict."""
         record = {"id": 1, "entity": {"id": 100, "fields": {"requested": True, "data": {}}}}
 
         result = _normalize_list_entry_fields(record)
 
-        # fields structure preserved since no normalization happened
-        assert result.get("fields") is None  # No normalization occurred
+        # fields key always exists, even if no custom fields
+        assert result["fields"] == {}
 
 
 # =============================================================================
@@ -1460,22 +1495,31 @@ class TestNormalizeListEntryFieldsEdgeCases:
     """Additional edge case tests for _normalize_list_entry_fields."""
 
     def test_entity_not_dict(self) -> None:
-        """Returns unchanged when entity is not a dict."""
+        """Adds aliases even when entity is not a dict."""
         record = {"id": 1, "entity": "not a dict"}
         result = _normalize_list_entry_fields(record)
-        assert result == {"id": 1, "entity": "not a dict"}
+        # Aliases added, fields defaults to empty
+        assert result["listEntryId"] == 1
+        assert result["fields"] == {}
+        # entityId/entityName not added since entity is not a dict
 
     def test_fields_container_not_dict(self) -> None:
-        """Returns unchanged when entity.fields is not a dict."""
+        """Adds aliases even when entity.fields is not a dict."""
         record = {"id": 1, "entity": {"id": 100, "fields": "not a dict"}}
         result = _normalize_list_entry_fields(record)
-        assert result == {"id": 1, "entity": {"id": 100, "fields": "not a dict"}}
+        # Aliases added from entity
+        assert result["listEntryId"] == 1
+        assert result["entityId"] == 100
+        assert result["fields"] == {}
 
     def test_fields_data_not_dict(self) -> None:
-        """Returns unchanged when entity.fields.data is not a dict."""
+        """Adds aliases even when entity.fields.data is not a dict."""
         record = {"id": 1, "entity": {"id": 100, "fields": {"data": "not a dict"}}}
         result = _normalize_list_entry_fields(record)
-        assert result == {"id": 1, "entity": {"id": 100, "fields": {"data": "not a dict"}}}
+        # Aliases added from entity
+        assert result["listEntryId"] == 1
+        assert result["entityId"] == 100
+        assert result["fields"] == {}
 
     def test_field_obj_not_dict(self) -> None:
         """Skips field objects that are not dicts."""
@@ -2644,6 +2688,31 @@ class TestExecuteFilterWithResolvedWhere:
         executor._execute_filter(step, ctx)
 
         assert len(ctx.records) == 3
+
+    @pytest.mark.asyncio
+    async def test_filter_with_normalized_alias_entityName(self, mock_client: AsyncMock) -> None:
+        """Filter works with normalized entityName alias on listEntries."""
+        query = Query(
+            from_="listEntries",
+            where=WhereClause(path="entityName", op="contains", value="Acme"),
+        )
+        ctx = ExecutionContext(query=query, max_records=100)
+        # Records after normalization (entityName alias added)
+        ctx.records = [
+            {"id": 1, "listEntryId": 1, "entityId": 100, "entityName": "Acme Corp", "fields": {}},
+            {"id": 2, "listEntryId": 2, "entityId": 101, "entityName": "Beta Inc", "fields": {}},
+            {"id": 3, "listEntryId": 3, "entityId": 102, "entityName": "Acme Labs", "fields": {}},
+        ]
+
+        executor = QueryExecutor(mock_client, max_records=100)
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+
+        executor._execute_filter(step, ctx)
+
+        # Only records with "Acme" in entityName should remain
+        assert len(ctx.records) == 2
+        assert ctx.records[0]["entityName"] == "Acme Corp"
+        assert ctx.records[1]["entityName"] == "Acme Labs"
 
 
 # =============================================================================
