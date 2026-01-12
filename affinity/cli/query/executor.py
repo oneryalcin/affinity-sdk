@@ -226,6 +226,7 @@ class ExecutionContext:
     interrupted: bool = False
     resolved_where: dict[str, Any] | None = None  # Where clause with resolved names
     warnings: list[str] = field(default_factory=list)  # Warnings collected during execution
+    has_client_side_filter: bool = False  # True if plan has client-side filter step
 
     def check_timeout(self, timeout: float) -> None:
         """Check if execution has exceeded timeout."""
@@ -337,9 +338,13 @@ class QueryExecutor:
             QueryTimeoutError: If timeout exceeded
             QuerySafetyLimitError: If max_records exceeded
         """
+        # Check if plan has client-side filter step
+        has_filter_step = any(step.operation == "filter" for step in plan.steps)
+
         ctx = ExecutionContext(
             query=plan.query,
             max_records=self.max_records,
+            has_client_side_filter=has_filter_step,
         )
 
         try:
@@ -649,9 +654,18 @@ class QueryExecutor:
                     return
 
     def _should_stop(self, ctx: ExecutionContext) -> bool:
-        """Check if we should stop fetching."""
+        """Check if we should stop fetching.
+
+        The limit is only applied during fetch when there's NO client-side filter.
+        If there's a client-side filter, we must fetch all records first, then
+        filter, then apply limit - otherwise we might stop fetching before finding
+        any matching records.
+        """
         if len(ctx.records) >= ctx.max_records:
             return True
+        # Only apply limit during fetch if there's no client-side filter
+        if ctx.has_client_side_filter:
+            return False
         return bool(ctx.query.limit and len(ctx.records) >= ctx.query.limit)
 
     def _extract_parent_ids(self, where: Any, field_name: str | None) -> list[int]:
