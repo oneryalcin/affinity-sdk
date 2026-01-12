@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.4 - 2026-01-12
+
+### Added
+- CLI: `query` command now supports `has_any` and `has_all` operators for multi-select field filtering.
+
+### Fixed
+- CLI: `query` command now correctly filters on multi-select dropdown fields (like "Team Member"). The `eq` operator checks array membership for scalar values and set equality for array values. Previously, these queries returned 0 results due to strict equality comparison.
+
 ## 0.9.3 - 2026-01-11
 
 ### Changed
