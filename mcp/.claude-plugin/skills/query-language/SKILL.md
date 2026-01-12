@@ -70,8 +70,9 @@ For simple lookups, prefer `execute-read-command` with individual commands.
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `contains` | Contains substring | `{"path": "email", "op": "contains", "value": "@gmail"}` |
-| `starts_with` | Starts with | `{"path": "name", "op": "starts_with", "value": "Acme"}` |
+| `contains` | Contains substring (case-insensitive) | `{"path": "email", "op": "contains", "value": "@gmail"}` |
+| `starts_with` | Starts with (case-insensitive) | `{"path": "name", "op": "starts_with", "value": "Acme"}` |
+| `ends_with` | Ends with (case-insensitive) | `{"path": "email", "op": "ends_with", "value": "@acme.com"}` |
 
 ### Collection Operators
 
@@ -109,12 +110,13 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 { "path": "fields.Team Member", "op": "has_all", "value": ["LB", "MA"] }
 ```
 
-### Null Checks
+### Null/Empty Checks
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `is_null` | Field is null | `{"path": "email", "op": "is_null"}` |
-| `is_not_null` | Field is not null | `{"path": "email", "op": "is_not_null"}` |
+| `is_null` | Field is null or empty string | `{"path": "email", "op": "is_null"}` |
+| `is_not_null` | Field is not null and not empty | `{"path": "email", "op": "is_not_null"}` |
+| `is_empty` | Field is null, empty string, or empty array | `{"path": "tags", "op": "is_empty"}` |
 
 ## Compound Conditions
 

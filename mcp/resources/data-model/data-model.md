@@ -180,18 +180,28 @@ All commands use the same filter syntax:
 --filter 'field op "value"'
 ```
 
-**Operators**:
+**Symbolic Operators**:
 - `=` equals
 - `!=` not equals
-- `=~` contains
-- `=^` starts with
-- `=$` ends with
+- `=~` contains (case-insensitive)
+- `=^` starts with (case-insensitive)
+- `=$` ends with (case-insensitive)
 - `>` `<` `>=` `<=` comparisons
+
+**Word-based Operators** (SDK filter extension):
+- `contains`, `starts_with`, `ends_with` - string matching
+- `in [val1, val2]` - value in list
+- `between [low, high]` - value in range
+- `has_any [val1, val2]` - array contains any
+- `has_all [val1, val2]` - array contains all
+- `is null`, `is not null`, `is empty` - null/empty checks
 
 **Examples**:
 - `--filter 'name =~ "Acme"'`
 - `--filter "Status=Active"`
 - `--filter 'Industry = "Software"'`
+- `--filter 'email =$ "@acme.com"'`
+- `--filter 'Status in ["New", "Active"]'`
 
 ## Query vs Filter
 
