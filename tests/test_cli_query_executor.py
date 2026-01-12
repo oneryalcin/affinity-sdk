@@ -727,6 +727,155 @@ class TestQueryExecutor:
         assert len(result.data) == 20
         assert all(r["status"] == "active" for r in result.data)
 
+    @pytest.mark.req("QUERY-EXEC-007c")
+    @pytest.mark.asyncio
+    async def test_sort_with_limit_fetches_all_records(self, mock_client: AsyncMock) -> None:
+        """Sort+limit without filter fetches all records to get actual top N."""
+        # Create service that returns 50 records, highest IDs are in page 2
+        service = MagicMock()
+
+        class MultiPageIterator:
+            def pages(self, on_progress=None):  # noqa: ARG002
+                async def generator():
+                    # Page 1: records with low values (id: 1-25)
+                    page1 = MagicMock()
+                    page1.data = [create_mock_record({"id": i, "value": i}) for i in range(1, 26)]
+                    yield page1
+                    # Page 2: records with high values (id: 26-50)
+                    page2 = MagicMock()
+                    page2.data = [create_mock_record({"id": i, "value": i}) for i in range(26, 51)]
+                    yield page2
+
+                return generator()
+
+        service.all.return_value = MultiPageIterator()
+        mock_client.persons = service
+
+        # Query: get top 5 by value descending (should be IDs 50, 49, 48, 47, 46)
+        query = Query(
+            from_="persons",
+            order_by=[OrderByClause(field="value", direction="desc")],
+            limit=5,
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity="persons",
+                    description="Fetch",
+                    estimated_api_calls=2,
+                ),
+                PlanStep(
+                    step_id=1,
+                    operation="sort",
+                    description="Sort by value desc",
+                    depends_on=[0],
+                ),
+                PlanStep(
+                    step_id=2,
+                    operation="limit",
+                    description="Take first 5",
+                    depends_on=[1],
+                ),
+            ],
+            total_api_calls=2,
+            estimated_records_fetched=50,
+            estimated_memory_mb=0.1,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        # Without fix: would stop at limit=5 during fetch, getting IDs 1-5
+        # Then sort (no-op, already sorted by id), then limit (no-op)
+        # Result: [1,2,3,4,5] sorted descending = [5,4,3,2,1] - WRONG!
+        # With fix: fetches all 50, sorts all, takes top 5 = [50,49,48,47,46] - CORRECT!
+        executor = QueryExecutor(mock_client, max_records=100)
+        result = await executor.execute(plan)
+
+        # Should get actual top 5 (highest values from page 2)
+        assert len(result.data) == 5
+        values = [r["value"] for r in result.data]
+        assert values == [50, 49, 48, 47, 46], f"Expected top 5 values, got {values}"
+
+    @pytest.mark.req("QUERY-EXEC-007d")
+    @pytest.mark.asyncio
+    async def test_aggregate_with_limit_fetches_all_records(self, mock_client: AsyncMock) -> None:
+        """Aggregate+limit without filter fetches all records for accurate counts."""
+        # Create service that returns 50 records across 2 pages
+        service = MagicMock()
+
+        class MultiPageIterator:
+            def pages(self, on_progress=None):  # noqa: ARG002
+                async def generator():
+                    # Page 1: 25 records
+                    page1 = MagicMock()
+                    page1.data = [create_mock_record({"id": i, "value": 10}) for i in range(25)]
+                    yield page1
+                    # Page 2: 25 more records
+                    page2 = MagicMock()
+                    page2.data = [
+                        create_mock_record({"id": 25 + i, "value": 10}) for i in range(25)
+                    ]
+                    yield page2
+
+                return generator()
+
+        service.all.return_value = MultiPageIterator()
+        mock_client.persons = service
+
+        # Query: count all records and sum values
+        query = Query(
+            from_="persons",
+            aggregate={"total": AggregateFunc(count=True), "sum": AggregateFunc(sum="value")},
+            limit=1,  # limit on output (one aggregate result row)
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity="persons",
+                    description="Fetch",
+                    estimated_api_calls=2,
+                ),
+                PlanStep(
+                    step_id=1,
+                    operation="aggregate",
+                    description="Compute aggregates",
+                    depends_on=[0],
+                ),
+                PlanStep(
+                    step_id=2,
+                    operation="limit",
+                    description="Take first 1",
+                    depends_on=[1],
+                ),
+            ],
+            total_api_calls=2,
+            estimated_records_fetched=50,
+            estimated_memory_mb=0.1,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        # Without fix: would stop at limit=1 during fetch, getting 1 record
+        # Then aggregate: count=1, sum=10 - WRONG!
+        # With fix: fetches all 50, aggregates all: count=50, sum=500 - CORRECT!
+        executor = QueryExecutor(mock_client, max_records=100)
+        result = await executor.execute(plan)
+
+        # Should have accurate counts from all 50 records
+        assert len(result.data) == 1
+        assert result.data[0]["total"] == 50, f"Expected count=50, got {result.data[0]['total']}"
+        assert result.data[0]["sum"] == 500, f"Expected sum=500, got {result.data[0]['sum']}"
+
     @pytest.mark.req("QUERY-EXEC-009")
     @pytest.mark.asyncio
     async def test_limit_propagation_stops_early(
@@ -1995,6 +2144,42 @@ class TestShouldStop:
         ctx.records = [{"id": i} for i in range(3)]
 
         assert executor._should_stop(ctx) is False
+
+    def test_needs_full_fetch_prevents_stop_at_limit(self) -> None:
+        """When needs_full_fetch is True, does not stop at limit."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(from_="persons", limit=5)
+        ctx = ExecutionContext(query=query, max_records=100, needs_full_fetch=True)
+        ctx.records = [{"id": i} for i in range(50)]  # Way over limit
+
+        # Even though we have 50 records and limit is 5, needs_full_fetch prevents stopping
+        assert executor._should_stop(ctx) is False
+
+    def test_needs_full_fetch_prevents_stop_at_max_records(self) -> None:
+        """When needs_full_fetch is True, does not stop at max_records."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=10)
+
+        query = Query(from_="persons")
+        ctx = ExecutionContext(query=query, max_records=10, needs_full_fetch=True)
+        ctx.records = [{"id": i} for i in range(20)]  # Over max_records
+
+        # Even though we have 20 records and max_records is 10, needs_full_fetch prevents stopping
+        assert executor._should_stop(ctx) is False
+
+    def test_needs_full_fetch_false_allows_stop(self) -> None:
+        """When needs_full_fetch is False, normal limits apply."""
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client, max_records=100)
+
+        query = Query(from_="persons", limit=5)
+        ctx = ExecutionContext(query=query, max_records=100, needs_full_fetch=False)
+        ctx.records = [{"id": i} for i in range(5)]
+
+        # With needs_full_fetch=False, should stop at limit
+        assert executor._should_stop(ctx) is True
 
 
 # =============================================================================

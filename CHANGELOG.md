@@ -5,10 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.8 - 2026-01-12
+
+### Fixed
+- CLI: `query` command now correctly fetches all records before applying filter, sort, or aggregate operations. Previously, limits were applied during fetch which caused incorrect results:
+  - With filters: Empty results when matching records were beyond the limit position
+  - With sort + limit: Random N records sorted instead of actual top N
+  - With aggregate: Inaccurate counts/sums computed on partial data
+
 ## 0.9.7 - 2026-01-12
 
 ### Fixed
-- CLI: `query` command with `--max-records` now correctly finds matching records when using client-side filters. Previously, `max_records` stopped fetching early, causing empty results when matching records were beyond that position in the list. Now fetches all records first, filters, then truncates to `max_records`.
+- CI: Smoke test now correctly installs CLI extras before testing CLI import
 
 ## 0.9.6 - 2026-01-12
 

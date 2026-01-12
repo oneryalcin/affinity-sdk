@@ -236,7 +236,7 @@ class ExecutionContext:
     interrupted: bool = False
     resolved_where: dict[str, Any] | None = None  # Where clause with resolved names
     warnings: list[str] = field(default_factory=list)  # Warnings collected during execution
-    has_client_side_filter: bool = False  # True if plan has client-side filter step
+    needs_full_fetch: bool = False  # True if filter/aggregate/sort exists (need all records first)
 
     def check_timeout(self, timeout: float) -> None:
         """Check if execution has exceeded timeout."""
@@ -348,13 +348,18 @@ class QueryExecutor:
             QueryTimeoutError: If timeout exceeded
             QuerySafetyLimitError: If max_records exceeded
         """
-        # Check if plan has client-side filter step
-        has_filter_step = any(step.operation == "filter" for step in plan.steps)
+        # Check if plan has steps that need ALL records before limiting (filter/aggregate/sort)
+        # - Filter: must see all records to find matches
+        # - Aggregate: must see all records for accurate counts/sums
+        # - Sort: must see all records to find actual top N (not random N sorted)
+        needs_full_fetch = any(
+            step.operation in ("filter", "aggregate", "sort") for step in plan.steps
+        )
 
         ctx = ExecutionContext(
             query=plan.query,
             max_records=self.max_records,
-            has_client_side_filter=has_filter_step,
+            needs_full_fetch=needs_full_fetch,
         )
 
         try:
@@ -667,16 +672,21 @@ class QueryExecutor:
         """Check if we should stop fetching.
 
         The limit and max_records are only applied during fetch when there's
-        NO client-side filter. If there's a client-side filter, we must fetch
-        all records first, then filter, then apply limits - otherwise we might
-        stop fetching before finding any matching records.
+        NO operation that needs all records first (filter, aggregate, sort).
 
-        Note: When there's a client-side filter, we rely on the underlying
+        - Filter: Must see all records to find matches - can't stop at 10
+          records when matches might be at position 100+
+        - Aggregate: Must see all records for accurate counts/sums - stopping
+          early gives wrong results
+        - Sort: Must see all records to find actual top N - stopping early
+          gives random N sorted, not actual top N
+
+        Note: When needs_full_fetch is True, we rely on the underlying
         entity's total count and per-list limits rather than max_records.
-        After filtering, the final results are truncated to max_records.
+        After filter/aggregate/sort, the final results are truncated.
         """
-        # Only apply limits during fetch if there's no client-side filter
-        if ctx.has_client_side_filter:
+        # Only apply limits during fetch if no operation needs all records first
+        if ctx.needs_full_fetch:
             return False
         # Stop at max_records safety limit
         if len(ctx.records) >= ctx.max_records:
