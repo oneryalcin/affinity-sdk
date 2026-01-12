@@ -724,6 +724,26 @@ class _Parser:
 
         op_token = self._current()
         if op_token.type != _TokenType.OPERATOR:
+            # Check if this looks like a multi-word field name (next token is word, not operator)
+            # Note: the next word might be tokenized as FIELD if it's followed by an operator
+            if op_token.type in (_TokenType.VALUE, _TokenType.FIELD):
+                # Collect subsequent words to suggest the full field name
+                words = [field_name, op_token.value]
+                pos = self.pos + 1
+                while pos < len(self.tokens) - 1:
+                    next_tok = self.tokens[pos]
+                    if next_tok.type == _TokenType.OPERATOR:
+                        break
+                    if next_tok.type in (_TokenType.VALUE, _TokenType.FIELD):
+                        words.append(next_tok.value)
+                        pos += 1
+                    else:
+                        break
+                suggested_field = " ".join(words)
+                raise ValueError(
+                    f"Expected operator after '{field_name}' at position {op_token.pos}. "
+                    f'Hint: For multi-word field names, use quotes: "{suggested_field}"'
+                )
             raise ValueError(f"Expected operator after '{field_name}' at position {op_token.pos}")
         self._advance()
         operator = op_token.value

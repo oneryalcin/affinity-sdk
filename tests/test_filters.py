@@ -348,6 +348,16 @@ def test_parse_invalid_operator() -> None:
         parse("field <> value")  # <> is not a valid operator
 
 
+def test_parse_multi_word_field_suggests_quoting() -> None:
+    """Test that unquoted multi-word field names give helpful error message."""
+    with pytest.raises(ValueError, match=r'Hint.*"Team Member"'):
+        parse('Team Member = "LB"')
+
+    # Three-word field name
+    with pytest.raises(ValueError, match=r'Hint.*"Primary Email Status"'):
+        parse("Primary Email Status = Valid")
+
+
 # =============================================================================
 # Integration tests - realistic use cases
 # =============================================================================
