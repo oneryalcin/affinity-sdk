@@ -122,7 +122,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 
 ```json
 // Find entries where Team Member includes "LB"
-{"from": "listEntries", "where": {"and_": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "fields.Team Member", "op": "eq", "value": "LB"}]}}
+{"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "fields.Team Member", "op": "eq", "value": "LB"}]}}
 ```
 
 ### Get interactions for a company or person

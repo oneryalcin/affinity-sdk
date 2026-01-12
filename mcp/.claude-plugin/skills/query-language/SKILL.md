@@ -125,7 +125,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 ```json
 {
   "where": {
-    "and_": [
+    "and": [
       { "path": "status", "op": "eq", "value": "Active" },
       { "path": "amount", "op": "gt", "value": 10000 }
     ]
@@ -138,7 +138,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 ```json
 {
   "where": {
-    "or_": [
+    "or": [
       { "path": "email", "op": "contains", "value": "@acme.com" },
       { "path": "email", "op": "contains", "value": "@acme.io" }
     ]
@@ -151,7 +151,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 ```json
 {
   "where": {
-    "not_": { "path": "status", "op": "eq", "value": "Closed" }
+    "not": { "path": "status", "op": "eq", "value": "Closed" }
   }
 }
 ```
@@ -327,7 +327,7 @@ Returns execution plan with:
 {
   "from": "persons",
   "where": {
-    "and_": [
+    "and": [
       { "path": "email", "op": "is_not_null" },
       { "path": "fields.VIP", "op": "eq", "value": true }
     ]
@@ -358,7 +358,7 @@ Returns execution plan with:
 {
   "from": "interactions",
   "where": {
-    "and_": [
+    "and": [
       { "path": "created_at", "op": "gte", "value": "-7d" },
       { "path": "type", "op": "in", "value": ["call", "meeting"] }
     ]
@@ -375,7 +375,7 @@ Returns execution plan with:
 {
   "from": "companies",
   "where": {
-    "or_": [
+    "or": [
       { "path": "lastInteraction.date", "op": "lt", "value": "-90d" },
       { "path": "lastInteraction.date", "op": "is_null" }
     ]
