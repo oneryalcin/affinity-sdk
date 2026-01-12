@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `query` command now correctly filters on multi-select dropdown fields (like "Team Member"). The `eq` operator checks array membership for scalar values and set equality for array values. Previously, these queries returned 0 results due to strict equality comparison.
 - SDK/CLI: `list export --filter` now correctly matches multi-select dropdown fields. The `=`, `!=`, and `=~` operators now handle array values properly. Also fixes extraction of text values from multi-select dropdown API responses.
 
+### Improved
+- SDK/CLI: Filter parser now provides helpful hints for common mistakes:
+  - Multi-word field names: suggests quoting (`"Team Member"`)
+  - Multi-word values: suggests quoting (`"Intro Meeting"`)
+  - Unsupported operators (`>`, `<`): lists valid operators (`=`, `!=`, `=~`)
+  - SQL keywords (`AND`, `OR`): suggests correct symbols (`&`, `|`)
+  - Double equals (`==`): suggests single `=`
+
 ## 0.9.3 - 2026-01-11
 
 ### Changed
