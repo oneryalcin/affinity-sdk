@@ -358,6 +358,28 @@ def test_parse_multi_word_field_suggests_quoting() -> None:
         parse("Primary Email Status = Valid")
 
 
+def test_parse_unsupported_operator_lists_valid_ones() -> None:
+    """Test that unsupported operators give helpful error with valid alternatives."""
+    with pytest.raises(ValueError, match=r"Unsupported operator '>'.*Supported operators"):
+        parse("count > 5")
+
+    with pytest.raises(ValueError, match=r"Unsupported operator '<'.*Supported operators"):
+        parse("count < 5")
+
+    # Note: >= is tokenized as > then =, so error is about >
+    with pytest.raises(ValueError, match=r"Unsupported operator '>'.*Supported operators"):
+        parse("count >= 5")
+
+
+def test_parse_multi_word_value_suggests_quoting() -> None:
+    """Test that unquoted multi-word values give helpful error message."""
+    with pytest.raises(ValueError, match=r"Hint.*Values with spaces must be quoted"):
+        parse("Status = Intro Meeting")
+
+    with pytest.raises(ValueError, match=r"Hint.*Values with spaces must be quoted"):
+        parse("Status = Intro Meeting Scheduled")
+
+
 # =============================================================================
 # Integration tests - realistic use cases
 # =============================================================================

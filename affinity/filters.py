@@ -622,6 +622,30 @@ class _Parser:
 
         if self._current().type != _TokenType.EOF:
             token = self._current()
+            # Check if this looks like a multi-word value (extra word after comparison)
+            if token.type in (_TokenType.VALUE, _TokenType.FIELD):
+                # Look back to find the previous value to suggest quoting
+                # Collect remaining words
+                remaining_words = [token.value]
+                pos = self.pos + 1
+                while pos < len(self.tokens) - 1:
+                    next_tok = self.tokens[pos]
+                    if next_tok.type in (_TokenType.VALUE, _TokenType.FIELD):
+                        remaining_words.append(next_tok.value)
+                        pos += 1
+                    else:
+                        break
+                if len(remaining_words) == 1:
+                    raise ValueError(
+                        f"Unexpected token '{token.value}' at position {token.pos}. "
+                        f'Hint: Values with spaces must be quoted: "... {token.value}"'
+                    )
+                else:
+                    combined = " ".join(remaining_words)
+                    raise ValueError(
+                        f"Unexpected token '{token.value}' at position {token.pos}. "
+                        f'Hint: Values with spaces must be quoted: "...{combined}"'
+                    )
             raise ValueError(f"Unexpected token '{token.value}' at position {token.pos}")
 
         return expr
@@ -727,6 +751,12 @@ class _Parser:
             # Check if this looks like a multi-word field name (next token is word, not operator)
             # Note: the next word might be tokenized as FIELD if it's followed by an operator
             if op_token.type in (_TokenType.VALUE, _TokenType.FIELD):
+                # Check if it looks like an unsupported operator (>, <, >=, <=, etc.)
+                if op_token.value in (">", "<", ">=", "<=", "<>", ">>", "<<"):
+                    raise ValueError(
+                        f"Unsupported operator '{op_token.value}' at position {op_token.pos}. "
+                        f"Supported operators: = (equals), != (not equals), =~ (contains)"
+                    )
                 # Collect subsequent words to suggest the full field name
                 words = [field_name, op_token.value]
                 pos = self.pos + 1
@@ -735,6 +765,9 @@ class _Parser:
                     if next_tok.type == _TokenType.OPERATOR:
                         break
                     if next_tok.type in (_TokenType.VALUE, _TokenType.FIELD):
+                        # Skip operator-like tokens
+                        if next_tok.value in (">", "<", ">=", "<=", "<>"):
+                            break
                         words.append(next_tok.value)
                         pos += 1
                     else:
