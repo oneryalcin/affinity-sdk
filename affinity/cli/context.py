@@ -55,7 +55,7 @@ from .paths import CliPaths, get_paths
 from .results import CommandContext, CommandMeta, CommandResult, ErrorInfo, ResultSummary
 from .session_cache import SessionCache, SessionCacheConfig
 
-OutputFormat = Literal["table", "json"]
+OutputFormat = Literal["table", "json", "jsonl", "markdown", "toon", "csv"]
 
 _CLI_CACHE_ENABLED = True
 _CLI_CACHE_TTL_SECONDS = 300.0

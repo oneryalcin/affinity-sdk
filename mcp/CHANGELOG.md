@@ -5,6 +5,17 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-01-12
+
+### Added
+- **Output formats**: New `format` parameter for `query` and `execute-read-command` tools
+  - Supported formats: `json` (default), `jsonl`, `markdown`, `toon`, `csv`
+  - `markdown`: Best for LLM comprehension when analyzing/summarizing data
+  - `toon`: 30-60% fewer tokens than JSON, best for large datasets
+  - `jsonl`: One JSON object per line, best for streaming workflows
+- **SKILL.md**: Added "Output Formats" section with format comparison table and recommendations
+- **SKILL.md**: Added format parameter documentation to MCP workflows guide
+
 ## [1.7.6] - 2026-01-11
 
 ### Fixed

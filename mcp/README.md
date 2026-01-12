@@ -10,13 +10,80 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 - **Interaction Logging** - Log calls, meetings, emails, and messages
 - **Session Caching** - Efficient caching to minimize API calls
 
+## Quick Start
+
+```bash
+# 1. Install the xaffinity CLI
+pip install affinity-sdk
+
+# 2. Configure your API key
+xaffinity config setup-key
+
+# 3. Install the MCP server (choose one)
+#    - Claude Desktop: Download and double-click xaffinity-mcp-*.mcpb
+#    - Claude Code: /plugin marketplace add yaniv-golan/affinity-sdk
+```
+
+## Prerequisites
+
+### For Claude Desktop / MCPB Installation (Recommended)
+
+The `.mcpb` bundle is self-contained — it includes the MCP Bash Framework and gojq. You only need:
+
+| Requirement | How to Install | Verify |
+|-------------|----------------|--------|
+| Python 3.9+ | [python.org](https://python.org) or your package manager | `python --version` |
+| xaffinity CLI | `pip install affinity-sdk` | `xaffinity --version` |
+| Affinity API key | `xaffinity config setup-key` | `xaffinity config check-key` |
+
+### For Manual Installation
+
+Manual installation requires additional dependencies:
+
+| Requirement | How to Install | Verify |
+|-------------|----------------|--------|
+| Bash 3.2+ | Included on macOS/Linux; Windows: use WSL or Git Bash | `bash --version` |
+| Python 3.9+ | [python.org](https://python.org) or your package manager | `python --version` |
+| jq or gojq | See [Installing jq/gojq](#installing-jqgojq) below | `jq --version` or `gojq --version` |
+| xaffinity CLI | `pip install affinity-sdk` | `xaffinity --version` |
+| Affinity API key | `xaffinity config setup-key` | `xaffinity config check-key` |
+
+#### Installing jq/gojq
+
+Either [jq](https://jqlang.org/) or [gojq](https://github.com/itchyny/gojq) works — the server auto-detects which is available.
+
+**Which to choose:**
+- **jq** (recommended) — The original, widely available, full regex support
+- **gojq** — Pure Go implementation, also supports YAML, better error messages
+
+**Install jq:**
+
+| Platform | Command |
+|----------|---------|
+| macOS | `brew install jq` |
+| Debian/Ubuntu | `sudo apt-get install jq` |
+| Fedora | `sudo dnf install jq` |
+| Arch Linux | `sudo pacman -S jq` |
+| Windows | `winget install jqlang.jq` or `choco install jq` |
+
+**Install gojq (alternative):**
+
+| Platform | Command |
+|----------|---------|
+| macOS | `brew install gojq` |
+| Any (Go required) | `go install github.com/itchyny/gojq/cmd/gojq@latest` |
+| Binary download | [GitHub Releases](https://github.com/itchyny/gojq/releases) |
+
 ## Installation
 
 ### Option 1: Claude Desktop (One-Click)
 
-1. Download `xaffinity-mcp-*.mcpb` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest)
-2. Double-click the file or drag it into Claude Desktop
-3. Configure your Affinity API key when prompted
+The `.mcpb` bundle is fully self-contained — it includes the MCP framework and JSON processor.
+
+1. Install the xaffinity CLI: `pip install affinity-sdk`
+2. Configure your API key: `xaffinity config setup-key`
+3. Download `xaffinity-mcp-*.mcpb` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest)
+4. Double-click the file or drag it into Claude Desktop
 
 ### Option 2: Claude Code
 
@@ -27,26 +94,38 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 
 ### Option 3: Manual Installation
 
-Download `xaffinity-mcp-plugin.zip` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest) and configure your MCP client manually (see [Usage](#usage) below).
+For other MCP clients or development. Requires [additional prerequisites](#for-manual-installation).
 
-### Prerequisites
+1. Download `xaffinity-mcp-plugin.zip` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest)
+2. Extract and configure your MCP client (see [Usage](#usage) below)
+3. Install the MCP Bash Framework:
+   ```bash
+   ./xaffinity-mcp.sh install
+   ```
+4. Validate your configuration:
+   ```bash
+   ./xaffinity-mcp.sh validate
+   ```
 
-- Bash 3.2+
-- jq 1.6+ or gojq (auto-detected via `MCPBASH_JSON_TOOL`)
-- xaffinity CLI (`pip install affinity-python-sdk`)
-- Configured Affinity API key (`xaffinity config setup-key`)
+## Troubleshooting
 
-### Install Framework
+If the MCP server fails to start, run diagnostics:
 
 ```bash
-./xaffinity-mcp.sh install
+./xaffinity-mcp.sh doctor
 ```
 
-### Validate Configuration
+Common issues:
 
-```bash
-./xaffinity-mcp.sh validate
-```
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "Could not detect xaffinity CLI" | CLI not installed | `pip install affinity-sdk` |
+| "CLI version X is too old" | Outdated CLI | `pip install --upgrade affinity-sdk` |
+| "API key not configured" | Missing credentials | `xaffinity config setup-key` |
+| "No JSON processor found" | jq/gojq not installed (manual install only) | See [Installing jq/gojq](#installing-jqgojq) |
+| "Framework not found" | MCP Bash not installed (manual install only) | `./xaffinity-mcp.sh install` |
+
+For detailed debugging, see [docs/DEBUGGING.md](docs/DEBUGGING.md).
 
 ## Usage
 
@@ -103,6 +182,27 @@ The CLI Gateway provides full access to the xaffinity CLI with minimal token ove
    ```json
    {"command": "list entry add", "argv": ["Pipeline", "--person-id", "123"]}
    ```
+
+#### Output Formats
+
+Control the format of command results for optimal token efficiency:
+
+```json
+{"command": "person ls", "format": "markdown"}
+```
+
+| Format | Token Efficiency | Best For |
+|--------|-----------------|----------|
+| `json` | Low | Programmatic use (default) |
+| `markdown` | Medium-High | **LLM comprehension** - best for analysis tasks |
+| `toon` | **High (~40% fewer)** | Large datasets, batch operations |
+| `csv` | Medium | Spreadsheet export |
+| `jsonl` | Medium | Streaming workflows |
+
+**Recommendations:**
+- Use `markdown` when you need to analyze or summarize data (LLMs read tables well)
+- Use `toon` for large exports to minimize tokens (30-60% smaller than JSON)
+- Use `json` when you need full structure with pagination/metadata
 
 #### Destructive Commands
 

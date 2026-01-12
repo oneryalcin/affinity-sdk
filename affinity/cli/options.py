@@ -28,11 +28,18 @@ def _set_json(ctx: click.Context, _param: click.Parameter, value: bool) -> bool:
 
 
 def output_options(fn: F) -> F:
+    """Add output format options to a command.
+
+    Adds --output/-o and --json flags. Note: --csv is NOT included here
+    because individual commands have their own --csv flags with additional
+    options (--csv-bom, --csv-header, --csv-mode).
+    """
     fn = click.option(
         "--output",
-        type=click.Choice(["table", "json"]),
+        "-o",
+        type=click.Choice(["table", "json", "jsonl", "markdown", "toon", "csv"]),
         default=None,
-        help="Override output format for this command.",
+        help="Output format (default: table for terminal, json for pipes).",
         callback=_set_output,
         expose_value=False,
     )(fn)

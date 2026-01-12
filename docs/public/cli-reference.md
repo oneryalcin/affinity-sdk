@@ -1,6 +1,29 @@
-# CLI JSON Output Reference
+# CLI Output Reference
 
-This document describes the structure of JSON output from Affinity CLI commands.
+This document describes the output formats available from Affinity CLI commands.
+
+## Output Formats
+
+The CLI supports multiple output formats via the `--output` / `-o` flag:
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| `table` | default | Rich terminal tables (default for interactive use) |
+| `json` | `--json` or `-o json` | Full JSON with envelope (`ok`, `data`, `meta`, `error`) |
+| `jsonl` | `-o jsonl` | JSON Lines (one object per line, data only) |
+| `markdown` | `-o markdown` | GitHub-flavored markdown tables (data only) |
+| `toon` | `-o toon` | Token-Optimized Object Notation (30-60% fewer tokens) |
+| `csv` | `--csv` or `-o csv` | Comma-separated values (data only) |
+
+**For LLM/MCP use**: Use `markdown` for best comprehension or `toon` for large datasets.
+
+**For scripts**: Use `--json` for full structured output with error handling.
+
+**Example:**
+```bash
+xaffinity person ls --query "Alice" --output markdown
+xaffinity query --query '{"from": "companies", "limit": 10}' -o toon
+```
 
 ## Table of Contents
 

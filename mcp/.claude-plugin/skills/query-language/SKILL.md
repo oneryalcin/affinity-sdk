@@ -393,6 +393,56 @@ Returns execution plan with:
 | `maxRecords` | integer | 1000 | Safety limit (max 10000) |
 | `timeout` | integer | 120 | Query timeout in seconds |
 | `maxOutputBytes` | integer | 50000 | Truncation limit for results |
+| `format` | string | "json" | Output format (see Output Formats below) |
+
+## Output Formats
+
+The `format` parameter controls how results are returned. Choose based on your use case:
+
+| Format | Token Efficiency | Best For | Description |
+|--------|-----------------|----------|-------------|
+| `json` | Low | Programmatic use | Full JSON structure with `data`, `included`, `pagination` |
+| `jsonl` | Medium | Streaming | One JSON object per line (data rows only) |
+| `markdown` | Medium-High | **LLM analysis** | GitHub-flavored table (best comprehension) |
+| `toon` | **High (~40% fewer)** | Large datasets | Token-Optimized Object Notation |
+| `csv` | Medium | Spreadsheets | Comma-separated values |
+
+### Format Recommendations
+
+- **For LLM analysis tasks**: Use `markdown` - LLMs are trained on documentation and tables
+- **For large result sets**: Use `toon` to minimize tokens (30-60% smaller than JSON)
+- **For programmatic processing**: Use `json` (default) for full structure
+- **For streaming workflows**: Use `jsonl` for line-by-line processing
+
+### Format Examples
+
+**JSON (default):**
+```json
+{"data": [{"id": 1, "name": "Acme"}], "included": {...}, "pagination": {...}}
+```
+
+**JSONL:**
+```jsonl
+{"id": 1, "name": "Acme"}
+{"id": 2, "name": "Beta"}
+```
+
+**Markdown:**
+```markdown
+| id | name |
+| --- | --- |
+| 1 | Acme |
+| 2 | Beta |
+```
+
+**TOON:**
+```
+[2]{id,name}:
+  1,Acme
+  2,Beta
+```
+
+**Note:** When using `jsonl`, `markdown`, `toon`, or `csv`, the `included` and `pagination` fields are omitted. Use `json` format if you need related entities or pagination info.
 
 ## Best Practices
 

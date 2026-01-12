@@ -184,6 +184,12 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 - **Finding a specific entity in a list**: To find a company/person in a list by their entity ID, either:
   1. Use `company get <id> --expand list-entries` to see their list memberships directly
   2. Or export the list and filter client-side (the tool will return `entityId` in results)
+- **Output formats**: The `format` parameter controls result format:
+  - `json` (default): Full structure with envelope, best for programmatic use
+  - `markdown`: Best for LLM comprehension when analyzing data
+  - `toon`: 30-60% fewer tokens, best for large datasets
+  - `csv`: For spreadsheet export
+  - Use `markdown` when you need to analyze/summarize results, `toon` for large exports
 
 ## Troubleshooting
 

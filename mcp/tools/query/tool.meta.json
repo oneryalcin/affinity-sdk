@@ -81,6 +81,12 @@
         "type": "integer",
         "default": 50000,
         "description": "Maximum output size in bytes (default 50000). Larger outputs are truncated."
+      },
+      "format": {
+        "type": "string",
+        "enum": ["json", "jsonl", "markdown", "toon", "csv"],
+        "default": "json",
+        "description": "Output format. Use 'markdown' for analysis (best LLM comprehension), 'toon' for large datasets (40% fewer tokens), 'json' for programmatic processing."
       }
     }
   },

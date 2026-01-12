@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
@@ -61,32 +61,6 @@ def extract_json_from_output(output: str) -> dict:
             if depth == 0:
                 return json.loads(output[start : i + 1])
     raise ValueError(f"Unbalanced JSON in output: {output}")
-
-
-@pytest.fixture
-def mock_async_affinity():
-    """Mock AsyncAffinity client."""
-    with patch("affinity.cli.commands.query_cmd.AsyncAffinity") as mock:
-        client = AsyncMock()
-        client.whoami = AsyncMock(return_value={"id": 1})
-
-        # Mock persons service
-        persons = AsyncMock()
-
-        async def pages_generator(_on_progress=None):
-            page = MagicMock()
-            page.data = [
-                MagicMock(model_dump=lambda _mode=None: {"id": 1, "firstName": "Alice"}),
-                MagicMock(model_dump=lambda _mode=None: {"id": 2, "firstName": "Bob"}),
-            ]
-            yield page
-
-        persons.all.return_value.pages = pages_generator
-        client.persons = persons
-
-        mock.return_value.__aenter__.return_value = client
-        mock.return_value.__aexit__.return_value = None
-        yield mock
 
 
 # =============================================================================
@@ -370,3 +344,58 @@ class TestQueryWarnings:
         # The warning appears in stderr
         if result.output:
             pass  # Warning may be in stderr not captured here
+
+
+# =============================================================================
+# Output Format Tests
+# =============================================================================
+
+
+class TestQueryOutputFormatsUnit:
+    """Unit tests for query output format handling.
+
+    These tests verify that the format_data function is correctly called
+    for new output formats. Full integration tests with mocked API are
+    complex due to async client; these tests verify the formatter integration.
+    """
+
+    def test_format_data_markdown_import(self) -> None:
+        """Verify format_data can be imported and handles markdown."""
+        from affinity.cli.formatters import format_data
+
+        data = [{"id": 1, "name": "Test"}]
+        result = format_data(data, "markdown", fieldnames=["id", "name"])
+        assert "|" in result
+        assert "Test" in result
+
+    def test_format_data_toon_import(self) -> None:
+        """Verify format_data handles toon format."""
+        from affinity.cli.formatters import format_data
+
+        data = [{"id": 1, "name": "Test"}]
+        result = format_data(data, "toon", fieldnames=["id", "name"])
+        assert "[" in result
+        assert "{" in result
+        assert "}:" in result
+
+    def test_format_data_jsonl_import(self) -> None:
+        """Verify format_data handles jsonl format."""
+        from affinity.cli.formatters import format_data
+
+        data = [{"id": 1, "name": "Test"}, {"id": 2, "name": "Another"}]
+        result = format_data(data, "jsonl", fieldnames=["id", "name"])
+        lines = [line for line in result.strip().split("\n") if line]
+        assert len(lines) == 2
+        parsed = json.loads(lines[0])
+        assert parsed["id"] == 1
+
+    def test_format_data_csv_import(self) -> None:
+        """Verify format_data handles csv format."""
+        from affinity.cli.formatters import format_data
+
+        data = [{"id": 1, "name": "Test"}]
+        result = format_data(data, "csv", fieldnames=["id", "name"])
+        lines = [line.strip() for line in result.strip().split("\n")]
+        assert lines[0] == "id,name"
+        assert "1" in lines[1]
+        assert "Test" in lines[1]

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import logging
 import re
 import sys
@@ -12,7 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# Import to_cell from formatters (single source of truth)
+# Re-exported here for backwards compatibility
+from .formatters import to_cell
+
 logger = logging.getLogger(__name__)
+
+# Re-export to_cell for any external consumers
+__all__ = ["to_cell", "CsvWriteResult", "write_csv", "write_csv_from_rows", "write_csv_to_stdout"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,22 +37,6 @@ def sanitize_filename(name: str, *, max_len: int = 180) -> str:
     if len(cleaned) > max_len:
         cleaned = cleaned[:max_len]
     return cleaned
-
-
-def to_cell(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return "; ".join(to_cell(v) for v in value if v is not None)
-    if isinstance(value, dict):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
-    return str(value)
 
 
 def write_csv(

@@ -17,6 +17,7 @@ from .context import (
     exit_code_for_exception,
     normalize_exception,
 )
+from .formatters import _empty_output, format_data
 from .render import RenderSettings, render_result
 from .results import Artifact, CommandContext, CommandResult, ResultSummary
 
@@ -55,6 +56,7 @@ def _emit_warnings(*, ctx: CLIContext, warnings: list[str]) -> None:
 
 
 def emit_result(ctx: CLIContext, result: CommandResult) -> None:
+    # JSON always uses full envelope (backwards compatible)
     if ctx.output == "json":
         _emit_json(result)
         if ctx.verbosity >= 1 and not ctx.quiet and result.meta.rate_limit is not None:
@@ -74,31 +76,84 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
                 stderr.print(f"rate-limit[{rl.source}]: " + " | ".join(footer))
         return
 
-    render_result(
-        result,
-        settings=RenderSettings(
-            output="table",
-            quiet=ctx.quiet,
-            verbosity=ctx.verbosity,
-            pager=ctx.pager,
-            all_columns=ctx.all_columns,
-            max_columns=ctx.max_columns,
-        ),
-    )
-    _emit_warnings(ctx=ctx, warnings=result.warnings)
-    if ctx.verbosity >= 1 and not ctx.quiet and result.meta.rate_limit is not None:
-        stderr = Console(file=sys.stderr, force_terminal=False)
-        rl = result.meta.rate_limit
-        parts: list[str] = []
-        if rl.api_key_per_minute.remaining is not None and rl.api_key_per_minute.limit is not None:
-            parts.append(f"user {rl.api_key_per_minute.remaining}/{rl.api_key_per_minute.limit}")
-        if rl.org_monthly.remaining is not None and rl.org_monthly.limit is not None:
-            parts.append(f"org {rl.org_monthly.remaining}/{rl.org_monthly.limit}")
-        if parts:
-            extra = ""
-            if rl.request_id:
-                extra = f" requestId={rl.request_id}"
-            stderr.print(f"rate-limit[{rl.source}]: " + " | ".join(parts) + extra)
+    # Table uses existing sophisticated render.py
+    if ctx.output == "table":
+        render_result(
+            result,
+            settings=RenderSettings(
+                output="table",
+                quiet=ctx.quiet,
+                verbosity=ctx.verbosity,
+                pager=ctx.pager,
+                all_columns=ctx.all_columns,
+                max_columns=ctx.max_columns,
+            ),
+        )
+        _emit_warnings(ctx=ctx, warnings=result.warnings)
+        if ctx.verbosity >= 1 and not ctx.quiet and result.meta.rate_limit is not None:
+            stderr = Console(file=sys.stderr, force_terminal=False)
+            rl = result.meta.rate_limit
+            parts: list[str] = []
+            if (
+                rl.api_key_per_minute.remaining is not None
+                and rl.api_key_per_minute.limit is not None
+            ):
+                parts.append(
+                    f"user {rl.api_key_per_minute.remaining}/{rl.api_key_per_minute.limit}"
+                )
+            if rl.org_monthly.remaining is not None and rl.org_monthly.limit is not None:
+                parts.append(f"org {rl.org_monthly.remaining}/{rl.org_monthly.limit}")
+            if parts:
+                extra = ""
+                if rl.request_id:
+                    extra = f" requestId={rl.request_id}"
+                stderr.print(f"rate-limit[{rl.source}]: " + " | ".join(parts) + extra)
+        return
+
+    # New formats: JSONL, Markdown, TOON, CSV
+    # These output DATA ONLY (no envelope) for token efficiency
+    if ctx.output in ("jsonl", "markdown", "toon", "csv"):
+        if not result.ok:
+            # Errors fall back to JSON envelope for structure
+            # Warn user about format change
+            if not ctx.quiet:
+                stderr = Console(file=sys.stderr, force_terminal=False)
+                stderr.print("Error occurred - output format changed to JSON for error details")
+            _emit_json(result)
+            return
+
+        data = result.data
+        if data is None:
+            sys.stdout.write(_empty_output(ctx.output) + "\n")
+            return
+
+        # Normalize to list of dicts
+        if isinstance(data, dict):
+            data = [data]
+        elif not isinstance(data, list):
+            # Non-tabular data falls back to JSON
+            if not ctx.quiet:
+                stderr = Console(file=sys.stderr, force_terminal=False)
+                stderr.print("Non-tabular data - output format changed to JSON")
+            _emit_json(result)
+            return
+
+        # Detect fieldnames: prefer meta.columns, fall back to first row keys
+        fieldnames: list[str] | None = None
+        if result.meta.columns and len(result.meta.columns) > 0:
+            fieldnames = [
+                c.get("name") or c.get("key") or f"col{i}"
+                for i, c in enumerate(result.meta.columns)
+            ]
+        if not fieldnames and data:
+            fieldnames = list(data[0].keys())
+
+        output = format_data(data, ctx.output, fieldnames=fieldnames)
+        sys.stdout.write(output + "\n")
+
+        # Warnings still go to stderr (consistent with table mode)
+        _emit_warnings(ctx=ctx, warnings=result.warnings)
+        return
 
 
 CommandFn = Callable[[CLIContext, list[str]], CommandOutput]

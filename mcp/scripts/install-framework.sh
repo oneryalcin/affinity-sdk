@@ -73,7 +73,7 @@ echo "Launcher created at ${LAUNCHER_PATH}"
 if ! command -v xaffinity &>/dev/null; then
     echo ""
     echo "WARNING: xaffinity CLI not found in PATH"
-    echo "Install with: pip install affinity-python-sdk"
+    echo "Install with: pip install affinity-sdk"
 fi
 
 echo ""

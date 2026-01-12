@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.9.5 - 2026-01-12
 
+### Added
+- CLI: New `--output`/`-o` option supporting multiple formats: `json`, `jsonl`, `markdown`, `toon`, `csv`, `table` (default).
+  - `markdown`: GitHub-flavored markdown tables, best for LLM analysis and comprehension
+  - `toon`: Token-Optimized Object Notation, 30-60% fewer tokens than JSON for large datasets
+  - `jsonl`: JSON Lines format, one object per line for streaming workflows
+  - Example: `xaffinity person ls --output markdown`, `xaffinity query -o toon`
+  - Existing `--csv` and `--json` flags continue to work as before.
+
+### Changed
+- CLI: `to_cell()` now extracts "text" from dropdown/multi-select fields instead of JSON-serializing the full dict. This makes CSV and other tabular outputs human-readable for dropdown values.
+
 ### Fixed
 - CLI: `query` command with `limit` now correctly returns results when combined with client-side filters (like `has_any` on multi-select fields). Previously, the limit was applied during fetch before filtering, causing empty results when the first N records didn't match the filter criteria.
 

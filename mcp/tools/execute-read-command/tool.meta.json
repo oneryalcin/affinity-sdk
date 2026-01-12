@@ -23,6 +23,12 @@
         "type": "boolean",
         "default": false,
         "description": "If true, return the command that would be executed without running it. Useful for verification."
+      },
+      "format": {
+        "type": "string",
+        "enum": ["json", "jsonl", "markdown", "toon", "csv"],
+        "default": "json",
+        "description": "Output format. Use 'markdown' for analysis (best LLM comprehension), 'toon' for large datasets (40% fewer tokens), 'json' for programmatic processing. Passed as --output flag to CLI."
       }
     }
   },

@@ -1,19 +1,29 @@
 """Output formatters for query results.
 
-Formats query results as JSON or table.
+Formats query results as JSON, JSONL, Markdown, TOON, CSV, or table.
 This module is CLI-only and NOT part of the public SDK API.
 
-Note: CSV output uses the standard write_csv_to_stdout() from csv_utils.
+Supported output formats:
+- JSON: Full structure with data, included, pagination, meta
+- JSONL: One JSON object per line (data rows only)
+- Markdown: GitHub-flavored markdown table (data rows only)
+- TOON: Token-Optimized Object Notation (data rows only)
+- CSV: Comma-separated values (data rows only)
+- Table: Rich terminal tables
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from rich.console import Console
 
+from ..formatters import OutputFormat, format_data, format_jsonl
 from .models import ExecutionPlan, QueryResult
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # JSON Output
@@ -269,3 +279,53 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
     }
 
     return json.dumps(output, indent=2, default=str)
+
+
+# =============================================================================
+# Unified Format Output
+# =============================================================================
+
+
+def format_query_result(
+    result: QueryResult,
+    format: OutputFormat,
+    *,
+    pretty: bool = False,
+    include_meta: bool = False,
+) -> str:
+    """Format query result with full structure support.
+
+    For formats that only support flat data (markdown, toon, csv),
+    the included/pagination/meta are omitted with a warning.
+
+    Args:
+        result: Query result to format
+        format: Output format (json, jsonl, markdown, toon, csv)
+        pretty: Pretty-print JSON output
+        include_meta: Include metadata in JSON output
+
+    Returns:
+        Formatted string
+    """
+    if format == "json":
+        # Full structure
+        return format_json(result, pretty=pretty, include_meta=include_meta)
+
+    if format == "jsonl":
+        # Data rows only, one per line
+        return format_jsonl(result.data or [])
+
+    if format in ("markdown", "toon", "csv"):
+        # Data only - warn if losing information
+        if result.included:
+            logger.warning(
+                "Included data omitted in %s output (use --output json to see included entities)",
+                format,
+            )
+        fieldnames = list(result.data[0].keys()) if result.data else []
+        return format_data(result.data or [], format, fieldnames=fieldnames)
+
+    if format == "table":
+        return format_table(result)
+
+    raise ValueError(f"Unknown format: {format}")
