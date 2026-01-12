@@ -146,8 +146,8 @@ fi
 # Execute CLI (no retry for write commands to avoid duplicate side effects)
 set +e
 if [[ "$supports_progress" == "true" ]]; then
-    # Use progress-aware execution
-    run_xaffinity_with_progress "${cmd_args[@]:1}" >"$stdout_file" 2>"$stderr_file"
+    # Use progress-aware execution with --stderr-file to capture CLI errors (mcp-bash 0.9.11+)
+    run_xaffinity_with_progress --stderr-file "$stderr_file" "${cmd_args[@]:1}" >"$stdout_file"
     exit_code=$?
 else
     # Standard execution

@@ -275,8 +275,13 @@ run_xaffinity_readonly() {
 # Uses mcp_run_with_progress from mcp-bash to parse CLI JSON progress and
 # forward it to MCP clients.
 #
-# Usage: run_xaffinity_with_progress <command> [args...]
+# Usage: run_xaffinity_with_progress [--stdin] [--stderr-file FILE] <command> [args...]
 # Example: run_xaffinity_with_progress person files-upload 12345 --file /path/to/file
+# Example: run_xaffinity_with_progress --stdin --stderr-file /tmp/err query --json
+#
+# Options:
+#   --stdin         Read input from stdin and pipe to command (for query tool)
+#   --stderr-file   Capture non-progress stderr to file (for error reporting)
 #
 # The CLI emits NDJSON progress to stderr when not connected to a TTY:
 #   {"type":"progress","progress":50,"message":"Uploading...","current":50,"total":100}
@@ -286,7 +291,28 @@ run_xaffinity_readonly() {
 # - Falls back to direct execution when progress not supported
 # - Returns stdout (the CLI's JSON result)
 # - Preserves exit code
+# - Optionally captures non-progress stderr for error reporting (requires mcp-bash 0.9.11+)
 run_xaffinity_with_progress() {
+    local use_stdin=false
+    local stderr_file=""
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stdin)
+                use_stdin=true
+                shift
+                ;;
+            --stderr-file)
+                stderr_file="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
 
@@ -302,16 +328,31 @@ run_xaffinity_with_progress() {
 
     # Check if progress support is available (MCP_PROGRESS_STREAM set by mcp-bash)
     if [[ -n "${MCP_PROGRESS_STREAM:-}" ]] && type mcp_run_with_progress &>/dev/null; then
-        # Use mcp-bash helper to parse and forward progress
-        # Pattern matches CLI progress JSON: {"type":"progress",...}
-        mcp_run_with_progress \
-            --pattern '^\{.*"type"[[:space:]]*:[[:space:]]*"progress"' \
-            --extract json \
-            --quiet \
-            -- "${cmd[@]}"
+        # Build mcp_run_with_progress arguments
+        local -a progress_args=(
+            --pattern '^\{.*"type"[[:space:]]*:[[:space:]]*"progress"'
+            --extract json
+            --quiet
+        )
+        [[ -n "$stderr_file" ]] && progress_args+=(--stderr-file "$stderr_file")
+
+        if [[ "$use_stdin" == "true" ]]; then
+            # Capture stdin before backgrounding (queries are small, <10KB)
+            local stdin_content
+            stdin_content=$(cat)
+            printf '%s' "$stdin_content" | mcp_run_with_progress "${progress_args[@]}" -- "${cmd[@]}"
+        else
+            mcp_run_with_progress "${progress_args[@]}" -- "${cmd[@]}"
+        fi
     else
         # No progress support - run directly
-        "${cmd[@]}"
+        if [[ "$use_stdin" == "true" ]]; then
+            local stdin_content
+            stdin_content=$(cat)
+            printf '%s' "$stdin_content" | "${cmd[@]}"
+        else
+            "${cmd[@]}"
+        fi
     fi
 }
 

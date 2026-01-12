@@ -5,10 +5,20 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - Unreleased
+
+### Fixed
+- **Gateway tool error capture**: `execute-read-command` and `execute-write-command` now properly capture CLI error messages when using progress forwarding (was capturing helper's stderr instead of CLI's)
+
 ## [1.8.4] - 2026-01-12
 
 ### Added
 - **Field catalogs by list name**: `xaffinity://field-catalogs/{listName}` now accepts list names in addition to numeric IDs, matching the `query` tool's `listName` filter support
+- **Real-time query progress**: `query` tool now forwards detailed CLI progress to MCP clients (step descriptions, record counts, completion status). Previously only reported 0%/100%.
+
+### Changed
+- **mcp-bash framework 0.9.11**: Updated from 0.9.10; adds `--stderr-file` option to `mcp_run_with_progress` for capturing non-progress stderr (enables detailed error reporting with progress forwarding)
+- **Progress helper enhancements**: `run_xaffinity_with_progress` now supports `--stdin` (for query tool) and `--stderr-file` (for error capture)
 
 ## [1.8.3] - 2026-01-12
 

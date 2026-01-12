@@ -94,8 +94,8 @@ fi
 # Execute CLI with retry for transient failures (read commands are safe to retry)
 set +e
 if [[ "$supports_progress" == "true" ]]; then
-    # Use progress-aware execution (mcp_run_with_progress handles retries internally)
-    run_xaffinity_with_progress "${cmd_args[@]:1}" >"$stdout_file" 2>"$stderr_file"
+    # Use progress-aware execution with --stderr-file to capture CLI errors (mcp-bash 0.9.11+)
+    run_xaffinity_with_progress --stderr-file "$stderr_file" "${cmd_args[@]:1}" >"$stdout_file"
     exit_code=$?
 else
     # Standard execution with retry

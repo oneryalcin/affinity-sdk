@@ -30,23 +30,14 @@ if [[ $max_records -gt 10000 ]]; then
     max_records=10000
 fi
 
-# Build command array (stdin-based: query JSON is piped in)
-declare -a cmd_args=("xaffinity" "query")
-cmd_args+=("--max-records" "$max_records")
-cmd_args+=("--timeout" "$timeout_secs")
-cmd_args+=("--quiet")  # Suppress progress output (MCP handles progress separately)
-cmd_args+=("--json")   # Force JSON output
+# Create temp files for stdout/stderr capture
+stdout_file=$(mktemp)
+stderr_file=$(mktemp)
+trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
-if [[ "$dry_run" == "true" ]]; then
-    cmd_args+=("--dry-run")
-fi
-
-# Report initial progress
-if [[ "$dry_run" == "true" ]]; then
-    mcp_progress 0 "Planning query execution"
-else
-    mcp_progress 0 "Executing query"
-fi
+# Build command for transparency logging (actual execution uses run_xaffinity_with_progress)
+declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--json")
+[[ "$dry_run" == "true" ]] && cmd_display+=("--dry-run")
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
@@ -54,14 +45,15 @@ if mcp_is_cancelled; then
     exit 0
 fi
 
-# Execute and capture stdout/stderr separately
-stdout_file=$(mktemp)
-stderr_file=$(mktemp)
-trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
-
-# Execute CLI with query on stdin (CLI handles timeout via --timeout flag)
+# Execute CLI with progress forwarding
+# - Uses run_xaffinity_with_progress to forward NDJSON progress to MCP clients
+# - CLI emits step-by-step progress (fetch, filter, aggregate) when stderr is not a TTY
+# - --stdin pipes query JSON to the command
+# - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
 set +e
-printf '%s' "$query_json" | "${cmd_args[@]}" >"$stdout_file" 2>"$stderr_file"
+printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
+    query --max-records "$max_records" --timeout "$timeout_secs" --json \
+    ${dry_run:+--dry-run} >"$stdout_file"
 exit_code=$?
 set -e
 
@@ -69,7 +61,7 @@ stdout_content=$(cat "$stdout_file")
 stderr_content=$(cat "$stderr_file")
 
 # Build executed command for transparency (without the actual query for brevity)
-cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_args[@]}")
+cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_display[@]}")
 
 # Check for cancellation after execution
 if mcp_is_cancelled; then
@@ -86,8 +78,7 @@ xaffinity_log_debug "query" "exit_code=$exit_code output_bytes=${#stdout_content
 log_metric "query_latency_ms" "$latency_ms" "dryRun=$dry_run" "status=$([[ $exit_code -eq 0 ]] && echo 'success' || echo 'error')"
 log_metric "query_output_bytes" "${#stdout_content}" "dryRun=$dry_run"
 
-# Report completion progress
-mcp_progress 100 "Complete"
+# Note: CLI emits 100% progress via NDJSON when query completes (forwarded by run_xaffinity_with_progress)
 
 if [[ $exit_code -eq 0 ]]; then
     # Validate stdout is valid JSON before using --argjson
