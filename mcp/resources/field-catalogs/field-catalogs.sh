@@ -22,7 +22,7 @@ elif [[ ! "${entityType}" =~ ^(company|companies|person|persons|people|opportuni
         exit 3
     }
     listId=$(echo "${lists_output}" | "$jq_tool" -r --arg name "${entityType}" '
-        .data[] | select(.name == $name) | .id // empty
+        .data.lists[] | select(.name == $name) | .id // empty
     ')
     if [[ -z "${listId}" ]]; then
         echo "Unknown entity type or list name: ${entityType}. Use a list ID (numeric), list name, 'company', 'person', or 'opportunity'." >&2
