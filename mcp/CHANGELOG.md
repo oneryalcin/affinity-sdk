@@ -5,6 +5,11 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-01-12
+
+### Added
+- **Field catalogs by list name**: `xaffinity://field-catalogs/{listName}` now accepts list names in addition to numeric IDs, matching the `query` tool's `listName` filter support
+
 ## [1.8.3] - 2026-01-12
 
 ### Fixed
