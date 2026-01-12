@@ -436,6 +436,14 @@ def _entry_to_filter_dict(entry: ListEntryWithEntity) -> dict[str, Any]:
                             # For ranked-dropdown/dropdown, extract text value
                             if isinstance(data, dict) and "text" in data:
                                 result[field_name] = data["text"]
+                            # For multi-select dropdown, extract text values from list
+                            elif isinstance(data, builtins.list):
+                                if data and isinstance(data[0], dict) and "text" in data[0]:
+                                    result[field_name] = [
+                                        item.get("text") for item in data if isinstance(item, dict)
+                                    ]
+                                else:
+                                    result[field_name] = data
                             else:
                                 result[field_name] = data
                         else:

@@ -154,7 +154,15 @@ class FieldComparison(FilterExpression):
         return f"{self.field_name} {self.operator} {formatted_value}"
 
     def matches(self, entity: dict[str, Any]) -> bool:
-        """Evaluate field comparison against an entity dict."""
+        """Evaluate field comparison against an entity dict.
+
+        For multi-select dropdown fields (arrays), the operators have special semantics:
+        - `=` with scalar: checks if value is IN the array (membership)
+        - `=` with list: checks set equality (order-insensitive)
+        - `!=` with scalar: checks if value is NOT in the array
+        - `!=` with list: checks set inequality
+        - `=~` (contains): checks if any array element contains the substring
+        """
         value = _get_entity_value(entity, self.field_name)
 
         # Handle NULL checks (Affinity convention: =* means NOT NULL, !=* means IS NULL)
@@ -163,13 +171,48 @@ class FieldComparison(FilterExpression):
         if self.operator == "!=" and isinstance(self.value, RawToken) and self.value.token == "*":
             return value is None or value == ""
 
-        # Handle equality/inequality - coerce to strings for comparison
+        # Extract target value
+        target = self.value if not isinstance(self.value, RawToken) else self.value.token
+
+        # Handle array fields (multi-select dropdowns)
+        if isinstance(value, list):
+            if self.operator == "=":
+                # If comparing list to list, check set equality (order-insensitive)
+                if isinstance(target, list):
+                    try:
+                        return set(value) == set(target)
+                    except TypeError:
+                        # Unhashable elements - fall back to sorted comparison
+                        try:
+                            return sorted(value) == sorted(target)
+                        except TypeError:
+                            return value == target
+                # Scalar comparison: check membership
+                return target in value
+            elif self.operator == "!=":
+                if isinstance(target, list):
+                    try:
+                        return set(value) != set(target)
+                    except TypeError:
+                        try:
+                            return sorted(value) != sorted(target)
+                        except TypeError:
+                            return value != target
+                return target not in value
+            elif self.operator == "=~":
+                # Contains: check if any array element contains the substring
+                target_lower = str(target).lower()
+                return any(target_lower in str(elem).lower() for elem in value)
+            else:
+                raise ValueError(f"Unsupported operator for client-side matching: {self.operator}")
+
+        # Handle scalar fields - coerce to strings for comparison
         # For dropdown fields, extract the "text" property
         if isinstance(value, dict) and "text" in value:
             entity_str = str(value["text"])
         else:
             entity_str = str(value) if value is not None else ""
-        target_str = str(self.value) if not isinstance(self.value, RawToken) else self.value.token
+        target_str = str(target)
 
         if self.operator == "=":
             return entity_str == target_str

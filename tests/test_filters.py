@@ -388,3 +388,91 @@ def test_realistic_combined_filter() -> None:
     assert not expr.matches({"email": "test@example.com", "status": "Invalid"})
     assert not expr.matches({"email": None, "status": "Valid"})
     assert not expr.matches({"status": "Valid"})  # email missing
+
+
+# =============================================================================
+# matches() tests - array fields (multi-select dropdown support)
+# =============================================================================
+
+
+class TestArrayFieldMatching:
+    """Test filtering on multi-select/array fields."""
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_eq_array_field_membership(self) -> None:
+        """eq operator on array field checks membership."""
+        expr = FieldComparison("Team Member", "=", "LB")
+        assert expr.matches({"Team Member": ["LB", "MA", "RK"]})
+        assert not expr.matches({"Team Member": ["MA", "RK"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_eq_array_to_list_set_equality(self) -> None:
+        """eq with list value checks set equality (order-insensitive)."""
+        expr = FieldComparison("Team Member", "=", ["LB", "MA"])
+        assert expr.matches({"Team Member": ["LB", "MA"]})
+        assert expr.matches({"Team Member": ["MA", "LB"]})  # order doesn't matter
+        assert not expr.matches({"Team Member": ["LB", "RK"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_neq_array_field_not_in(self) -> None:
+        """neq operator on array field checks value NOT in array."""
+        expr = FieldComparison("Team Member", "!=", "LB")
+        assert expr.matches({"Team Member": ["MA", "RK"]})  # LB not in list
+        assert not expr.matches({"Team Member": ["LB", "MA"]})  # LB is in list
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_neq_array_to_list_set_inequality(self) -> None:
+        """neq with list value checks set inequality."""
+        expr = FieldComparison("Team Member", "!=", ["LB", "MA"])
+        assert expr.matches({"Team Member": ["LB", "RK"]})  # different sets
+        assert not expr.matches({"Team Member": ["MA", "LB"]})  # same set
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_contains_array_field(self) -> None:
+        """contains operator on array field checks any element."""
+        expr = FieldComparison("Tags", "=~", "tech")
+        assert expr.matches({"Tags": ["technology", "startup"]})
+        assert expr.matches({"Tags": ["Tech Company", "Finance"]})
+        assert not expr.matches({"Tags": ["finance", "healthcare"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_empty_array_no_match(self) -> None:
+        """Empty array should not match any value."""
+        expr = FieldComparison("Team Member", "=", "LB")
+        assert not expr.matches({"Team Member": []})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_single_element_array(self) -> None:
+        """Single-element array should match its element."""
+        expr = FieldComparison("Team Member", "=", "LB")
+        assert expr.matches({"Team Member": ["LB"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_array_with_int_value(self) -> None:
+        """Array field with integer values."""
+        expr = FieldComparison("IDs", "=", 2)
+        assert expr.matches({"IDs": [1, 2, 3]})
+        assert not expr.matches({"IDs": [1, 3, 5]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_parsed_filter_array_membership(self) -> None:
+        """Test array membership via parsed filter string."""
+        # Quoted field name for multi-word field
+        expr = parse('"Team Member"=LB')
+        assert expr.matches({"Team Member": ["LB", "MA"]})
+        assert not expr.matches({"Team Member": ["MA", "RK"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_parsed_filter_array_contains(self) -> None:
+        """Test array contains via parsed filter string."""
+        expr = parse('"Team Member"=~LB')
+        assert expr.matches({"Team Member": ["LB", "MA"]})
+        assert expr.matches({"Team Member": ["XLB", "MA"]})  # contains "LB"
+        assert not expr.matches({"Team Member": ["MA", "RK"]})
+
+    @pytest.mark.req("SDK-FILT-007")
+    def test_scalar_field_unchanged(self) -> None:
+        """Scalar fields should work as before (no regression)."""
+        expr = FieldComparison("Status", "=", "Active")
+        assert expr.matches({"Status": "Active"})
+        assert not expr.matches({"Status": "Inactive"})
