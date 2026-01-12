@@ -5,10 +5,15 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.5] - Unreleased
+## [1.8.5] - 2026-01-12
 
 ### Fixed
 - **Gateway tool error capture**: `execute-read-command` and `execute-write-command` now properly capture CLI error messages when using progress forwarding (was capturing helper's stderr instead of CLI's)
+- **Field catalogs jq path**: Fixed list name resolution in `field-catalogs` resource (was using wrong jq path `.data[]` instead of `.data.lists[]`)
+
+### Changed
+- **LLM guidance for `field history`**: Added `whenToUse` and examples to registry metadata clarifying that exactly one entity selector is required (`--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id`)
+- **LLM guidance for multi-word filters**: Updated SKILL.md and registry examples to show proper quoting for multi-word field names (e.g., `--filter '"Team Member"=~"LB"'`)
 
 ## [1.8.4] - 2026-01-12
 
