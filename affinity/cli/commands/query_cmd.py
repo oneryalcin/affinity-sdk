@@ -358,6 +358,21 @@ def _query_cmd_impl(
         sys.exit(0)
     elif ctx.output == "json":
         output = format_json(result, pretty=pretty, include_meta=include_meta)
+    elif ctx.output in ("jsonl", "markdown", "toon", "csv"):
+        # Use unified formatters for new output formats
+        from ..formatters import format_data
+
+        if not result.data:
+            click.echo("No results.", err=True)
+            sys.exit(0)
+
+        # Collect all unique field names from data
+        keys: set[str] = set()
+        for record in result.data:
+            keys.update(record.keys())
+        fieldnames = sorted(keys)
+
+        output = format_data(result.data, ctx.output, fieldnames=fieldnames)
     else:
         # Default to table for interactive use
         output = format_table(result)
