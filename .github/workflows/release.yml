@@ -320,11 +320,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Smoke test installation
+      - name: Smoke test SDK installation
         run: |
           pip install affinity-sdk==${{ needs.validate.outputs.version_tag }}
-          python -c "from affinity import Affinity; print('Import OK')"
-          python -c "from affinity.cli import cli; print('CLI OK')"
+          python -c "from affinity import Affinity; print('SDK import OK')"
+
+      - name: Smoke test CLI installation
+        run: |
+          pip install "affinity-sdk[cli]==${{ needs.validate.outputs.version_tag }}"
+          python -c "from affinity.cli import cli; print('CLI import OK')"
 
       - name: Warn on failure
         if: failure()
