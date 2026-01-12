@@ -286,12 +286,17 @@ class TestFilterOperatorEdgeCases:
         where = WhereClause(path="age", op="gt", value=None)
         assert not matches({"age": 35}, where)
 
-    def test_comparison_type_mismatch_string_fallback(self) -> None:
-        """Comparison operators fall back to string comparison on type mismatch."""
-        # Comparing string to int - should fall back to string comparison
+    def test_comparison_numeric_coercion(self) -> None:
+        """Comparison operators coerce strings to numbers when possible.
+
+        This is important for CRM data where filter values are often strings
+        but field values are numeric. The compare module tries numeric
+        coercion first before falling back to string comparison.
+        """
+        # Comparing int field to string filter value - numeric coercion
         where = WhereClause(path="value", op="gt", value="50")
-        # "100" > "50" as strings is False (lexicographic), but this tests the fallback
-        assert not matches({"value": 100}, where)
+        # 100 > 50 numerically = True (not lexicographic string comparison)
+        assert matches({"value": 100}, where)
 
     def test_in_with_non_list_value(self) -> None:
         """in operator with non-list value returns False."""

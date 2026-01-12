@@ -2,6 +2,9 @@
 
 This module provides extended filter operators beyond what the SDK supports.
 It is CLI-only and NOT part of the public SDK API.
+
+Uses the shared compare module (affinity/compare.py) for comparison logic,
+ensuring consistent behavior between SDK filter and Query tool.
 """
 
 from __future__ import annotations
@@ -9,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ...compare import compare_values
 from .dates import parse_date_value
 from .exceptions import QueryValidationError
 from .models import WhereClause
@@ -21,196 +25,40 @@ from .models import WhereClause
 OperatorFunc = Callable[[Any, Any], bool]
 
 
-def _safe_compare(a: Any, b: Any, op: Callable[[Any, Any], bool]) -> bool:
-    """Safely compare values, handling None and type mismatches."""
-    if a is None or b is None:
-        return False
-    try:
-        return op(a, b)
-    except TypeError:
-        # Type mismatch - try string comparison
-        return op(str(a), str(b))
+def _make_operator(op_name: str) -> OperatorFunc:
+    """Create an operator function that delegates to compare_values().
 
-
-def _eq(a: Any, b: Any) -> bool:
-    """Equality operator with array membership support.
-
-    For scalar fields: standard equality (a == b)
-    For array fields (multi-select dropdowns):
-      - eq with scalar: checks if scalar is IN the array (membership)
-      - eq with array: checks set equality (order-insensitive, same elements)
-
-    This semantic shift is intentional - the query engine does client-side
-    filtering without field-type knowledge, so eq needs to "do the right thing"
-    for both single-value and multi-select fields.
+    This is a factory function that creates operator functions for the OPERATORS
+    registry. Each function wraps compare_values() with the appropriate operator name.
     """
-    if a is None:
-        return b is None
-    # If field value is a list, check if filter value is IN the list
-    if isinstance(a, list):
-        # If comparing list to list, check set equality (order-insensitive)
-        if isinstance(b, list):
-            try:
-                return set(a) == set(b)
-            except TypeError:
-                # Unhashable elements - fall back to sorted comparison
-                try:
-                    return sorted(a) == sorted(b)
-                except TypeError:
-                    return a == b  # Last resort: order-sensitive equality
-        return b in a
-    return bool(a == b)
+
+    def op_func(field_value: Any, target: Any) -> bool:
+        return compare_values(field_value, target, op_name)
+
+    return op_func
 
 
-def _neq(a: Any, b: Any) -> bool:
-    """Not equal operator with array membership support."""
-    if a is None:
-        return b is not None
-    if isinstance(a, list):
-        if isinstance(b, list):
-            try:
-                return set(a) != set(b)
-            except TypeError:
-                try:
-                    return sorted(a) != sorted(b)
-                except TypeError:
-                    return a != b
-        return b not in a
-    return bool(a != b)
-
-
-def _gt(a: Any, b: Any) -> bool:
-    """Greater than operator."""
-    return _safe_compare(a, b, lambda x, y: x > y)
-
-
-def _gte(a: Any, b: Any) -> bool:
-    """Greater than or equal operator."""
-    return _safe_compare(a, b, lambda x, y: x >= y)
-
-
-def _lt(a: Any, b: Any) -> bool:
-    """Less than operator."""
-    return _safe_compare(a, b, lambda x, y: x < y)
-
-
-def _lte(a: Any, b: Any) -> bool:
-    """Less than or equal operator."""
-    return _safe_compare(a, b, lambda x, y: x <= y)
-
-
-def _contains(a: Any, b: Any) -> bool:
-    """Contains operator (case-insensitive substring match)."""
-    if a is None or b is None:
-        return False
-    return str(b).lower() in str(a).lower()
-
-
-def _starts_with(a: Any, b: Any) -> bool:
-    """Starts with operator (case-insensitive)."""
-    if a is None or b is None:
-        return False
-    return str(a).lower().startswith(str(b).lower())
-
-
-def _in(a: Any, b: Any) -> bool:
-    """In operator - checks if value(s) exist in filter list.
-
-    For scalar fields: checks if field value is in filter list
-    For array fields: checks if ANY element of field array is in filter list
-
-    Use case: "Find entries where Team Member includes anyone from ['LB', 'MA']"
-    """
-    if a is None:
-        return False
-    if not isinstance(b, list):
-        return False
-    # If a is a list, check if ANY element of a is in b
-    if isinstance(a, list):
-        return any(item in b for item in a)
-    return a in b
-
-
-def _between(a: Any, b: Any) -> bool:
-    """Between operator (inclusive range)."""
-    if a is None or not isinstance(b, list) or len(b) != 2:
-        return False
-    try:
-        return bool(b[0] <= a <= b[1])
-    except TypeError:
-        return False
-
-
-def _is_null(a: Any, _b: Any) -> bool:
-    """Is null operator."""
-    return a is None
-
-
-def _is_not_null(a: Any, _b: Any) -> bool:
-    """Is not null operator."""
-    return a is not None
-
-
-def _contains_any(a: Any, b: Any) -> bool:
-    """Contains any of the given terms (case-insensitive)."""
-    if a is None or not isinstance(b, list):
-        return False
-    a_lower = str(a).lower()
-    return any(str(term).lower() in a_lower for term in b)
-
-
-def _contains_all(a: Any, b: Any) -> bool:
-    """Contains all of the given terms (case-insensitive)."""
-    if a is None or not isinstance(b, list):
-        return False
-    a_lower = str(a).lower()
-    return all(str(term).lower() in a_lower for term in b)
-
-
-def _has_any(a: Any, b: Any) -> bool:
-    """Check if array field contains ANY of the specified elements.
-
-    Unlike contains_any (which does case-insensitive substring matching),
-    this does exact array membership checking.
-    """
-    if not isinstance(a, list) or not isinstance(b, list):
-        return False
-    if not b:  # Empty filter list = no match
-        return False
-    return any(elem in a for elem in b)
-
-
-def _has_all(a: Any, b: Any) -> bool:
-    """Check if array field contains ALL of the specified elements.
-
-    Unlike contains_all (which does case-insensitive substring matching),
-    this does exact array membership checking.
-    """
-    if not isinstance(a, list) or not isinstance(b, list):
-        return False
-    if not b:  # Empty filter list = no match (avoid vacuous truth)
-        return False
-    return all(elem in a for elem in b)
-
-
-# Operator registry
+# Operator registry - all operators delegate to compare_values() from the shared module
+# This ensures consistent comparison behavior between SDK filter and Query tool
 OPERATORS: dict[str, OperatorFunc] = {
-    "eq": _eq,
-    "neq": _neq,
-    "gt": _gt,
-    "gte": _gte,
-    "lt": _lt,
-    "lte": _lte,
-    "contains": _contains,
-    "starts_with": _starts_with,
-    "in": _in,
-    "between": _between,
-    "is_null": _is_null,
-    "is_not_null": _is_not_null,
-    "contains_any": _contains_any,
-    "contains_all": _contains_all,
-    "has_any": _has_any,
-    "has_all": _has_all,
+    "eq": _make_operator("eq"),
+    "neq": _make_operator("neq"),
+    "gt": _make_operator("gt"),
+    "gte": _make_operator("gte"),
+    "lt": _make_operator("lt"),
+    "lte": _make_operator("lte"),
+    "contains": _make_operator("contains"),
+    "starts_with": _make_operator("starts_with"),
+    "ends_with": _make_operator("ends_with"),  # New: was missing in query tool
+    "in": _make_operator("in"),
+    "between": _make_operator("between"),
+    "is_null": _make_operator("is_null"),
+    "is_not_null": _make_operator("is_not_null"),
+    "is_empty": _make_operator("is_empty"),  # New: was missing in query tool
+    "contains_any": _make_operator("contains_any"),
+    "contains_all": _make_operator("contains_all"),
+    "has_any": _make_operator("has_any"),
+    "has_all": _make_operator("has_all"),
 }
 
 

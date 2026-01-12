@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
+from ..compare import normalize_value
 from ..exceptions import AffinityError, FilterParseError
 from ..filters import FilterExpression
 from ..filters import parse as parse_filter
@@ -419,6 +420,9 @@ def _entry_to_filter_dict(entry: ListEntryWithEntity) -> dict[str, Any]:
 
     Extracts field values by name from the entity's fields_raw (V2 API format).
     This allows FilterExpression.matches() to evaluate against field values.
+
+    Uses normalize_value() from compare.py to extract text values from
+    dropdown dicts and multi-select arrays - single source of truth for normalization.
     """
     result: dict[str, Any] = {}
 
@@ -433,19 +437,8 @@ def _entry_to_filter_dict(entry: ListEntryWithEntity) -> dict[str, Any]:
                         value_wrapper = field_obj.get("value")
                         if isinstance(value_wrapper, dict):
                             data = value_wrapper.get("data")
-                            # For ranked-dropdown/dropdown, extract text value
-                            if isinstance(data, dict) and "text" in data:
-                                result[field_name] = data["text"]
-                            # For multi-select dropdown, extract text values from list
-                            elif isinstance(data, builtins.list):
-                                if data and isinstance(data[0], dict) and "text" in data[0]:
-                                    result[field_name] = [
-                                        item.get("text") for item in data if isinstance(item, dict)
-                                    ]
-                                else:
-                                    result[field_name] = data
-                            else:
-                                result[field_name] = data
+                            # Use normalize_value() to extract text from dropdowns/multi-select
+                            result[field_name] = normalize_value(data)
                         else:
                             result[field_name] = value_wrapper
 

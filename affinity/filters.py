@@ -30,7 +30,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum, auto
-from typing import Any
+from typing import Any, ClassVar
+
+from affinity.compare import compare_values, map_operator, normalize_value
 
 
 @dataclass(frozen=True)
@@ -162,67 +164,40 @@ class FieldComparison(FilterExpression):
         - `!=` with scalar: checks if value is NOT in the array
         - `!=` with list: checks set inequality
         - `=~` (contains): checks if any array element contains the substring
+        - `=^` (starts_with): checks if any array element starts with the prefix
+        - `=$` (ends_with): checks if any array element ends with the suffix
+        - `>`, `>=`, `<`, `<=`: numeric/date comparisons
+
+        Uses the shared compare module for consistent behavior across SDK and Query tool.
         """
-        value = _get_entity_value(entity, self.field_name)
+        field_value = _get_entity_value(entity, self.field_name)
+
+        # Normalize dropdown dicts and multi-select arrays
+        field_value = normalize_value(field_value)
 
         # Handle NULL checks (Affinity convention: =* means NOT NULL, !=* means IS NULL)
-        if self.operator == "=" and isinstance(self.value, RawToken) and self.value.token == "*":
-            return value is not None and value != ""
-        if self.operator == "!=" and isinstance(self.value, RawToken) and self.value.token == "*":
-            return value is None or value == ""
+        if isinstance(self.value, RawToken) and self.value.token == "*":
+            if self.operator == "=":
+                return compare_values(field_value, None, "is_not_null")
+            elif self.operator == "!=":
+                return compare_values(field_value, None, "is_null")
 
         # Extract target value
         target = self.value if not isinstance(self.value, RawToken) else self.value.token
 
-        # Handle array fields (multi-select dropdowns)
-        if isinstance(value, list):
-            if self.operator == "=":
-                # If comparing list to list, check set equality (order-insensitive)
-                if isinstance(target, list):
-                    try:
-                        return set(value) == set(target)
-                    except TypeError:
-                        # Unhashable elements - fall back to sorted comparison
-                        try:
-                            return sorted(value) == sorted(target)
-                        except TypeError:
-                            return value == target
-                # Scalar comparison: check membership
-                return target in value
-            elif self.operator == "!=":
-                if isinstance(target, list):
-                    try:
-                        return set(value) != set(target)
-                    except TypeError:
-                        try:
-                            return sorted(value) != sorted(target)
-                        except TypeError:
-                            return value != target
-                return target not in value
-            elif self.operator == "=~":
-                # Contains: check if any array element contains the substring
-                target_lower = str(target).lower()
-                return any(target_lower in str(elem).lower() for elem in value)
-            else:
-                raise ValueError(f"Unsupported operator for client-side matching: {self.operator}")
+        # Map SDK operator symbol to canonical operator name
+        try:
+            canonical_op = map_operator(self.operator)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported operator '{self.operator}' for client-side matching. "
+                f"Supported operators: =, !=, =~, =^, =$, >, >=, <, <=, "
+                f"contains, starts_with, ends_with, gt, gte, lt, lte, "
+                f"is null, is not null, is empty, "
+                f"in, between, has_any, has_all, contains_any, contains_all"
+            ) from None
 
-        # Handle scalar fields - coerce to strings for comparison
-        # For dropdown fields, extract the "text" property
-        if isinstance(value, dict) and "text" in value:
-            entity_str = str(value["text"])
-        else:
-            entity_str = str(value) if value is not None else ""
-        target_str = str(target)
-
-        if self.operator == "=":
-            return entity_str == target_str
-        elif self.operator == "!=":
-            return entity_str != target_str
-        elif self.operator == "=~":
-            # Contains (case-insensitive)
-            return target_str.lower() in entity_str.lower()
-        else:
-            raise ValueError(f"Unsupported operator for client-side matching: {self.operator}")
+        return compare_values(field_value, target, canonical_op)
 
 
 @dataclass
@@ -435,15 +410,47 @@ class _Token:
     """A token from the filter string."""
 
     type: _TokenType
-    value: str
+    value: str | list[str]  # str for most tokens, list for bracket values
     pos: int  # Position in original string for error messages
 
 
 class _Tokenizer:
     """Tokenizer for filter strings."""
 
-    # Operators that can appear after field names
-    OPERATORS = ("!=", "=~", "=")
+    # Symbolic operators that can appear after field names
+    # IMPORTANT: Multi-character operators MUST come first to avoid partial matches
+    # e.g., ">=" must be checked before ">" or it will match as ">" + "="
+    OPERATORS: ClassVar[tuple[str, ...]] = (">=", "<=", "!=", "=~", "=^", "=$", ">", "<", "=")
+
+    # Single-word aliases for operators (SDK extensions for LLM/human clarity)
+    WORD_OPERATORS: ClassVar[dict[str, str]] = {
+        "contains": "=~",
+        "starts_with": "=^",
+        "ends_with": "=$",
+        "gt": ">",
+        "gte": ">=",
+        "lt": "<",
+        "lte": "<=",
+        # Collection operators
+        "in": "in",
+        "between": "between",
+        "has_any": "has_any",
+        "has_all": "has_all",
+        "contains_any": "contains_any",
+        "contains_all": "contains_all",
+    }
+
+    # Multi-word aliases that need lookahead
+    # Checked when we see "is" - peek ahead for "null", "not null", "empty"
+    # These are stored as (operator_value, canonical_operator_name)
+    MULTI_WORD_OPERATORS: ClassVar[dict[str, tuple[str, str, str | None]]] = {
+        # "is null" -> "!= *" equivalent (maps to is_null in compare)
+        "is null": ("is null", "!=", "*"),
+        # "is not null" -> "= *" equivalent (maps to is_not_null in compare)
+        "is not null": ("is not null", "=", "*"),
+        # "is empty" -> check for empty string or empty array
+        "is empty": ("is empty", "is empty", None),
+    }
 
     def __init__(self, text: str):
         self.text = text
@@ -501,12 +508,130 @@ class _Tokenizer:
             self.pos += 1
         return self.text[start : self.pos]
 
+    def _read_bracket_list(self) -> list[str]:
+        """Read a bracket-delimited list: [A, B, C] or ["A B", C].
+
+        Returns a list of string values.
+        Raises ValueError for syntax errors with helpful messages.
+        """
+        assert self.text[self.pos] == "["
+        start_pos = self.pos
+        self.pos += 1  # Skip opening bracket
+
+        items: list[str] = []
+        expect_value = True  # Start expecting a value
+
+        while self.pos < self.length:
+            self._skip_whitespace()
+
+            if self.pos >= self.length:
+                raise ValueError(
+                    f"Unclosed bracket at position {start_pos}. "
+                    f"Hint: Collection syntax requires closing bracket: [A, B]"
+                )
+
+            ch = self.text[self.pos]
+
+            if ch == "]":
+                # Check for trailing comma (expect_value=True after comma means trailing comma)
+                if items and expect_value:
+                    # We just got a comma and now see ]
+                    raise ValueError(
+                        f"Unexpected ']' after comma at position {self.pos}. "
+                        f"Hint: Remove trailing comma: [A, B] not [A, B,]"
+                    )
+                self.pos += 1  # Skip closing bracket
+                return items
+
+            if ch == ",":
+                if expect_value:
+                    raise ValueError(
+                        f"Unexpected ',' at position {self.pos}. Hint: Expected value before comma"
+                    )
+                self.pos += 1  # Skip comma
+                expect_value = True
+                continue
+
+            if not expect_value:
+                raise ValueError(f"Expected ',' or ']' at position {self.pos}, got '{ch}'")
+
+            # Read a value (quoted or unquoted)
+            # Unquoted values stop at comma, bracket, or whitespace
+            value = self._read_quoted_string() if ch == '"' else self._read_unquoted(",]")
+
+            if not value:
+                raise ValueError(f"Empty value in collection at position {self.pos}")
+
+            items.append(value)
+            expect_value = False
+
+        raise ValueError(
+            f"Unclosed bracket at position {start_pos}. "
+            f"Hint: Collection syntax requires closing bracket: [A, B]"
+        )
+
     def _peek_operator(self) -> str | None:
-        """Check if current position starts with an operator."""
+        """Check if current position starts with a symbolic operator."""
         for op in self.OPERATORS:
             if self.text[self.pos : self.pos + len(op)] == op:
                 return op
         return None
+
+    def _peek_word_operator(self) -> tuple[str, str] | None:
+        """Check if the next word(s) form a word-based operator.
+
+        Returns (alias, canonical_op) if found, None otherwise.
+        Does not advance position - just peeks.
+        """
+        # Save position for potential rollback
+        saved_pos = self.pos
+        self._skip_whitespace()
+
+        if self.pos >= self.length:
+            self.pos = saved_pos
+            return None
+
+        # Read the next word
+        word = self._read_unquoted('=!&|()"')
+        word_lower = word.lower()
+
+        # Check single-word operators
+        if word_lower in self.WORD_OPERATORS:
+            self.pos = saved_pos
+            return (word_lower, self.WORD_OPERATORS[word_lower])
+
+        # Check multi-word operators starting with "is"
+        if word_lower == "is":
+            self._skip_whitespace()
+            if self.pos < self.length:
+                next_word = self._read_unquoted('=!&|()"')
+                next_lower = next_word.lower()
+
+                if next_lower == "null":
+                    self.pos = saved_pos
+                    return ("is null", "is null")
+                elif next_lower == "not":
+                    self._skip_whitespace()
+                    if self.pos < self.length:
+                        third_word = self._read_unquoted('=!&|()"')
+                        if third_word.lower() == "null":
+                            self.pos = saved_pos
+                            return ("is not null", "is not null")
+                elif next_lower == "empty":
+                    self.pos = saved_pos
+                    return ("is empty", "is empty")
+
+        self.pos = saved_pos
+        return None
+
+    def _consume_word_operator(self, alias: str) -> None:
+        """Consume a word operator from the input, advancing position."""
+        words = alias.split()
+        for expected in words:
+            self._skip_whitespace()
+            word = self._read_unquoted('=!&|()"')
+            # Verify (should match since we already peeked)
+            assert word.lower() == expected.lower()
 
     def tokenize(self) -> list[_Token]:
         """Tokenize the entire filter string."""
@@ -553,7 +678,7 @@ class _Tokenizer:
                 value = self._read_quoted_string()
                 # Determine token type based on context (what comes next)
                 self._skip_whitespace()
-                if self.pos < self.length and self._peek_operator():
+                if self.pos < self.length and (self._peek_operator() or self._peek_word_operator()):
                     tokens.append(_Token(_TokenType.FIELD, value, start_pos))
                 else:
                     tokens.append(_Token(_TokenType.VALUE, value, start_pos))
@@ -561,27 +686,141 @@ class _Tokenizer:
                 # Wildcard value
                 tokens.append(_Token(_TokenType.VALUE, "*", start_pos))
                 self.pos += 1
+            elif ch == "[":
+                # Bracket list value: [A, B, C]
+                items = self._read_bracket_list()
+                tokens.append(_Token(_TokenType.VALUE, items, start_pos))
             else:
-                # Check for operator first
+                # Check for symbolic operator first
                 op = self._peek_operator()
                 if op:
                     tokens.append(_Token(_TokenType.OPERATOR, op, start_pos))
                     self.pos += len(op)
                 else:
-                    # Unquoted field name or value
+                    # Unquoted field name, value, or word operator
                     # Read until operator, boolean, paren, or whitespace
                     value = self._read_unquoted('=!&|()"')
                     if not value:
                         raise ValueError(f"Unexpected character '{ch}' at position {start_pos}")
 
-                    # Determine token type based on what comes next
-                    self._skip_whitespace()
-                    if self.pos < self.length and self._peek_operator():
-                        tokens.append(_Token(_TokenType.FIELD, value, start_pos))
+                    value_lower = value.lower()
+
+                    # Check if this is a word operator
+                    if value_lower in self.WORD_OPERATORS:
+                        # Emit as OPERATOR with the canonical symbol
+                        tokens.append(
+                            _Token(_TokenType.OPERATOR, self.WORD_OPERATORS[value_lower], start_pos)
+                        )
+                    elif value_lower == "is":
+                        # Check for multi-word operator: "is null", "is not null", "is empty"
+                        saved_pos = self.pos
+                        self._skip_whitespace()
+                        if self.pos < self.length:
+                            next_word = self._read_unquoted('=!&|()"')
+                            next_lower = next_word.lower()
+                            if next_lower == "null":
+                                # "is null" -> != *
+                                tokens.append(_Token(_TokenType.OPERATOR, "!=", start_pos))
+                                tokens.append(_Token(_TokenType.VALUE, "*", self.pos))
+                            elif next_lower == "empty":
+                                # "is empty" -> is empty operator with placeholder value
+                                tokens.append(_Token(_TokenType.OPERATOR, "is empty", start_pos))
+                                tokens.append(_Token(_TokenType.VALUE, "", self.pos))  # placeholder
+                            elif next_lower == "not":
+                                # Could be "is not null"
+                                self._skip_whitespace()
+                                if self.pos < self.length:
+                                    third_word = self._read_unquoted('=!&|()"')
+                                    if third_word.lower() == "null":
+                                        # "is not null" -> = *
+                                        tokens.append(_Token(_TokenType.OPERATOR, "=", start_pos))
+                                        tokens.append(_Token(_TokenType.VALUE, "*", self.pos))
+                                    else:
+                                        # Not a multi-word operator, restore
+                                        self.pos = saved_pos
+                                        self._skip_whitespace()
+                                        if self._peek_operator() or self._peek_word_operator():
+                                            tokens.append(
+                                                _Token(_TokenType.FIELD, value, start_pos)
+                                            )
+                                        else:
+                                            tokens.append(
+                                                _Token(_TokenType.VALUE, value, start_pos)
+                                            )
+                                else:
+                                    # Just "is not" with nothing after - restore
+                                    self.pos = saved_pos
+                                    tokens.append(_Token(_TokenType.VALUE, value, start_pos))
+                            else:
+                                # Not a multi-word operator, restore
+                                self.pos = saved_pos
+                                self._skip_whitespace()
+                                if self._peek_operator() or self._peek_word_operator():
+                                    tokens.append(_Token(_TokenType.FIELD, value, start_pos))
+                                else:
+                                    tokens.append(_Token(_TokenType.VALUE, value, start_pos))
+                        else:
+                            # "is" at end of input - treat as value
+                            tokens.append(_Token(_TokenType.VALUE, value, start_pos))
                     else:
-                        tokens.append(_Token(_TokenType.VALUE, value, start_pos))
+                        # Determine token type based on what comes next
+                        self._skip_whitespace()
+                        if self.pos < self.length and (
+                            self._peek_operator() or self._peek_word_operator()
+                        ):
+                            tokens.append(_Token(_TokenType.FIELD, value, start_pos))
+                        else:
+                            tokens.append(_Token(_TokenType.VALUE, value, start_pos))
 
         return tokens
+
+
+def _suggest_operator(unknown: str) -> str | None:
+    """
+    Suggest a similar operator for a misspelled word.
+
+    Uses simple heuristics:
+    1. Prefix match (at least 3 characters)
+    2. Simple edit distance (1 character difference)
+
+    Returns suggestion string or None.
+    """
+    unknown_lower = unknown.lower()
+
+    # All known word operators
+    known_operators = [
+        *_Tokenizer.WORD_OPERATORS.keys(),
+        "is null",
+        "is not null",
+        "is empty",
+    ]
+
+    # Check prefix match (at least 3 chars)
+    if len(unknown_lower) >= 3:
+        for op in known_operators:
+            # Check if unknown is a prefix of operator
+            if op.startswith(unknown_lower):
+                return op
+            # Check if operator is a prefix of unknown (e.g., "containsall" vs "contains_all")
+            op_no_space = op.replace(" ", "").replace("_", "")
+            unknown_no_sep = unknown_lower.replace("_", "")
+            if op_no_space.startswith(unknown_no_sep[:3]):
+                return op
+
+    # Check for simple typos (1 char difference for short ops, 2 for longer)
+    for op in known_operators:
+        op_lower = op.lower()
+        # Skip very different lengths
+        if abs(len(unknown_lower) - len(op_lower)) > 2:
+            continue
+        # Simple character difference count (zip shorter strings, add length diff)
+        diff = sum(1 for a, b in zip(unknown_lower, op_lower, strict=False) if a != b)
+        diff += abs(len(unknown_lower) - len(op_lower))
+        threshold = 2 if len(op_lower) > 4 else 1
+        if diff <= threshold:
+            return op
+
+    return None
 
 
 class _Parser:
@@ -624,8 +863,9 @@ class _Parser:
             token = self._current()
             # Check if this looks like a multi-word value (extra word after comparison)
             if token.type in (_TokenType.VALUE, _TokenType.FIELD):
+                token_val = token.value if isinstance(token.value, str) else str(token.value)
                 # Check for SQL-like boolean keywords
-                upper_val = token.value.upper()
+                upper_val = token_val.upper()
                 if upper_val == "AND":
                     raise ValueError(
                         f"Unexpected 'AND' at position {token.pos}. "
@@ -638,24 +878,29 @@ class _Parser:
                     )
                 # Look back to find the previous value to suggest quoting
                 # Collect remaining words
-                remaining_words = [token.value]
+                remaining_words: list[str] = [token_val]
                 pos = self.pos + 1
                 while pos < len(self.tokens) - 1:
                     next_tok = self.tokens[pos]
                     if next_tok.type in (_TokenType.VALUE, _TokenType.FIELD):
-                        remaining_words.append(next_tok.value)
+                        next_val = (
+                            next_tok.value
+                            if isinstance(next_tok.value, str)
+                            else str(next_tok.value)
+                        )
+                        remaining_words.append(next_val)
                         pos += 1
                     else:
                         break
                 if len(remaining_words) == 1:
                     raise ValueError(
-                        f"Unexpected token '{token.value}' at position {token.pos}. "
-                        f'Hint: Values with spaces must be quoted: "... {token.value}"'
+                        f"Unexpected token '{token_val}' at position {token.pos}. "
+                        f'Hint: Values with spaces must be quoted: "... {token_val}"'
                     )
                 else:
                     combined = " ".join(remaining_words)
                     raise ValueError(
-                        f"Unexpected token '{token.value}' at position {token.pos}. "
+                        f"Unexpected token '{token_val}' at position {token.pos}. "
                         f'Hint: Values with spaces must be quoted: "...{combined}"'
                     )
             raise ValueError(f"Unexpected token '{token.value}' at position {token.pos}")
@@ -728,6 +973,8 @@ class _Parser:
     def _parse_comparison(self) -> FilterExpression:
         """Parse a field comparison expression."""
         field_token = self._expect(_TokenType.FIELD, "for field name")
+        # Field names are always strings (not bracket lists)
+        assert isinstance(field_token.value, str)
         field_name = field_token.value
 
         op_token = self._current()
@@ -737,6 +984,8 @@ class _Parser:
                 f"got {op_token.type.name}"
             )
         self._advance()
+        # Operators are always strings
+        assert isinstance(op_token.value, str)
         operator = op_token.value
 
         value_token = self._current()
@@ -762,6 +1011,8 @@ class _Parser:
         """Parse a comparison where the field was tokenized as VALUE."""
         # This happens when field name isn't followed by operator immediately
         value_token = self._advance()
+        # Field names are always strings (not bracket lists)
+        assert isinstance(value_token.value, str)
         field_name = value_token.value
 
         op_token = self._current()
@@ -769,24 +1020,39 @@ class _Parser:
             # Check if this looks like a multi-word field name (next token is word, not operator)
             # Note: the next word might be tokenized as FIELD if it's followed by an operator
             if op_token.type in (_TokenType.VALUE, _TokenType.FIELD):
-                # Check if it looks like an unsupported operator (>, <, >=, <=, etc.)
-                if op_token.value in (">", "<", ">=", "<=", "<>", ">>", "<<"):
+                op_val = op_token.value if isinstance(op_token.value, str) else str(op_token.value)
+                # Check if it looks like an unsupported operator (e.g., <>, >>, <<)
+                if op_val in ("<>", ">>", "<<"):
                     raise ValueError(
-                        f"Unsupported operator '{op_token.value}' at position {op_token.pos}. "
-                        f"Supported operators: = (equals), != (not equals), =~ (contains)"
+                        f"Unsupported operator '{op_val}' at position {op_token.pos}. "
+                        f"Supported operators: = != =~ =^ =$ > >= < <="
                     )
+
+                # Check if this looks like a misspelled operator
+                suggestion = _suggest_operator(op_val)
+                if suggestion:
+                    raise ValueError(
+                        f"Unknown operator '{op_val}' at position {op_token.pos}. "
+                        f"Did you mean: {suggestion}?"
+                    )
+
                 # Collect subsequent words to suggest the full field name
-                words = [field_name, op_token.value]
+                words: list[str] = [field_name, op_val]
                 pos = self.pos + 1
                 while pos < len(self.tokens) - 1:
                     next_tok = self.tokens[pos]
                     if next_tok.type == _TokenType.OPERATOR:
                         break
                     if next_tok.type in (_TokenType.VALUE, _TokenType.FIELD):
-                        # Skip operator-like tokens
-                        if next_tok.value in (">", "<", ">=", "<=", "<>"):
+                        next_val = (
+                            next_tok.value
+                            if isinstance(next_tok.value, str)
+                            else str(next_tok.value)
+                        )
+                        # Skip unsupported operator-like tokens
+                        if next_val in ("<>", ">>", "<<"):
                             break
-                        words.append(next_tok.value)
+                        words.append(next_val)
                         pos += 1
                     else:
                         break
@@ -797,6 +1063,8 @@ class _Parser:
                 )
             raise ValueError(f"Expected operator after '{field_name}' at position {op_token.pos}")
         self._advance()
+        # Operators are always strings
+        assert isinstance(op_token.value, str)
         operator = op_token.value
 
         next_token = self._current()

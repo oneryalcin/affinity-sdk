@@ -12,19 +12,19 @@ Use `affinity.F` to build type-safe filter expressions:
 from affinity import Affinity, F
 
 with Affinity(api_key="your-key") as client:
-    # ✅ Recommended: Type-safe filter builder
+    # Recommended: Type-safe filter builder
     companies = client.companies.list(
         filter=F.field("Industry").equals("Software")
     )
 ```
 
 Benefits of the filter builder:
-- ✅ Prevents syntax errors with type checking
-- ✅ Handles escaping automatically
-- ✅ Makes it clear you're filtering custom fields (via `field()` method)
-- ✅ Provides IDE autocomplete for filter operations
+- Prevents syntax errors with type checking
+- Handles escaping automatically
+- Makes it clear you're filtering custom fields (via `field()` method)
+- Provides IDE autocomplete for filter operations
 
-**CLI users:** The CLI uses raw filter string syntax. See [CLI commands reference](../cli/commands.md) for examples.
+**CLI users:** The CLI uses raw filter string syntax. See examples below.
 
 ## Filter Builder Examples
 
@@ -41,6 +41,9 @@ companies = client.companies.list(filter=F.field("Industry").contains("Tech"))
 
 # Starts with
 persons = client.persons.list(filter=F.field("Title").starts_with("VP"))
+
+# Ends with
+persons = client.persons.list(filter=F.field("Email").ends_with("@acme.com"))
 
 # Greater than (for numbers/dates)
 opportunities = client.opportunities.list(filter=F.field("Amount").greater_than(100000))
@@ -85,37 +88,110 @@ multi_region = client.companies.list(
 )
 ```
 
-## Raw Filter Strings (Advanced)
+## Raw Filter Strings
 
-For CLI or advanced SDK use, you can use raw filter strings:
+For CLI or advanced SDK use, you can use raw filter strings. The SDK supports both official Affinity V2 API syntax and SDK-specific extensions.
+
+### Standard Operators (Affinity V2 API compatible)
+
+These operators work both with the Affinity API and SDK client-side filtering:
 
 | Meaning | Operator | Example |
 |---|---|---|
 | and | `&` | `field("A") = 1 & field("B") = 2` |
-| or | `|` | `field("A") = 1 | field("B") = 2` |
+| or | `\|` | `field("A") = 1 \| field("B") = 2` |
 | not | `!` | `!(field("A") = 1)` |
 | equals | `=` | `field("Industry") = "Software"` |
 | not equals | `!=` | `field("Status") != "inactive"` |
 | starts with | `=^` | `field("Name") =^ "Ac"` |
 | ends with | `=$` | `field("Name") =$ "Inc"` |
 | contains | `=~` | `field("Title") =~ "Manager"` |
+| greater than | `>` | `field("Count") > 5` |
+| greater than or equal | `>=` | `field("Count") >= 5` |
+| less than | `<` | `field("Count") < 10` |
+| less than or equal | `<=` | `field("Count") <= 10` |
 | is NULL | `!= *` | `field("Email") != *` |
 | is not NULL | `= *` | `field("Email") = *` |
+| is empty string | `= ""` | `field("Notes") = ""` |
+| collection exact match | `= [A, B]` | `field("Tags") = [tech, startup]` |
+| collection contains all | `=~ [A, B]` | `field("Tags") =~ [tech, startup]` |
+| collection empty | `= []` | `field("Tags") = []` |
 
-**CLI example:**
+### SDK Extensions (client-side filtering only)
+
+These operators are SDK-specific and only work for client-side filtering with `--expand-filter` or `matches()`. They do NOT work with the Affinity API.
+
+#### Word-Based Aliases `[SDK Extension]`
+
+Human/LLM-friendly aliases for official operators:
+
+| Alias | Equivalent | Example |
+|---|---|---|
+| `contains` | `=~` | `name contains "Corp"` |
+| `starts_with` | `=^` | `name starts_with "Acme"` |
+| `ends_with` | `=$` | `email ends_with "@acme.com"` |
+| `gt` | `>` | `count gt 5` |
+| `gte` | `>=` | `count gte 5` |
+| `lt` | `<` | `count lt 10` |
+| `lte` | `<=` | `count lte 10` |
+| `is null` | `!= *` | `email is null` |
+| `is not null` | `= *` | `email is not null` |
+| `is empty` | `= ""` or `= []` | `tags is empty` |
+
+#### Additional Collection Operators `[SDK Extension]`
+
+| Operator | Syntax | Description |
+|---|---|---|
+| in list | `in [A, B, C]` | Value equals any in list |
+| between | `between [1, 10]` | Value in range (inclusive) |
+| has any | `has_any [A, B]` | Array contains any of values (exact match) |
+| has all | `has_all [A, B]` | Array contains all values (exact match) |
+| contains any | `contains_any [A, B]` | Any element contains any substring |
+| contains all | `contains_all [A, B]` | Any element contains all substrings |
+
+**Example equivalents (prefer official syntax for API portability):**
+
 ```bash
+# These are equivalent:
+xaffinity list export 123 --expand-filter '"Team Member" =~ LB'       # Official V2 API
+xaffinity list export 123 --expand-filter '"Team Member" contains LB' # SDK alias
+
+xaffinity list export 123 --expand-filter 'email = *'           # Official V2 API
+xaffinity list export 123 --expand-filter 'email is not null'   # SDK alias
+
+xaffinity list export 123 --expand-filter 'count > 5'   # Official V2 API
+xaffinity list export 123 --expand-filter 'count gt 5'  # SDK alias
+```
+
+## CLI Examples
+
+```bash
+# Simple filter
 xaffinity person ls --filter 'Department = "Sales"'
+
+# Contains (case-insensitive)
+xaffinity company ls --filter 'Industry =~ "tech"'
+
+# Numeric comparison
+xaffinity opportunity ls --filter 'Amount > 100000'
+
+# Multiple conditions with AND
+xaffinity person ls --filter 'Status = "Active" & Department = "Sales"'
+
+# Multiple conditions with OR
+xaffinity company ls --filter 'Region = "US" | Region = "Canada"'
+
+# Null check
+xaffinity person ls --filter 'Manager != *'
+
+# Collection operators (SDK extension)
+xaffinity list export 123 --expand-filter 'Status in [Active, Pending]'
+xaffinity list export 123 --expand-filter 'Tags has_any [priority, urgent]'
 ```
 
-**SDK with raw string:**
-```python
-# Less safe than using F, but works
-persons = client.persons.list(filter='field("Department") = "Sales"')
-```
+## What Can Be Filtered?
 
-## What can be filtered?
-
-**✅ Custom fields** (added to entities in Affinity):
+**Custom fields** (added to entities in Affinity):
 
 Python SDK:
 - `F.field("Department").equals("Sales")`
@@ -125,7 +201,7 @@ CLI (raw filter syntax):
 - `Department = "Sales"`
 - `Status =~ "Active"`
 
-**❌ Built-in properties** (cannot be filtered with V2 filter expressions):
+**Built-in properties** (cannot be filtered with V2 filter expressions):
 - Person: `type`, `firstName`, `lastName`, `primaryEmail`, `emailAddresses`
 - Company: `name`, `domain`, `domains`
 - Opportunity: `name`, `listId`
@@ -155,21 +231,8 @@ This means `--expand-filter`:
 
 - Uses the same syntax as `--filter` for consistency
 - Is applied after fetching data (doesn't reduce API calls)
+- Supports SDK extension operators (word aliases, collection operators)
 - Still useful for reducing output size and focusing on relevant associations
-
-### Supported operators for `--expand-filter`
-
-| Syntax | Meaning | Example |
-|--------|---------|---------|
-| `=` | Exact match | `name=Alice` |
-| `!=` | Not equal | `name!=Bob` |
-| `=*` | IS NOT NULL (has value) | `email=*` |
-| `!=*` | IS NULL (empty/not set) | `email!=*` |
-| `=~` | Contains substring | `name=~Corp` |
-| `\|` | OR | `status=Unknown \| status=Valid` |
-| `&` | AND | `status=Valid & role=CEO` |
-| `!` | NOT (prefix) | `!(status=Inactive)` |
-| `()` | Grouping | `(status=A \| status=B) & role=CEO` |
 
 ### Example
 
@@ -179,7 +242,7 @@ This means `--expand-filter`:
 xaffinity list export 275454 \
   --filter "Status=Active" \
   --expand people \
-  --expand-filter "Primary Email Status=Valid | Primary Email Status=Unknown | Primary Email Status!=*" \
+  --expand-filter '"Primary Email Status"=Valid | "Primary Email Status"=Unknown | "Primary Email Status" is null' \
   --all --csv > output.csv
 ```
 

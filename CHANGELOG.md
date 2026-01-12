@@ -9,16 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CLI: `query` command now supports `has_any` and `has_all` operators for multi-select field filtering.
+- SDK/CLI: Filter parser now supports V2 API comparison operators: `>`, `>=`, `<`, `<=` for numeric/date comparisons.
+- SDK/CLI: Filter parser now supports word-based operator aliases for LLM/human clarity:
+  - `contains`, `starts_with`, `ends_with` (string matching)
+  - `gt`, `gte`, `lt`, `lte` (numeric/date comparisons)
+  - `is null`, `is not null`, `is empty` (null/empty checks)
+- SDK/CLI: Filter parser now supports collection bracket syntax `[A, B, C]` with operators:
+  - `in [A, B]` - value is one of the listed values
+  - `between [1, 10]` - value is in range (inclusive)
+  - `has_any [A, B]` - array field contains any of the values
+  - `has_all [A, B]` - array field contains all of the values
+  - `contains_any [A, B]` - substring match for any term
+  - `contains_all [A, B]` - substring match for all terms
+  - `= [A, B]` - set equality (array has exactly these elements)
+  - `=~ [A, B]` - V2 API collection contains (array contains all elements)
 
 ### Fixed
 - CLI: `query` command now correctly filters on multi-select dropdown fields (like "Team Member"). The `eq` operator checks array membership for scalar values and set equality for array values. Previously, these queries returned 0 results due to strict equality comparison.
 - SDK/CLI: `list export --filter` now correctly matches multi-select dropdown fields. The `=`, `!=`, and `=~` operators now handle array values properly. Also fixes extraction of text values from multi-select dropdown API responses.
+- SDK/CLI: Fixed `=^` (starts_with) and `=$` (ends_with) operators which were broken due to tokenizer ordering issue.
 
 ### Improved
 - SDK/CLI: Filter parser now provides helpful hints for common mistakes:
   - Multi-word field names: suggests quoting (`"Team Member"`)
   - Multi-word values: suggests quoting (`"Intro Meeting"`)
-  - Unsupported operators (`>`, `<`): lists valid operators (`=`, `!=`, `=~`)
   - SQL keywords (`AND`, `OR`): suggests correct symbols (`&`, `|`)
   - Double equals (`==`): suggests single `=`
 
