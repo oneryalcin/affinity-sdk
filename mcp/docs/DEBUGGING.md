@@ -5,13 +5,13 @@ This guide explains how to enable debug logging for the xaffinity MCP server.
 ## Quick Start
 
 ```bash
-# Enable debug mode (mcp-bash 0.9.5+ native)
-touch mcp/server.d/.debug
+# Enable debug mode (persistent, survives reinstalls)
+mkdir -p ~/.config/xaffinity-mcp && touch ~/.config/xaffinity-mcp/debug
 
 # Restart your MCP client (e.g., Claude Desktop)
 
 # Disable debug mode
-rm mcp/server.d/.debug
+rm ~/.config/xaffinity-mcp/debug
 ```
 
 ## Debug Mode Options
@@ -21,11 +21,12 @@ Debug mode can be enabled via (checked in priority order):
 | Priority | Method | Use Case |
 |----------|--------|----------|
 | 1 | `MCPBASH_LOG_LEVEL=debug` env var | Session-specific, explicit |
-| 2 | `server.d/.debug` file | Persistent for development |
+| 2 | `~/.config/xaffinity-mcp/debug` file | **Recommended** - persistent across reinstalls |
+| 3 | `server.d/.debug` file | Development only (inside installation directory) |
 
-The `.debug` file is detected natively by mcp-bash 0.9.5+. Only the file's existence matters—contents are ignored.
+**Recommended**: Use the XDG config location (`~/.config/xaffinity-mcp/debug`) as it survives MCP server reinstalls and updates.
 
-**Note**: The `server.d/.debug` file is gitignored to prevent accidental commits.
+The file's existence enables debug mode—contents are ignored.
 
 ## What Debug Mode Does
 
@@ -95,7 +96,7 @@ Claude Desktop logs all JSON-RPC messages, so you can always see:
 
 1. **Check if debug file exists**:
    ```bash
-   [[ -f mcp/server.d/.debug ]] && echo "Debug ON" || echo "Debug OFF"
+   [[ -f ~/.config/xaffinity-mcp/debug ]] && echo "Debug ON" || echo "Debug OFF"
    ```
 
 2. **Restart the MCP client** - Changes require restart

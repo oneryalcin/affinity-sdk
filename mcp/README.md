@@ -159,6 +159,14 @@ The CLI Gateway provides full access to the xaffinity CLI with minimal token ove
 | `execute-read-command` | Execute read-only CLI commands (get, search, list) |
 | `execute-write-command` | Execute write CLI commands (create, update, delete) |
 
+### Query Tool
+
+| Tool | Description |
+|------|-------------|
+| `query` | Execute structured JSON queries with filters, joins, and aggregations |
+
+For complex data analysis (filtering, grouping, aggregations), use the `query` tool instead of individual CLI commands. See the [Query Language Reference](https://yaniv-golan.github.io/affinity-sdk/latest/reference/query-language/) for full documentation.
+
 ### Utility Tools
 
 | Tool | Description |
@@ -288,7 +296,8 @@ When debug mode is enabled, logs show:
 
 | Context | Log Location |
 |---------|--------------|
-| Claude Desktop | `~/Library/Logs/Claude/mcp-server-Affinity CRM MCP Server.log` |
+| Claude Desktop (macOS) | `~/Library/Logs/Claude/mcp-server-xaffinity MCP.log` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\Logs\mcp-server-xaffinity MCP.log` |
 | CLI standalone | stderr (console) |
 
 #### Advanced Debug Options
