@@ -380,6 +380,21 @@ def test_parse_multi_word_value_suggests_quoting() -> None:
         parse("Status = Intro Meeting Scheduled")
 
 
+def test_parse_sql_keywords_suggest_symbols() -> None:
+    """Test that SQL-like AND/OR keywords suggest correct symbols."""
+    with pytest.raises(ValueError, match=r"Hint.*Use '&' for AND"):
+        parse("status = A AND role = B")
+
+    with pytest.raises(ValueError, match=r"Hint.*Use '\|' for OR"):
+        parse("status = A OR status = B")
+
+
+def test_parse_double_equals_suggests_single() -> None:
+    """Test that == suggests using single =."""
+    with pytest.raises(ValueError, match=r"Hint.*Use single '=' for equality"):
+        parse("status == Active")
+
+
 # =============================================================================
 # Integration tests - realistic use cases
 # =============================================================================

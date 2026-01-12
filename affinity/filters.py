@@ -624,6 +624,18 @@ class _Parser:
             token = self._current()
             # Check if this looks like a multi-word value (extra word after comparison)
             if token.type in (_TokenType.VALUE, _TokenType.FIELD):
+                # Check for SQL-like boolean keywords
+                upper_val = token.value.upper()
+                if upper_val == "AND":
+                    raise ValueError(
+                        f"Unexpected 'AND' at position {token.pos}. "
+                        f"Hint: Use '&' for AND: expr1 & expr2"
+                    )
+                if upper_val == "OR":
+                    raise ValueError(
+                        f"Unexpected 'OR' at position {token.pos}. "
+                        f"Hint: Use '|' for OR: expr1 | expr2"
+                    )
                 # Look back to find the previous value to suggest quoting
                 # Collect remaining words
                 remaining_words = [token.value]
@@ -729,6 +741,12 @@ class _Parser:
 
         value_token = self._current()
         if value_token.type not in (_TokenType.VALUE, _TokenType.FIELD):
+            # Check for == instead of =
+            if value_token.type == _TokenType.OPERATOR and value_token.value == "=":
+                raise ValueError(
+                    f"Unexpected '=' at position {value_token.pos}. "
+                    f"Hint: Use single '=' for equality, not '=='"
+                )
             raise ValueError(f"Expected value after operator at position {value_token.pos}")
         self._advance()
 
@@ -783,6 +801,12 @@ class _Parser:
 
         next_token = self._current()
         if next_token.type not in (_TokenType.VALUE, _TokenType.FIELD):
+            # Check for == instead of =
+            if next_token.type == _TokenType.OPERATOR and next_token.value == "=":
+                raise ValueError(
+                    f"Unexpected '=' at position {next_token.pos}. "
+                    f"Hint: Use single '=' for equality, not '=='"
+                )
             raise ValueError(f"Expected value after operator at position {next_token.pos}")
         self._advance()
 
