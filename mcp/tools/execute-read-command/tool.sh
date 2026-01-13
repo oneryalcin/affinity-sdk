@@ -12,8 +12,26 @@ if ! validate_registry; then
     exit 0
 fi
 
+# Debug: Log args state to help diagnose intermittent "Command is required" errors
+# (See issue: args_json was sometimes empty despite valid request)
+args_raw="$(mcp_args_raw)"
+args_len="${#args_raw}"
+xaffinity_log_debug "execute-read-command" "args_len=$args_len"
+
 # Parse arguments using mcp-bash SDK
-command="$(mcp_args_require '.command' 'Command is required')"
+# Provide diagnostic info if command is missing
+if ! command="$(mcp_args_get '.command')"; then
+    mcp_result_error "$(jq_tool -n --argjson len "$args_len" \
+        '{type: "validation_error", message: "Command is required", diagnostic: {argsLength: $len, hint: "If argsLength is 0, arguments were not passed to tool subprocess"}}')"
+    exit 0
+fi
+if [[ -z "$command" || "$command" == "null" ]]; then
+    # Extract first 200 chars of args for debugging (without secrets)
+    args_preview="${args_raw:0:200}"
+    mcp_result_error "$(jq_tool -n --argjson len "$args_len" --arg preview "$args_preview" \
+        '{type: "validation_error", message: "Command is required (field missing or null)", diagnostic: {argsLength: $len, argsPreview: $preview}}')"
+    exit 0
+fi
 argv_json="$(mcp_args_get '.argv // []')"
 max_output_bytes="$(mcp_args_int '.maxOutputBytes' --default 50000)"
 dry_run="$(mcp_args_get '.dryRun // false')"
