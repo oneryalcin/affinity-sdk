@@ -147,10 +147,12 @@ if [[ $exit_code -eq 0 ]]; then
             '{type: "invalid_json_output", message: "CLI returned non-JSON output", output: $stdout, executed: $cmd}')"
     fi
 else
-    # Use temp files to avoid "Argument list too long" error with large outputs
-    printf '%s' "$stderr_content" > "$stderr_file"
+    # CLI exited with error - use mcp-bash 0.9.12 helper to extract message
     printf '%s' "$stdout_content" > "$stdout_file"
-    mcp_result_error "$(jq_tool -n --rawfile stderr "$stderr_file" --rawfile stdout "$stdout_file" \
+    error_message=$(mcp_extract_cli_error "$stdout_content" "$stderr_content" "$exit_code")
+    printf '%s' "$error_message" > "$stderr_file"
+    mcp_result_error "$(jq_tool -n --rawfile message "$stderr_file" --rawfile stdout "$stdout_file" \
           --argjson cmd "$cmd_json" --argjson code "$exit_code" \
-          '{type: "cli_error", message: $stderr, output: $stdout, exitCode: $code, executed: $cmd}')"
+          '{type: "cli_error", message: $message, output: $stdout, exitCode: $code, executed: $cmd}')"
+    exit 0
 fi
