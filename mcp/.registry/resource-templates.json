@@ -1,13 +1,13 @@
 {
   "format_version": 1,
   "version": 1,
-  "generatedAt": "2026-01-12T15:55:32Z",
+  "generatedAt": "2026-01-13T13:13:34Z",
   "items": [
     {
       "name": "xaffinity-field-catalogs",
       "uriTemplate": "xaffinity://field-catalogs/{entityType}",
       "title": "Field Catalogs",
-      "description": "Field catalog for an entity type showing available fields and their types",
+      "description": "Field catalog for an entity type showing available fields and their types. entityType can be: list ID (numeric), list name, 'company', 'person', or 'opportunity'",
       "mimeType": "application/json"
     },
     {
@@ -25,6 +25,6 @@
       "mimeType": "application/json"
     }
   ],
-  "hash": "fff5a4a77b99be893aef7bd8413106fa1e81847e858a717d109a0652167150c3",
+  "hash": "543d2d3022b01a58efdaf664f9d364a20c0e0b3cc3904cdf66d9fbf9d011b68d",
   "total": 3
 }
