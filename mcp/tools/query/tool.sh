@@ -53,7 +53,7 @@ fi
 set +e
 printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
     query --max-records "$max_records" --timeout "$timeout_secs" --json \
-    ${dry_run:+--dry-run} >"$stdout_file"
+    $([[ "$dry_run" == "true" ]] && echo "--dry-run") >"$stdout_file"
 exit_code=$?
 set -e
 
