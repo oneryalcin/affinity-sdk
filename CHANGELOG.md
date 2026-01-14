@@ -5,19 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.9.9 - Unreleased
+## 0.9.9 - 2026-01-14
 
 ### Added
 - CLI: `query` command now supports advanced relationship filtering:
-  - `all_` quantifier: Filter where all related items match a condition (e.g., find persons where all their companies have ".com" domains)
-  - `none_` quantifier: Filter where no related items match a condition (e.g., find persons with no spam interactions)
-  - `exists_` subquery: Filter where at least one related item exists, optionally matching a condition (e.g., find persons who have email interactions)
+  - `all` quantifier: Filter where all related items match a condition (e.g., find persons where all their companies have ".com" domains)
+  - `none` quantifier: Filter where no related items match a condition (e.g., find persons with no spam interactions)
+  - `exists` subquery: Filter where at least one related item exists, optionally matching a condition (e.g., find persons who have email interactions)
   - `_count` pseudo-field: Filter by count of related items (e.g., `"path": "companies._count", "op": "gte", "value": 2`)
-  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→people/opportunities/interactions/notes/listEntries, opportunities→people/companies/interactions
-  - Note: These features cause N+1 API calls to fetch relationship data; use `dryRun` to preview
+  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→persons/opportunities/interactions/notes/listEntries, opportunities→persons/companies/interactions
+  - Note: These features cause N+1 API calls to fetch relationship data; use `--dry-run` to preview
+
+### Changed (Breaking)
+- CLI: Renamed relationship `"people"` to `"persons"` for consistency with entity type names:
+  - Query `include`: `{"from": "companies", "include": ["people"]}` → use `["persons"]`
+  - CLI `--expand`: `xaffinity company get <id> --expand people` → use `--expand persons`
+  - JSON output: `data.people` → `data.persons`
 
 ### Fixed
-- CLI: Query engine no longer silently passes all records for `all_`, `none_`, and `_count` filters. Previously these were placeholder implementations that returned `True` for all records, causing incorrect query results. (Bug #15)
+- CLI: Query engine no longer silently passes all records for `all`, `none`, and `_count` filters. Previously these were placeholder implementations that returned `True` for all records, causing incorrect query results. (Bug #15)
 
 ## 0.9.8 - 2026-01-12
 
