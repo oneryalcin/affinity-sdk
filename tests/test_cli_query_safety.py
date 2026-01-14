@@ -53,7 +53,7 @@ class TestValidateQuantifierQuery:
         )
 
         with pytest.raises(QueryValidationError) as exc_info:
-            validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+            validate_quantifier_query(query, 10000, max_records_explicit=False)
 
         assert "require explicit --max-records" in str(exc_info.value)
         assert "persons" in str(exc_info.value)
@@ -77,7 +77,7 @@ class TestValidateQuantifierQuery:
         )
 
         # Should NOT raise - listEntries is bounded
-        validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+        validate_quantifier_query(query, 10000, max_records_explicit=False)
 
     @pytest.mark.req("QUERY-SAFETY-004")
     def test_explicit_max_records_allows_query(self) -> None:
@@ -90,7 +90,7 @@ class TestValidateQuantifierQuery:
         )
 
         # Should NOT raise when max_records_explicit=True
-        validate_quantifier_query(query, max_records=100, max_records_explicit=True)
+        validate_quantifier_query(query, 100, max_records_explicit=True)
 
     def test_query_without_quantifier_allowed(self) -> None:
         """Query without quantifiers should be allowed without explicit limit."""
@@ -102,14 +102,14 @@ class TestValidateQuantifierQuery:
         )
 
         # Should NOT raise - no quantifier filter
-        validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+        validate_quantifier_query(query, 10000, max_records_explicit=False)
 
     def test_query_without_where_allowed(self) -> None:
         """Query without where clause should be allowed."""
         query = Query(**{"from": "persons", "limit": 10})
 
         # Should NOT raise - no where clause
-        validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+        validate_quantifier_query(query, 10000, max_records_explicit=False)
 
     def test_exists_quantifier_requires_explicit_max_records(self) -> None:
         """exists_ quantifier on unbounded entity requires explicit --max-records."""
@@ -121,7 +121,7 @@ class TestValidateQuantifierQuery:
         )
 
         with pytest.raises(QueryValidationError):
-            validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+            validate_quantifier_query(query, 10000, max_records_explicit=False)
 
     def test_all_quantifier_requires_explicit_max_records(self) -> None:
         """all_ quantifier on unbounded entity requires explicit --max-records."""
@@ -138,7 +138,7 @@ class TestValidateQuantifierQuery:
         )
 
         with pytest.raises(QueryValidationError):
-            validate_quantifier_query(query, max_records=10000, max_records_explicit=False)
+            validate_quantifier_query(query, 10000, max_records_explicit=False)
 
 
 class TestPlannerUnboundedWarnings:
