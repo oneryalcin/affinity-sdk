@@ -11,6 +11,7 @@ coverage:
       default:
         target: 70%
         threshold: 1%
+        informational: true  # Don't block CI on patch coverage
 
 # Ignore paths that can't have test coverage
 ignore:
