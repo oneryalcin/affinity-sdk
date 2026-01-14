@@ -169,8 +169,8 @@ def test_opportunity_create_update_delete(respx_mock: respx.MockRouter) -> None:
     assert deleted_payload["data"]["success"] is True
 
 
-def test_opportunity_get_expand_people(respx_mock: respx.MockRouter) -> None:
-    """Test --expand people fetches associated people via V1 API."""
+def test_opportunity_get_expand_persons(respx_mock: respx.MockRouter) -> None:
+    """Test --expand persons fetches associated persons via V1 API."""
     # V2 get for opportunity
     respx_mock.get("https://api.affinity.co/v2/opportunities/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Series A", "listId": 41780})
@@ -217,17 +217,17 @@ def test_opportunity_get_expand_people(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "opportunity", "get", "123", "--expand", "people"],
+        ["--json", "opportunity", "get", "123", "--expand", "persons"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["data"]["opportunity"]["id"] == 123
-    assert len(payload["data"]["people"]) == 2
-    assert payload["data"]["people"][0]["id"] == 1001
-    assert payload["data"]["people"][0]["name"] == "Alice Smith"
-    assert payload["data"]["people"][1]["id"] == 1002
-    assert payload["meta"]["resolved"]["expand"] == ["people"]
+    assert len(payload["data"]["persons"]) == 2
+    assert payload["data"]["persons"][0]["id"] == 1001
+    assert payload["data"]["persons"][0]["name"] == "Alice Smith"
+    assert payload["data"]["persons"][1]["id"] == 1002
+    assert payload["meta"]["resolved"]["expand"] == ["persons"]
 
 
 def test_opportunity_get_expand_companies(respx_mock: respx.MockRouter) -> None:
@@ -278,7 +278,7 @@ def test_opportunity_get_expand_companies(respx_mock: respx.MockRouter) -> None:
 
 
 def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
-    """Test --expand people --expand companies fetches both."""
+    """Test --expand persons --expand companies fetches both."""
     # V2 get for opportunity
     respx_mock.get("https://api.affinity.co/v2/opportunities/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Series A", "listId": 41780})
@@ -324,15 +324,15 @@ def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "opportunity", "get", "123", "--expand", "people", "--expand", "companies"],
+        ["--json", "opportunity", "get", "123", "--expand", "persons", "--expand", "companies"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["data"]["opportunity"]["id"] == 123
-    assert len(payload["data"]["people"]) == 1
+    assert len(payload["data"]["persons"]) == 1
     assert len(payload["data"]["companies"]) == 1
-    assert payload["meta"]["resolved"]["expand"] == ["companies", "people"]  # sorted
+    assert payload["meta"]["resolved"]["expand"] == ["companies", "persons"]  # sorted
 
 
 def test_opportunity_files_dump(respx_mock: respx.MockRouter, tmp_path: object) -> None:

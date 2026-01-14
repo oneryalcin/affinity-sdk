@@ -7,6 +7,8 @@ CLI_MAX_VERSION="1.0.0"
 # MCP 1.8.8 requires CLI 0.9.9 for:
 # - `query` tool: Advanced relationship filtering (all_, none_, exists_, _count)
 # - `query` tool: Pre-include step for fetching relationship data before filtering
+# - `query` tool: Relationship key renamed from "people" to "persons" in JSON output
+# - CLI commands: --expand option uses "persons" instead of "people"
 #
 # MCP 1.8.3 requires CLI 0.9.8 for:
 # - `query` tool: Fixed fetch-before-filter/sort/aggregate (correct top N, accurate counts)

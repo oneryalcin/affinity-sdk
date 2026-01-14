@@ -182,7 +182,7 @@ def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.M
     assert payload["meta"]["resolved"]["list"]["listId"] == 10
 
 
-def test_company_get_expand_people_v1(respx_mock: respx.MockRouter) -> None:
+def test_company_get_expand_persons_v1(respx_mock: respx.MockRouter) -> None:
     respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
         return_value=Response(
             200,
@@ -220,13 +220,13 @@ def test_company_get_expand_people_v1(respx_mock: respx.MockRouter) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "company", "get", "123", "--expand", "people"],
+        ["--json", "company", "get", "123", "--expand", "persons"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0
     payload = json.loads(result.output.strip())
     assert payload["ok"] is True
-    assert payload["data"]["people"] == [
+    assert payload["data"]["persons"] == [
         {
             "id": 11,
             "name": "Ada Lovelace",
@@ -240,7 +240,7 @@ def test_company_get_expand_people_v1(respx_mock: respx.MockRouter) -> None:
             "type": "internal",
         },
     ]
-    assert "people" in payload["meta"]["resolved"]["expand"]
+    assert "persons" in payload["meta"]["resolved"]["expand"]
 
 
 def test_company_get_list_filter_auto_implies_expand(respx_mock: respx.MockRouter) -> None:

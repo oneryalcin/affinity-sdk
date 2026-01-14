@@ -478,7 +478,7 @@ def test_list_export_expand_invalid_on_person_list(
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "list", "export", "12345", "--expand", "people", "--all"],
+        ["--json", "list", "export", "12345", "--expand", "persons", "--all"],
         env={"AFFINITY_API_KEY": "test-key"},
     )
 
@@ -519,7 +519,7 @@ def test_list_export_expand_invalid_on_company_list(
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
     assert "not valid for company lists" in payload["error"]["message"]
-    assert payload["error"]["details"]["validExpand"] == ["opportunities", "people"]
+    assert payload["error"]["details"]["validExpand"] == ["opportunities", "persons"]
 
 
 def test_list_export_expand_cursor_combination_fails(
@@ -550,7 +550,7 @@ def test_list_export_expand_cursor_combination_fails(
             "export",
             "12345",
             "--expand",
-            "people",
+            "persons",
             "--cursor",
             "abc123",
         ],
@@ -736,7 +736,7 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
             "export",
             "12345",
             "--expand",
-            "people",
+            "persons",
             "--expand",
             "companies",
             "--all",
@@ -750,18 +750,18 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
     # Check nested arrays
     rows = payload["data"]["rows"]
     assert len(rows) == 1
-    assert "people" in rows[0]
+    assert "persons" in rows[0]
     assert "companies" in rows[0]
-    assert len(rows[0]["people"]) == 1
+    assert len(rows[0]["persons"]) == 1
     assert len(rows[0]["companies"]) == 1
-    assert rows[0]["people"][0]["id"] == 101
-    assert rows[0]["people"][0]["name"] == "Alice Smith"
+    assert rows[0]["persons"][0]["id"] == 101
+    assert rows[0]["persons"][0]["name"] == "Alice Smith"
     assert rows[0]["companies"][0]["id"] == 201
     assert rows[0]["companies"][0]["name"] == "Acme Corp"
 
     # Check summary data
     assert payload["data"]["entriesProcessed"] == 1
-    assert payload["data"]["associationsFetched"]["people"] == 1
+    assert payload["data"]["associationsFetched"]["persons"] == 1
     assert payload["data"]["associationsFetched"]["companies"] == 1
 
 
@@ -803,7 +803,7 @@ def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
             "export",
             "12345",
             "--expand",
-            "people",
+            "persons",
             "--expand",
             "companies",
             "--dry-run",
@@ -815,7 +815,7 @@ def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
     payload = json.loads(result.output.strip())
 
     assert "expand" in payload["data"]
-    assert sorted(payload["data"]["expand"]) == ["companies", "people"]
+    assert sorted(payload["data"]["expand"]) == ["companies", "persons"]
     assert payload["data"]["expandMaxResults"] == 100
     assert "estimatedApiCalls" in payload["data"]
     assert "get_associations" in payload["data"]["estimatedApiCalls"]["note"]
@@ -1008,5 +1008,5 @@ def test_list_export_expand_opportunities_invalid_on_opportunity_list(
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
     assert "not valid for opportunity lists" in payload["error"]["message"]
-    # Valid values should be people, companies (not opportunities)
+    # Valid values should be persons, companies (not opportunities)
     assert "opportunities" not in payload["error"]["details"]["validExpand"]

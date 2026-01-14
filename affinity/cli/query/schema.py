@@ -180,7 +180,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         ),
         computed_fields=frozenset([]),
         relationships={
-            "people": RelationshipDef(
+            "persons": RelationshipDef(
                 target_entity="persons",
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_person_ids",
@@ -230,7 +230,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         ),
         computed_fields=frozenset([]),
         relationships={
-            "people": RelationshipDef(
+            "persons": RelationshipDef(
                 target_entity="persons",
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_person_ids",

@@ -59,7 +59,7 @@ def classify_filter(where: WhereClause, entity_type: str) -> FilterClass:
 
     # Check if path traverses a relationship (NOT just has a dot!)
     # "fields.Status" is CHEAP (list entry field)
-    # "people.name" is EXPENSIVE (traverses relationship)
+    # "persons.name" is EXPENSIVE (traverses relationship)
     if where.path and "." in where.path:
         first_segment = where.path.split(".")[0]
         schema = SCHEMA_REGISTRY.get(entity_type)
@@ -297,19 +297,25 @@ def compile_filter(where: WhereClause) -> Callable[[dict[str, Any]], bool]:
         inner = compile_filter(where.not_)
         return lambda record: not inner(record)
 
-    # Quantifiers (all, none) - not implemented
+    # Quantifiers require relationship data - use compile_filter_with_context() instead
+    # Note: 'all_' is the Python attribute name; JSON uses 'all' (alias)
     if where.all_ is not None:
         raise NotImplementedError(
-            "The 'all_' quantifier is not yet implemented. Use explicit AND conditions instead."
+            "The 'all_' quantifier requires relationship data. "
+            "Use compile_filter_with_context() with pre-fetched data."
         )
     if where.none_ is not None:
         raise NotImplementedError(
-            "The 'none_' quantifier is not yet implemented. Use explicit NOT conditions instead."
+            "The 'none_' quantifier requires relationship data. "
+            "Use compile_filter_with_context() with pre-fetched data."
         )
 
-    # Exists - not implemented
+    # exists_ requires relationship data - use compile_filter_with_context() instead
     if where.exists_ is not None:
-        raise NotImplementedError("The 'exists_' subquery is not yet implemented.")
+        raise NotImplementedError(
+            "The 'exists_' subquery requires relationship data. "
+            "Use compile_filter_with_context() with pre-fetched data."
+        )
 
     # No conditions - match all
     return lambda _: True
@@ -334,10 +340,11 @@ def _compile_condition(where: WhereClause) -> Callable[[dict[str, Any]], bool]:
             value = parsed_value
 
     # Handle _count pseudo-field - not implemented
+    # _count requires relationship data - use compile_filter_with_context() instead
     if path and path.endswith("._count"):
         raise NotImplementedError(
-            f"The '_count' pseudo-field ({path}) is not yet implemented. "
-            "Use aggregate queries with GROUP BY instead."
+            f"The '_count' pseudo-field ({path}) requires relationship data. "
+            "Use compile_filter_with_context() with pre-fetched data."
         )
 
     def filter_func(record: dict[str, Any]) -> bool:

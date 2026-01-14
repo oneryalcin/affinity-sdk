@@ -132,7 +132,7 @@ class TestParseQuery:
                 "from": "companies",
                 "where": {
                     "none": {
-                        "path": "people",
+                        "path": "persons",
                         "where": {"path": "role", "op": "eq", "value": "CEO"},
                     }
                 },

@@ -44,7 +44,7 @@ DEFAULT_ENTITY_COUNT = 1000
 # Average related entities per record
 ESTIMATED_RELATIONSHIPS: dict[str, int] = {
     "companies": 2,  # persons -> companies
-    "people": 3,  # companies -> people
+    "persons": 3,  # companies -> persons
     "opportunities": 5,  # persons/companies -> opportunities
     "interactions": 20,
     "notes": 10,

@@ -216,7 +216,7 @@ class TestDryRunJsonOutput:
         query = Query(
             **{
                 "from": "companies",
-                "where": {"path": "people._count", "op": "gt", "value": 0},
+                "where": {"path": "persons._count", "op": "gt", "value": 0},
             }
         )
 

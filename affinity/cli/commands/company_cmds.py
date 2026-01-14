@@ -1066,7 +1066,7 @@ def company_files_upload(
     "--expand",
     "expand",
     multiple=True,
-    type=click.Choice(["lists", "list-entries", "people"]),
+    type=click.Choice(["lists", "list-entries", "persons"]),
     help="Include related data (repeatable).",
 )
 @click.option(
@@ -1452,26 +1452,26 @@ def company_get(
                 )
                 data["listEntries"] = entries_items
 
-            if "people" in expand_set:
-                people_cap = max_results
-                if people_cap is None and not all_pages:
-                    people_cap = 100
-                if people_cap is not None and people_cap <= 0:
-                    data["people"] = []
+            if "persons" in expand_set:
+                persons_cap = max_results
+                if persons_cap is None and not all_pages:
+                    persons_cap = 100
+                if persons_cap is not None and persons_cap <= 0:
+                    data["persons"] = []
                 else:
                     person_ids = client.companies.get_associated_person_ids(company_id)
-                    total_people = len(person_ids)
-                    if people_cap is not None and total_people > people_cap:
+                    total_persons = len(person_ids)
+                    if persons_cap is not None and total_persons > persons_cap:
                         warnings.append(
-                            f"People truncated at {people_cap:,} items; re-run with --all "
+                            f"Persons truncated at {persons_cap:,} items; re-run with --all "
                             "or a higher --max-results to fetch more."
                         )
 
-                    people = client.companies.get_associated_people(
+                    persons = client.companies.get_associated_people(
                         company_id,
-                        max_results=people_cap,
+                        max_results=persons_cap,
                     )
-                    data["people"] = [
+                    data["persons"] = [
                         {
                             "id": int(person.id),
                             "name": person.full_name,
@@ -1484,7 +1484,7 @@ def company_get(
                                 else None
                             ),
                         }
-                        for person in people
+                        for person in persons
                     ]
 
         if "list-entries" in expand_set and entries_items and ctx.output != "json":

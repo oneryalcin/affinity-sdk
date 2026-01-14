@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `none_` quantifier: Filter where no related items match a condition (e.g., no spam interactions)
   - `exists_` subquery: Filter where at least one related item exists (e.g., has any interactions)
   - `_count` pseudo-field: Filter by count of related items (e.g., persons with 2+ companies)
-  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→people/opportunities/interactions/notes/listEntries, opportunities→people/companies/interactions
+  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→persons/opportunities/interactions/notes/listEntries, opportunities→persons/companies/interactions
   - Note: These features cause N+1 API calls to fetch relationship data; use `dryRun` to preview
 
 

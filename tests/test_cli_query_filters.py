@@ -444,7 +444,13 @@ class TestCompileFilterEdgeCases:
             compile_filter(where)
 
     def test_all_quantifier_raises_not_implemented(self) -> None:
-        """all_ quantifier raises NotImplementedError until implemented."""
+        """all_ quantifier in compile_filter() raises NotImplementedError.
+
+        Note: Quantifiers ARE implemented via compile_filter_with_context().
+        The basic compile_filter() doesn't support them because they require
+        pre-fetched relationship data. See TestCompileFilterWithContext for
+        tests of the full implementation.
+        """
         from affinity.cli.query.models import QuantifierClause
 
         where = WhereClause(
@@ -452,11 +458,14 @@ class TestCompileFilterEdgeCases:
                 path="tags", where=WhereClause(path="value", op="eq", value="vip")
             )
         )
-        with pytest.raises(NotImplementedError, match=r"all_.*not yet implemented"):
+        with pytest.raises(NotImplementedError, match=r"all_.*requires relationship data"):
             compile_filter(where)
 
     def test_none_quantifier_raises_not_implemented(self) -> None:
-        """none_ quantifier raises NotImplementedError until implemented."""
+        """none_ quantifier in compile_filter() raises NotImplementedError.
+
+        See test_all_quantifier_raises_not_implemented for design rationale.
+        """
         from affinity.cli.query.models import QuantifierClause
 
         where = WhereClause(
@@ -464,24 +473,30 @@ class TestCompileFilterEdgeCases:
                 path="tags", where=WhereClause(path="value", op="eq", value="spam")
             )
         )
-        with pytest.raises(NotImplementedError, match=r"none_.*not yet implemented"):
+        with pytest.raises(NotImplementedError, match=r"none_.*requires relationship data"):
             compile_filter(where)
 
     def test_exists_raises_not_implemented(self) -> None:
-        """exists_ raises NotImplementedError until implemented."""
+        """exists_ in compile_filter() raises NotImplementedError.
+
+        See test_all_quantifier_raises_not_implemented for design rationale.
+        """
         from affinity.cli.query.models import ExistsClause
 
         where = WhereClause(
             # Use alias 'from' for the from_ field
             exists_=ExistsClause(**{"from": "related", "via": "personId"})
         )
-        with pytest.raises(NotImplementedError, match=r"exists_.*not yet implemented"):
+        with pytest.raises(NotImplementedError, match=r"exists_.*requires relationship data"):
             compile_filter(where)
 
     def test_count_pseudo_field_raises_not_implemented(self) -> None:
-        """_count pseudo-field raises NotImplementedError until implemented."""
+        """_count pseudo-field in compile_filter() raises NotImplementedError.
+
+        See test_all_quantifier_raises_not_implemented for design rationale.
+        """
         where = WhereClause(path="companies._count", op="gt", value=5)
-        with pytest.raises(NotImplementedError, match=r"_count.*not yet implemented"):
+        with pytest.raises(NotImplementedError, match=r"_count.*requires relationship data"):
             compile_filter(where)
 
     def test_condition_with_no_op_matches_all(self) -> None:

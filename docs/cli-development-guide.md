@@ -63,7 +63,7 @@ from affinity.cli.serialization import serialize_model_for_cli, serialize_models
 result = serialize_model_for_cli(person)
 
 # List of models
-results = serialize_models_for_cli(people)
+results = serialize_models_for_cli(persons)
 ```
 
 ### Why This Matters
@@ -130,7 +130,7 @@ The `data` field should be a dictionary with descriptive keys:
 CommandOutput(data={"person": serialize_model_for_cli(person)}, api_called=True)
 
 # List of entities
-CommandOutput(data={"people": serialize_models_for_cli(people)}, api_called=True)
+CommandOutput(data={"persons": serialize_models_for_cli(persons)}, api_called=True)
 
 # Multiple fields
 CommandOutput(

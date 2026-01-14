@@ -311,7 +311,7 @@ def _opportunity_ls_row(opportunity: Opportunity) -> dict[str, object]:
     "--expand",
     "expand",
     multiple=True,
-    type=click.Choice(["people", "companies"]),
+    type=click.Choice(["persons", "companies"]),
     help="Include related data (repeatable).",
 )
 @click.option(
@@ -346,8 +346,8 @@ def opportunity_get(
     - `xaffinity opportunity get 123`
     - `xaffinity opportunity get https://mydomain.affinity.com/opportunities/123`
     - `xaffinity opportunity get 123 --details`
-    - `xaffinity opportunity get 123 --expand people`
-    - `xaffinity opportunity get 123 --expand people --expand companies`
+    - `xaffinity opportunity get 123 --expand persons`
+    - `xaffinity opportunity get 123 --expand persons --expand companies`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
@@ -383,8 +383,8 @@ def opportunity_get(
         if not details and not opp.fields:
             data["opportunity"].pop("fields", None)
 
-        # Fetch associations once if both people and companies are requested (saves 1 V1 call)
-        want_people = "people" in expand_set
+        # Fetch associations once if both persons and companies are requested (saves 1 V1 call)
+        want_persons = "persons" in expand_set
         want_companies = "companies" in expand_set
         cached_person_ids: list[int] | None = None
         cached_company_ids: list[int] | None = None
@@ -409,18 +409,18 @@ def opportunity_get(
                 )
                 progress.add_task("expand", total=None)
 
-            if want_people and want_companies:
+            if want_persons and want_companies:
                 assoc = client.opportunities.get_associations(opportunity_id)
                 cached_person_ids = [int(pid) for pid in assoc.person_ids]
                 cached_company_ids = [int(cid) for cid in assoc.company_ids]
 
-            # Handle people expansion
-            if want_people:
-                people_cap = max_results
-                if people_cap is None and not all_pages:
-                    people_cap = 100
-                if people_cap is not None and people_cap <= 0:
-                    data["people"] = []
+            # Handle persons expansion
+            if want_persons:
+                persons_cap = max_results
+                if persons_cap is None and not all_pages:
+                    persons_cap = 100
+                if persons_cap is not None and persons_cap <= 0:
+                    data["persons"] = []
                 else:
                     # Use cached IDs if available, otherwise fetch
                     if cached_person_ids is not None:
@@ -432,23 +432,23 @@ def opportunity_get(
                                 opportunity_id
                             )
                         ]
-                    total_people = len(person_ids)
-                    if people_cap is not None and total_people > people_cap:
+                    total_persons = len(person_ids)
+                    if persons_cap is not None and total_persons > persons_cap:
                         warnings.append(
-                            f"People truncated at {people_cap:,} items; re-run with --all "
+                            f"Persons truncated at {persons_cap:,} items; re-run with --all "
                             "or a higher --max-results to fetch more."
                         )
-                        if total_people > 50:
+                        if total_persons > 50:
                             warnings.append(
-                                f"Fetching {min(people_cap, total_people)} people requires "
-                                f"{min(people_cap, total_people) + 1} API calls."
+                                f"Fetching {min(persons_cap, total_persons)} persons requires "
+                                f"{min(persons_cap, total_persons) + 1} API calls."
                             )
 
-                    people = client.opportunities.get_associated_people(
+                    persons = client.opportunities.get_associated_people(
                         opportunity_id,
-                        max_results=people_cap,
+                        max_results=persons_cap,
                     )
-                    data["people"] = [
+                    data["persons"] = [
                         {
                             "id": int(person.id),
                             "name": person.full_name,
@@ -461,7 +461,7 @@ def opportunity_get(
                                 else None
                             ),
                         }
-                        for person in people
+                        for person in persons
                     ]
 
             # Handle companies expansion

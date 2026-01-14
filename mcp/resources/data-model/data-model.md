@@ -18,7 +18,7 @@
 - Opportunities have **associations** to Persons and Companies
 - **Important**: V2 API returns partial data. To get associations:
   ```
-  opportunity get <id> --expand people --expand companies
+  opportunity get <id> --expand persons --expand companies
   ```
 
 ### Lists (Collections with Custom Fields)

@@ -19,6 +19,22 @@ Use the `query` tool instead of individual CLI commands when you need:
 
 For simple lookups, prefer `execute-read-command` with individual commands.
 
+## Quick Start
+
+```json
+// Simplest query - get 10 persons
+{"from": "persons", "limit": 10}
+
+// Add a filter
+{"from": "persons", "where": {"path": "email", "op": "contains", "value": "@acme.com"}, "limit": 10}
+
+// Include related companies
+{"from": "persons", "include": ["companies"], "limit": 10}
+
+// Query list entries
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "limit": 10}
+```
+
 ## Query Structure
 
 ```json
@@ -116,7 +132,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 |----------|-------------|---------|
 | `is_null` | Field is null or empty string | `{"path": "email", "op": "is_null"}` |
 | `is_not_null` | Field is not null and not empty | `{"path": "email", "op": "is_not_null"}` |
-| `is_empty` | Field is null, empty string, or empty array | `{"path": "tags", "op": "is_empty"}` |
+| `is_empty` | Field is null, empty string, or empty array | `{"path": "emails", "op": "is_empty"}` |
 
 ## Compound Conditions
 
@@ -160,6 +176,8 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 
 Filter based on related entities using quantifiers and existence checks.
 
+> **Include vs Quantifiers:** Use `include` to **get** related data in the response (e.g., `"include": ["companies"]`). Use quantifiers to **filter** by related data (e.g., `{"path": "companies._count", "op": "gte", "value": 2}`). You can use both together.
+
 ### ALL Quantifier
 
 All related items must match the condition:
@@ -168,7 +186,7 @@ All related items must match the condition:
 {
   "from": "persons",
   "where": {
-    "all_": {
+    "all": {
       "path": "companies",
       "where": { "path": "domain", "op": "contains", "value": ".com" }
     }
@@ -183,7 +201,7 @@ All related items must match the condition:
   "where": {
     "and": [
       { "path": "companies._count", "op": "gte", "value": 1 },
-      { "all_": { "path": "companies", "where": { "path": "domain", "op": "contains", "value": ".com" }}}
+      { "all": { "path": "companies", "where": { "path": "domain", "op": "contains", "value": ".com" }}}
     ]
   }
 }
@@ -197,7 +215,7 @@ No related items may match the condition:
 {
   "from": "persons",
   "where": {
-    "none_": {
+    "none": {
       "path": "interactions",
       "where": { "path": "type", "op": "eq", "value": "spam" }
     }
@@ -213,14 +231,14 @@ At least one related item exists (optionally matching a filter):
 // Simple existence check
 {
   "from": "persons",
-  "where": { "exists_": { "from": "interactions" }}
+  "where": { "exists": { "from": "interactions" }}
 }
 
 // With filter
 {
   "from": "persons",
   "where": {
-    "exists_": {
+    "exists": {
       "from": "interactions",
       "where": { "path": "type", "op": "eq", "value": "meeting" }
     }
@@ -251,12 +269,12 @@ Count related items and compare:
 | From Entity | Available Relationship Paths |
 |-------------|------------------------------|
 | `persons` | `companies`, `opportunities`, `interactions`, `notes`, `listEntries` |
-| `companies` | `people`, `opportunities`, `interactions`, `notes`, `listEntries` |
-| `opportunities` | `people`, `companies`, `interactions` |
+| `companies` | `persons`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `opportunities` | `persons`, `companies`, `interactions` |
 
 ### Limitations
 
-- **Nested quantifiers not supported**: Cannot use `all_`/`none_`/`exists_` inside another quantifier
+- **Nested quantifiers not supported**: Cannot use `all`/`none`/`exists` inside another quantifier
 - **N+1 API calls**: Quantifiers fetch relationship data for each record (use dry-run to preview)
 
 ## Include Relationships
@@ -276,12 +294,10 @@ Fetch related entities in a single query:
 | From | Can Include |
 |------|-------------|
 | `persons` | `companies`, `opportunities`, `interactions`, `notes`, `listEntries` |
-| `companies` | `people`, `opportunities`, `interactions`, `notes`, `listEntries` |
-| `opportunities` | `people`, `companies`, `interactions` |
+| `companies` | `persons`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `opportunities` | `persons`, `companies`, `interactions` |
 | `lists` | `entries` |
 | `listEntries` | `entity` (dynamically resolves to person/company/opportunity based on entityType) |
-
-**Important**: Note that `companies` and `opportunities` use `people` (not `persons`) as the relationship name.
 
 ## Aggregations
 
@@ -571,7 +587,11 @@ The `format` parameter controls how results are returned. Choose based on your u
 
 ## Quantifier Query Performance
 
-**Important**: Queries using `all_`, `none_`, `exists_`, or `_count` on unbounded
+**Quick decision:**
+- `listEntries` → Safe (bounded by list size)
+- `persons`/`companies`/`opportunities` with quantifiers → Requires `maxRecords`
+
+**Important**: Queries using `all`, `none`, `exists`, or `_count` on unbounded
 entities (`persons`, `companies`, `opportunities`) require explicit `maxRecords`.
 
 **Why?** These operations make N+1 API calls (one per record). On a database with
@@ -591,7 +611,7 @@ entities (`persons`, `companies`, `opportunities`) require explicit `maxRecords`
     "where": {
       "and": [
         {"path": "listName", "op": "eq", "value": "Target Companies"},
-        {"path": "people._count", "op": "gte", "value": 3}
+        {"path": "persons._count", "op": "gte", "value": 3}
       ]
     }
   },
@@ -605,5 +625,5 @@ entities (`persons`, `companies`, `opportunities`) require explicit `maxRecords`
 - Includes cause N+1 API calls (1 per parent record)
 - No cross-entity joins (use includes instead)
 - Maximum 10,000 records per query for safety
-- Nested quantifiers (all_/none_/exists_ inside each other) not supported
+- Nested quantifiers (`all`/`none`/`exists` inside each other) not supported
 - OR clauses containing quantifiers cannot benefit from lazy loading optimization

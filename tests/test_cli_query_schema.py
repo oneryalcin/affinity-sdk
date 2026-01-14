@@ -179,7 +179,7 @@ class TestIsValidFieldPath:
     def test_relationship_count(self) -> None:
         """Relationship _count is valid."""
         assert is_valid_field_path("persons", "companies._count") is True
-        assert is_valid_field_path("companies", "people._count") is True
+        assert is_valid_field_path("companies", "persons._count") is True
 
     def test_fields_prefix(self) -> None:
         """fields.* is always valid (for list entries)."""
@@ -228,7 +228,7 @@ class TestGetEntityRelationships:
     def test_company_relationships(self) -> None:
         """Returns all relationships for companies."""
         rels = get_entity_relationships("companies")
-        assert "people" in rels
+        assert "persons" in rels
         assert "opportunities" in rels
         assert "interactions" in rels
         assert "notes" in rels

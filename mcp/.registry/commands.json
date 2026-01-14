@@ -193,7 +193,7 @@
           "choices": [
             "lists",
             "list-entries",
-            "people"
+            "persons"
           ],
           "multiple": true
         },
@@ -1365,7 +1365,7 @@
           "required": false,
           "help": "Expand associated entities (repeatable).",
           "choices": [
-            "people",
+            "persons",
             "companies",
             "opportunities"
           ],
@@ -1942,7 +1942,7 @@
           "required": false,
           "help": "Include related data (repeatable).",
           "choices": [
-            "people",
+            "persons",
             "companies"
           ],
           "multiple": true
@@ -1968,8 +1968,8 @@
         "opportunity get 123",
         "opportunity get https://mydomain.affinity.com/opportunities/123",
         "opportunity get 123 --details",
-        "opportunity get 123 --expand people",
-        "opportunity get 123 --expand people --expand companies"
+        "opportunity get 123 --expand persons",
+        "opportunity get 123 --expand persons --expand companies"
       ],
       "relatedCommands": [
         "opportunity ls"
