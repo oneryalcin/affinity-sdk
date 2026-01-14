@@ -243,6 +243,19 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
     Returns:
         JSON string
     """
+    # Build execution section with optional note for unbounded queries
+    execution: dict[str, Any] = {
+        "totalSteps": len(plan.steps),
+        "estimatedApiCalls": plan.total_api_calls,
+        "estimatedRecords": plan.estimated_records_fetched,
+        "estimatedMemoryMb": plan.estimated_memory_mb,
+        "requiresExplicitMaxRecords": plan.requires_explicit_max_records,
+    }
+
+    # Add explanatory note for unbounded queries
+    if plan.total_api_calls == "UNBOUNDED":
+        execution["estimatedApiCallsNote"] = "Could be 10K-100K+ based on database size"
+
     output = {
         "version": plan.version,
         "query": {
@@ -254,12 +267,7 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
             else None,
             "limit": plan.query.limit,
         },
-        "execution": {
-            "totalSteps": len(plan.steps),
-            "estimatedApiCalls": plan.total_api_calls,
-            "estimatedRecords": plan.estimated_records_fetched,
-            "estimatedMemoryMb": plan.estimated_memory_mb,
-        },
+        "execution": execution,
         "steps": [
             {
                 "stepId": step.step_id,

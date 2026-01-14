@@ -355,6 +355,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
 }
 
 
+# Entities with unbounded record counts (FetchStrategy.GLOBAL, excluding "lists").
+# Used by safety guards to require explicit --max-records for quantifier queries.
+# Equivalent to:
+#   {t for t, s in SCHEMA_REGISTRY.items()
+#    if s.fetch_strategy == FetchStrategy.GLOBAL and t != "lists"}
+UNBOUNDED_ENTITIES: frozenset[str] = frozenset({"persons", "companies", "opportunities"})
+
+
 def get_entity_schema(entity_name: str) -> EntitySchema | None:
     """Get schema for an entity type.
 
@@ -437,3 +445,28 @@ def get_entity_relationships(entity_name: str) -> list[str]:
     if schema is None:
         return []
     return list(schema.relationships.keys())
+
+
+def find_relationship_by_target(schema: EntitySchema, target_entity: str) -> str | None:
+    """Find relationship name by target entity type.
+
+    Used by exists_ clause to map entity type (e.g., "interactions")
+    to relationship name (e.g., "interactions").
+
+    Args:
+        schema: The entity schema containing relationship definitions
+        target_entity: The target entity type to search for
+
+    Returns:
+        The relationship name if found, None otherwise.
+        Returns first matching relationship if multiple exist.
+
+    Example:
+        # Schema: persons has relationship "companies" -> target_entity="companies"
+        find_relationship_by_target(person_schema, "companies")  # Returns "companies"
+        find_relationship_by_target(person_schema, "unknown")     # Returns None
+    """
+    for rel_name, rel_def in schema.relationships.items():
+        if rel_def.target_entity == target_entity:
+            return rel_name
+    return None

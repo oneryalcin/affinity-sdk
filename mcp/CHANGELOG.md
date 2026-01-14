@@ -5,10 +5,21 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.7] - 2026-01-13
+## [1.8.7] - Unreleased
+
+### Added
+- **Query tool: Advanced relationship filtering**: The `query` tool now supports filtering based on related entities:
+  - `all_` quantifier: Filter where all related items match a condition (e.g., all companies have ".com" domain)
+  - `none_` quantifier: Filter where no related items match a condition (e.g., no spam interactions)
+  - `exists_` subquery: Filter where at least one related item exists (e.g., has any interactions)
+  - `_count` pseudo-field: Filter by count of related items (e.g., persons with 2+ companies)
+  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→people/opportunities/interactions/notes/listEntries, opportunities→people/companies/interactions
+  - Note: These features cause N+1 API calls to fetch relationship data; use `dryRun` to preview
+
 
 ### Changed
 - **Gateway tools diagnostic errors**: `execute-read-command` and `execute-write-command` now return diagnostic info when "Command is required" error occurs, including `argsLength` and `argsPreview` to help debug intermittent argument passing issues
+- **CLI minimum version**: Now requires CLI 0.9.9+ (was 0.9.8)
 
 ### Fixed
 - **Query tool always returned execution plan**: Fixed bash boolean handling bug where `${dry_run:+--dry-run}` always expanded because the string `"false"` is non-empty. Query tool now correctly executes queries instead of always returning dry-run plans. (Bug introduced in 1.8.4)

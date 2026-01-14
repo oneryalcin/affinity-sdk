@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..click_compat import RichCommand, click
 from ..context import CLIContext
@@ -145,6 +145,18 @@ def query_cmd(
       # JSON output
       xaffinity query --file query.json --json
     """
+    # Detect if --max-records was explicitly provided using Click's ParameterSource
+    # (see person_cmds.py:908-914 for similar pattern in the codebase)
+    max_records_explicit = False
+    click_ctx = click.get_current_context(silent=True)
+    if click_ctx is not None:
+        get_source = getattr(cast(Any, click_ctx), "get_parameter_source", None)
+        if callable(get_source):
+            source_enum = getattr(cast(Any, click.core), "ParameterSource", None)
+            default_source = getattr(source_enum, "DEFAULT", None) if source_enum else None
+            actual_source = get_source("max_records")
+            max_records_explicit = actual_source != default_source
+
     try:
         _query_cmd_impl(
             ctx=ctx,
@@ -155,6 +167,7 @@ def query_cmd(
             dry_run_verbose=dry_run_verbose,
             confirm=confirm,
             max_records=max_records,
+            max_records_explicit=max_records_explicit,
             timeout=timeout,
             csv_flag=csv_flag,
             csv_bom=csv_bom,
@@ -181,6 +194,7 @@ def _query_cmd_impl(
     dry_run_verbose: bool,
     confirm: bool,
     max_records: int,
+    max_records_explicit: bool,
     timeout: float,
     csv_flag: bool,
     csv_bom: bool,
@@ -270,6 +284,24 @@ def _query_cmd_impl(
     # Execute query
     async def run_query() -> Any:
         from affinity import AsyncAffinity
+        from affinity.hooks import ResponseInfo
+
+        from ..query.executor import RateLimitedExecutor
+
+        # Create rate limiter for adaptive throttling
+        rate_limiter = RateLimitedExecutor()
+
+        # Combine on_response to feed rate limiter with response data
+        original_on_response = settings.on_response
+
+        def combined_on_response(res: ResponseInfo) -> None:
+            # Call original callback if it exists
+            if original_on_response is not None:
+                original_on_response(res)
+            # Feed rate limiter with status and remaining quota
+            remaining_str = res.headers.get("X-RateLimit-Remaining")
+            remaining = int(remaining_str) if remaining_str and remaining_str.isdigit() else None
+            rate_limiter.on_response(res.status_code, remaining)
 
         async with AsyncAffinity(
             api_key=settings.api_key,
@@ -279,7 +311,7 @@ def _query_cmd_impl(
             log_requests=settings.log_requests,
             max_retries=settings.max_retries,
             on_request=settings.on_request,
-            on_response=settings.on_response,
+            on_response=combined_on_response,
             on_error=settings.on_error,
             policies=settings.policies,
         ) as client:
@@ -299,20 +331,22 @@ def _query_cmd_impl(
                     executor = QueryExecutor(
                         client,
                         progress=progress,
-                        concurrency=10,
                         max_records=max_records,
+                        max_records_explicit=max_records_explicit,
                         timeout=timeout,
                         allow_partial=True,
+                        rate_limiter=rate_limiter,
                     )
                     result = await executor.execute(plan)
             else:
                 executor = QueryExecutor(
                     client,
                     progress=progress,
-                    concurrency=10,
                     max_records=max_records,
+                    max_records_explicit=max_records_explicit,
                     timeout=timeout,
                     allow_partial=True,
+                    rate_limiter=rate_limiter,
                 )
                 result = await executor.execute(plan)
 
@@ -322,6 +356,9 @@ def _query_cmd_impl(
 
     try:
         result = asyncio.run(run_query())
+    except QueryValidationError as e:
+        # Unbounded quantifier query without explicit --max-records
+        raise CLIError(str(e)) from None
     except QueryTimeoutError as e:
         raise CLIError(f"Query timed out after {e.elapsed_seconds:.1f}s: {e}") from None
     except QuerySafetyLimitError as e:

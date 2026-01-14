@@ -9,13 +9,125 @@ ensuring consistent behavior between SDK filter and Query tool.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
-from typing import Any
+from dataclasses import dataclass
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from ...compare import compare_values
 from .dates import parse_date_value
 from .exceptions import QueryValidationError
-from .models import WhereClause
+from .models import ExistsClause, QuantifierClause, WhereClause
+
+if TYPE_CHECKING:
+    from .schema import EntitySchema
+
+
+# =============================================================================
+# Filter Classification (for lazy loading optimization)
+# =============================================================================
+
+
+class FilterClass(Enum):
+    """Classification of filter cost for lazy loading optimization."""
+
+    CHEAP = "cheap"  # No API calls (local field comparison)
+    EXPENSIVE = "expensive"  # Requires relationship data (N+1 calls)
+
+
+def classify_filter(where: WhereClause, entity_type: str) -> FilterClass:
+    """Classify a filter by cost.
+
+    Args:
+        where: The filter clause to classify
+        entity_type: The entity being queried (needed for schema lookup)
+
+    Returns:
+        FilterClass.CHEAP for local comparisons, EXPENSIVE for relationship data
+    """
+    from .schema import SCHEMA_REGISTRY
+
+    # Quantifiers are always expensive
+    if where.all_ is not None or where.none_ is not None or where.exists_ is not None:
+        return FilterClass.EXPENSIVE
+
+    # _count pseudo-field requires relationship data
+    # Use .endswith() to avoid matching fields like "my_count_field"
+    if where.path and where.path.endswith("._count"):
+        return FilterClass.EXPENSIVE
+
+    # Check if path traverses a relationship (NOT just has a dot!)
+    # "fields.Status" is CHEAP (list entry field)
+    # "people.name" is EXPENSIVE (traverses relationship)
+    if where.path and "." in where.path:
+        first_segment = where.path.split(".")[0]
+        schema = SCHEMA_REGISTRY.get(entity_type)
+        if schema is None:
+            # Unknown entity - shouldn't happen (query validation catches this),
+            # but CHEAP is safer than EXPENSIVE (avoids invalid API calls)
+            return FilterClass.CHEAP
+        if first_segment in (schema.relationships or {}):
+            return FilterClass.EXPENSIVE
+        # Not a relationship - it's a nested field like "fields.Status"
+
+    # Check compound clauses recursively
+    if where.and_ is not None:
+        for clause in where.and_:
+            if classify_filter(clause, entity_type) == FilterClass.EXPENSIVE:
+                return FilterClass.EXPENSIVE
+    if where.or_ is not None:
+        for clause in where.or_:
+            if classify_filter(clause, entity_type) == FilterClass.EXPENSIVE:
+                return FilterClass.EXPENSIVE
+    if where.not_ is not None and classify_filter(where.not_, entity_type) == FilterClass.EXPENSIVE:
+        return FilterClass.EXPENSIVE
+
+    return FilterClass.CHEAP
+
+
+def partition_where(
+    where: WhereClause | None, entity_type: str
+) -> tuple[WhereClause | None, WhereClause | None]:
+    """Split WHERE into (cheap_filter, expensive_filter).
+
+    Cheap filter runs first to reduce dataset before N+1 calls.
+
+    Args:
+        where: The WHERE clause to partition
+        entity_type: The entity being queried (for schema lookup)
+
+    Returns:
+        (cheap, expensive) tuple where either can be None
+    """
+    if where is None:
+        return (None, None)
+
+    # AND clauses can be partitioned
+    if where.and_ is not None:
+        cheap_parts = [
+            c for c in where.and_ if classify_filter(c, entity_type) == FilterClass.CHEAP
+        ]
+        expensive_parts = [
+            c for c in where.and_ if classify_filter(c, entity_type) == FilterClass.EXPENSIVE
+        ]
+
+        cheap = WhereClause(and_=cheap_parts) if cheap_parts else None
+        expensive = WhereClause(and_=expensive_parts) if expensive_parts else None
+        return (cheap, expensive)
+
+    # OR clauses cannot be partitioned (all branches must evaluate)
+    if where.or_ is not None:
+        return (None, where)
+
+    # Single filter
+    cls = classify_filter(where, entity_type)
+    if cls == FilterClass.CHEAP:
+        return (where, None)
+    return (None, where)
+
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Operator Definitions
@@ -185,15 +297,19 @@ def compile_filter(where: WhereClause) -> Callable[[dict[str, Any]], bool]:
         inner = compile_filter(where.not_)
         return lambda record: not inner(record)
 
-    # Quantifiers (all, none) - placeholder, requires relationship fetching
-    if where.all_ is not None or where.none_ is not None:
-        # These require relationship data and are handled by executor
-        # For now, pass through
-        return lambda _: True
+    # Quantifiers (all, none) - not implemented
+    if where.all_ is not None:
+        raise NotImplementedError(
+            "The 'all_' quantifier is not yet implemented. Use explicit AND conditions instead."
+        )
+    if where.none_ is not None:
+        raise NotImplementedError(
+            "The 'none_' quantifier is not yet implemented. Use explicit NOT conditions instead."
+        )
 
-    # Exists - placeholder, requires subquery execution
+    # Exists - not implemented
     if where.exists_ is not None:
-        return lambda _: True
+        raise NotImplementedError("The 'exists_' subquery is not yet implemented.")
 
     # No conditions - match all
     return lambda _: True
@@ -217,11 +333,12 @@ def _compile_condition(where: WhereClause) -> Callable[[dict[str, Any]], bool]:
         if parsed_value is not None:
             value = parsed_value
 
-    # Handle _count pseudo-field
+    # Handle _count pseudo-field - not implemented
     if path and path.endswith("._count"):
-        # This requires relationship counting, handled by executor
-        # Return a placeholder that always matches
-        return lambda _: True
+        raise NotImplementedError(
+            f"The '_count' pseudo-field ({path}) is not yet implemented. "
+            "Use aggregate queries with GROUP BY instead."
+        )
 
     def filter_func(record: dict[str, Any]) -> bool:
         if path is None:
@@ -246,3 +363,331 @@ def matches(record: dict[str, Any], where: WhereClause | None) -> bool:
         return True
     filter_func = compile_filter(where)
     return filter_func(record)
+
+
+# =============================================================================
+# Enhanced Filter Context (for quantifiers, exists, _count)
+# =============================================================================
+
+
+@dataclass
+class FilterContext:
+    """Context available during record filtering with relationship data.
+
+    Used by compile_filter_with_context() to provide access to pre-fetched
+    relationship data needed for quantifier, exists, and _count operations.
+    """
+
+    # Structure: {rel_name: {record_id: [related_records]}}
+    relationship_data: dict[str, dict[int, list[dict[str, Any]]]]
+    # Structure: {rel_name: {record_id: count}} - matches ExecutionContext field
+    relationship_counts: dict[str, dict[int, int]]
+    schema: EntitySchema  # Needed for exists_ relationship mapping
+    id_field: str = "id"
+
+
+def requires_relationship_data(where: WhereClause | None) -> set[str]:
+    """Detect if a WHERE clause requires relationship data for filtering.
+
+    Scans the WHERE clause for:
+    - all_/none_ quantifiers (return relationship name from path)
+    - exists_ clauses (return entity type from from_)
+    - _count pseudo-field (return relationship name)
+
+    Args:
+        where: The WHERE clause to analyze
+
+    Returns:
+        Set of relationship names or entity types that need pre-fetching.
+        Empty set if no relationship data is needed.
+    """
+    if where is None:
+        return set()
+
+    required: set[str] = set()
+
+    # Check quantifiers
+    if where.all_ is not None:
+        required.add(where.all_.path)
+    if where.none_ is not None:
+        required.add(where.none_.path)
+
+    # Check exists
+    if where.exists_ is not None:
+        required.add(where.exists_.from_)
+
+    # Check _count pseudo-field (only single-level supported)
+    if where.path and where.path.endswith("._count"):
+        base_path = where.path.rsplit("._count", 1)[0]
+        # Reject malformed paths (e.g., just "_count" with no relationship)
+        if not base_path:
+            raise QueryValidationError(
+                f"Invalid _count path: {where.path}. "
+                "Must specify a relationship, e.g., 'companies._count'."
+            )
+        # Reject nested _count paths (e.g., "companies.tags._count")
+        if "." in base_path:
+            raise QueryValidationError(
+                f"Nested _count paths not supported: {where.path}. "
+                "Only single-level counts like 'companies._count' are allowed."
+            )
+        required.add(base_path)
+
+    # Recurse into compound clauses
+    if where.and_ is not None:
+        for clause in where.and_:
+            required.update(requires_relationship_data(clause))
+    if where.or_ is not None:
+        for clause in where.or_:
+            required.update(requires_relationship_data(clause))
+    if where.not_ is not None:
+        required.update(requires_relationship_data(where.not_))
+
+    return required
+
+
+def _check_no_nested_quantifiers(where: WhereClause, context: str) -> None:
+    """Validate that where clause contains no nested quantifiers.
+
+    Current limitation: Nested quantifiers would require multi-level relationship
+    pre-fetching and context switching, which is not supported.
+
+    Args:
+        where: The inner where clause to check
+        context: Description for error message (e.g., "all_ quantifier")
+
+    Raises:
+        QueryValidationError: If nested quantifiers are detected
+    """
+    if where.all_ is not None:
+        raise QueryValidationError(
+            f"Nested quantifiers not supported: {context} contains nested all_. "
+            "Only one level of quantifier nesting is allowed."
+        )
+    if where.none_ is not None:
+        raise QueryValidationError(
+            f"Nested quantifiers not supported: {context} contains nested none_. "
+            "Only one level of quantifier nesting is allowed."
+        )
+    if where.exists_ is not None:
+        raise QueryValidationError(
+            f"Nested quantifiers not supported: {context} contains nested exists_. "
+            "Only one level of quantifier nesting is allowed."
+        )
+
+    # Also check compound clauses
+    if where.and_:
+        for clause in where.and_:
+            _check_no_nested_quantifiers(clause, context)
+    if where.or_:
+        for clause in where.or_:
+            _check_no_nested_quantifiers(clause, context)
+    if where.not_:
+        _check_no_nested_quantifiers(where.not_, context)
+
+
+def compile_filter_with_context(
+    where: WhereClause,
+    ctx: FilterContext,
+) -> Callable[[dict[str, Any]], bool]:
+    """Compile WHERE clause with access to relationship data.
+
+    This is the enhanced version that supports quantifiers, exists, and _count.
+
+    Current Limitation: Does NOT support nested quantifiers (all_/none_/exists_ inside
+    another all_/none_/exists_). This would require multi-level relationship
+    pre-fetching which is complex. Raises QueryValidationError if detected.
+    """
+    # Handle quantifiers (with nesting validation)
+    if where.all_ is not None:
+        _check_no_nested_quantifiers(where.all_.where, "all_")
+        return _compile_all_quantifier(where.all_, ctx)
+
+    if where.none_ is not None:
+        _check_no_nested_quantifiers(where.none_.where, "none_")
+        return _compile_none_quantifier(where.none_, ctx)
+
+    if where.exists_ is not None:
+        if where.exists_.where:
+            _check_no_nested_quantifiers(where.exists_.where, "exists_")
+        return _compile_exists(where.exists_, ctx)
+
+    # Handle _count pseudo-field
+    if where.path and where.path.endswith("._count"):
+        return _compile_count_condition(where.path, where.op, where.value, ctx)
+
+    # Handle compound clauses (recurse)
+    if where.and_ is not None:
+        filters = [compile_filter_with_context(c, ctx) for c in where.and_]
+        return lambda record: all(f(record) for f in filters)
+
+    if where.or_ is not None:
+        filters = [compile_filter_with_context(c, ctx) for c in where.or_]
+        return lambda record: any(f(record) for f in filters)
+
+    if where.not_ is not None:
+        inner = compile_filter_with_context(where.not_, ctx)
+        return lambda record: not inner(record)
+
+    # Simple condition - delegate to existing compile_filter
+    return compile_filter(where)
+
+
+def _compile_all_quantifier(
+    clause: QuantifierClause,
+    ctx: FilterContext,
+) -> Callable[[dict[str, Any]], bool]:
+    """Compile all_ quantifier: ALL related items must match.
+
+    Semantics:
+    - If no related items exist, returns True (vacuous truth)
+    - If any related item fails the condition, returns False
+
+    Note: Uses compile_filter (not compile_filter_with_context) for inner clause
+    because nested quantifiers are disallowed in the current implementation.
+    """
+    # Use simple compile_filter - nested quantifiers are validated/rejected earlier
+    inner_filter = compile_filter(clause.where)
+    rel_name = clause.path
+
+    def all_match(record: dict[str, Any]) -> bool:
+        record_id = record.get(ctx.id_field)
+        if record_id is None:
+            return True  # Can't check, pass through
+
+        # Access pattern: {rel_name: {record_id: [records]}}
+        related = ctx.relationship_data.get(rel_name, {}).get(record_id, [])
+
+        # Vacuous truth: if no items, condition is satisfied
+        if not related:
+            return True
+
+        return all(inner_filter(item) for item in related)
+
+    return all_match
+
+
+def _compile_none_quantifier(
+    clause: QuantifierClause,
+    ctx: FilterContext,
+) -> Callable[[dict[str, Any]], bool]:
+    """Compile none_ quantifier: NO related items may match.
+
+    Semantics:
+    - If no related items exist, returns True
+    - If any related item matches the condition, returns False
+
+    Note: Uses compile_filter (not compile_filter_with_context) for inner clause
+    because nested quantifiers are disallowed in the current implementation.
+    """
+    inner_filter = compile_filter(clause.where)
+    rel_name = clause.path
+
+    def none_match(record: dict[str, Any]) -> bool:
+        record_id = record.get(ctx.id_field)
+        if record_id is None:
+            return True  # Can't check, pass through
+
+        related = ctx.relationship_data.get(rel_name, {}).get(record_id, [])
+
+        # If no items, condition is satisfied
+        if not related:
+            return True
+
+        # Return True only if NO items match the inner condition
+        return not any(inner_filter(item) for item in related)
+
+    return none_match
+
+
+def _compile_exists(
+    clause: ExistsClause,
+    ctx: FilterContext,
+) -> Callable[[dict[str, Any]], bool]:
+    """Compile exists_ clause: at least one related item exists (optionally matching).
+
+    Semantics:
+    - If where is None, just check for any related items
+    - If where is provided, check that at least one matches
+
+    CRITICAL: Must map entity type (clause.from_) to relationship name.
+
+    Note: Uses compile_filter (not compile_filter_with_context) for inner clause
+    because nested quantifiers are disallowed in the current implementation.
+    """
+    # Import here to avoid circular import
+    from .schema import find_relationship_by_target
+
+    # Handle unsupported 'via' field (per Finding #13 and #32)
+    if clause.via is not None:
+        logger.warning(
+            f"ExistsClause.via field is not implemented and will be ignored. "
+            f"Provided value: {clause.via}"
+        )
+
+    # Map entity type to relationship name
+    rel_name = find_relationship_by_target(ctx.schema, clause.from_)
+    if rel_name is None:
+        raise QueryValidationError(
+            f"No relationship to entity '{clause.from_}' found. "
+            f"Available relationships: {list(ctx.schema.relationships.keys())}"
+        )
+
+    # Compile inner filter if provided
+    inner_filter: Callable[[dict[str, Any]], bool] | None = None
+    if clause.where is not None:
+        inner_filter = compile_filter(clause.where)
+
+    def exists(record: dict[str, Any]) -> bool:
+        record_id = record.get(ctx.id_field)
+        if record_id is None:
+            return False
+
+        related = ctx.relationship_data.get(rel_name, {}).get(record_id, [])
+
+        # No related items means exists is False
+        if not related:
+            return False
+
+        # If no inner filter, just check for existence
+        if inner_filter is None:
+            return True
+
+        # Check if any related item matches
+        return any(inner_filter(item) for item in related)
+
+    return exists
+
+
+def _compile_count_condition(
+    path: str,
+    op: str | None,
+    value: Any,
+    ctx: FilterContext,
+) -> Callable[[dict[str, Any]], bool]:
+    """Compile _count pseudo-field condition.
+
+    Example: {"path": "companies._count", "op": "gte", "value": 2}
+    """
+    base_path = path.rsplit("._count", 1)[0]  # "companies" from "companies._count"
+    op_func = OPERATORS.get(op) if op else None
+
+    if op_func is None:
+        raise QueryValidationError(f"Unknown operator for _count: {op}")
+
+    # Validate value is numeric (count comparisons require int/float)
+    if not isinstance(value, (int, float)):
+        raise QueryValidationError(
+            f"_count comparison requires numeric value, got {type(value).__name__}: {value}"
+        )
+
+    def count_matches(record: dict[str, Any]) -> bool:
+        record_id = record.get(ctx.id_field)
+        if record_id is None:
+            return False
+
+        # Access pattern: {rel_name: {record_id: count}}
+        count = ctx.relationship_counts.get(base_path, {}).get(record_id, 0)
+        return op_func(count, value)
+
+    return count_matches

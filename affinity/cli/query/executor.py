@@ -7,6 +7,8 @@ This module is CLI-only and NOT part of the public SDK API.
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,10 +20,25 @@ from .exceptions import (
     QueryInterruptedError,
     QuerySafetyLimitError,
     QueryTimeoutError,
+    QueryValidationError,
 )
-from .filters import compile_filter, resolve_field_path
-from .models import ExecutionPlan, PlanStep, Query, QueryResult
-from .schema import SCHEMA_REGISTRY, FetchStrategy, get_relationship
+from .filters import (
+    FilterContext,
+    compile_filter,
+    compile_filter_with_context,
+    requires_relationship_data,
+    resolve_field_path,
+)
+from .models import ExecutionPlan, PlanStep, Query, QueryResult, WhereClause
+from .schema import (
+    SCHEMA_REGISTRY,
+    UNBOUNDED_ENTITIES,
+    FetchStrategy,
+    find_relationship_by_target,
+    get_relationship,
+)
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from affinity import AsyncAffinity
@@ -230,6 +247,8 @@ class ExecutionContext:
     records: list[dict[str, Any]] = field(default_factory=list)
     included: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     relationship_counts: dict[str, dict[int, int]] = field(default_factory=dict)
+    # Structure: {rel_name: {record_id: [related_records]}} - for quantifier/exists filtering
+    relationship_data: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
     current_step: int = 0
     start_time: float = field(default_factory=time.time)
     max_records: int = 10000
@@ -237,6 +256,7 @@ class ExecutionContext:
     resolved_where: dict[str, Any] | None = None  # Where clause with resolved names
     warnings: list[str] = field(default_factory=list)  # Warnings collected during execution
     needs_full_fetch: bool = False  # True if filter/aggregate/sort exists (need all records first)
+    early_terminated: bool = False  # True if stopped early due to limit (streaming mode)
 
     def check_timeout(self, timeout: float) -> None:
         """Check if execution has exceeded timeout."""
@@ -278,6 +298,13 @@ class ExecutionContext:
             if not included_counts:
                 included_counts = None
 
+        meta: dict[str, Any] = {
+            "executionTime": time.time() - self.start_time,
+            "interrupted": self.interrupted,
+        }
+        if self.early_terminated:
+            meta["earlyTerminated"] = True
+
         return QueryResult(
             data=data,
             included=self.included,
@@ -285,12 +312,240 @@ class ExecutionContext:
                 total_rows=len(data),
                 included_counts=included_counts,
             ),
-            meta={
-                "executionTime": time.time() - self.start_time,
-                "interrupted": self.interrupted,
-            },
+            meta=meta,
             warnings=self.warnings,
         )
+
+
+# =============================================================================
+# Pre-Include Helper Functions
+# =============================================================================
+
+
+def _needs_full_records(where: WhereClause | None) -> bool:
+    """Check if where clause references fields beyond 'id'.
+
+    If so, we need to fetch full records, not just IDs.
+
+    Args:
+        where: The WHERE clause to check
+
+    Returns:
+        True if full records are needed (references fields other than 'id')
+    """
+    if where is None:
+        return False
+
+    # Check if path references a field other than id
+    if where.path and where.path != "id" and not where.path.startswith("id."):
+        return True
+
+    # Recurse into compound clauses
+    if where.and_:
+        return any(_needs_full_records(c) for c in where.and_)
+    if where.or_:
+        return any(_needs_full_records(c) for c in where.or_)
+    if where.not_:
+        return _needs_full_records(where.not_)
+
+    return False
+
+
+def _any_quantifier_needs_full_records(
+    where: WhereClause | None,
+    rel_name: str,
+    schema: Any,
+) -> bool:
+    """Check if ANY quantifier for rel_name needs fields beyond 'id'.
+
+    CRITICAL: Unlike a simple first-match approach, this function checks ALL
+    quantifiers for the relationship. This handles queries with multiple quantifiers
+    on the same relationship:
+
+    Example that would break with first-match approach::
+
+        {
+            "and_": [
+                {"all_": {"path": "companies", "where": {...}}},
+                {"none_": {"path": "companies", "where": {...}}}
+            ]
+        }
+
+    The first quantifier only needs "id", but the second needs "name" - we must
+    check ALL and upgrade if ANY needs full records.
+
+    Args:
+        where: The WHERE clause to search
+        rel_name: The relationship name to check
+        schema: Entity schema (needed to map exists_ entity types to rel names)
+
+    Returns:
+        True if any quantifier for this relationship needs full records
+    """
+    if where is None:
+        return False
+
+    # Check ALL quantifiers for this relationship (don't return early on first match!)
+    if where.all_ and where.all_.path == rel_name and _needs_full_records(where.all_.where):
+        return True
+    if where.none_ and where.none_.path == rel_name and _needs_full_records(where.none_.where):
+        return True
+
+    # exists_ uses entity type - map to relationship name
+    if where.exists_:
+        exists_rel_name = find_relationship_by_target(schema, where.exists_.from_)
+        if exists_rel_name == rel_name and _needs_full_records(where.exists_.where):
+            return True
+
+    # Recurse into ALL branches (don't return early!)
+    if where.and_ and any(
+        _any_quantifier_needs_full_records(c, rel_name, schema) for c in where.and_
+    ):
+        return True
+    if where.or_ and any(
+        _any_quantifier_needs_full_records(c, rel_name, schema) for c in where.or_
+    ):
+        return True
+
+    return bool(where.not_ and _any_quantifier_needs_full_records(where.not_, rel_name, schema))
+
+
+# =============================================================================
+# Safety Guard Constants
+# =============================================================================
+
+# Safe limit: 100 records x 1 call each = ~3s at 30 req/s rate limit
+SAFE_MAX_RECORDS = 100
+DEFAULT_MAX_RECORDS = 10000  # Default --max-records value
+
+# Concurrency for N+1 operations - reduced from 10 to avoid rate limit bursts
+# Tunable via XAFFINITY_QUERY_CONCURRENCY environment variable
+DEFAULT_CONCURRENCY = 5
+
+
+# =============================================================================
+# Rate-Aware Throttling
+# =============================================================================
+
+
+class RateLimitedExecutor:
+    """Executor helper that respects rate limits via adaptive delays.
+
+    Uses delay-based throttling rather than dynamic semaphore reduction.
+    Tracks consecutive 429s for exponential backoff.
+    """
+
+    def __init__(self, concurrency: int = DEFAULT_CONCURRENCY) -> None:
+        """Initialize rate limiter.
+
+        Args:
+            concurrency: Maximum concurrent requests
+        """
+        self.semaphore = asyncio.Semaphore(concurrency)
+        self._delay_until: float = 0  # Monotonic timestamp
+        self._consecutive_429s: int = 0
+
+    async def acquire(self) -> None:
+        """Acquire permit with rate-limit-aware delay.
+
+        Delays BEFORE acquiring semaphore to avoid holding permit during sleep.
+        """
+        now = time.monotonic()
+        if now < self._delay_until:
+            await asyncio.sleep(self._delay_until - now)
+
+    async def __aenter__(self) -> RateLimitedExecutor:
+        """Context manager entry - acquire semaphore."""
+        await self.acquire()
+        await self.semaphore.acquire()
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        """Context manager exit - release semaphore."""
+        self.semaphore.release()
+
+    def on_response(self, status_code: int, remaining: int | None = None) -> None:
+        """Adjust delays based on response.
+
+        Args:
+            status_code: HTTP status code
+            remaining: X-RateLimit-Remaining header value if available
+        """
+        if status_code == 429:
+            self._consecutive_429s += 1
+            # Exponential backoff: 1s, 2s, 4s... capped at 30s
+            delay = min(30, 2**self._consecutive_429s)
+            self._delay_until = time.monotonic() + delay
+            logger.debug("Rate limited, backing off for %ds", delay)
+        else:
+            self._consecutive_429s = 0
+
+            # Proactive throttling based on remaining quota
+            if remaining is not None and remaining < 10:
+                # Getting low, add small delay
+                self._delay_until = time.monotonic() + 0.5
+                logger.debug("Low rate limit remaining (%d), adding 0.5s delay", remaining)
+
+
+def validate_quantifier_query(
+    query: Query,
+    _max_records: int,
+    max_records_explicit: bool,
+) -> None:
+    """Validate that unbounded quantifier queries have explicit limits.
+
+    Args:
+        query: The query being executed
+        _max_records: Current max_records limit (unused, kept for API compatibility)
+        max_records_explicit: True if --max-records was explicitly provided
+
+    Raises:
+        QueryValidationError: If unbounded quantifier query without explicit limit
+    """
+    # Derive has_quantifier from requires_relationship_data() - don't pass as parameter
+    required_rels = requires_relationship_data(query.where) if query.where else set()
+    if not required_rels:
+        return  # No quantifier/relationship filter, no restriction
+
+    if query.from_ not in UNBOUNDED_ENTITIES:
+        return  # Bounded entity (listEntries), OK
+
+    if not max_records_explicit:
+        # User didn't explicitly set --max-records
+        raise QueryValidationError(
+            f"Quantifier filters on '{query.from_}' require explicit --max-records.\n"
+            f"Your database may have tens of thousands of {query.from_}.\n\n"
+            f"Options:\n"
+            f"  1. Add --max-records {SAFE_MAX_RECORDS} to limit scope\n"
+            f"  2. Query listEntries instead (bounded by list size)\n"
+            f"  3. Add --max-records {DEFAULT_MAX_RECORDS} to explicitly allow large scope"
+        )
+
+
+def can_use_streaming(query: Query, *, max_records_explicit: bool = False) -> bool:
+    """Check if streaming mode with early termination is applicable.
+
+    Streaming mode processes pages one at a time and stops early when
+    the limit is reached. This is only valid when we don't need to see
+    all records before returning results.
+
+    Args:
+        query: The query to check
+        max_records_explicit: Whether --max-records was explicitly provided by user
+
+    Returns:
+        True if streaming can be used, False otherwise
+    """
+    # Sort/aggregate/groupBy need all records - can't stream
+    if query.order_by is not None or query.aggregate is not None or query.group_by is not None:
+        return False
+
+    # Has explicit limit in query - can stream
+    if query.limit is not None:
+        return True
+
+    # User explicitly set --max-records - can use that as effective limit for streaming
+    return bool(max_records_explicit)
 
 
 # =============================================================================
@@ -310,28 +565,38 @@ class QueryExecutor:
         client: AsyncAffinity,
         *,
         progress: QueryProgressCallback | None = None,
-        concurrency: int = 10,
+        concurrency: int | None = None,
         max_records: int = 10000,
+        max_records_explicit: bool = False,
         timeout: float = 300.0,
         allow_partial: bool = False,
+        rate_limiter: RateLimitedExecutor | None = None,
     ) -> None:
         """Initialize the executor.
 
         Args:
             client: AsyncAffinity client for API calls
             progress: Optional progress callback
-            concurrency: Max concurrent API calls for N+1 operations
+            concurrency: Max concurrent API calls for N+1 operations.
+                         Defaults to XAFFINITY_QUERY_CONCURRENCY env var or DEFAULT_CONCURRENCY.
             max_records: Safety limit on total records
+            max_records_explicit: True if --max-records was explicitly provided
             timeout: Total execution timeout in seconds
             allow_partial: If True, return partial results on interruption
+            rate_limiter: Optional rate limiter for adaptive throttling.
+                          If provided, should be wired to client's on_response for feedback.
         """
         self.client = client
         self.progress = progress or NullProgressCallback()
+        # Use explicit value, env var, or default
+        if concurrency is None:
+            concurrency = int(os.environ.get("XAFFINITY_QUERY_CONCURRENCY", DEFAULT_CONCURRENCY))
         self.concurrency = concurrency
         self.max_records = max_records
+        self.max_records_explicit = max_records_explicit
         self.timeout = timeout
         self.allow_partial = allow_partial
-        self.semaphore = asyncio.Semaphore(concurrency)
+        self.rate_limiter = rate_limiter or RateLimitedExecutor(self.concurrency)
 
     async def execute(self, plan: ExecutionPlan) -> QueryResult:
         """Execute a query plan.
@@ -347,7 +612,15 @@ class QueryExecutor:
             QueryInterruptedError: If interrupted (Ctrl+C)
             QueryTimeoutError: If timeout exceeded
             QuerySafetyLimitError: If max_records exceeded
+            QueryValidationError: If unbounded quantifier query without explicit --max-records
         """
+        # Safety guard: Block unbounded quantifier queries without explicit --max-records
+        validate_quantifier_query(
+            plan.query,
+            self.max_records,
+            self.max_records_explicit,
+        )
+
         # Check if plan has steps that need ALL records before limiting (filter/aggregate/sort)
         # - Filter: must see all records to find matches
         # - Aggregate: must see all records for accurate counts/sums
@@ -366,7 +639,20 @@ class QueryExecutor:
             # Verify auth before starting
             await self._verify_auth()
 
-            # Execute steps in dependency order
+            # Check if streaming mode is applicable for early termination
+            # Streaming works when: has limit OR explicit max_records, no sort/aggregate/groupBy
+            if can_use_streaming(plan.query, max_records_explicit=self.max_records_explicit):
+                schema = SCHEMA_REGISTRY.get(plan.query.from_)
+                # Only use streaming for GLOBAL entities (persons, companies, opportunities)
+                if schema and schema.fetch_strategy == FetchStrategy.GLOBAL:
+                    await self._execute_streaming(plan, ctx)
+                    # Handle includes after streaming (if any)
+                    for step in plan.steps:
+                        if step.operation == "include":
+                            await self._execute_include(step, ctx)
+                    return ctx.build_result()
+
+            # Execute steps in dependency order (normal path)
             for step in plan.steps:
                 ctx.current_step = step.step_id
                 ctx.check_timeout(self.timeout)
@@ -409,7 +695,7 @@ class QueryExecutor:
         if step.operation == "fetch":
             await self._execute_fetch(step, ctx)
         elif step.operation == "filter":
-            self._execute_filter(step, ctx)
+            await self._execute_filter_with_preinclude(step, ctx)
         elif step.operation == "include":
             await self._execute_include(step, ctx)
         elif step.operation == "aggregate":
@@ -1070,8 +1356,91 @@ class QueryExecutor:
 
         return result
 
+    async def _execute_filter_with_preinclude(
+        self,
+        _step: PlanStep,
+        ctx: ExecutionContext,
+    ) -> None:
+        """Execute WHERE clause filtering with lazy loading optimization.
+
+        Two-phase execution:
+        1. Apply cheap filters first (no API calls) to reduce dataset
+        2. Pre-fetch relationship data only for survivors
+        3. Apply expensive filters on reduced dataset
+
+        ctx.query.where vs ctx.resolved_where:
+        - ctx.query.where: Original WHERE clause with user-provided names (e.g., listName)
+        - ctx.resolved_where: After name resolution (e.g., listId replaced)
+
+        We use ctx.query.where for requires_relationship_data() because:
+        - Relationship names match original field paths, not resolved IDs
+        - Example: "companies" path stays "companies", doesn't get resolved to IDs
+        """
+        from .filters import partition_where
+
+        # Get where clause (prefer resolved, fall back to original)
+        where: WhereClause | None
+        if ctx.resolved_where is not None:
+            where = WhereClause.model_validate(ctx.resolved_where)
+        else:
+            where = ctx.query.where
+
+        if where is None:
+            return
+
+        # Get schema from registry
+        schema = SCHEMA_REGISTRY.get(ctx.query.from_)
+        entity_type = ctx.query.from_
+
+        # Partition filter into cheap and expensive parts
+        cheap_filter, expensive_filter = partition_where(where, entity_type)
+
+        # Phase 1: Apply cheap filter first (no API calls) to reduce dataset
+        if cheap_filter is not None:
+            before_count = len(ctx.records)
+            cheap_fn = compile_filter(cheap_filter)
+            ctx.records = [r for r in ctx.records if cheap_fn(r)]
+            after_count = len(ctx.records)
+            if before_count > after_count:
+                logger.debug(
+                    "Lazy loading: pre-filter reduced %d → %d records", before_count, after_count
+                )
+
+        # Phase 2: Pre-fetch relationship data ONLY for survivors
+        if expensive_filter is not None and schema:
+            # Check what relationships are needed for the expensive filter
+            required_rels = requires_relationship_data(expensive_filter)
+
+            if required_rels:
+                # Pre-fetch relationship data BEFORE applying expensive filter
+                await self._execute_pre_include(ctx, required_rels, schema)
+
+                # Phase 3: Apply expensive filter with relationship context
+                id_field = schema.id_field or "id"
+                filter_ctx = FilterContext(
+                    relationship_data=ctx.relationship_data,
+                    relationship_counts=ctx.relationship_counts,
+                    schema=schema,
+                    id_field=id_field,
+                )
+                filter_fn = compile_filter_with_context(expensive_filter, filter_ctx)
+                ctx.records = [r for r in ctx.records if filter_fn(r)]
+            else:
+                # Expensive filter but no relationship data needed (shouldn't happen)
+                filter_fn = compile_filter(expensive_filter)
+                ctx.records = [r for r in ctx.records if filter_fn(r)]
+
+        # Apply max_records limit after filtering (not during fetch)
+        # This ensures we find matching records even if they're beyond position max_records
+        if len(ctx.records) > ctx.max_records:
+            ctx.records = ctx.records[: ctx.max_records]
+
     def _execute_filter(self, _step: PlanStep, ctx: ExecutionContext) -> None:
-        """Execute a client-side filter step."""
+        """Execute a client-side filter step.
+
+        Note: This method is kept for backwards compatibility and simple cases.
+        The main entry point is now _execute_filter_with_preinclude().
+        """
         from .models import WhereClause as WC
 
         # Use resolved where clause if available (has listName → listId resolved)
@@ -1109,7 +1478,7 @@ class QueryExecutor:
         if rel.fetch_strategy == "entity_method":
             # N+1: fetch for each record
             async def fetch_one(record: dict[str, Any]) -> list[dict[str, Any]]:
-                async with self.semaphore:
+                async with self.rate_limiter:
                     entity_id = record.get("id")
                     if entity_id is None:
                         return []
@@ -1155,6 +1524,206 @@ class QueryExecutor:
 
         # Update progress
         self.progress.on_step_progress(step, len(included_records), None)
+
+    async def _execute_pre_include(
+        self,
+        ctx: ExecutionContext,
+        required_rels: set[str],
+        schema: Any,
+    ) -> None:
+        """Pre-fetch relationship data required for WHERE clause filtering.
+
+        Called from _execute_filter_with_preinclude() which has already:
+        - Detected required relationships via requires_relationship_data()
+        - Obtained schema from SCHEMA_REGISTRY
+
+        Args:
+            ctx: Execution context with records to process
+            required_rels: Set of relationship names/entity types needed for filtering
+            schema: Entity schema for the query's from_ entity
+
+        Note: required_rels may contain a mix of:
+        - Relationship names (from all_, none_, _count)
+        - Entity types (from exists_) - resolved via find_relationship_by_target()
+        """
+        for rel_ref in required_rels:
+            # Try direct relationship name first
+            rel_info = schema.relationships.get(rel_ref)
+            rel_name: str = rel_ref
+
+            # If not found, try to find by target entity (for exists_ clauses)
+            if rel_info is None:
+                found_rel_name = find_relationship_by_target(schema, rel_ref)
+                if found_rel_name:
+                    rel_name = found_rel_name
+                    rel_info = schema.relationships.get(rel_name)
+
+            if rel_info is None:
+                # Provide helpful error message that distinguishes between relationship names
+                # and entity types (exists_ uses entity types like "interactions")
+                raise QueryValidationError(
+                    f"No relationship found for '{rel_ref}'. "
+                    f"If using exists_, ensure the entity type is correct. "
+                    f"Available relationships: {list(schema.relationships.keys())}"
+                )
+
+            # Fetch relationship data for all records
+            await self._fetch_relationship_for_filter(ctx, rel_name, rel_info, schema)
+
+    async def _fetch_relationship_for_filter(
+        self,
+        ctx: ExecutionContext,
+        rel_name: str,
+        rel_info: Any,
+        schema: Any,
+    ) -> None:
+        """Fetch relationship data and attach to ExecutionContext.
+
+        Storage structure (matches existing relationship_counts field):
+        - relationship_data[rel_name][record_id] = [related_records]
+        - relationship_counts[rel_name][record_id] = count
+
+        IDs-only upgrade: Some relationships (entity_method with *_ids methods)
+        only return IDs. If the quantifier's where clause needs to filter on
+        other fields, we batch-fetch full records.
+        """
+        id_field = schema.id_field or "id"
+
+        # Initialize nested dicts for this relationship
+        if rel_name not in ctx.relationship_data:
+            ctx.relationship_data[rel_name] = {}
+        if rel_name not in ctx.relationship_counts:
+            ctx.relationship_counts[rel_name] = {}
+
+        # Check if this is an IDs-only relationship that needs upgrading
+        # CRITICAL: Use _any_quantifier_needs_full_records() which checks ALL quantifiers
+        # for this relationship, not just the first one found
+        is_ids_only = (
+            rel_info.fetch_strategy == "entity_method"
+            and rel_info.method_or_service
+            and rel_info.method_or_service.endswith("_ids")
+        )
+        needs_upgrade = is_ids_only and _any_quantifier_needs_full_records(
+            ctx.query.where, rel_name, schema
+        )
+
+        async def fetch_for_record(record: dict[str, Any]) -> list[dict[str, Any]]:
+            """Fetch related records for a single parent record."""
+            async with self.rate_limiter:  # Use executor's semaphore for concurrency control
+                record_id = record.get(id_field)
+                if record_id is None:
+                    return []
+
+                related: list[dict[str, Any]] = []
+
+                if rel_info.fetch_strategy == "entity_method":
+                    # N+1: fetch via entity method (e.g., get_associated_company_ids)
+                    service = getattr(self.client, ctx.query.from_, None)
+                    method = getattr(service, rel_info.method_or_service, None) if service else None
+                    if method is None:
+                        return []
+
+                    try:
+                        result = await method(record_id)
+                        # Result might be list of IDs or list of records
+                        if result and isinstance(result[0], int):
+                            related = [{"id": id_} for id_ in result]  # IDs only
+                        else:
+                            related = [
+                                r.model_dump(mode="json", by_alias=True)
+                                if hasattr(r, "model_dump")
+                                else r
+                                for r in result
+                            ]
+                    except Exception as e:
+                        # NOTE: Broad exception catch for graceful degradation.
+                        # Alternative: catch specific (APIError, NotFoundError) and let
+                        # AuthenticationError propagate. Current approach treats failed
+                        # fetch as "no relationships" which could give incorrect filter results
+                        # in edge cases. See Finding #46 in implementation plan for discussion.
+                        logger.debug(f"Failed to fetch {rel_name} for record {record_id}: {e}")
+                        return []
+
+                elif rel_info.fetch_strategy == "global_service":
+                    # Single filtered call (e.g., interactions.list(person_id=...))
+                    service = getattr(self.client, rel_info.method_or_service, None)
+                    if service is None:
+                        return []
+
+                    try:
+                        filter_kwargs = {rel_info.filter_field: record_id}
+                        response = await service.list(**filter_kwargs)
+                        related = [
+                            item.model_dump(mode="json", by_alias=True) for item in response.data
+                        ]
+                    except Exception as e:
+                        # See note above about broad exception handling (Finding #46)
+                        logger.debug(f"Failed to fetch {rel_name} for record {record_id}: {e}")
+                        return []
+
+                return related
+
+        async def process_record(record: dict[str, Any]) -> None:
+            """Fetch and store relationship data for a single record."""
+            record_id = record.get(id_field)
+            if record_id is None:
+                return
+
+            related = await fetch_for_record(record)
+
+            # Handle IDs-only upgrade if needed
+            if (
+                needs_upgrade
+                and related
+                and isinstance(related[0].get("id"), int)
+                and len(related[0]) == 1
+            ):
+                # related is list of {"id": N}, need full records for property filtering
+                ids = [r["id"] for r in related]
+                related = await self._batch_fetch_by_ids(rel_info.target_entity, ids)
+
+            # Store for filtering: {rel_name: {record_id: data}}
+            ctx.relationship_data[rel_name][record_id] = related
+            ctx.relationship_counts[rel_name][record_id] = len(related)
+
+        # Parallel fetch using asyncio.gather (matches existing executor pattern)
+        tasks = [process_record(r) for r in ctx.records]
+        await asyncio.gather(*tasks)
+
+    async def _batch_fetch_by_ids(
+        self,
+        entity_type: str,
+        ids: list[int],
+    ) -> list[dict[str, Any]]:
+        """Batch fetch records by IDs for IDs-only relationship upgrade.
+
+        Uses the appropriate service's get() method for each ID.
+        Could be optimized with batch endpoints if available.
+        """
+        # Get schema to find service attribute
+        schema = SCHEMA_REGISTRY.get(entity_type)
+        if schema is None:
+            return [{"id": id_} for id_ in ids]  # Fallback to ID-only
+
+        service = getattr(self.client, schema.service_attr, None)
+        if service is None or not hasattr(service, "get"):
+            return [{"id": id_} for id_ in ids]  # Fallback to ID-only
+
+        async def fetch_one(id_: int) -> dict[str, Any]:
+            async with self.rate_limiter:
+                try:
+                    record = await service.get(id_)
+                    if hasattr(record, "model_dump"):
+                        result: dict[str, Any] = record.model_dump(mode="json", by_alias=True)
+                        return result
+                    return dict(record)  # type: ignore[arg-type]
+                except Exception as e:
+                    # See Finding #46 about broad exception handling trade-offs
+                    logger.debug(f"Failed to fetch {entity_type} with id {id_}: {e}")
+                    return {"id": id_}  # Fallback on error
+
+        results = await asyncio.gather(*[fetch_one(id_) for id_ in ids])
+        return [r for r in results if r is not None]
 
     def _execute_aggregate(self, _step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute aggregation step."""
@@ -1226,6 +1795,147 @@ class QueryExecutor:
         """Execute limit step."""
         if ctx.query.limit is not None:
             ctx.records = ctx.records[: ctx.query.limit]
+
+    async def _execute_streaming(
+        self,
+        _plan: ExecutionPlan,
+        ctx: ExecutionContext,
+    ) -> None:
+        """Execute query in streaming mode with early termination.
+
+        Processes pages one at a time, applying filters per page, and stops
+        early when the limit is reached. This avoids fetching all records
+        when only a few matches are needed.
+
+        Only applicable when can_use_streaming(query) returns True.
+        """
+        from .filters import partition_where
+
+        query = ctx.query
+        # Use query.limit if set, otherwise use max_records as the effective limit
+        # This enables streaming when --max-records is explicitly provided
+        limit = query.limit if query.limit is not None else self.max_records
+
+        schema = SCHEMA_REGISTRY.get(query.from_)
+        if schema is None:
+            raise QueryExecutionError(f"Unknown entity: {query.from_}")
+
+        # Only GLOBAL fetch strategy supports streaming (persons, companies, opportunities)
+        if schema.fetch_strategy != FetchStrategy.GLOBAL:
+            # Fall back to normal execution for non-global entities
+            return
+
+        # Partition filter into cheap and expensive parts
+        cheap_filter_clause, expensive_filter_clause = partition_where(query.where, query.from_)
+
+        # Compile cheap filter
+        cheap_fn: Callable[[dict[str, Any]], bool] | None = None
+        if cheap_filter_clause is not None:
+            cheap_fn = compile_filter(cheap_filter_clause)
+
+        # Check if expensive filter needs relationship data
+        required_rels: set[str] = set()
+        if expensive_filter_clause is not None:
+            required_rels = requires_relationship_data(expensive_filter_clause)
+
+        # Compile expensive filter (with or without context)
+        expensive_fn: Callable[[dict[str, Any]], bool] | None = None
+        if expensive_filter_clause is not None and not required_rels:
+            # No relationship data needed - use simple filter
+            expensive_fn = compile_filter(expensive_filter_clause)
+
+        # Get service for streaming pages
+        service = getattr(self.client, schema.service_attr)
+        accumulated: list[dict[str, Any]] = []
+
+        # Create a fake step for progress reporting
+        fetch_step = PlanStep(
+            step_id=0,
+            operation="fetch_streaming",
+            description=f"Streaming fetch from {query.from_} with early termination",
+            entity=query.from_,
+            estimated_api_calls=1,
+        )
+        self.progress.on_step_start(fetch_step)
+
+        pages_processed = 0
+        try:
+            async for page in service.all().pages():
+                pages_processed += 1
+                page_records = [r.model_dump(mode="json", by_alias=True) for r in page.data]
+
+                # Phase 1: Apply cheap filter (no API calls)
+                if cheap_fn is not None:
+                    page_records = [r for r in page_records if cheap_fn(r)]
+
+                # Phase 2: Handle expensive filter
+                if expensive_filter_clause is not None and page_records:
+                    if required_rels:
+                        # Need to pre-fetch relationship data for this page's survivors
+                        # Create temporary context for this page
+                        page_ctx = ExecutionContext(
+                            query=query,
+                            records=page_records,
+                            max_records=self.max_records,
+                        )
+
+                        # Pre-fetch relationship data
+                        await self._execute_pre_include(page_ctx, required_rels, schema)
+
+                        # Apply expensive filter with context
+                        id_field = schema.id_field or "id"
+                        filter_ctx = FilterContext(
+                            relationship_data=page_ctx.relationship_data,
+                            relationship_counts=page_ctx.relationship_counts,
+                            schema=schema,
+                            id_field=id_field,
+                        )
+                        expensive_fn_ctx = compile_filter_with_context(
+                            expensive_filter_clause, filter_ctx
+                        )
+                        page_records = [r for r in page_records if expensive_fn_ctx(r)]
+                    elif expensive_fn is not None:
+                        page_records = [r for r in page_records if expensive_fn(r)]
+
+                # Accumulate matches
+                accumulated.extend(page_records)
+
+                # Report progress
+                self.progress.on_step_progress(fetch_step, len(accumulated), None)
+
+                # Early termination check
+                if len(accumulated) >= limit:
+                    ctx.records = accumulated[:limit]
+                    ctx.early_terminated = True
+                    logger.debug(
+                        "Streaming early termination: found %d matches in %d pages",
+                        limit,
+                        pages_processed,
+                    )
+                    self.progress.on_step_complete(fetch_step, len(ctx.records))
+                    return
+
+                # Safety check - don't exceed max_records even before limit
+                if len(accumulated) >= ctx.max_records:
+                    ctx.records = accumulated[: ctx.max_records]
+                    self.progress.on_step_complete(fetch_step, len(ctx.records))
+                    return
+
+                # Timeout check
+                ctx.check_timeout(self.timeout)
+
+            # Exhausted all pages without hitting limit
+            ctx.records = accumulated[:limit] if len(accumulated) > limit else accumulated
+            self.progress.on_step_complete(fetch_step, len(ctx.records))
+
+        except QueryExecutionError:
+            raise
+        except Exception as e:
+            raise QueryExecutionError(
+                f"Failed to fetch {query.from_} in streaming mode: {e}",
+                cause=e,
+                partial_results=accumulated,
+            ) from None
 
 
 # =============================================================================

@@ -276,6 +276,7 @@ class PlanStep:
     step_id: int
     operation: Literal[
         "fetch",
+        "fetch_streaming",
         "filter",
         "include",
         "aggregate",
@@ -305,7 +306,7 @@ class ExecutionPlan:
 
     query: Query
     steps: list[PlanStep]
-    total_api_calls: int
+    total_api_calls: int | str  # Can be "UNBOUNDED" for unbounded quantifier queries
     estimated_records_fetched: int | None
     estimated_memory_mb: float | None
     warnings: list[str]
@@ -313,6 +314,7 @@ class ExecutionPlan:
     has_expensive_operations: bool
     requires_full_scan: bool
     version: str = "1.0"
+    requires_explicit_max_records: bool = False  # True for unbounded quantifier queries
 
 
 @dataclass

@@ -156,6 +156,109 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 }
 ```
 
+## Advanced Filtering (Quantifiers, Exists, Count)
+
+Filter based on related entities using quantifiers and existence checks.
+
+### ALL Quantifier
+
+All related items must match the condition:
+
+```json
+{
+  "from": "persons",
+  "where": {
+    "all_": {
+      "path": "companies",
+      "where": { "path": "domain", "op": "contains", "value": ".com" }
+    }
+  }
+}
+```
+
+**Note:** Returns `true` for records with no related items (vacuous truth). To require at least one, combine with `_count`:
+
+```json
+{
+  "where": {
+    "and": [
+      { "path": "companies._count", "op": "gte", "value": 1 },
+      { "all_": { "path": "companies", "where": { "path": "domain", "op": "contains", "value": ".com" }}}
+    ]
+  }
+}
+```
+
+### NONE Quantifier
+
+No related items may match the condition:
+
+```json
+{
+  "from": "persons",
+  "where": {
+    "none_": {
+      "path": "interactions",
+      "where": { "path": "type", "op": "eq", "value": "spam" }
+    }
+  }
+}
+```
+
+### EXISTS Clause
+
+At least one related item exists (optionally matching a filter):
+
+```json
+// Simple existence check
+{
+  "from": "persons",
+  "where": { "exists_": { "from": "interactions" }}
+}
+
+// With filter
+{
+  "from": "persons",
+  "where": {
+    "exists_": {
+      "from": "interactions",
+      "where": { "path": "type", "op": "eq", "value": "meeting" }
+    }
+  }
+}
+```
+
+### Count Pseudo-Field
+
+Count related items and compare:
+
+```json
+// Persons with 2 or more companies
+{
+  "from": "persons",
+  "where": { "path": "companies._count", "op": "gte", "value": 2 }
+}
+
+// Persons with no interactions
+{
+  "from": "persons",
+  "where": { "path": "interactions._count", "op": "eq", "value": 0 }
+}
+```
+
+### Available Relationships for Quantifiers
+
+| From Entity | Available Relationship Paths |
+|-------------|------------------------------|
+| `persons` | `companies`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `companies` | `people`, `opportunities`, `interactions`, `notes`, `listEntries` |
+| `opportunities` | `people`, `companies`, `interactions` |
+
+### Limitations
+
+- **Nested quantifiers not supported**: Cannot use `all_`/`none_`/`exists_` inside another quantifier
+- **N+1 API calls**: Quantifiers fetch relationship data for each record (use dry-run to preview)
+
 ## Include Relationships
 
 Fetch related entities in a single query:
@@ -464,6 +567,37 @@ The `format` parameter controls how results are returned. Choose based on your u
 3. **Be specific with where** to reduce client-side filtering
 4. **Avoid deep includes** which cause N+1 API calls
 5. **Use groupBy + aggregate** for reports instead of fetching all records
+6. **For quantifier queries** on large databases, always add `maxRecords`
+
+## Quantifier Query Performance
+
+**Important**: Queries using `all_`, `none_`, `exists_`, or `_count` on unbounded
+entities (`persons`, `companies`, `opportunities`) require explicit `maxRecords`.
+
+**Why?** These operations make N+1 API calls (one per record). On a database with
+50,000 persons, this could take 26+ minutes.
+
+**Recommended approach:**
+1. Start from `listEntries` (bounded by list size) instead of unbounded entities
+2. Add cheap pre-filters before quantifier conditions to reduce N+1 calls
+3. Use `maxRecords` to explicitly limit scope: `maxRecords: 100`
+4. Use `dryRun: true` to preview estimated API calls before running
+
+**Example - safe quantifier query:**
+```json
+{
+  "query": {
+    "from": "listEntries",
+    "where": {
+      "and": [
+        {"path": "listName", "op": "eq", "value": "Target Companies"},
+        {"path": "people._count", "op": "gte", "value": 3}
+      ]
+    }
+  },
+  "maxRecords": 1000
+}
+```
 
 ## Limitations
 
@@ -471,3 +605,5 @@ The `format` parameter controls how results are returned. Choose based on your u
 - Includes cause N+1 API calls (1 per parent record)
 - No cross-entity joins (use includes instead)
 - Maximum 10,000 records per query for safety
+- Nested quantifiers (all_/none_/exists_ inside each other) not supported
+- OR clauses containing quantifiers cannot benefit from lazy loading optimization

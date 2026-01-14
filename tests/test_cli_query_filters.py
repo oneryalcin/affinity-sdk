@@ -443,8 +443,8 @@ class TestCompileFilterEdgeCases:
         with pytest.raises(QueryValidationError, match="Unknown operator"):
             compile_filter(where)
 
-    def test_all_quantifier_passthrough(self) -> None:
-        """all_ quantifier passes through (placeholder)."""
+    def test_all_quantifier_raises_not_implemented(self) -> None:
+        """all_ quantifier raises NotImplementedError until implemented."""
         from affinity.cli.query.models import QuantifierClause
 
         where = WhereClause(
@@ -452,12 +452,11 @@ class TestCompileFilterEdgeCases:
                 path="tags", where=WhereClause(path="value", op="eq", value="vip")
             )
         )
-        filter_fn = compile_filter(where)
-        # Placeholder always returns True
-        assert filter_fn({"tags": ["other"]}) is True
+        with pytest.raises(NotImplementedError, match=r"all_.*not yet implemented"):
+            compile_filter(where)
 
-    def test_none_quantifier_passthrough(self) -> None:
-        """none_ quantifier passes through (placeholder)."""
+    def test_none_quantifier_raises_not_implemented(self) -> None:
+        """none_ quantifier raises NotImplementedError until implemented."""
         from affinity.cli.query.models import QuantifierClause
 
         where = WhereClause(
@@ -465,28 +464,25 @@ class TestCompileFilterEdgeCases:
                 path="tags", where=WhereClause(path="value", op="eq", value="spam")
             )
         )
-        filter_fn = compile_filter(where)
-        # Placeholder always returns True
-        assert filter_fn({"tags": ["spam"]}) is True
+        with pytest.raises(NotImplementedError, match=r"none_.*not yet implemented"):
+            compile_filter(where)
 
-    def test_exists_passthrough(self) -> None:
-        """exists_ passes through (placeholder)."""
+    def test_exists_raises_not_implemented(self) -> None:
+        """exists_ raises NotImplementedError until implemented."""
         from affinity.cli.query.models import ExistsClause
 
         where = WhereClause(
             # Use alias 'from' for the from_ field
             exists_=ExistsClause(**{"from": "related", "via": "personId"})
         )
-        filter_fn = compile_filter(where)
-        # Placeholder always returns True
-        assert filter_fn({"any": "record"}) is True
+        with pytest.raises(NotImplementedError, match=r"exists_.*not yet implemented"):
+            compile_filter(where)
 
-    def test_count_pseudo_field_passthrough(self) -> None:
-        """_count pseudo-field passes through (placeholder)."""
+    def test_count_pseudo_field_raises_not_implemented(self) -> None:
+        """_count pseudo-field raises NotImplementedError until implemented."""
         where = WhereClause(path="companies._count", op="gt", value=5)
-        filter_fn = compile_filter(where)
-        # Placeholder always returns True
-        assert filter_fn({"companies": []}) is True
+        with pytest.raises(NotImplementedError, match=r"_count.*not yet implemented"):
+            compile_filter(where)
 
     def test_condition_with_no_op_matches_all(self) -> None:
         """Condition with None op matches all."""
@@ -825,3 +821,519 @@ class TestArrayFieldFiltering:
 
         where2 = WhereClause(path="fields.Values", op="has_any", value=[1, 99])
         assert matches(record, where2) is True
+
+
+# =============================================================================
+# Enhanced Filter Context Tests (Quantifiers, Exists, _count)
+# =============================================================================
+
+
+class TestRequiresRelationshipData:
+    """Tests for requires_relationship_data() detection function."""
+
+    def test_detects_all_quantifier(self) -> None:
+        """Detects all_ quantifier requires relationship data."""
+        from affinity.cli.query.filters import requires_relationship_data
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        required = requires_relationship_data(where)
+        assert "companies" in required
+
+    def test_detects_none_quantifier(self) -> None:
+        """Detects none_ quantifier requires relationship data."""
+        from affinity.cli.query.filters import requires_relationship_data
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            none_=QuantifierClause(
+                path="interactions",
+                where=WhereClause(path="type", op="eq", value="spam"),
+            )
+        )
+        required = requires_relationship_data(where)
+        assert "interactions" in required
+
+    def test_detects_exists_clause(self) -> None:
+        """Detects exists_ clause requires relationship data."""
+        from affinity.cli.query.filters import requires_relationship_data
+        from affinity.cli.query.models import ExistsClause
+
+        where = WhereClause(exists_=ExistsClause(**{"from": "interactions"}))
+        required = requires_relationship_data(where)
+        assert "interactions" in required
+
+    def test_detects_count_pseudo_field(self) -> None:
+        """Detects _count pseudo-field requires relationship data."""
+        from affinity.cli.query.filters import requires_relationship_data
+
+        where = WhereClause(path="companies._count", op="gte", value=2)
+        required = requires_relationship_data(where)
+        assert "companies" in required
+
+    def test_detects_nested_in_and_clause(self) -> None:
+        """Detects quantifiers nested in AND clause."""
+        from affinity.cli.query.filters import requires_relationship_data
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="name", op="eq", value="Alice"),
+                WhereClause(
+                    all_=QuantifierClause(
+                        path="companies",
+                        where=WhereClause(path="name", op="contains", value="Inc"),
+                    )
+                ),
+            ]
+        )
+        required = requires_relationship_data(where)
+        assert "companies" in required
+
+    def test_returns_empty_for_simple_filter(self) -> None:
+        """Returns empty set for simple filter without quantifiers."""
+        from affinity.cli.query.filters import requires_relationship_data
+
+        where = WhereClause(path="name", op="eq", value="Alice")
+        required = requires_relationship_data(where)
+        assert required == set()
+
+    def test_returns_empty_for_none(self) -> None:
+        """Returns empty set for None where clause."""
+        from affinity.cli.query.filters import requires_relationship_data
+
+        required = requires_relationship_data(None)
+        assert required == set()
+
+    def test_invalid_count_path_raises_error(self) -> None:
+        """Malformed _count path raises QueryValidationError."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import requires_relationship_data
+
+        # Path is "._count" with no relationship
+        where = WhereClause(path="._count", op="gte", value=2)
+        with pytest.raises(QueryValidationError, match="Invalid _count path"):
+            requires_relationship_data(where)
+
+    def test_nested_count_path_raises_error(self) -> None:
+        """Nested _count path raises QueryValidationError."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import requires_relationship_data
+
+        # Nested path like "companies.tags._count" is not supported
+        where = WhereClause(path="companies.tags._count", op="gte", value=2)
+        with pytest.raises(QueryValidationError, match="Nested _count paths not supported"):
+            requires_relationship_data(where)
+
+
+class TestCheckNoNestedQuantifiers:
+    """Tests for _check_no_nested_quantifiers() validation."""
+
+    def test_allows_simple_where(self) -> None:
+        """Allows simple WHERE clause without quantifiers."""
+        from affinity.cli.query.filters import _check_no_nested_quantifiers
+
+        where = WhereClause(path="name", op="eq", value="Test")
+        # Should not raise
+        _check_no_nested_quantifiers(where, "test context")
+
+    def test_rejects_nested_all(self) -> None:
+        """Rejects nested all_ quantifier."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import _check_no_nested_quantifiers
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="nested",
+                where=WhereClause(path="x", op="eq", value=1),
+            )
+        )
+        with pytest.raises(QueryValidationError, match="Nested quantifiers not supported"):
+            _check_no_nested_quantifiers(where, "outer quantifier")
+
+    def test_rejects_nested_none(self) -> None:
+        """Rejects nested none_ quantifier."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import _check_no_nested_quantifiers
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            none_=QuantifierClause(
+                path="nested",
+                where=WhereClause(path="x", op="eq", value=1),
+            )
+        )
+        with pytest.raises(QueryValidationError, match="Nested quantifiers not supported"):
+            _check_no_nested_quantifiers(where, "outer quantifier")
+
+    def test_rejects_nested_exists(self) -> None:
+        """Rejects nested exists_ clause."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import _check_no_nested_quantifiers
+        from affinity.cli.query.models import ExistsClause
+
+        where = WhereClause(exists_=ExistsClause(**{"from": "nested"}))
+        with pytest.raises(QueryValidationError, match="Nested quantifiers not supported"):
+            _check_no_nested_quantifiers(where, "outer quantifier")
+
+    def test_rejects_quantifier_in_compound(self) -> None:
+        """Rejects quantifiers nested in compound clauses."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import _check_no_nested_quantifiers
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="x", op="eq", value=1),
+                WhereClause(
+                    all_=QuantifierClause(
+                        path="nested",
+                        where=WhereClause(path="y", op="eq", value=2),
+                    )
+                ),
+            ]
+        )
+        with pytest.raises(QueryValidationError, match="Nested quantifiers not supported"):
+            _check_no_nested_quantifiers(where, "outer quantifier")
+
+
+class TestCompileFilterWithContext:
+    """Tests for compile_filter_with_context() enhanced filter compiler."""
+
+    def test_all_quantifier_all_match(self) -> None:
+        """all_ quantifier returns True when all related items match."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{"name": "Acme Inc"}, {"name": "Tech Inc"}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True
+
+    def test_all_quantifier_some_dont_match(self) -> None:
+        """all_ quantifier returns False when some related items don't match."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{"name": "Acme Inc"}, {"name": "Good Corp"}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is False  # "Good Corp" doesn't contain "Inc"
+
+    def test_all_quantifier_vacuous_truth(self) -> None:
+        """all_ quantifier returns True for empty relationship (vacuous truth)."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {}},  # No companies for any record
+            relationship_counts={"companies": {}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True  # Vacuous truth
+
+    def test_none_quantifier_none_match(self) -> None:
+        """none_ quantifier returns True when no related items match."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{"name": "Acme Inc"}, {"name": "Good Corp"}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            none_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Spam"),
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True  # No company contains "Spam"
+
+    def test_none_quantifier_some_match(self) -> None:
+        """none_ quantifier returns False when some related items match."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{"name": "Acme Inc"}, {"name": "Spam Corp"}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            none_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Spam"),
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is False  # "Spam Corp" contains "Spam"
+
+    def test_exists_with_items(self) -> None:
+        """exists_ returns True when related items exist."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import ExistsClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"interactions": {1: [{"type": "email"}]}},
+            relationship_counts={"interactions": {1: 1}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(exists_=ExistsClause(**{"from": "interactions"}))
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True
+
+    def test_exists_without_items(self) -> None:
+        """exists_ returns False when no related items exist."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import ExistsClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"interactions": {}},
+            relationship_counts={"interactions": {}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(exists_=ExistsClause(**{"from": "interactions"}))
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is False
+
+    def test_exists_with_filter(self) -> None:
+        """exists_ with where clause filters related items."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import ExistsClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"interactions": {1: [{"type": "email"}, {"type": "meeting"}]}},
+            relationship_counts={"interactions": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            exists_=ExistsClause(
+                **{
+                    "from": "interactions",
+                    "where": {"path": "type", "op": "eq", "value": "email"},
+                }
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True
+
+    def test_exists_with_filter_no_match(self) -> None:
+        """exists_ with where clause returns False when no items match filter."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.models import ExistsClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"interactions": {1: [{"type": "email"}]}},
+            relationship_counts={"interactions": {1: 1}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            exists_=ExistsClause(
+                **{
+                    "from": "interactions",
+                    "where": {"path": "type", "op": "eq", "value": "call"},
+                }
+            )
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is False  # No "call" type interactions
+
+    def test_count_gte(self) -> None:
+        """_count with gte operator works correctly."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{}, {}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(path="companies._count", op="gte", value=2)
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True
+
+    def test_count_lt(self) -> None:
+        """_count with lt operator works correctly."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{}]}},
+            relationship_counts={"companies": {1: 1}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(path="companies._count", op="lt", value=2)
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True
+
+    def test_count_eq_zero(self) -> None:
+        """_count with eq 0 works for records with no relationships."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {}},  # No data means 0 companies
+            relationship_counts={"companies": {}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(path="companies._count", op="eq", value=0)
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1}) is True  # Default count is 0
+
+    def test_count_non_numeric_value_raises_error(self) -> None:
+        """_count with non-numeric value raises QueryValidationError."""
+        from affinity.cli.query.exceptions import QueryValidationError
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={},
+            relationship_counts={},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(path="companies._count", op="gte", value="two")
+        with pytest.raises(QueryValidationError, match="numeric value"):
+            compile_filter_with_context(where, ctx)
+
+    def test_compound_and_clause(self) -> None:
+        """Compound AND clause with quantifier works correctly."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={"companies": {1: [{}, {}]}},
+            relationship_counts={"companies": {1: 2}},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(
+            and_=[
+                WhereClause(path="name", op="eq", value="Alice"),
+                WhereClause(path="companies._count", op="gte", value=1),
+            ]
+        )
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"id": 1, "name": "Alice"}) is True
+        assert filter_fn({"id": 1, "name": "Bob"}) is False
+
+    def test_simple_condition_delegates_to_compile_filter(self) -> None:
+        """Simple conditions delegate to existing compile_filter."""
+        from affinity.cli.query.filters import FilterContext, compile_filter_with_context
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        ctx = FilterContext(
+            relationship_data={},
+            relationship_counts={},
+            schema=schema,
+            id_field="id",
+        )
+        where = WhereClause(path="name", op="eq", value="Alice")
+        filter_fn = compile_filter_with_context(where, ctx)
+        assert filter_fn({"name": "Alice"}) is True
+        assert filter_fn({"name": "Bob"}) is False
+
+
+class TestFindRelationshipByTarget:
+    """Tests for find_relationship_by_target() schema helper."""
+
+    def test_finds_matching_relationship(self) -> None:
+        """Finds relationship by target entity type."""
+        from affinity.cli.query.schema import SCHEMA_REGISTRY, find_relationship_by_target
+
+        schema = SCHEMA_REGISTRY["persons"]
+        rel_name = find_relationship_by_target(schema, "interactions")
+        assert rel_name == "interactions"
+
+    def test_finds_companies_relationship(self) -> None:
+        """Finds companies relationship on persons schema."""
+        from affinity.cli.query.schema import SCHEMA_REGISTRY, find_relationship_by_target
+
+        schema = SCHEMA_REGISTRY["persons"]
+        rel_name = find_relationship_by_target(schema, "companies")
+        assert rel_name == "companies"
+
+    def test_returns_none_for_unknown_entity(self) -> None:
+        """Returns None for unknown target entity."""
+        from affinity.cli.query.schema import SCHEMA_REGISTRY, find_relationship_by_target
+
+        schema = SCHEMA_REGISTRY["persons"]
+        rel_name = find_relationship_by_target(schema, "unknown_entity")
+        assert rel_name is None
+
+    def test_returns_none_for_empty_relationships(self) -> None:
+        """Returns None for schema with no relationships."""
+        from affinity.cli.query.schema import SCHEMA_REGISTRY, find_relationship_by_target
+
+        schema = SCHEMA_REGISTRY["notes"]  # notes has no relationships
+        rel_name = find_relationship_by_target(schema, "anything")
+        assert rel_name is None

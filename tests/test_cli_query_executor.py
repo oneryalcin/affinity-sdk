@@ -18,6 +18,7 @@ from affinity.cli.query.executor import (
     QueryExecutor,
     QueryProgressCallback,
     _normalize_list_entry_fields,
+    can_use_streaming,
     execute_query,
 )
 from affinity.cli.query.models import (
@@ -122,6 +123,65 @@ def simple_plan(simple_query: Query) -> ExecutionPlan:
         has_expensive_operations=False,
         requires_full_scan=False,
     )
+
+
+# =============================================================================
+# can_use_streaming Tests
+# =============================================================================
+
+
+class TestCanUseStreaming:
+    """Tests for can_use_streaming function."""
+
+    def test_with_limit_returns_true(self) -> None:
+        """Returns True when query has explicit limit."""
+        query = Query(from_="persons", limit=10)
+        assert can_use_streaming(query) is True
+
+    def test_without_limit_returns_false(self) -> None:
+        """Returns False when query has no limit and max_records_explicit=False."""
+        query = Query(from_="persons")
+        assert can_use_streaming(query) is False
+
+    def test_with_max_records_explicit_returns_true(self) -> None:
+        """Returns True when max_records_explicit=True even without query limit."""
+        query = Query(from_="persons")
+        assert can_use_streaming(query, max_records_explicit=True) is True
+
+    def test_with_order_by_returns_false(self) -> None:
+        """Returns False when query has orderBy (needs all records for sorting)."""
+        query = Query(
+            from_="persons",
+            limit=10,
+            order_by=[OrderByClause(field="name", direction="asc")],
+        )
+        assert can_use_streaming(query) is False
+
+    def test_with_order_by_and_max_records_explicit_returns_false(self) -> None:
+        """Returns False when query has orderBy even with max_records_explicit."""
+        query = Query(
+            from_="persons",
+            order_by=[OrderByClause(field="name", direction="asc")],
+        )
+        assert can_use_streaming(query, max_records_explicit=True) is False
+
+    def test_with_aggregate_returns_false(self) -> None:
+        """Returns False when query has aggregate (needs all records)."""
+        query = Query(
+            from_="persons",
+            limit=10,
+            aggregate={"total": {"count": "*"}},
+        )
+        assert can_use_streaming(query) is False
+
+    def test_with_group_by_returns_false(self) -> None:
+        """Returns False when query has groupBy (needs all records)."""
+        query = Query(
+            from_="persons",
+            limit=10,
+            group_by="type",
+        )
+        assert can_use_streaming(query) is False
 
 
 # =============================================================================
@@ -594,20 +654,56 @@ class TestQueryExecutor:
     @pytest.mark.req("QUERY-EXEC-005")
     @pytest.mark.asyncio
     async def test_reports_progress_callbacks(
-        self, mock_client: AsyncMock, mock_service: AsyncMock, simple_plan: ExecutionPlan
+        self, mock_client: AsyncMock, mock_service: AsyncMock
     ) -> None:
         """Progress callbacks are invoked."""
         mock_client.persons = mock_service
 
+        # Use query with order_by to force non-streaming mode (tests step-by-step path)
+        query = Query(
+            from_="persons", limit=10, order_by=[OrderByClause(field="name", direction="asc")]
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch",
+                    entity="persons",
+                    description="Fetch persons",
+                    estimated_api_calls=1,
+                ),
+                PlanStep(
+                    step_id=1,
+                    operation="sort",
+                    description="Sort by name",
+                    depends_on=[0],
+                ),
+                PlanStep(
+                    step_id=2,
+                    operation="limit",
+                    description="Limit to 10",
+                    depends_on=[1],
+                ),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=10,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
         progress = MagicMock(spec=QueryProgressCallback)
 
         executor = QueryExecutor(mock_client, progress=progress)
-        await executor.execute(simple_plan)
+        await executor.execute(plan)
 
         # Should have called on_step_start for each step
-        assert progress.on_step_start.call_count == 2
+        assert progress.on_step_start.call_count == 3
         # Should have called on_step_complete for each step
-        assert progress.on_step_complete.call_count == 2
+        assert progress.on_step_complete.call_count == 3
 
     @pytest.mark.req("QUERY-EXEC-007")
     @pytest.mark.asyncio
@@ -3032,6 +3128,716 @@ class TestFetchErrors:
         executor = QueryExecutor(mock_client)
         with pytest.raises(QueryExecutionError, match="Unknown entity"):
             await executor.execute(plan)
+
+
+# =============================================================================
+# Pre-Include Helper Function Tests
+# =============================================================================
+
+
+class TestNeedsFullRecords:
+    """Tests for _needs_full_records() helper function."""
+
+    def test_returns_false_for_none(self) -> None:
+        """Returns False for None where clause."""
+        from affinity.cli.query.executor import _needs_full_records
+
+        assert _needs_full_records(None) is False
+
+    def test_returns_false_for_id_only(self) -> None:
+        """Returns False when only id field is referenced."""
+        from affinity.cli.query.executor import _needs_full_records
+
+        where = WhereClause(path="id", op="gt", value=0)
+        assert _needs_full_records(where) is False
+
+    def test_returns_true_for_non_id_field(self) -> None:
+        """Returns True when non-id field is referenced."""
+        from affinity.cli.query.executor import _needs_full_records
+
+        where = WhereClause(path="name", op="contains", value="Acme")
+        assert _needs_full_records(where) is True
+
+    def test_returns_true_for_nested_non_id(self) -> None:
+        """Returns True when non-id field is in compound clause."""
+        from affinity.cli.query.executor import _needs_full_records
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="id", op="gt", value=0),
+                WhereClause(path="name", op="contains", value="Inc"),
+            ]
+        )
+        assert _needs_full_records(where) is True
+
+
+class TestAnyQuantifierNeedsFullRecords:
+    """Tests for _any_quantifier_needs_full_records() helper function."""
+
+    def test_returns_false_for_none(self) -> None:
+        """Returns False for None where clause."""
+        from affinity.cli.query.executor import _any_quantifier_needs_full_records
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        assert _any_quantifier_needs_full_records(None, "companies", schema) is False
+
+    def test_returns_false_for_id_only_quantifier(self) -> None:
+        """Returns False when quantifier only references id."""
+        from affinity.cli.query.executor import _any_quantifier_needs_full_records
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="id", op="gt", value=0),
+            )
+        )
+        assert _any_quantifier_needs_full_records(where, "companies", schema) is False
+
+    def test_returns_true_for_non_id_quantifier(self) -> None:
+        """Returns True when quantifier references non-id field."""
+        from affinity.cli.query.executor import _any_quantifier_needs_full_records
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        assert _any_quantifier_needs_full_records(where, "companies", schema) is True
+
+    def test_checks_all_quantifiers_for_relationship(self) -> None:
+        """Checks ALL quantifiers for a relationship, not just first match."""
+        from affinity.cli.query.executor import _any_quantifier_needs_full_records
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        # First quantifier only needs id, second needs name
+        where = WhereClause(
+            and_=[
+                WhereClause(
+                    all_=QuantifierClause(
+                        path="companies",
+                        where=WhereClause(path="id", op="gt", value=0),
+                    )
+                ),
+                WhereClause(
+                    none_=QuantifierClause(
+                        path="companies",
+                        where=WhereClause(path="name", op="contains", value="Spam"),
+                    )
+                ),
+            ]
+        )
+        # Should return True because second quantifier needs "name"
+        assert _any_quantifier_needs_full_records(where, "companies", schema) is True
+
+    def test_ignores_other_relationships(self) -> None:
+        """Ignores quantifiers on other relationships."""
+        from affinity.cli.query.executor import _any_quantifier_needs_full_records
+        from affinity.cli.query.models import QuantifierClause
+        from affinity.cli.query.schema import SCHEMA_REGISTRY
+
+        schema = SCHEMA_REGISTRY["persons"]
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",  # Different relationship
+                where=WhereClause(path="name", op="contains", value="Inc"),
+            )
+        )
+        # Should return False for "opportunities" relationship
+        assert _any_quantifier_needs_full_records(where, "opportunities", schema) is False
+
+
+class TestPreIncludeExecution:
+    """Tests for _execute_filter_with_preinclude method."""
+
+    @pytest.fixture
+    def mock_client(self) -> AsyncMock:
+        """Create a mock AsyncAffinity client."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_simple_filter_skips_preinclude(self, mock_client: AsyncMock) -> None:
+        """Simple filter without quantifiers skips pre-include step."""
+        # Set up mock service using the helper function
+        records = [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ]
+        mock_service = MagicMock()
+        mock_service.all.return_value = create_mock_page_iterator(records)
+        mock_client.persons = mock_service
+
+        # Create a simple query without quantifiers
+        query = Query(from_="persons", where=WhereClause(path="name", op="eq", value="Alice"))
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(step_id=1, operation="filter", description="Filter"),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=10,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=True,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should have filtered down to just Alice
+        assert len(result.data) == 1
+        assert result.data[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_quantifier_filter_triggers_preinclude(self, mock_client: AsyncMock) -> None:
+        """Filter with quantifier triggers pre-include data fetch."""
+        from affinity.cli.query.executor import ExecutionContext
+        from affinity.cli.query.models import QuantifierClause
+
+        # Create query with quantifier
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                all_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="name", op="contains", value="Inc"),
+                )
+            ),
+        )
+
+        # Create execution context with existing records
+        ctx = ExecutionContext(
+            query=query,
+            records=[
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+            ],
+        )
+
+        # Mock the persons service for relationship fetching
+        mock_persons_service = AsyncMock()
+
+        async def mock_get_associated_company_ids(person_id: int) -> list[int]:
+            if person_id == 1:
+                return [101, 102]  # Alice has 2 companies
+            return []  # Bob has no companies
+
+        mock_persons_service.get_associated_company_ids = mock_get_associated_company_ids
+        mock_client.persons = mock_persons_service
+
+        # Mock companies service for batch fetch
+        mock_companies_service = AsyncMock()
+
+        async def mock_get(company_id: int):
+            result = MagicMock()
+            result.model_dump = MagicMock(
+                return_value={"id": company_id, "name": f"Company {company_id} Inc"}
+            )
+            return result
+
+        mock_companies_service.get = mock_get
+        mock_client.companies = mock_companies_service
+
+        executor = QueryExecutor(mock_client)
+
+        # Create a mock PlanStep for the filter operation
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+
+        # Execute the filter with pre-include
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Alice should match (all her companies have "Inc" in name)
+        # Bob should match too (vacuous truth - no companies)
+        assert len(ctx.records) == 2
+
+        # Verify relationship data was populated
+        assert "companies" in ctx.relationship_data
+        assert 1 in ctx.relationship_data["companies"]  # Alice's data
+
+
+# =============================================================================
+# Integration Tests for IDs-Only Upgrade
+# =============================================================================
+
+
+class TestIDsOnlyUpgrade:
+    """Tests for IDs-only relationship upgrade to full records.
+
+    When a relationship method returns only IDs (e.g., get_associated_company_ids),
+    but the quantifier's WHERE clause filters on other fields (e.g., name),
+    the executor must "upgrade" by batch-fetching full records.
+    """
+
+    @pytest.fixture
+    def mock_client(self) -> AsyncMock:
+        """Create a mock AsyncAffinity client."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_ids_only_no_upgrade_for_count(self, mock_client: AsyncMock) -> None:
+        """_count queries don't need full records, just counts."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+
+        # Set up mock persons service returning IDs
+        mock_persons = AsyncMock()
+        mock_persons.get_associated_company_ids = AsyncMock(return_value=[101, 102])
+        mock_client.persons = mock_persons
+
+        # Don't set up companies.get - if called, test will fail
+        mock_client.companies = MagicMock(spec=[])  # No 'get' method
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(path="companies._count", op="gte", value=1),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[{"id": 1, "name": "Alice"}],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        # Should NOT raise - doesn't need to batch fetch full records
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Count is 2 >= 1, so Alice should pass
+        assert len(ctx.records) == 1
+        assert ctx.relationship_counts.get("companies", {}).get(1) == 2
+
+    @pytest.mark.asyncio
+    async def test_ids_only_upgrades_for_property_filter(self, mock_client: AsyncMock) -> None:
+        """When filtering on properties, IDs must be upgraded to full records."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Set up mock persons service returning IDs only
+        mock_persons = AsyncMock()
+        mock_persons.get_associated_company_ids = AsyncMock(return_value=[101, 102])
+        mock_client.persons = mock_persons
+
+        # Set up mock companies service for batch fetch
+        mock_companies = AsyncMock()
+
+        async def mock_get(company_id: int):
+            result = MagicMock()
+            if company_id == 101:
+                result.model_dump = MagicMock(return_value={"id": 101, "name": "Acme Inc"})
+            else:
+                result.model_dump = MagicMock(return_value={"id": 102, "name": "Tech Corp"})
+            return result
+
+        mock_companies.get = mock_get
+        mock_client.companies = mock_companies
+
+        # Query filters on 'name' which isn't in IDs-only response
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                all_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="name", op="contains", value="Inc"),
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[{"id": 1, "name": "Alice"}],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Only Acme Inc has "Inc", so all_ should return False (Tech Corp doesn't match)
+        assert len(ctx.records) == 0  # Alice filtered out
+
+    @pytest.mark.asyncio
+    async def test_ids_only_no_upgrade_for_id_filter(self, mock_client: AsyncMock) -> None:
+        """Filtering only on 'id' doesn't need full records."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Set up mock persons service returning IDs only
+        mock_persons = AsyncMock()
+        mock_persons.get_associated_company_ids = AsyncMock(return_value=[101, 102])
+        mock_client.persons = mock_persons
+
+        # Don't set up companies.get - shouldn't be called
+        mock_client.companies = MagicMock(spec=[])
+
+        # Query filters only on 'id' which IS in IDs-only response
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                all_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="id", op="gt", value=100),
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[{"id": 1, "name": "Alice"}],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        # Should NOT raise - doesn't need batch fetch
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Both companies have id > 100, so all_ returns True
+        assert len(ctx.records) == 1
+
+    @pytest.mark.asyncio
+    async def test_multiple_quantifiers_mixed_fields_upgrades(self, mock_client: AsyncMock) -> None:
+        """Multiple quantifiers on same rel: one needs id, one needs name -> upgrade.
+
+        CRITICAL TEST: This catches the bug where only the first quantifier's
+        where clause was checked. The second quantifier needs 'name' field,
+        so full records must be fetched.
+        """
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Set up mock persons service returning IDs only
+        mock_persons = AsyncMock()
+        mock_persons.get_associated_company_ids = AsyncMock(return_value=[101, 102])
+        mock_client.persons = mock_persons
+
+        # Set up mock companies service for batch fetch
+        mock_companies = AsyncMock()
+
+        async def mock_get(company_id: int):
+            result = MagicMock()
+            if company_id == 101:
+                result.model_dump = MagicMock(return_value={"id": 101, "name": "Acme Inc"})
+            else:
+                result.model_dump = MagicMock(return_value={"id": 102, "name": "Good Corp"})
+            return result
+
+        mock_companies.get = mock_get
+        mock_client.companies = mock_companies
+
+        # Query has TWO quantifiers on companies:
+        # - First filters only on 'id' (wouldn't need upgrade alone)
+        # - Second filters on 'name' (needs upgrade)
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                and_=[
+                    WhereClause(
+                        all_=QuantifierClause(
+                            path="companies",
+                            where=WhereClause(path="id", op="gt", value=0),
+                        )
+                    ),
+                    WhereClause(
+                        none_=QuantifierClause(
+                            path="companies",
+                            where=WhereClause(path="name", op="contains", value="Spam"),
+                        )
+                    ),
+                ]
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[{"id": 1, "name": "Alice"}],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # All companies have id > 0 (passes all_)
+        # No companies have "Spam" in name (passes none_)
+        # Alice should pass both conditions
+        assert len(ctx.records) == 1
+
+        # Verify full records were fetched (have 'name' field)
+        company_data = ctx.relationship_data.get("companies", {}).get(1, [])
+        assert len(company_data) == 2
+        assert all("name" in c for c in company_data)
+
+
+# =============================================================================
+# Integration Tests for Quantifier Execution
+# =============================================================================
+
+
+class TestQuantifierIntegration:
+    """End-to-end tests for quantifier query execution."""
+
+    @pytest.fixture
+    def mock_client(self) -> AsyncMock:
+        """Create a mock AsyncAffinity client."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_all_quantifier_filters_correctly(self, mock_client: AsyncMock) -> None:
+        """all_ quantifier correctly filters based on all related items."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Set up mock with two persons: Alice and Bob
+        # Alice: all companies have ".com" domain
+        # Bob: one company has ".org" domain
+        mock_persons = AsyncMock()
+
+        async def mock_get_companies(person_id: int) -> list[int]:
+            if person_id == 1:  # Alice
+                return [101, 102]
+            return [103, 104]  # Bob
+
+        mock_persons.get_associated_company_ids = mock_get_companies
+        mock_client.persons = mock_persons
+
+        # Set up companies
+        mock_companies = AsyncMock()
+
+        async def mock_get(company_id: int):
+            result = MagicMock()
+            domains = {
+                101: "acme.com",
+                102: "tech.com",
+                103: "good.com",
+                104: "nonprofit.org",  # Bob has this - doesn't match ".com"
+            }
+            result.model_dump = MagicMock(
+                return_value={"id": company_id, "domain": domains[company_id]}
+            )
+            return result
+
+        mock_companies.get = mock_get
+        mock_client.companies = mock_companies
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                all_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="domain", op="contains", value=".com"),
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+            ],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Only Alice passes - all her companies have .com
+        # Bob fails - nonprofit.org doesn't contain .com
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_none_quantifier_filters_correctly(self, mock_client: AsyncMock) -> None:
+        """none_ quantifier correctly filters based on no related items matching."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Alice: no companies with "spam" in name
+        # Bob: one company with "spam" in name
+        mock_persons = AsyncMock()
+
+        async def mock_get_companies(person_id: int) -> list[int]:
+            return [101] if person_id == 1 else [102]
+
+        mock_persons.get_associated_company_ids = mock_get_companies
+        mock_client.persons = mock_persons
+
+        mock_companies = AsyncMock()
+
+        async def mock_get(company_id: int):
+            result = MagicMock()
+            names = {
+                101: "Acme Corp",
+                102: "Spam Inc",  # Bob's company
+            }
+            result.model_dump = MagicMock(
+                return_value={"id": company_id, "name": names[company_id]}
+            )
+            return result
+
+        mock_companies.get = mock_get
+        mock_client.companies = mock_companies
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                none_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="name", op="contains", value="Spam"),
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+            ],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Alice passes - no spam companies
+        # Bob fails - has "Spam Inc"
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_exists_with_filter(self, mock_client: AsyncMock) -> None:
+        """exists_ with where clause correctly filters."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import ExistsClause
+
+        # Alice: has email interaction
+        # Bob: has call interaction only
+        mock_persons = AsyncMock()
+        mock_client.persons = mock_persons
+
+        mock_interactions = AsyncMock()
+
+        async def mock_list(**kwargs):
+            person_id = kwargs.get("person_id")
+            result = MagicMock()
+            if person_id == 1:  # Alice
+                item = MagicMock()
+                item.model_dump = MagicMock(return_value={"id": 1, "type": "email"})
+                result.data = [item]
+            else:  # Bob
+                item = MagicMock()
+                item.model_dump = MagicMock(return_value={"id": 2, "type": "call"})
+                result.data = [item]
+            return result
+
+        mock_interactions.list = mock_list
+        mock_client.interactions = mock_interactions
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                exists_=ExistsClause(
+                    **{
+                        "from": "interactions",
+                        "where": {"path": "type", "op": "eq", "value": "email"},
+                    }
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+            ],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Only Alice has email interaction
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_count_filter(self, mock_client: AsyncMock) -> None:
+        """_count pseudo-field correctly counts related items."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+
+        # Alice: 3 companies
+        # Bob: 1 company
+        mock_persons = AsyncMock()
+
+        async def mock_get_companies(person_id: int) -> list[int]:
+            return [101, 102, 103] if person_id == 1 else [104]
+
+        mock_persons.get_associated_company_ids = mock_get_companies
+        mock_client.persons = mock_persons
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(path="companies._count", op="gte", value=2),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+            ],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Alice has 3 >= 2, Bob has 1 < 2
+        assert len(ctx.records) == 1
+        assert ctx.records[0]["name"] == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_vacuous_truth_for_empty_relationship(self, mock_client: AsyncMock) -> None:
+        """all_ returns True for records with no related items (vacuous truth)."""
+        from affinity.cli.query.executor import ExecutionContext, QueryExecutor
+        from affinity.cli.query.models import QuantifierClause
+
+        # Alice: no companies
+        mock_persons = AsyncMock()
+        mock_persons.get_associated_company_ids = AsyncMock(return_value=[])
+        mock_client.persons = mock_persons
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(
+                all_=QuantifierClause(
+                    path="companies",
+                    where=WhereClause(path="name", op="contains", value="Inc"),
+                )
+            ),
+        )
+        ctx = ExecutionContext(
+            query=query,
+            records=[{"id": 1, "name": "Alice"}],
+        )
+
+        step = PlanStep(step_id=1, operation="filter", description="Filter")
+        executor = QueryExecutor(mock_client)
+
+        await executor._execute_filter_with_preinclude(step, ctx)
+
+        # Alice passes - vacuous truth (no companies to fail the condition)
+        assert len(ctx.records) == 1
 
 
 # =============================================================================

@@ -180,7 +180,7 @@ All items in collection must match:
 ```json
 {
   "all_": {
-    "over": "tags",
+    "path": "tags",
     "where": { "path": ".", "op": "starts_with", "value": "priority" }
   }
 }
@@ -193,7 +193,7 @@ No items in collection may match:
 ```json
 {
   "none_": {
-    "over": "tags",
+    "path": "tags",
     "where": { "path": ".", "op": "eq", "value": "spam" }
   }
 }
@@ -461,3 +461,76 @@ Included data appears in results:
 - `having` requires `aggregate`
 - `limit` must be non-negative
 - Maximum 10,000 records per query
+
+## Performance Considerations
+
+### Quantifier Queries on Large Databases
+
+The `all_`, `none_`, `exists_`, and `_count` operators require fetching
+relationship data for each record. This causes N+1 API calls, which can
+be very slow on large databases.
+
+| Database Size | N+1 API Calls | Time @ 30 req/s | Verdict |
+|---------------|---------------|-----------------|---------|
+| 100 records | 100 | ~3 seconds | ✅ Usable |
+| 1,000 records | 1,000 | ~33 seconds | ⚠️ Slow |
+| 10,000 records | 10,000 | ~5.5 minutes | ❌ Painful |
+
+**Important**: Unbounded queries (from `persons`, `companies`, or `opportunities`)
+with quantifier filters require explicit `--max-records` to prevent accidentally
+running very long queries.
+
+### Recommended Patterns
+
+1. **Start from listEntries** (bounded by list size):
+   ```json
+   {
+     "from": "listEntries",
+     "where": {
+       "and": [
+         {"path": "listId", "op": "eq", "value": 12345},
+         {"path": "entity.companies._count", "op": "gte", "value": 2}
+       ]
+     }
+   }
+   ```
+
+2. **Add pre-filters** to reduce dataset first:
+   ```json
+   {
+     "from": "companies",
+     "where": {
+       "and": [
+         {"path": "domain", "op": "contains", "value": "example"},
+         {"path": "people._count", "op": "gte", "value": 2}
+       ]
+     },
+     "limit": 10
+   }
+   ```
+   Then run with: `xaffinity query --file query.json --max-records 100`
+
+3. **Use --max-records** for exploration:
+   ```bash
+   xaffinity query --query '...' --max-records 100
+   ```
+
+### Lazy Loading Optimization
+
+When a query has both cheap filters (local field comparisons) and expensive
+filters (quantifiers), the engine automatically applies cheap filters first
+to reduce the dataset before making N+1 API calls. This can dramatically
+reduce execution time.
+
+### Using Dry-Run
+
+Always preview expensive queries with `--dry-run`:
+
+```bash
+xaffinity query --file query.json --dry-run
+```
+
+The dry-run output shows:
+- Estimated API calls (or "UNBOUNDED" for unbounded quantifier queries)
+- Whether `--max-records` is required
+- Lazy loading optimization status

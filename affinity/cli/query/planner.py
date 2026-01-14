@@ -10,8 +10,15 @@ from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING
 
 from .exceptions import QueryValidationError
+from .filters import partition_where, requires_relationship_data
 from .models import ExecutionPlan, PlanStep, Query, WhereClause
-from .schema import RelationshipDef, get_entity_schema, get_relationship
+from .schema import (
+    UNBOUNDED_ENTITIES,
+    RelationshipDef,
+    find_relationship_by_target,
+    get_entity_schema,
+    get_relationship,
+)
 
 if TYPE_CHECKING:
     pass
@@ -126,16 +133,69 @@ class QueryPlanner:
         step_id += 1
 
         # Step 2: Client-side filter (if WHERE clause and no pushdown)
+        # Track required_rels for unbounded query detection
+        filter_required_rels: set[str] = set()
         if query.where is not None:
+            # Check if filter requires relationship data (quantifiers, exists, _count)
+            required_rels = requires_relationship_data(query.where)
+            filter_required_rels = required_rels  # Store for unbounded check later
+            filter_api_calls = 0
+            filter_warnings: list[str] = []
+
+            # Check for lazy loading optimization opportunity
+            cheap_filter, expensive_filter = partition_where(query.where, query.from_)
+            has_lazy_loading = cheap_filter is not None and expensive_filter is not None
+
+            if required_rels and entity_schema:
+                # For quantifier/exists/_count filters, we must fetch relationship data
+                # for filtered records. With lazy loading, we pre-filter first to reduce N+1.
+                base_estimate = ESTIMATED_ENTITY_COUNTS.get(query.from_, DEFAULT_ENTITY_COUNT)
+
+                if has_lazy_loading:
+                    # Lazy loading: cheap filter runs first, reducing records before N+1
+                    # Estimate ~50% reduction from cheap filter (heuristic)
+                    records_before_n_plus_1 = min(
+                        int(base_estimate * 0.5),  # Post cheap-filter estimate
+                        self.max_records,
+                    )
+                    recommendations.append(
+                        f"Lazy loading enabled: cheap filters run first, "
+                        f"reducing N+1 calls from ~{base_estimate} to ~{records_before_n_plus_1}"
+                    )
+                else:
+                    # No lazy loading: all records need N+1 before filtering
+                    records_before_n_plus_1 = min(base_estimate, self.max_records)
+
+                # Estimate N+1 API calls for each required relationship
+                for rel_ref in required_rels:
+                    # Try direct relationship name first
+                    rel_name = rel_ref
+                    if rel_ref not in (entity_schema.relationships or {}):
+                        # Try to find by target entity (for exists_ clauses)
+                        rel_name = find_relationship_by_target(entity_schema, rel_ref) or rel_ref
+
+                    # Each record requires 1 API call per relationship
+                    rel_calls = records_before_n_plus_1
+                    filter_api_calls += rel_calls
+                    filter_warnings.append(
+                        f"Pre-fetching {rel_name} requires ~{rel_calls} API calls "
+                        f"(1 per record for quantifier/exists/_count filter)"
+                    )
+
+            filter_description = self._describe_where(query.where)
+            if has_lazy_loading:
+                filter_description += " [lazy loading]"
+
             filter_step = PlanStep(
                 step_id=step_id,
                 operation="filter",
-                description=self._describe_where(query.where),
+                description=filter_description,
                 entity=query.from_,
-                estimated_api_calls=0,
+                estimated_api_calls=filter_api_calls,
                 estimated_records=self._estimate_filtered_records(estimated_records, query.where),
-                is_client_side=True,
+                is_client_side=filter_api_calls == 0,  # Only client-side if no API calls
                 depends_on=[0],
+                warnings=filter_warnings,
             )
             steps.append(filter_step)
             step_id += 1
@@ -233,14 +293,30 @@ class QueryPlanner:
             step_id += 1
 
         # Calculate totals
-        total_api_calls = sum(s.estimated_api_calls for s in steps)
+        total_api_calls: int | str = sum(s.estimated_api_calls for s in steps)
         estimated_fetched = steps[0].estimated_records
 
+        # Check for unbounded quantifier queries
+        requires_explicit_max_records = False
+        if filter_required_rels:
+            unbounded_estimate, unbounded_warnings, requires_explicit = (
+                self._check_unbounded_quantifier(query, filter_required_rels)
+            )
+            if requires_explicit:
+                total_api_calls = unbounded_estimate  # "UNBOUNDED"
+                requires_explicit_max_records = True
+            warnings.extend(unbounded_warnings)
+
         # Generate warnings and recommendations
-        has_expensive = total_api_calls >= EXPENSIVE_OPERATION_THRESHOLD
+        has_expensive = (
+            isinstance(total_api_calls, int) and total_api_calls >= EXPENSIVE_OPERATION_THRESHOLD
+        )
         requires_full_scan = not fetch_step.filter_pushdown and query.where is not None
 
-        if total_api_calls >= VERY_EXPENSIVE_OPERATION_THRESHOLD:
+        if (
+            isinstance(total_api_calls, int)
+            and total_api_calls >= VERY_EXPENSIVE_OPERATION_THRESHOLD
+        ):
             warnings.append(
                 f"This query will make approximately {total_api_calls} API calls. "
                 "Consider adding filters or reducing the scope."
@@ -274,6 +350,7 @@ class QueryPlanner:
             has_expensive_operations=has_expensive,
             requires_full_scan=requires_full_scan,
             version=query.version or "1.0",
+            requires_explicit_max_records=requires_explicit_max_records,
         )
 
     def get_execution_levels(self, plan: ExecutionPlan) -> list[list[PlanStep]]:
@@ -376,6 +453,37 @@ class QueryPlanner:
             return "Client-side filter: NOT condition"
 
         return "Client-side filter"
+
+    def _check_unbounded_quantifier(
+        self, query: Query, required_rels: set[str]
+    ) -> tuple[str | int, list[str], bool]:
+        """Generate warnings and estimate for unbounded quantifier queries.
+
+        Args:
+            query: The query being planned
+            required_rels: Set of relationships required by quantifier filters
+
+        Returns:
+            (estimate, warnings, requires_explicit) where:
+            - estimate is "UNBOUNDED" (str) or an integer
+            - warnings is list of warning messages
+            - requires_explicit is True if query needs explicit --max-records
+        """
+        warnings: list[str] = []
+
+        if query.from_ in UNBOUNDED_ENTITIES and required_rels:
+            # Don't fake an estimate - be honest
+            warnings.append(
+                f"⚠️  UNBOUNDED: '{query.from_}' count unknown. "
+                f"Could be 10K-100K+ API calls. "
+                f"Use --max-records or start from listEntries."
+            )
+            return ("UNBOUNDED", warnings, True)
+
+        # Bounded entity - max_records is the upper bound for N+1 calls
+        # Each record requires one relationship fetch per required relationship
+        estimated_calls = self.max_records * len(required_rels)
+        return (estimated_calls, warnings, False)
 
     def _analyze_filter_pushdown(self, where: WhereClause) -> str | None:
         """Analyze if filter can be pushed to server-side.
