@@ -62,9 +62,10 @@ python tests/integration/test_sdk_writes.py --cleanup-orphans
 
 | Module | Description | Side Effects |
 |--------|-------------|--------------|
-| `test_sdk_reads.py` | Read-only API tests | None |
-| `test_sdk_writes.py` | Write API tests (standalone script) | Creates/deletes test data |
-| `test_sdk_writes_runner.py` | Pytest wrapper for write tests | Creates/deletes test data |
+| `test_sdk_reads.py` | Read-only SDK API tests | None |
+| `test_sdk_writes.py` | SDK write tests (standalone script) | Creates/deletes test data |
+| `test_sdk_writes_runner.py` | Pytest wrapper for SDK write tests | Creates/deletes test data |
+| `test_cli_writes.py` | CLI write workflow tests | Creates/deletes test data |
 | `conftest.py` | Shared fixtures (sandbox client, API key) | None |
 
 ## What's Tested
@@ -85,7 +86,7 @@ python tests/integration/test_sdk_writes.py --cleanup-orphans
 | Webhooks | `list()` |
 | Field Values | `list()` with person/company filters |
 
-### Write Tests (`test_sdk_writes.py`)
+### SDK Write Tests (`test_sdk_writes.py`)
 
 | Group | Tests |
 |-------|-------|
@@ -99,12 +100,27 @@ python tests/integration/test_sdk_writes.py --cleanup-orphans
 | 8. Webhooks | Webhook create/update/delete |
 | 9. Beta | Person and company merge (requires `--include-beta`) |
 
+### CLI Write Tests (`test_cli_writes.py`)
+
+Targeted tests for CLI write workflows that combine multiple operations:
+
+| Test Class | Workflow |
+|------------|----------|
+| `TestPersonCRUDWorkflow` | Person create → get → update → delete |
+| `TestCompanyCRUDWorkflow` | Company create → get → update → delete |
+| `TestNoteCRUDWorkflow` | Create person → attach note → update → delete |
+| `TestListEntryWorkflow` | Create person → add to list → get entry → delete |
+| `TestReminderCRUDWorkflow` | Create person → create reminder → update → delete |
+| `TestCLIOutputFormats` | Verify JSON output structure for create/error |
+
+CLI tests use `CLI_INTEGRATION_TEST_` prefix for test data identification.
+
 ## Notes
 
 - **Lists cannot be deleted** via the API, so test lists will remain in your sandbox
 - **V1→V2 eventual consistency**: Tests include appropriate delays and retries to handle the API's eventual consistency between V1 (writes) and V2 (reads)
 - **File deletion** is not supported by the API; uploaded test files will remain
-- **Test data prefix**: Write tests use `SDK_WRITE_TEST_` prefix for easy identification
+- **Test data prefix**: SDK write tests use `SDK_WRITE_TEST_` prefix, CLI tests use `CLI_INTEGRATION_TEST_`
 
 ## Troubleshooting
 
