@@ -7,11 +7,13 @@ Uses V2 API for reading, V1 API for writing.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
+import time
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from ..exceptions import BetaEndpointDisabledError
+from ..exceptions import BetaEndpointDisabledError, NotFoundError
 from ..filters import FilterExpression
 from ..models.entities import (
     FieldMetadata,
@@ -275,6 +277,7 @@ class PersonService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
+        retries: int = 0,
     ) -> Person:
         """
         Get a single person by ID.
@@ -287,12 +290,63 @@ class PersonService:
                 This saves one API call when you need both person info and field values.
                 Note: V1 response is ~2-3x larger than V2; consider this when fetching
                 many persons. V1 may include field values for deleted fields.
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             Person object with requested field data.
             When include_field_values=True, the Person will have a `field_values`
             attribute containing the list of FieldValue objects.
+
+        Raises:
+            NotFoundError: If person does not exist after all retries.
         """
+        return self._get_with_retry(
+            person_id,
+            field_ids=field_ids,
+            field_types=field_types,
+            include_field_values=include_field_values,
+            retries=retries,
+        )
+
+    def _get_with_retry(
+        self,
+        person_id: PersonId,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
+        retries: int = 0,
+    ) -> Person:
+        """Internal: get with retry logic."""
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                return self._get_impl(
+                    person_id,
+                    field_ids=field_ids,
+                    field_types=field_types,
+                    include_field_values=include_field_values,
+                )
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
+
+    def _get_impl(
+        self,
+        person_id: PersonId,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
+    ) -> Person:
+        """Internal: actual get implementation."""
         if include_field_values:
             # Use V1 API which returns field values embedded
             data = self._client.get(f"/persons/{person_id}", v1=True)
@@ -658,6 +712,14 @@ class PersonService:
         """
         Create a new person.
 
+        Note:
+            Creates use V1 API, while reads use V2 API. Due to eventual consistency
+            between V1 and V2, a `get()` call immediately after `create()` may return
+            404 NotFoundError. If you need to read immediately after creation, either:
+            - Use the Person object returned by this method (it contains the created data)
+            - Add a short delay (100-500ms) before calling get()
+            - Implement retry logic in your application
+
         Raises:
             ValidationError: If email conflicts with existing person
         """
@@ -910,6 +972,7 @@ class AsyncPersonService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
+        retries: int = 0,
     ) -> Person:
         """
         Get a single person by ID.
@@ -922,12 +985,63 @@ class AsyncPersonService:
                 This saves one API call when you need both person info and field values.
                 Note: V1 response is ~2-3x larger than V2; consider this when fetching
                 many persons. V1 may include field values for deleted fields.
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             Person object with requested field data.
             When include_field_values=True, the Person will have a `field_values`
             attribute containing the list of FieldValue objects.
+
+        Raises:
+            NotFoundError: If person does not exist after all retries.
         """
+        return await self._get_with_retry(
+            person_id,
+            field_ids=field_ids,
+            field_types=field_types,
+            include_field_values=include_field_values,
+            retries=retries,
+        )
+
+    async def _get_with_retry(
+        self,
+        person_id: PersonId,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
+        retries: int = 0,
+    ) -> Person:
+        """Internal: get with retry logic."""
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                return await self._get_impl(
+                    person_id,
+                    field_ids=field_ids,
+                    field_types=field_types,
+                    include_field_values=include_field_values,
+                )
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
+
+    async def _get_impl(
+        self,
+        person_id: PersonId,
+        *,
+        field_ids: Sequence[AnyFieldId] | None = None,
+        field_types: Sequence[FieldType] | None = None,
+        include_field_values: bool = False,
+    ) -> Person:
+        """Internal: actual get implementation."""
         if include_field_values:
             # Use V1 API which returns field values embedded
             data = await self._client.get(f"/persons/{person_id}", v1=True)
@@ -1263,6 +1377,14 @@ class AsyncPersonService:
     async def create(self, data: PersonCreate) -> Person:
         """
         Create a new person.
+
+        Note:
+            Creates use V1 API, while reads use V2 API. Due to eventual consistency
+            between V1 and V2, a `get()` call immediately after `create()` may return
+            404 NotFoundError. If you need to read immediately after creation, either:
+            - Use the Person object returned by this method (it contains the created data)
+            - Add a short delay (100-500ms) before calling get()
+            - Implement retry logic in your application
 
         Raises:
             ValidationError: If email conflicts with existing person

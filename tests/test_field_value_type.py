@@ -54,6 +54,7 @@ def test_field_metadata_round_trips_unknown_value_type_as_open_enum() -> None:
 
 
 def test_field_metadata_normalizes_v1_numeric_value_type_codes() -> None:
+    # V1 code 7 = Ranked Dropdown (with colors), per V1 API docs
     meta = FieldMetadata.model_validate(
         {
             "id": "field-123",
@@ -62,11 +63,11 @@ def test_field_metadata_normalizes_v1_numeric_value_type_codes() -> None:
             "allows_multiple": False,
         }
     )
-    assert meta.value_type == FieldValueType.DROPDOWN
+    assert meta.value_type == FieldValueType.RANKED_DROPDOWN
     assert meta.value_type_raw == 7
 
     dumped = meta.model_dump(by_alias=True, mode="json")
-    assert dumped["valueType"] == "dropdown"
+    assert dumped["valueType"] == "ranked-dropdown"
 
 
 def test_to_v1_value_type_code_maps_known_types() -> None:

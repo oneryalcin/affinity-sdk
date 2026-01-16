@@ -19,6 +19,10 @@ Example: companies
 - `client.companies.get(...)` uses V2
 - `client.companies.create(...)` uses V1
 
+### Eventual consistency caveat
+
+Because writes go to V1 and reads come from V2, there can be a brief delay (typically 100-500ms) before newly created entities appear in V2. A `get()` immediately after `create()` may return 404. See [V1→V2 eventual consistency](errors-and-retries.md#v1v2-eventual-consistency) for solutions.
+
 ## Beta endpoints
 
 Some V2 endpoints are gated behind `enable_beta_endpoints=True`. If you call a beta endpoint without opt-in, the SDK raises `BetaEndpointDisabledError`.

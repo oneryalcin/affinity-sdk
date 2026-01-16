@@ -7,11 +7,13 @@ is available via list entries.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
+import time
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
-from ..exceptions import AffinityError
+from ..exceptions import AffinityError, NotFoundError
 from ..models.entities import (
     Company,
     Opportunity,
@@ -59,18 +61,35 @@ class OpportunityService:
     # Read Operations (V2 API by default)
     # =========================================================================
 
-    def get(self, opportunity_id: OpportunityId) -> Opportunity:
+    def get(self, opportunity_id: OpportunityId, *, retries: int = 0) -> Opportunity:
         """
         Get a single opportunity by ID.
 
         Args:
             opportunity_id: The opportunity ID
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             The opportunity representation returned by v2 (may be partial).
+
+        Raises:
+            NotFoundError: If opportunity does not exist after all retries.
         """
-        data = self._client.get(f"/opportunities/{opportunity_id}")
-        return Opportunity.model_validate(data)
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                data = self._client.get(f"/opportunities/{opportunity_id}")
+                return Opportunity.model_validate(data)
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
 
     def get_details(self, opportunity_id: OpportunityId) -> Opportunity:
         """
@@ -697,18 +716,35 @@ class AsyncOpportunityService:
     def __init__(self, client: AsyncHTTPClient):
         self._client = client
 
-    async def get(self, opportunity_id: OpportunityId) -> Opportunity:
+    async def get(self, opportunity_id: OpportunityId, *, retries: int = 0) -> Opportunity:
         """
         Get a single opportunity by ID.
 
         Args:
             opportunity_id: The opportunity ID
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             The opportunity representation returned by v2 (may be partial).
+
+        Raises:
+            NotFoundError: If opportunity does not exist after all retries.
         """
-        data = await self._client.get(f"/opportunities/{opportunity_id}")
-        return Opportunity.model_validate(data)
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                data = await self._client.get(f"/opportunities/{opportunity_id}")
+                return Opportunity.model_validate(data)
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
 
     async def get_details(self, opportunity_id: OpportunityId) -> Opportunity:
         """

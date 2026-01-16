@@ -214,14 +214,18 @@ def test_list_service_list_all_get_fields_and_create_entry_helpers() -> None:
             "https://v2.example/v2/lists/10/list-entries/5/fields/field-1"
         ):
             payload = json.loads(request.content.decode("utf-8"))
-            assert payload == {"value": "y"}
+            # V2 API expects nested value structure: {"value": {"type": "...", "data": ...}}
+            assert payload == {"value": {"type": "text", "data": "y"}}
             return httpx.Response(200, json={"field-1": "y"}, request=request)
 
         if request.method == "PATCH" and url == httpx.URL(
             "https://v2.example/v2/lists/10/list-entries/5/fields"
         ):
             payload = json.loads(request.content.decode("utf-8"))
-            assert payload == {"operations": [{"fieldId": "field-1", "value": "y"}]}
+            assert payload == {
+                "operation": "update-fields",
+                "updates": [{"id": "field-1", "value": {"type": "text", "data": "y"}}],
+            }
             return httpx.Response(
                 200, json={"results": [{"fieldId": "field-1", "success": True}]}, request=request
             )
@@ -918,7 +922,10 @@ async def test_async_list_service_create_fields_and_entry_write_ops() -> None:
             "https://v2.example/v2/lists/11/list-entries/99/fields"
         ):
             payload = json.loads(request.content.decode("utf-8"))
-            assert payload == {"operations": [{"fieldId": "field-1", "value": "y"}]}
+            assert payload == {
+                "operation": "update-fields",
+                "updates": [{"id": "field-1", "value": {"type": "text", "data": "y"}}],
+            }
             return httpx.Response(
                 200,
                 json={"results": [{"fieldId": "field-1", "success": True}]},

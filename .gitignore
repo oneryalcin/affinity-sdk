@@ -58,3 +58,4 @@ tools/tmp_readonly_endpoint_syntax_suite.py
 tmp-scripts/set_primary_email_status.py
 test-output/
 CLAUDE.md
+.sandbox.env

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "affinity-sdk"
-version = "0.9.9"
+version = "0.9.10"
 description = "A modern, strongly-typed Python SDK for the Affinity CRM API"
 readme = "README.md"
 license = "MIT"
@@ -166,7 +166,8 @@ testpaths = ["tests"]
 # Keep local runs fast + debuggable:
 # - coverage can add significant overhead; CI runs coverage explicitly
 # - durations helps identify slow tests
-addopts = "-ra -q --import-mode=importlib --strict-config --strict-markers --durations=20"
+# Note: -m 'not integration' skips live API tests by default; run with: pytest -m integration
+addopts = "-ra -q --import-mode=importlib --strict-config --strict-markers --durations=20 -m 'not integration'"
 xfail_strict = true
 markers = [
     "contract: contract-style tests for SDK invariants",

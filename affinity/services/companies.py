@@ -7,11 +7,13 @@ Uses V2 API for reading, V1 API for writing.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
+import time
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from ..exceptions import BetaEndpointDisabledError
+from ..exceptions import BetaEndpointDisabledError, NotFoundError
 from ..filters import FilterExpression
 from ..models.entities import (
     Company,
@@ -214,6 +216,7 @@ class CompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
+        retries: int = 0,
     ) -> Company:
         """
         Get a single company by ID.
@@ -222,21 +225,38 @@ class CompanyService:
             company_id: The company ID
             field_ids: Specific field IDs to include
             field_types: Field types to include
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             Company object with requested field data
-        """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
 
-        data = self._client.get(
-            f"/companies/{company_id}",
-            params=params or None,
-        )
-        return Company.model_validate(data)
+        Raises:
+            NotFoundError: If company does not exist after all retries.
+        """
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                params: dict[str, Any] = {}
+                if field_ids:
+                    params["fieldIds"] = [str(field_id) for field_id in field_ids]
+                if field_types:
+                    params["fieldTypes"] = [field_type.value for field_type in field_types]
+
+                data = self._client.get(
+                    f"/companies/{company_id}",
+                    params=params or None,
+                )
+                return Company.model_validate(data)
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
 
     def get_associated_person_ids(
         self,
@@ -595,6 +615,14 @@ class CompanyService:
 
         Returns:
             Created company
+
+        Note:
+            Creates use V1 API, while reads use V2 API. Due to eventual consistency
+            between V1 and V2, a `get()` call immediately after `create()` may return
+            404 NotFoundError. If you need to read immediately after creation, either:
+            - Use the Company object returned by this method (it contains the created data)
+            - Add a short delay (100-500ms) before calling get()
+            - Implement retry logic in your application
         """
         payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
         if not data.person_ids:
@@ -853,6 +881,7 @@ class AsyncCompanyService:
         *,
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
+        retries: int = 0,
     ) -> Company:
         """
         Get a single company by ID.
@@ -861,18 +890,35 @@ class AsyncCompanyService:
             company_id: The company ID
             field_ids: Specific field IDs to include
             field_types: Field types to include
+            retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
+                Set to 2-3 if calling immediately after create() to handle V1→V2
+                eventual consistency lag.
 
         Returns:
             Company object with requested field data
-        """
-        params: dict[str, Any] = {}
-        if field_ids:
-            params["fieldIds"] = [str(field_id) for field_id in field_ids]
-        if field_types:
-            params["fieldTypes"] = [field_type.value for field_type in field_types]
 
-        data = await self._client.get(f"/companies/{company_id}", params=params or None)
-        return Company.model_validate(data)
+        Raises:
+            NotFoundError: If company does not exist after all retries.
+        """
+        last_error: NotFoundError | None = None
+        attempts = retries + 1  # retries=0 means 1 attempt
+
+        for attempt in range(attempts):
+            try:
+                params: dict[str, Any] = {}
+                if field_ids:
+                    params["fieldIds"] = [str(field_id) for field_id in field_ids]
+                if field_types:
+                    params["fieldTypes"] = [field_type.value for field_type in field_types]
+
+                data = await self._client.get(f"/companies/{company_id}", params=params or None)
+                return Company.model_validate(data)
+            except NotFoundError as e:
+                last_error = e
+                if attempt < attempts - 1:  # Don't sleep after last attempt
+                    await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        raise last_error  # type: ignore[misc]
 
     async def get_list_entries(
         self,
@@ -1206,6 +1252,14 @@ class AsyncCompanyService:
         Create a new company.
 
         Uses V1 API.
+
+        Note:
+            Creates use V1 API, while reads use V2 API. Due to eventual consistency
+            between V1 and V2, a `get()` call immediately after `create()` may return
+            404 NotFoundError. If you need to read immediately after creation, either:
+            - Use the Company object returned by this method (it contains the created data)
+            - Add a short delay (100-500ms) before calling get()
+            - Implement retry logic in your application
         """
         payload = data.model_dump(by_alias=True, mode="json", exclude_none=True)
         if not data.person_ids:

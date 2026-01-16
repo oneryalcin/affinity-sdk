@@ -388,14 +388,21 @@ class Opportunity(AffinityModel):
     def _preserve_fields_raw_before(cls, value: Any) -> Any:
         return _preserve_fields_raw(value)
 
-    @model_validator(mode="after")
-    def _mark_fields_not_requested_when_omitted(self) -> Opportunity:
-        if "fields" not in self.__pydantic_fields_set__:
-            self.fields.requested = False
-        return self
-
     # List entries
     list_entries: list[ListEntry] | None = Field(None, alias="listEntries")
+
+    @model_validator(mode="after")
+    def _post_validate(self) -> Opportunity:
+        # Mark fields as not requested when omitted
+        if "fields" not in self.__pydantic_fields_set__:
+            self.fields.requested = False
+
+        # Extract list_id from list_entries when not set directly
+        # (V1 API returns list_id in list_entries, not at top level)
+        if self.list_id is None and self.list_entries:
+            self.list_id = self.list_entries[0].list_id
+
+        return self
 
 
 class OpportunityCreate(AffinityModel):

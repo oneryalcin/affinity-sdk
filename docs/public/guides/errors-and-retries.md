@@ -61,7 +61,7 @@ The SDK retries some failures for safe reads (`GET`/`HEAD`), but production syst
 
 - **AuthenticationError (401), AuthorizationError (403)**: do not retry; fix credentials/permissions; alert immediately.
 - **ValidationError (400/422)**: do not retry; treat as a bug or bad input; log the response body snippet for debugging.
-- **NotFoundError (404)**: do not retry; treat as “missing” and handle at the business layer (or alert if it indicates data drift).
+- **NotFoundError (404)**: generally do not retry; treat as "missing" and handle at the business layer. **Exception**: see [V1→V2 eventual consistency](#v1v2-eventual-consistency) below for 404s immediately after create.
 - **RateLimitError (429)**: retry only after `retry_after` (when present), reduce concurrency, and consider queueing/batching to smooth bursts.
 - **Server errors (5xx) / transient network errors / timeouts**:
   - **Reads (`GET`/`HEAD`)**: retry with backoff (the SDK already does).
@@ -122,6 +122,60 @@ Common triggers:
 - Elevated 5xx/timeouts/network errors (provider outage or network problem).
 
 When alerting, include `e.diagnostics.request_id` (when present) to speed up support/debugging.
+
+## V1→V2 eventual consistency
+
+The SDK uses V1 API for writes (create/update/delete) and V2 API for reads (get/list). Due to eventual consistency between V1 and V2 backends, a `get()` call **immediately after** `create()` may return a 404 `NotFoundError` even though the entity was successfully created.
+
+This typically resolves within 100-500ms, but under load the delay can be longer.
+
+### Solutions
+
+**Option 1: Use the returned object (recommended)**
+
+The `create()` method returns the created entity - use it directly instead of re-fetching:
+
+```python
+person = client.persons.create(PersonCreate(first_name="Jane", last_name="Doe"))
+# Use person directly - no need to call get()
+print(person.id, person.first_name)
+```
+
+**Option 2: Use the `retries` parameter**
+
+The `get()` methods on `persons`, `companies`, and `opportunities` accept a `retries` parameter:
+
+```python
+person = client.persons.create(PersonCreate(first_name="Jane", last_name="Doe"))
+# Retry up to 3 times on 404 with exponential backoff
+fetched = client.persons.get(person.id, retries=3)
+```
+
+With `retries=3`, the SDK will retry up to 3 times on 404 with exponential backoff (0.5s, 1s, 1.5s).
+
+**Note**: The default is `retries=0` (fail fast). This is intentional - it keeps the SDK predictable and avoids hidden delays. Only use `retries > 0` when you specifically need to handle eventual consistency after writes.
+
+### Stale data after update
+
+A related issue: after calling `update()`, a subsequent `get()` may return **stale data** (the old values) even though the update succeeded. Unlike the 404 case, the request succeeds with `200 OK` but returns outdated information.
+
+The `retries` parameter doesn't help here because the request succeeds - it just returns stale data.
+
+**Solution: Trust the write response**
+
+The `update()` method returns the updated entity from V1 (strongly consistent). Use it directly:
+
+```python
+# Good: Use the response from update()
+updated_person = client.persons.update(person.id, PersonUpdate(first_name="Jane"))
+print(updated_person.first_name)  # "Jane" - immediate, from V1 response
+
+# Risky: Re-fetching may return stale data
+client.persons.update(person.id, PersonUpdate(first_name="Jane"))
+person = client.persons.get(person.id)  # May still show old name!
+```
+
+This applies to all `update()` methods: persons, companies, opportunities, notes, etc.
 
 ## Rate limits
 

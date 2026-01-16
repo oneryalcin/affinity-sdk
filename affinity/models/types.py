@@ -332,15 +332,21 @@ class FieldValueType(OpenStrEnum):
     @classmethod
     def _missing_(cls, value: object) -> OpenStrEnum:
         # Normalize known V1 numeric codes to canonical V2 strings.
+        # V1 API field value types :
+        #   0 = Person, 1 = Organization, 2 = Dropdown (simple),
+        #   3 = Number, 4 = Date, 5 = Location,
+        #   6 = Text (long text block), 7 = Ranked Dropdown (with colors),
+        #   10 = Filterable Text
         if isinstance(value, int):
             mapping: dict[int, FieldValueType] = {
                 0: cls.PERSON,
                 1: cls.COMPANY,
-                2: cls.TEXT,
+                2: cls.DROPDOWN,  # V1 "Dropdown" (simple, free text)
                 3: cls.NUMBER,
                 4: cls.DATETIME,
                 5: cls.LOCATION,
-                7: cls.DROPDOWN,
+                6: cls.TEXT,  # V1 "Text" (long text block)
+                7: cls.RANKED_DROPDOWN,  # V1 "Ranked Dropdown" (with colors)
                 10: cls.FILTERABLE_TEXT,
             }
             if value in mapping:
@@ -390,23 +396,28 @@ def to_v1_value_type_code(
             return raw
         return raw
 
+    # V1 API field value types :
+    #   0 = Person, 1 = Organization, 2 = Dropdown (simple),
+    #   3 = Number, 4 = Date, 5 = Location,
+    #   6 = Text (long text block), 7 = Ranked Dropdown (with colors),
+    #   10 = Filterable Text
     match value_type:
         case FieldValueType.PERSON | FieldValueType.PERSON_MULTI:
             return 0
         case FieldValueType.COMPANY | FieldValueType.COMPANY_MULTI:
             return 1
-        case FieldValueType.TEXT:
-            return 2
+        case FieldValueType.DROPDOWN | FieldValueType.DROPDOWN_MULTI:
+            return 2  # V1 "Dropdown" (simple, free text)
         case FieldValueType.NUMBER | FieldValueType.NUMBER_MULTI:
             return 3
         case FieldValueType.DATETIME:
             return 4
         case FieldValueType.LOCATION | FieldValueType.LOCATION_MULTI:
             return 5
-        case (
-            FieldValueType.DROPDOWN | FieldValueType.DROPDOWN_MULTI | FieldValueType.RANKED_DROPDOWN
-        ):
-            return 7
+        case FieldValueType.TEXT:
+            return 6  # V1 "Text" (long text block)
+        case FieldValueType.RANKED_DROPDOWN:
+            return 7  # V1 "Ranked Dropdown" (with colors)
         case FieldValueType.FILTERABLE_TEXT | FieldValueType.FILTERABLE_TEXT_MULTI:
             return 10
         case FieldValueType.INTERACTION:

@@ -415,7 +415,7 @@ class TestFieldMetadataModel:
             "id": "enriched-industry",
             "name": "Industry",
             "type": "enriched",
-            "valueType": 2,  # TEXT
+            "valueType": 2,  # DROPDOWN (simple, V1 code 2)
         }
         field = FieldMetadata.model_validate(data)
 
@@ -427,7 +427,7 @@ class TestFieldMetadataModel:
                 "id": "field-1",
                 "name": "Status",
                 "type": "list-specific",
-                "valueType": 7,  # DROPDOWN (v1 numeric)
+                "valueType": 7,  # RANKED_DROPDOWN (v1 numeric)
                 "allowsMultiple": False,
                 "dropdownOptions": [{"id": 10, "text": "Active"}],
             }

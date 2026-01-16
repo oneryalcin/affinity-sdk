@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import builtins
 import re
+import time
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from ..compare import normalize_value
-from ..exceptions import AffinityError, FilterParseError
+from ..exceptions import AffinityError, FilterParseError, NotFoundError
 from ..filters import FilterExpression
 from ..filters import parse as parse_filter
 from ..models.entities import (
@@ -41,6 +42,7 @@ from ..models.types import (
     AnyFieldId,
     CompanyId,
     FieldType,
+    FieldValueType,
     ListEntryId,
     ListId,
     ListType,
@@ -480,15 +482,27 @@ class ListEntryService:
 
         Used for list membership helpers to avoid enumerating an entire list.
         """
-        entries: builtins.list[ListEntry] = []
-        data = self._client.get(path)
+        # Retry on 404 to handle V1→V2 propagation delay after recent writes
+        last_error: NotFoundError | None = None
+        for attempt in range(3):
+            try:
+                entries: builtins.list[ListEntry] = []
+                data = self._client.get(path)
 
-        while True:
-            entries.extend(_safe_model_validate(ListEntry, item) for item in data.get("data", []))
-            pagination = _safe_model_validate(PaginationInfo, data.get("pagination", {}))
-            if not pagination.next_cursor:
-                break
-            data = self._client.get_url(pagination.next_cursor)
+                while True:
+                    entries.extend(
+                        _safe_model_validate(ListEntry, item) for item in data.get("data", [])
+                    )
+                    pagination = _safe_model_validate(PaginationInfo, data.get("pagination", {}))
+                    if not pagination.next_cursor:
+                        break
+                    data = self._client.get_url(pagination.next_cursor)
+                return entries
+            except NotFoundError as e:
+                last_error = e
+                if attempt < 2:  # Don't sleep after last attempt
+                    time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s backoff
+        raise last_error  # type: ignore[misc]
 
         return entries
 
@@ -995,15 +1009,25 @@ class ListEntryService:
         entry_id: ListEntryId,
         field_id: AnyFieldId,
     ) -> Any:
-        """Get a single field value."""
+        """
+        Get a single field value.
+
+        Returns the unwrapped value data. V2 API returns values in nested format
+        like {"type": "text", "data": "value"} - this method extracts just the "data" part.
+        """
         data = self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}")
-        return data.get("value")
+        value = data.get("value")
+        # V2 API returns nested {"type": "...", "data": ...} - extract the data
+        if isinstance(value, dict) and "data" in value:
+            return value["data"]
+        return value
 
     def update_field_value(
         self,
         entry_id: ListEntryId,
         field_id: AnyFieldId,
         value: Any,
+        value_type: FieldValueType | str | None = None,
     ) -> FieldValues:
         """
         Update a single field value on a list entry.
@@ -1012,13 +1036,27 @@ class ListEntryService:
             entry_id: The list entry
             field_id: The field to update
             value: New value (type depends on field type)
+            value_type: The field value type (e.g., FieldValueType.TEXT).
+                Required by the V2 API. If not provided, attempts to infer
+                from the value (str→text, int/float→number, datetime→datetime).
 
         Returns:
             Updated field value data
         """
+        # Determine the type string for the API
+        if value_type is not None:
+            type_str = value_type.value if isinstance(value_type, FieldValueType) else value_type
+        elif isinstance(value, str):
+            type_str = "text"
+        elif isinstance(value, (int, float)):
+            type_str = "number"
+        else:
+            # Default to text for unknown types
+            type_str = "text"
+
         result = self._client.post(
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}",
-            json={"value": value},
+            json={"value": {"type": type_str, "data": value}},
         )
         return _safe_model_validate(FieldValues, result)
 
@@ -1034,18 +1072,31 @@ class ListEntryService:
 
         Args:
             entry_id: The list entry
-            updates: Dict mapping field IDs to new values
+            updates: Dict mapping field IDs to new values. Values are auto-typed
+                (str→text, int/float→number, otherwise→text).
 
         Returns:
             Batch operation response with success/failure per field
         """
-        operations = [
-            {"fieldId": str(field_id), "value": value} for field_id, value in updates.items()
+
+        def infer_type(value: Any) -> str:
+            if isinstance(value, str):
+                return "text"
+            elif isinstance(value, (int, float)):
+                return "number"
+            return "text"
+
+        update_items = [
+            {
+                "id": str(field_id),
+                "value": {"type": infer_type(value), "data": value},
+            }
+            for field_id, value in updates.items()
         ]
 
         result = self._client.patch(
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields",
-            json={"operations": operations},
+            json={"operation": "update-fields", "updates": update_items},
         )
 
         return _safe_model_validate(BatchOperationResponse, result)
@@ -1834,11 +1885,20 @@ class AsyncListEntryService:
         entry_id: ListEntryId,
         field_id: AnyFieldId,
     ) -> Any:
-        """Get a single field value."""
+        """
+        Get a single field value.
+
+        Returns the unwrapped value data. V2 API returns values in nested format
+        like {"type": "text", "data": "value"} - this method extracts just the "data" part.
+        """
         data = await self._client.get(
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields/{field_id}"
         )
-        return data.get("value")
+        value = data.get("value")
+        # V2 API returns nested {"type": "...", "data": ...} - extract the data
+        if isinstance(value, dict) and "data" in value:
+            return value["data"]
+        return value
 
     async def update_field_value(
         self,
@@ -1875,18 +1935,31 @@ class AsyncListEntryService:
 
         Args:
             entry_id: The list entry
-            updates: Dict mapping field IDs to new values
+            updates: Dict mapping field IDs to new values. Values are auto-typed
+                (str→text, int/float→number, otherwise→text).
 
         Returns:
             Batch operation response with success/failure per field
         """
-        operations = [
-            {"fieldId": str(field_id), "value": value} for field_id, value in updates.items()
+
+        def infer_type(value: Any) -> str:
+            if isinstance(value, str):
+                return "text"
+            elif isinstance(value, (int, float)):
+                return "number"
+            return "text"
+
+        update_items = [
+            {
+                "id": str(field_id),
+                "value": {"type": infer_type(value), "data": value},
+            }
+            for field_id, value in updates.items()
         ]
 
         result = await self._client.patch(
             f"/lists/{self._list_id}/list-entries/{entry_id}/fields",
-            json={"operations": operations},
+            json={"operation": "update-fields", "updates": update_items},
         )
 
         return _safe_model_validate(BatchOperationResponse, result)

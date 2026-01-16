@@ -5,6 +5,24 @@
 - Verify your API key is correct.
 - Ensure the key has access to the entities you’re querying.
 
+## 404 immediately after create
+
+If you get a 404 `NotFoundError` when calling `get()` right after `create()`, this is due to V1→V2 eventual consistency. The entity exists but hasn't propagated to V2 yet.
+
+**Solutions:**
+- Use the object returned by `create()` directly (recommended)
+- Use `get(..., retries=3)` to retry with backoff
+
+See [V1→V2 eventual consistency](guides/errors-and-retries.md#v1v2-eventual-consistency) for details.
+
+## Stale data after update
+
+If `get()` returns old values after calling `update()`, this is also due to V1→V2 eventual consistency. The update succeeded, but V2 hasn't synced yet.
+
+**Solution:** Use the object returned by `update()` directly - it contains the updated data.
+
+See [Stale data after update](guides/errors-and-retries.md#stale-data-after-update) for details.
+
 ## Rate limits
 
 The client tracks rate-limit state and retries some requests automatically.
