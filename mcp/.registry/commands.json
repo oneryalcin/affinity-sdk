@@ -2106,15 +2106,21 @@
         "--first-name": {
           "type": "string",
           "required": true,
-          "help": "First name."
+          "help": "Person's first name (required)."
         },
         "--last-name": {
           "type": "string",
           "required": true,
-          "help": "Last name."
+          "help": "Person's last name (required)."
         }
       },
-      "positionals": []
+      "positionals": [],
+      "examples": [
+        "person create --first-name \"Alice\" --last-name \"Smith\"",
+        "person create --first-name \"Bob\" --last-name \"Jones\" --email bob@example.com",
+        "person create --first-name \"Carol\" --last-name \"Lee\" --email a@x.com",
+        "person create --first-name \"Dan\" --last-name \"Park\" --company-id 12345"
+      ]
     },
     {
       "name": "person delete",

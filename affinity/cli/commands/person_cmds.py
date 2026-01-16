@@ -1545,8 +1545,8 @@ def person_files_upload(
 
 @category("write")
 @person_group.command(name="create", cls=RichCommand)
-@click.option("--first-name", required=True, help="First name.")
-@click.option("--last-name", required=True, help="Last name.")
+@click.option("--first-name", required=True, help="Person's first name (required).")
+@click.option("--last-name", required=True, help="Person's last name (required).")
 @click.option(
     "--email",
     "emails",
@@ -1570,7 +1570,18 @@ def person_create(
     emails: tuple[str, ...],
     company_ids: tuple[int, ...],
 ) -> None:
-    """Create a person."""
+    """
+    Create a person.
+
+    Both --first-name and --last-name are required by the Affinity API.
+
+    Examples:
+
+    - `xaffinity person create --first-name "Alice" --last-name "Smith"`
+    - `xaffinity person create --first-name "Bob" --last-name "Jones" --email bob@example.com`
+    - `xaffinity person create --first-name "Carol" --last-name "Lee" --email a@x.com`
+    - `xaffinity person create --first-name "Dan" --last-name "Park" --company-id 12345`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
