@@ -32,6 +32,7 @@ from ._list_entry_fields import (
     build_list_entry_field_rows,
     filter_list_entry_fields,
 )
+from ._v1_parsing import validate_domain
 from .resolve_url_cmd import _parse_affinity_url
 
 
@@ -1744,11 +1745,13 @@ def company_create(
     """Create a company."""
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        validated_domain = validate_domain(domain, label="domain")
+
         client = ctx.get_client(warnings=warnings)
         created = client.companies.create(
             CompanyCreate(
                 name=name,
-                domain=domain,
+                domain=validated_domain,
                 person_ids=[PersonId(pid) for pid in person_ids],
             )
         )
@@ -1807,12 +1810,14 @@ def company_update(
                 error_type="usage_error",
                 hint="Use --name, --domain, or --person-id.",
             )
+        validated_domain = validate_domain(domain, label="domain")
+
         client = ctx.get_client(warnings=warnings)
         updated = client.companies.update(
             CompanyId(company_id),
             CompanyUpdate(
                 name=name,
-                domain=domain,
+                domain=validated_domain,
                 person_ids=[PersonId(pid) for pid in person_ids] if person_ids else None,
             ),
         )

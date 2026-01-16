@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from affinity.cli.commands._v1_parsing import parse_date_flexible
+from affinity.cli.commands._v1_parsing import parse_date_flexible, validate_domain
 from affinity.cli.errors import CLIError
 
 
@@ -124,3 +124,72 @@ class TestParseDateFlexible:
         result = parse_date_flexible("+1y", label="test", now=fixed_now)
         expected = fixed_now + timedelta(days=365)
         assert result == expected
+
+
+class TestValidateDomain:
+    """Tests for validate_domain function."""
+
+    def test_none_returns_none(self) -> None:
+        """None input returns None."""
+        assert validate_domain(None) is None
+
+    def test_empty_string_returns_none(self) -> None:
+        """Empty string returns None."""
+        assert validate_domain("") is None
+
+    def test_whitespace_only_returns_none(self) -> None:
+        """Whitespace-only string returns None."""
+        assert validate_domain("   ") is None
+
+    def test_valid_domain_passes_through(self) -> None:
+        """Valid domain is returned unchanged."""
+        assert validate_domain("example.com") == "example.com"
+        assert validate_domain("sub.example.com") == "sub.example.com"
+        assert validate_domain("my-company.io") == "my-company.io"
+
+    def test_domain_with_whitespace_stripped(self) -> None:
+        """Leading/trailing whitespace is stripped."""
+        assert validate_domain("  example.com  ") == "example.com"
+
+    def test_underscore_raises_error_with_suggestion(self) -> None:
+        """Domain with underscore raises CLIError with dash suggestion."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("test_company.com")
+        assert "underscore" in str(exc_info.value).lower()
+        assert exc_info.value.hint is not None
+        assert "test-company.com" in exc_info.value.hint
+
+    def test_multiple_underscores_all_replaced_in_hint(self) -> None:
+        """All underscores are replaced in the suggestion."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("my_test_company.com")
+        assert exc_info.value.hint is not None
+        assert "my-test-company.com" in exc_info.value.hint
+
+    def test_http_url_raises_error_with_extracted_domain(self) -> None:
+        """HTTP URL raises CLIError with extracted domain suggestion."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("http://example.com")
+        assert "URL" in str(exc_info.value)
+        assert exc_info.value.hint is not None
+        assert "example.com" in exc_info.value.hint
+
+    def test_https_url_raises_error_with_extracted_domain(self) -> None:
+        """HTTPS URL raises CLIError with extracted domain suggestion."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("https://example.com/path")
+        assert "URL" in str(exc_info.value)
+        assert exc_info.value.hint is not None
+        assert "example.com" in exc_info.value.hint
+
+    def test_space_in_domain_raises_error(self) -> None:
+        """Domain with space raises CLIError."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("example .com")
+        assert "space" in str(exc_info.value).lower()
+
+    def test_custom_label_in_error(self) -> None:
+        """Custom label appears in error message."""
+        with pytest.raises(CLIError) as exc_info:
+            validate_domain("bad_domain.com", label="primary domain")
+        assert "primary domain" in str(exc_info.value)

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--due-date`: `+7d`, `+2w`, `+1m`, `+1y`, `today`, `tomorrow`, `yesterday`, `now`
   - `--due-after`, `--due-before`: Same formats for filtering in `reminder ls`
   - Example: `xaffinity reminder create --due-date +7d --type one-time --owner-id 123`
+- CLI: Domain validation for `company create` and `company update` now provides helpful error messages:
+  - Detects underscores (RFC 1035 violation) and suggests dash replacement
+  - Detects URL prefixes and extracts domain
+  - Example: `--domain test_company.com` → "Use 'test-company.com' instead"
 - Docs: V1→V2 eventual consistency guide covering 404 after create and stale data after update scenarios.
 - Tests: Integration test suite for SDK write operations (`tests/integration/`).
 

@@ -26,6 +26,64 @@ def parse_choice(value: str | None, mapping: Mapping[str, T], *, label: str) -> 
     )
 
 
+def validate_domain(value: str | None, *, label: str = "domain") -> str | None:
+    """
+    Validate domain format before API call.
+
+    Checks for common domain format mistakes that would be rejected by the
+    Affinity API with a cryptic error message. Validates against RFC 1035
+    constraints and common user errors.
+
+    Args:
+        value: Domain string to validate (or None)
+        label: Human-readable label for error messages
+
+    Returns:
+        The validated domain string (unchanged), or None if input was None
+
+    Raises:
+        CLIError: If domain format is invalid
+    """
+    if value is None:
+        return None
+
+    domain = value.strip()
+    if not domain:
+        return None
+
+    # Check for protocol prefix (common mistake)
+    if domain.startswith(("http://", "https://")):
+        # Extract domain from URL
+        clean = domain.split("//", 1)[1].split("/", 1)[0]
+        raise CLIError(
+            f"Invalid {label}: provide domain only, not URL",
+            error_type="usage_error",
+            exit_code=2,
+            hint=f"Use '{clean}' instead of '{value}'.",
+        )
+
+    # Check for underscores (RFC 1035 violation - most common issue)
+    if "_" in domain:
+        suggested = domain.replace("_", "-")
+        raise CLIError(
+            f"Invalid {label}: domains cannot contain underscores",
+            error_type="usage_error",
+            exit_code=2,
+            hint=f"Use '{suggested}' instead of '{domain}'.",
+        )
+
+    # Check for spaces
+    if " " in domain:
+        raise CLIError(
+            f"Invalid {label}: domains cannot contain spaces",
+            error_type="usage_error",
+            exit_code=2,
+            hint="Remove spaces from the domain.",
+        )
+
+    return domain
+
+
 def parse_iso_datetime(value: str, *, label: str) -> datetime:
     """
     Parse ISO-8601 datetime string to UTC-aware datetime.
