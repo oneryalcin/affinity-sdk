@@ -17,10 +17,94 @@ See [Pipeline Optimization](commands.md#pipeline-optimization) for details.
 
 ## JSON output
 
-Use `--json` for machine-readable output:
+Use `--json` (or `--output json`) for machine-readable output:
 
 ```bash
 xaffinity whoami --json | jq
+```
+
+### Response envelope
+
+All JSON responses use a standard envelope structure:
+
+```json
+{
+  "ok": true,
+  "command": {"name": "person get", "args": ["123"]},
+  "data": {"person": {"id": 123, "firstName": "Alice", ...}},
+  "meta": {"rateLimit": {...}, "pagination": {...}},
+  "error": null
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `ok` | `true` if command succeeded, `false` on error |
+| `command` | Command name and arguments (useful for logging) |
+| `data` | The entity or entities returned (keyed by type) |
+| `meta` | Rate limit info, pagination cursors, timing |
+| `error` | Error details when `ok` is `false` |
+
+### Extracting entity data
+
+Entity data is nested under `.data.<entityType>`:
+
+```bash
+# Get a person's name
+xaffinity person get 123 --json | jq '.data.person.firstName'
+
+# Get company ID after creation
+xaffinity company create --name "Acme" --json | jq '.data.company.id'
+
+# List all person IDs
+xaffinity person ls --json | jq '.data.persons[].id'
+```
+
+### Error handling in scripts
+
+Check `ok` before processing data:
+
+```bash
+result=$(xaffinity person get 123 --json)
+if echo "$result" | jq -e '.ok' > /dev/null; then
+    echo "$result" | jq '.data.person'
+else
+    echo "Error: $(echo "$result" | jq -r '.error.message')" >&2
+    exit 1
+fi
+```
+
+Or use exit codes (non-zero on error):
+
+```bash
+if xaffinity person get 123 --json > /tmp/result.json 2>&1; then
+    jq '.data.person' /tmp/result.json
+else
+    echo "Command failed" >&2
+fi
+```
+
+### Common patterns
+
+**Extract and assign to variable:**
+
+```bash
+PERSON_ID=$(xaffinity person create --first-name "Test" --last-name "User" --json | jq -r '.data.person.id')
+```
+
+**Process list results:**
+
+```bash
+xaffinity person ls --all --json | jq -r '.data.persons[] | "\(.id)\t\(.firstName) \(.lastName)"'
+```
+
+**Create shell alias for frequent access patterns:**
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias xaff-person='xaffinity person get --json | jq .data.person'
+
+# Usage: xaff-person 123
 ```
 
 ## Timezone-safe datetime handling

@@ -522,6 +522,7 @@ def normalize_exception(exc: Exception, *, verbosity: int = 0) -> CLIError:
             str(exc),
             error_type="not_found",
             exit_code=4,
+            hint="If this resource was just created, wait a moment and retry (V1→V2 sync delay).",
             details=_details_for_affinity_error(exc, verbosity=verbosity),
             cause=exc,
         )
