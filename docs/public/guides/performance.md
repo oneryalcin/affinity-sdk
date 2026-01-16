@@ -104,3 +104,46 @@ xaffinity session end
 ```
 
 See [CLI Pipeline Optimization](../cli/commands.md#pipeline-optimization) for details.
+
+## Counting entities
+
+### List entries (efficient)
+
+Every list includes a `list_size` field that returns the entry count in a single API call:
+
+```python
+# Count entries on a single list
+lst = client.lists.get(list_id)
+print(f"Entries: {lst.list_size}")
+
+# Get counts for all lists at once
+for lst in client.lists.all():
+    print(f"{lst.name}: {lst.list_size}")
+```
+
+This is the most efficient way to count entities in Affinity.
+
+### Global persons/companies (no direct method)
+
+The Affinity API does not provide a count endpoint for global persons or companies. A `count()` method was intentionally omitted from the SDK because it would require paginating through all records—potentially hundreds of API calls for large databases.
+
+**Why this matters:**
+
+| Database size | API calls (V2) | Approximate time |
+|---------------|----------------|------------------|
+| 1,000 entities | 10 calls | ~1 second |
+| 10,000 entities | 100 calls | ~10 seconds |
+| 100,000 entities | 1,000 calls | ~2 minutes |
+
+If you need a global count, iterate once and cache the result:
+
+```python
+# One-time count (expensive for large databases)
+person_count = sum(1 for _ in client.persons.iter())
+```
+
+**Recommended alternatives:**
+
+1. **Use lists**: Create a list containing your target entities and use `list_size`
+2. **Cache externally**: Count once and store the result in your application
+3. **Estimate**: If exact counts aren't critical, sample or track changes incrementally
