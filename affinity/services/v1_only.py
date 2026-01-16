@@ -25,7 +25,7 @@ from ..models.entities import (
     FieldValueChange,
     FieldValueCreate,
 )
-from ..models.pagination import V1PaginatedResponse
+from ..models.pagination import AsyncPageIterator, PageIterator, PaginatedResponse
 from ..models.secondary import (
     EntityFile,
     Interaction,
@@ -110,7 +110,7 @@ class NoteService:
         creator_id: UserId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Note]:
+    ) -> PaginatedResponse[Note]:
         """
         Get notes filtered by entity or creator.
 
@@ -123,7 +123,7 @@ class NoteService:
             page_token: Pagination token from previous response
 
         Returns:
-            V1PaginatedResponse with notes and next_page_token
+            PaginatedResponse with notes and next_page_token
         """
         params: dict[str, Any] = {}
         if person_id:
@@ -143,7 +143,7 @@ class NoteService:
         items = data.get("notes", data.get("data", []))
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Note](
+        return PaginatedResponse[Note](
             data=[Note.model_validate(n) for n in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -187,6 +187,41 @@ class NoteService:
         result = self._client.delete(f"/notes/{note_id}", v1=True)
         return bool(result.get("success", False))
 
+    def iter(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        creator_id: UserId | None = None,
+        page_size: int | None = None,
+    ) -> PageIterator[Note]:
+        """
+        Iterate through all notes with automatic pagination.
+
+        Args:
+            person_id: Filter notes associated with this person
+            company_id: Filter notes associated with this company
+            opportunity_id: Filter notes associated with this opportunity
+            creator_id: Filter notes created by this user
+            page_size: Number of results per page
+
+        Returns:
+            PageIterator that yields Note objects
+        """
+
+        def fetch_page(cursor: str | None) -> PaginatedResponse[Note]:
+            return self.list(
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                creator_id=creator_id,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return PageIterator(fetch_page)
+
 
 # =============================================================================
 # Reminder Service (V1 API)
@@ -219,7 +254,7 @@ class ReminderService:
         due_after: datetime | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Reminder]:
+    ) -> PaginatedResponse[Reminder]:
         """
         Get reminders with optional filtering.
 
@@ -239,7 +274,7 @@ class ReminderService:
             page_token: Pagination token from previous response
 
         Returns:
-            V1PaginatedResponse with reminders and next_page_token
+            PaginatedResponse with reminders and next_page_token
         """
         params: dict[str, Any] = {}
         if person_id:
@@ -273,7 +308,7 @@ class ReminderService:
         items = data.get("reminders", data.get("data", []))
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Reminder](
+        return PaginatedResponse[Reminder](
             data=[Reminder.model_validate(r) for r in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -308,6 +343,62 @@ class ReminderService:
         """Delete a reminder."""
         result = self._client.delete(f"/reminders/{reminder_id}", v1=True)
         return bool(result.get("success", False))
+
+    def iter(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        creator_id: UserId | None = None,
+        owner_id: UserId | None = None,
+        completer_id: UserId | None = None,
+        type: ReminderType | None = None,
+        reset_type: ReminderResetType | None = None,
+        status: ReminderStatus | None = None,
+        due_before: datetime | None = None,
+        due_after: datetime | None = None,
+        page_size: int | None = None,
+    ) -> PageIterator[Reminder]:
+        """
+        Iterate through all reminders with automatic pagination.
+
+        Args:
+            person_id: Filter reminders for this person
+            company_id: Filter reminders for this company
+            opportunity_id: Filter reminders for this opportunity
+            creator_id: Filter by reminder creator
+            owner_id: Filter by reminder owner (assignee)
+            completer_id: Filter by who completed the reminder
+            type: Filter by reminder type (ONE_TIME or RECURRING)
+            reset_type: Filter by reset type (FIXED_DATE, DATE_ADDED, or INTERACTION)
+            status: Filter by status (ACTIVE, SNOOZED, or COMPLETE)
+            due_before: Filter reminders due before this datetime
+            due_after: Filter reminders due after this datetime
+            page_size: Number of results per page
+
+        Returns:
+            PageIterator that yields Reminder objects
+        """
+
+        def fetch_page(cursor: str | None) -> PaginatedResponse[Reminder]:
+            return self.list(
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                creator_id=creator_id,
+                owner_id=owner_id,
+                completer_id=completer_id,
+                type=type,
+                reset_type=reset_type,
+                status=status,
+                due_before=due_before,
+                due_after=due_after,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return PageIterator(fetch_page)
 
 
 # =============================================================================
@@ -393,7 +484,7 @@ class InteractionService:
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Interaction]:
+    ) -> PaginatedResponse[Interaction]:
         """
         Get interactions with optional filtering.
 
@@ -442,7 +533,7 @@ class InteractionService:
             )
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Interaction](
+        return PaginatedResponse[Interaction](
             data=[Interaction.model_validate(i) for i in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -495,6 +586,43 @@ class InteractionService:
             v1=True,
         )
         return bool(result.get("success", False))
+
+    def iter(
+        self,
+        *,
+        type: InteractionType | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        page_size: int | None = None,
+    ) -> PageIterator[Interaction]:
+        """
+        Iterate through all interactions with automatic pagination.
+
+        The Affinity API requires:
+        - type: Interaction type (meeting, call, email, chat)
+        - start_time and end_time: Date range (max 1 year)
+        - One entity ID: person_id, company_id, or opportunity_id
+
+        Returns:
+            PageIterator that yields Interaction objects
+        """
+
+        def fetch_page(cursor: str | None) -> PaginatedResponse[Interaction]:
+            return self.list(
+                type=type,
+                start_time=start_time,
+                end_time=end_time,
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return PageIterator(fetch_page)
 
 
 # =============================================================================
@@ -1036,7 +1164,7 @@ class EntityFileService:
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[EntityFile]:
+    ) -> PaginatedResponse[EntityFile]:
         """Get files attached to an entity."""
         self._validate_exactly_one_target(
             person_id=person_id,
@@ -1064,7 +1192,7 @@ class EntityFileService:
         )
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[EntityFile](
+        return PaginatedResponse[EntityFile](
             data=[EntityFile.model_validate(f) for f in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -1393,7 +1521,7 @@ class AsyncNoteService:
         creator_id: UserId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Note]:
+    ) -> PaginatedResponse[Note]:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
@@ -1412,7 +1540,7 @@ class AsyncNoteService:
         items = data.get("notes", data.get("data", []))
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Note](
+        return PaginatedResponse[Note](
             data=[Note.model_validate(n) for n in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -1447,6 +1575,41 @@ class AsyncNoteService:
         result = await self._client.delete(f"/notes/{note_id}", v1=True)
         return bool(result.get("success", False))
 
+    def iter(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        creator_id: UserId | None = None,
+        page_size: int | None = None,
+    ) -> AsyncPageIterator[Note]:
+        """
+        Iterate through all notes with automatic pagination.
+
+        Args:
+            person_id: Filter notes associated with this person
+            company_id: Filter notes associated with this company
+            opportunity_id: Filter notes associated with this opportunity
+            creator_id: Filter notes created by this user
+            page_size: Number of results per page
+
+        Returns:
+            AsyncPageIterator that yields Note objects
+        """
+
+        async def fetch_page(cursor: str | None) -> PaginatedResponse[Note]:
+            return await self.list(
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                creator_id=creator_id,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return AsyncPageIterator(fetch_page)
+
 
 class AsyncReminderService:
     """Async service for managing reminders (V1 API)."""
@@ -1470,7 +1633,7 @@ class AsyncReminderService:
         due_after: datetime | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Reminder]:
+    ) -> PaginatedResponse[Reminder]:
         params: dict[str, Any] = {}
         if person_id:
             params["person_id"] = int(person_id)
@@ -1503,7 +1666,7 @@ class AsyncReminderService:
         items = data.get("reminders", data.get("data", []))
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Reminder](
+        return PaginatedResponse[Reminder](
             data=[Reminder.model_validate(r) for r in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -1534,6 +1697,62 @@ class AsyncReminderService:
     async def delete(self, reminder_id: ReminderIdType) -> bool:
         result = await self._client.delete(f"/reminders/{reminder_id}", v1=True)
         return bool(result.get("success", False))
+
+    def iter(
+        self,
+        *,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        creator_id: UserId | None = None,
+        owner_id: UserId | None = None,
+        completer_id: UserId | None = None,
+        type: ReminderType | None = None,
+        reset_type: ReminderResetType | None = None,
+        status: ReminderStatus | None = None,
+        due_before: datetime | None = None,
+        due_after: datetime | None = None,
+        page_size: int | None = None,
+    ) -> AsyncPageIterator[Reminder]:
+        """
+        Iterate through all reminders with automatic pagination.
+
+        Args:
+            person_id: Filter reminders for this person
+            company_id: Filter reminders for this company
+            opportunity_id: Filter reminders for this opportunity
+            creator_id: Filter by reminder creator
+            owner_id: Filter by reminder owner (assignee)
+            completer_id: Filter by who completed the reminder
+            type: Filter by reminder type (ONE_TIME or RECURRING)
+            reset_type: Filter by reset type (FIXED_DATE, DATE_ADDED, or INTERACTION)
+            status: Filter by status (ACTIVE, SNOOZED, or COMPLETE)
+            due_before: Filter reminders due before this datetime
+            due_after: Filter reminders due after this datetime
+            page_size: Number of results per page
+
+        Returns:
+            AsyncPageIterator that yields Reminder objects
+        """
+
+        async def fetch_page(cursor: str | None) -> PaginatedResponse[Reminder]:
+            return await self.list(
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                creator_id=creator_id,
+                owner_id=owner_id,
+                completer_id=completer_id,
+                type=type,
+                reset_type=reset_type,
+                status=status,
+                due_before=due_before,
+                due_after=due_after,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return AsyncPageIterator(fetch_page)
 
 
 class AsyncWebhookService:
@@ -1592,7 +1811,7 @@ class AsyncInteractionService:
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Interaction]:
+    ) -> PaginatedResponse[Interaction]:
         params: dict[str, Any] = {}
         if type is not None:
             params["type"] = int(type)
@@ -1631,7 +1850,7 @@ class AsyncInteractionService:
             )
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[Interaction](
+        return PaginatedResponse[Interaction](
             data=[Interaction.model_validate(i) for i in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )
@@ -1676,6 +1895,43 @@ class AsyncInteractionService:
             v1=True,
         )
         return bool(result.get("success", False))
+
+    def iter(
+        self,
+        *,
+        type: InteractionType | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        person_id: PersonId | None = None,
+        company_id: CompanyId | None = None,
+        opportunity_id: OpportunityId | None = None,
+        page_size: int | None = None,
+    ) -> AsyncPageIterator[Interaction]:
+        """
+        Iterate through all interactions with automatic pagination.
+
+        The Affinity API requires:
+        - type: Interaction type (meeting, call, email, chat)
+        - start_time and end_time: Date range (max 1 year)
+        - One entity ID: person_id, company_id, or opportunity_id
+
+        Returns:
+            AsyncPageIterator that yields Interaction objects
+        """
+
+        async def fetch_page(cursor: str | None) -> PaginatedResponse[Interaction]:
+            return await self.list(
+                type=type,
+                start_time=start_time,
+                end_time=end_time,
+                person_id=person_id,
+                company_id=company_id,
+                opportunity_id=opportunity_id,
+                page_size=page_size,
+                page_token=cursor,
+            )
+
+        return AsyncPageIterator(fetch_page)
 
 
 class AsyncFieldService:
@@ -2164,7 +2420,7 @@ class AsyncEntityFileService:
         opportunity_id: OpportunityId | None = None,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[EntityFile]:
+    ) -> PaginatedResponse[EntityFile]:
         self._validate_exactly_one_target(
             person_id=person_id,
             company_id=company_id,
@@ -2191,7 +2447,7 @@ class AsyncEntityFileService:
         )
         if not isinstance(items, list):
             items = []
-        return V1PaginatedResponse[EntityFile](
+        return PaginatedResponse[EntityFile](
             data=[EntityFile.model_validate(f) for f in items],
             next_page_token=data.get("next_page_token") or data.get("nextPageToken"),
         )

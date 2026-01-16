@@ -6,6 +6,7 @@ Provides type-safe access to paginated API responses.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -91,10 +92,30 @@ class PaginatedResponse(AffinityModel, Generic[T]):
     A paginated response from the API.
 
     Provides access to the current page of results and pagination info.
+    Works with all Affinity API endpoints transparently.
+
+    Attributes:
+        data: List of items in the current page.
+        has_next: Whether more pages are available.
+        next_cursor: Cursor for fetching the next page (use this for pagination).
+
+    Example:
+        ```python
+        page = client.companies.list(limit=100)
+        while page.has_next:
+            process(page.data)
+            page = client.companies.list(limit=100, cursor=page.next_cursor)
+        ```
+
+    Tip:
+        Always use ``next_cursor`` for pagination. Avoid accessing
+        ``pagination.next_cursor`` or ``next_page_token`` directly.
     """
 
     data: list[T] = Field(default_factory=list)
     pagination: PaginationInfo = Field(default_factory=PaginationInfo)
+    # Internal: V1 API compatibility field. Users should use next_cursor property.
+    next_page_token: str | None = Field(None, alias="nextPageToken")
     _has_next_override: bool | None = PrivateAttr(default=None)
     _filter_stats: FilterStats | None = PrivateAttr(default=None)
 
@@ -107,12 +128,21 @@ class PaginatedResponse(AffinityModel, Generic[T]):
         """Whether there are more pages."""
         if self._has_next_override is not None:
             return self._has_next_override
-        return self.pagination.next_cursor is not None
+        return self.next_cursor is not None
 
     @property
     def next_cursor(self) -> str | None:
-        """Cursor for the next page, if any."""
-        return self.pagination.next_cursor
+        """
+        Cursor for the next page, if any.
+
+        Returns the V2 pagination URL or V1 page token, whichever is present.
+        Always use this property instead of accessing ``pagination.next_cursor``
+        or ``next_page_token`` directly.
+        """
+        # Use explicit None check to preserve empty strings (which are valid cursors)
+        if self.pagination.next_cursor is not None:
+            return self.pagination.next_cursor
+        return self.next_page_token
 
     @property
     def filter_stats(self) -> FilterStats | None:
@@ -460,19 +490,30 @@ class AsyncPageIterator(Generic[T]):
 
 
 # =============================================================================
-# V1 Pagination Response (uses page_token)
+# V1 Pagination Response (DEPRECATED - use PaginatedResponse)
 # =============================================================================
 
+# V1PaginatedResponse is now a deprecated alias for PaginatedResponse.
+# The unified PaginatedResponse handles both V1 (token-based) and V2 (cursor-based)
+# pagination formats transparently.
+#
+# For backward compatibility, V1PaginatedResponse is still accessible but will
+# emit a DeprecationWarning when imported.
 
-class V1PaginatedResponse(AffinityModel, Generic[T]):
-    """V1 API pagination format using page_token."""
+_V1PaginatedResponse = PaginatedResponse  # Internal alias for direct access
 
-    data: list[T] = Field(default_factory=list)
-    next_page_token: str | None = Field(None, alias="nextPageToken")
 
-    @property
-    def has_next(self) -> bool:
-        return self.next_page_token is not None
+def __getattr__(name: str) -> type:
+    """Module-level getattr to provide deprecation warning for V1PaginatedResponse."""
+    if name == "V1PaginatedResponse":
+        warnings.warn(
+            "V1PaginatedResponse is deprecated. Use PaginatedResponse instead, "
+            "which now handles both V1 and V2 pagination formats.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return PaginatedResponse
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # =============================================================================

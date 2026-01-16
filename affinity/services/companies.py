@@ -29,7 +29,6 @@ from ..models.pagination import (
     PageIterator,
     PaginatedResponse,
     PaginationInfo,
-    V1PaginatedResponse,
 )
 from ..models.secondary import MergeTask
 from ..models.types import AnyFieldId, CompanyId, FieldType, OpportunityId, PersonId
@@ -442,7 +441,7 @@ class CompanyService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Company]:
+    ) -> PaginatedResponse[Company]:
         """
         Search for companies by name or domain.
 
@@ -473,7 +472,7 @@ class CompanyService:
 
         data = self._client.get("/organizations", params=params, v1=True)
         items = [Company.model_validate(o) for o in data.get("organizations", [])]
-        return V1PaginatedResponse[Company](
+        return PaginatedResponse[Company](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -487,7 +486,7 @@ class CompanyService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> Iterator[V1PaginatedResponse[Company]]:
+    ) -> Iterator[PaginatedResponse[Company]]:
         """
         Iterate V1 company-search result pages.
 
@@ -502,7 +501,7 @@ class CompanyService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Company] for each page
+            PaginatedResponse[Company] for each page
         """
         requested_token = page_token
         page = self.search(
@@ -1024,7 +1023,7 @@ class AsyncCompanyService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Company]:
+    ) -> PaginatedResponse[Company]:
         """
         Search for companies by name or domain.
 
@@ -1044,7 +1043,7 @@ class AsyncCompanyService:
 
         data = await self._client.get("/organizations", params=params, v1=True)
         items = [Company.model_validate(o) for o in data.get("organizations", [])]
-        return V1PaginatedResponse[Company](
+        return PaginatedResponse[Company](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -1058,7 +1057,7 @@ class AsyncCompanyService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> AsyncIterator[V1PaginatedResponse[Company]]:
+    ) -> AsyncIterator[PaginatedResponse[Company]]:
         """
         Iterate V1 company-search result pages.
 
@@ -1073,7 +1072,7 @@ class AsyncCompanyService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Company] for each page
+            PaginatedResponse[Company] for each page
         """
         requested_token = page_token
         page = await self.search(

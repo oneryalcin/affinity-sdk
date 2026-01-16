@@ -26,7 +26,6 @@ from ..models.pagination import (
     PageIterator,
     PaginatedResponse,
     PaginationInfo,
-    V1PaginatedResponse,
 )
 from ..models.types import CompanyId, ListId, OpportunityId, PersonId
 from .lists import AsyncListEntryService, ListEntryService
@@ -229,7 +228,7 @@ class OpportunityService:
         *,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Opportunity]:
+    ) -> PaginatedResponse[Opportunity]:
         """
         Search for opportunities by name.
 
@@ -241,7 +240,7 @@ class OpportunityService:
             page_token: Pagination token
 
         Returns:
-            V1PaginatedResponse with opportunities and next_page_token
+            PaginatedResponse with opportunities and next_page_token
         """
         params: dict[str, Any] = {}
         if term:
@@ -253,7 +252,7 @@ class OpportunityService:
 
         data = self._client.get("/opportunities", params=params, v1=True)
         items = [Opportunity.model_validate(o) for o in data.get("opportunities", [])]
-        return V1PaginatedResponse[Opportunity](
+        return PaginatedResponse[Opportunity](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -264,7 +263,7 @@ class OpportunityService:
         *,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> Iterator[V1PaginatedResponse[Opportunity]]:
+    ) -> Iterator[PaginatedResponse[Opportunity]]:
         """
         Iterate V1 opportunity-search result pages.
 
@@ -276,7 +275,7 @@ class OpportunityService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Opportunity] for each page
+            PaginatedResponse[Opportunity] for each page
         """
         requested_token = page_token
         page = self.search(term, page_size=page_size, page_token=page_token)
@@ -888,7 +887,7 @@ class AsyncOpportunityService:
         *,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Opportunity]:
+    ) -> PaginatedResponse[Opportunity]:
         """
         Search for opportunities by name.
 
@@ -900,7 +899,7 @@ class AsyncOpportunityService:
             page_token: Pagination token
 
         Returns:
-            V1PaginatedResponse with opportunities and next_page_token
+            PaginatedResponse with opportunities and next_page_token
         """
         params: dict[str, Any] = {}
         if term:
@@ -912,7 +911,7 @@ class AsyncOpportunityService:
 
         data = await self._client.get("/opportunities", params=params, v1=True)
         items = [Opportunity.model_validate(o) for o in data.get("opportunities", [])]
-        return V1PaginatedResponse[Opportunity](
+        return PaginatedResponse[Opportunity](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -923,7 +922,7 @@ class AsyncOpportunityService:
         *,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> AsyncIterator[V1PaginatedResponse[Opportunity]]:
+    ) -> AsyncIterator[PaginatedResponse[Opportunity]]:
         """
         Iterate V1 opportunity-search result pages.
 
@@ -935,7 +934,7 @@ class AsyncOpportunityService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Opportunity] for each page
+            PaginatedResponse[Opportunity] for each page
         """
         requested_token = page_token
         page = await self.search(term, page_size=page_size, page_token=page_token)

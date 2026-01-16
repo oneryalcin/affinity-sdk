@@ -14,7 +14,7 @@ import affinity.clients.http as http_mod
 from affinity import Affinity
 from affinity.clients.http import ClientConfig, HTTPClient
 from affinity.exceptions import AffinityError, ValidationError
-from affinity.models.pagination import V1PaginatedResponse
+from affinity.models.pagination import PaginatedResponse
 from affinity.models.secondary import NoteCreate
 from affinity.services.companies import CompanyService
 from affinity.services.v1_only import NoteService
@@ -99,7 +99,7 @@ def test_v2_first_plus_v1_fallback_routing_and_stable_shapes() -> None:
     assert company.id == 1
 
     page = companies.search("acme")
-    assert isinstance(page, V1PaginatedResponse)
+    assert isinstance(page, PaginatedResponse)
     assert page.data[0].id == 1
 
     notes = NoteService(http_client)

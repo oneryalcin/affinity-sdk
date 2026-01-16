@@ -18,7 +18,7 @@ from rich.progress import (
 )
 
 from affinity.models.entities import Opportunity, OpportunityCreate, OpportunityUpdate
-from affinity.models.pagination import PaginatedResponse, V1PaginatedResponse
+from affinity.models.pagination import PaginatedResponse
 from affinity.models.types import ListType
 from affinity.types import CompanyId, ListId, OpportunityId, PersonId
 
@@ -188,9 +188,7 @@ def opportunity_ls(
         )
 
         # Use V1 search when --query is provided, otherwise V2 list
-        pages_iter: (
-            Iterator[V1PaginatedResponse[Opportunity]] | Iterator[PaginatedResponse[Opportunity]]
-        )
+        pages_iter: Iterator[PaginatedResponse[Opportunity]]
         if use_v1_search:
             assert query is not None
             pages_iter = client.opportunities.search_pages(
@@ -218,13 +216,9 @@ def opportunity_ls(
                 task_id = progress.add_task("Fetching", total=max_results)
 
             for page in pages_iter:
-                # Get next cursor/token based on API type
-                if hasattr(page, "next_page_token"):
-                    next_cursor = page.next_page_token
-                    prev_cursor = None  # V1 doesn't have prev cursor
-                else:
-                    next_cursor = page.pagination.next_cursor
-                    prev_cursor = page.pagination.prev_cursor
+                # Get next cursor (unified property handles both V1 and V2 formats)
+                next_cursor = page.next_cursor
+                prev_cursor = page.pagination.prev_cursor  # V1 responses will have None here
 
                 for idx, opportunity in enumerate(page.data):
                     rows.append(_opportunity_ls_row(opportunity))

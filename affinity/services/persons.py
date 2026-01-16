@@ -28,7 +28,6 @@ from ..models.pagination import (
     PageIterator,
     PaginatedResponse,
     PaginationInfo,
-    V1PaginatedResponse,
 )
 from ..models.secondary import MergeTask
 from ..models.types import AnyFieldId, CompanyId, FieldType, OpportunityId, PersonId
@@ -522,7 +521,7 @@ class PersonService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Person]:
+    ) -> PaginatedResponse[Person]:
         """
         Search for persons by name or email.
 
@@ -553,7 +552,7 @@ class PersonService:
 
         data = self._client.get("/persons", params=params, v1=True)
         items = [Person.model_validate(p) for p in data.get("persons", [])]
-        return V1PaginatedResponse[Person](
+        return PaginatedResponse[Person](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -567,7 +566,7 @@ class PersonService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> Iterator[V1PaginatedResponse[Person]]:
+    ) -> Iterator[PaginatedResponse[Person]]:
         """
         Iterate V1 person-search result pages.
 
@@ -582,7 +581,7 @@ class PersonService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Person] for each page
+            PaginatedResponse[Person] for each page
         """
         requested_token = page_token
         page = self.search(
@@ -1213,7 +1212,7 @@ class AsyncPersonService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> V1PaginatedResponse[Person]:
+    ) -> PaginatedResponse[Person]:
         """
         Search for persons by name or email.
 
@@ -1233,7 +1232,7 @@ class AsyncPersonService:
 
         data = await self._client.get("/persons", params=params, v1=True)
         items = [Person.model_validate(p) for p in data.get("persons", [])]
-        return V1PaginatedResponse[Person](
+        return PaginatedResponse[Person](
             data=items,
             next_page_token=data.get("next_page_token"),
         )
@@ -1247,7 +1246,7 @@ class AsyncPersonService:
         with_opportunities: bool = False,
         page_size: int | None = None,
         page_token: str | None = None,
-    ) -> AsyncIterator[V1PaginatedResponse[Person]]:
+    ) -> AsyncIterator[PaginatedResponse[Person]]:
         """
         Iterate V1 person-search result pages.
 
@@ -1262,7 +1261,7 @@ class AsyncPersonService:
             page_token: Resume from this pagination token
 
         Yields:
-            V1PaginatedResponse[Person] for each page
+            PaginatedResponse[Person] for each page
         """
         requested_token = page_token
         page = await self.search(

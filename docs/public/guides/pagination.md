@@ -3,7 +3,22 @@
 Most list endpoints support both:
 
 - `list(...)`: fetch a single page
-- `all(...)` / `iter(...)`: iterate across pages automatically
+- `iter(...)` / `all(...)`: iterate across pages automatically
+
+## Services with pagination
+
+All paginated services support `iter()` for streaming and `all()` for collecting results:
+
+| Service | Methods |
+|---------|---------|
+| `persons` | `iter()`, `all()`, `pages()` |
+| `companies` | `iter()`, `all()`, `pages()` |
+| `opportunities` | `iter()`, `all()`, `pages()` |
+| `lists` | `iter()`, `all()`, `pages()` |
+| `notes` | `iter()` |
+| `reminders` | `iter()` |
+| `interactions` | `iter()` |
+| `files` | `iter()`, `all()` |
 
 Example:
 
@@ -11,7 +26,7 @@ Example:
 from affinity import Affinity
 
 with Affinity(api_key="your-key") as client:
-    for company in client.companies.all():
+    for company in client.companies.iter():
         print(company.name)
 ```
 
@@ -72,6 +87,26 @@ For very large datasets, prefer streaming with `iter()`:
 for company in client.companies.iter():
     process(company)
 ```
+
+## Manual pagination
+
+When iterating pages manually, use the `next_cursor` property to get the cursor for the next page:
+
+```python
+from affinity import Affinity
+
+with Affinity(api_key="your-key") as client:
+    page = client.companies.list(limit=100)
+
+    while page.has_next:
+        process(page.data)
+        # Always use next_cursor for the next page cursor
+        page = client.companies.list(limit=100, cursor=page.next_cursor)
+```
+
+!!! tip "Use `next_cursor`, not `pagination.next_cursor`"
+    Always use the `next_cursor` property on `PaginatedResponse`. This works consistently
+    across all services regardless of the underlying API version.
 
 ## Next steps
 
