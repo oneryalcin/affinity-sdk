@@ -353,6 +353,32 @@ class TestAggregateEdgeCases:
         result = compute_aggregates(records, aggs)
         assert result["p50"] is None
 
+    def test_percentile_100_returns_max(self) -> None:
+        """Percentile 100 should return the maximum value (Bug #36 fix)."""
+        records = [{"value": i} for i in range(1, 101)]  # 1 to 100
+        aggs = {"p100": AggregateFunc(percentile={"field": "value", "p": 100})}
+        result = compute_aggregates(records, aggs)
+        assert result["p100"] == 100
+
+    def test_percentile_0_returns_min(self) -> None:
+        """Percentile 0 should return the minimum value."""
+        records = [{"value": i} for i in range(1, 101)]  # 1 to 100
+        aggs = {"p0": AggregateFunc(percentile={"field": "value", "p": 0})}
+        result = compute_aggregates(records, aggs)
+        assert result["p0"] == 1
+
+    def test_percentile_edge_values(self) -> None:
+        """Percentile handles edge values (negative, >100) gracefully."""
+        records = [{"value": 10}, {"value": 20}, {"value": 30}]
+        # Values beyond range should clamp to min/max
+        aggs = {
+            "neg": AggregateFunc(percentile={"field": "value", "p": -10}),
+            "over": AggregateFunc(percentile={"field": "value", "p": 150}),
+        }
+        result = compute_aggregates(records, aggs)
+        assert result["neg"] == 10  # min
+        assert result["over"] == 30  # max
+
     def test_first_with_all_nulls(self) -> None:
         """First returns None when all values are null."""
         records = [{"name": None}, {"name": None}, {"name": None}]

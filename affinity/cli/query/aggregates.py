@@ -114,11 +114,19 @@ def compute_percentile(records: list[dict[str, Any]], field: str, p: int | float
         return None
 
     values.sort()
-    # Convert percentile to quantile (0-1)
+
+    # Handle edge cases
+    if len(values) == 1:
+        return values[0]
+    if p <= 0:
+        return values[0]  # P0 = min
+    if p >= 100:
+        return values[-1]  # P100 = max
+
+    # statistics.quantiles(n=100) returns 99 cut points (indices 0-98 for P1-P99)
     quantile = p / 100.0
-    return (
-        statistics.quantiles(values, n=100)[int(quantile * 99)] if len(values) >= 2 else values[0]
-    )
+    idx = min(int(quantile * 99), 98)  # Clamp to valid range
+    return statistics.quantiles(values, n=100)[idx]
 
 
 def compute_first(records: list[dict[str, Any]], field: str) -> Any:
