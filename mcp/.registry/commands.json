@@ -2650,7 +2650,7 @@
         "--due-date": {
           "type": "string",
           "required": false,
-          "help": "Due date (ISO-8601)."
+          "help": "Due date: ISO-8601 (2026-01-23), relative (+7d, +2w), or keyword (today, tomorrow)."
         },
         "--opportunity-id": {
           "type": "int",
@@ -2692,7 +2692,11 @@
           ]
         }
       },
-      "positionals": []
+      "positionals": [],
+      "examples": [
+        "reminder create --type one-time --due-date +7d --owner-id 123 --person-id 456",
+        "reminder create --type one-time --due-date tomorrow --owner-id 123 --person-id 456"
+      ]
     },
     {
       "name": "reminder delete",
@@ -2771,12 +2775,12 @@
         "--due-after": {
           "type": "string",
           "required": false,
-          "help": "Filter reminders due after this date (ISO-8601)."
+          "help": "Filter reminders due after this date (ISO-8601, relative, or keyword)."
         },
         "--due-before": {
           "type": "string",
           "required": false,
-          "help": "Filter reminders due before this date (ISO-8601)."
+          "help": "Filter reminders due before this date (ISO-8601, relative, or keyword)."
         },
         "--max-results": {
           "type": "int",
@@ -2843,7 +2847,8 @@
       "positionals": [],
       "examples": [
         "reminder ls --person-id 123",
-        "reminder ls --status active --due-after 2024-01-01",
+        "reminder ls --status active --due-after today",
+        "reminder ls --due-before +7d",
         "reminder ls --owner-id 456 --type recurring"
       ],
       "relatedCommands": [
@@ -2873,7 +2878,7 @@
         "--due-date": {
           "type": "string",
           "required": false,
-          "help": "Due date (ISO-8601)."
+          "help": "Due date: ISO-8601 (2026-01-23), relative (+7d, +2w), or keyword (today, tomorrow)."
         },
         "--owner-id": {
           "type": "int",

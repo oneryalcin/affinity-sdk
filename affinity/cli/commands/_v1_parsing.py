@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, TypeVar
 
 from ..errors import CLIError
+from ..query.dates import is_relative_date, parse_relative_date
 
 T = TypeVar("T")
 
@@ -63,6 +64,56 @@ def parse_iso_datetime(value: str, *, label: str) -> datetime:
         # astimezone() on naive datetime uses system timezone
         dt = dt.astimezone()
     return dt.astimezone(timezone.utc)
+
+
+def parse_date_flexible(
+    value: str,
+    *,
+    label: str,
+    now: datetime | None = None,
+) -> datetime:
+    """
+    Parse date string as either relative or ISO format.
+
+    Tries relative first (+7d, tomorrow), then ISO-8601.
+    Returns UTC-aware datetime.
+
+    Args:
+        value: Date string to parse
+        label: Human-readable label for error messages
+        now: Reference time for relative dates (default: current UTC)
+
+    Returns:
+        UTC-aware datetime
+
+    Raises:
+        CLIError: If value cannot be parsed as either format
+    """
+    # Validate non-empty
+    if not value or not value.strip():
+        raise CLIError(
+            f"Missing {label} date value",
+            error_type="usage_error",
+            exit_code=2,
+        )
+
+    # Try relative date first
+    if is_relative_date(value):
+        try:
+            return parse_relative_date(value, now=now, use_utc=True)
+        except ValueError:
+            pass  # Shouldn't happen if is_relative_date() returned True
+
+    # Fall back to ISO parsing, but wrap error with unified hint
+    try:
+        return parse_iso_datetime(value, label=label)
+    except CLIError:
+        raise CLIError(
+            f"Invalid {label} date: {value}",
+            error_type="usage_error",
+            exit_code=2,
+            hint="Use ISO-8601 (2026-01-01), relative (+7d, +2w), or keyword (today, tomorrow).",
+        ) from None
 
 
 def parse_json_value(value: str, *, label: str) -> Any:

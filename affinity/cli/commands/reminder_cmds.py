@@ -18,7 +18,7 @@ from ..errors import CLIError
 from ..options import output_options
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
-from ._v1_parsing import parse_choice, parse_iso_datetime
+from ._v1_parsing import parse_choice, parse_date_flexible
 
 
 @click.group(name="reminder", cls=RichGroup)
@@ -147,10 +147,16 @@ def _validate_single_entity(
     help="Reminder status (active, completed, overdue).",
 )
 @click.option(
-    "--due-after", type=str, default=None, help="Filter reminders due after this date (ISO-8601)."
+    "--due-after",
+    type=str,
+    default=None,
+    help="Filter reminders due after this date (ISO-8601, relative, or keyword).",
 )
 @click.option(
-    "--due-before", type=str, default=None, help="Filter reminders due before this date (ISO-8601)."
+    "--due-before",
+    type=str,
+    default=None,
+    help="Filter reminders due before this date (ISO-8601, relative, or keyword).",
 )
 @click.option("--page-size", "-s", type=int, default=None, help="Page size (max 500).")
 @click.option(
@@ -186,11 +192,15 @@ def reminder_ls(
     Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id,
     --creator-id, --completer-id), type, status, or due date range (--due-after/--due-before).
 
+    Date filters accept ISO-8601 (2024-01-01), relative (+7d, +2w), or keywords (today, tomorrow).
+
     Examples:
 
     - `xaffinity reminder ls --person-id 123`
 
-    - `xaffinity reminder ls --status active --due-after 2024-01-01`
+    - `xaffinity reminder ls --status active --due-after today`
+
+    - `xaffinity reminder ls --due-before +7d`
 
     - `xaffinity reminder ls --owner-id 456 --type recurring`
     """
@@ -244,9 +254,9 @@ def reminder_ls(
         parsed_reset = parse_choice(reset_type, _REMINDER_RESET_MAP, label="reset type")
         parsed_status = parse_choice(status, _REMINDER_STATUS_MAP, label="status")
         due_before_value = (
-            parse_iso_datetime(due_before, label="due-before") if due_before else None
+            parse_date_flexible(due_before, label="due-before") if due_before else None
         )
-        due_after_value = parse_iso_datetime(due_after, label="due-after") if due_after else None
+        due_after_value = parse_date_flexible(due_after, label="due-after") if due_after else None
         person_id_value = PersonId(person_id) if person_id is not None else None
         company_id_value = CompanyId(company_id) if company_id is not None else None
         opportunity_id_value = OpportunityId(opportunity_id) if opportunity_id is not None else None
@@ -384,7 +394,12 @@ def reminder_get(ctx: CLIContext, reminder_id: int) -> None:
     help="Reminder type (one-time, recurring).",
 )
 @click.option("--content", type=str, default=None, help="Reminder content.")
-@click.option("--due-date", type=str, default=None, help="Due date (ISO-8601).")
+@click.option(
+    "--due-date",
+    type=str,
+    default=None,
+    help="Due date: ISO-8601 (2026-01-23), relative (+7d, +2w), or keyword (today, tomorrow).",
+)
 @click.option(
     "--reset-type",
     type=click.Choice(sorted(_REMINDER_RESET_MAP.keys())),
@@ -410,7 +425,32 @@ def reminder_create(
     company_id: int | None,
     opportunity_id: int | None,
 ) -> None:
-    """Create a reminder."""
+    """
+    Create a reminder.
+
+    One-time reminders require --due-date. Recurring reminders require
+    --reset-type and --reminder-days.
+
+    Due date formats:
+
+    - ISO-8601: 2026-01-23, 2026-01-23T14:00:00Z
+
+    - Relative: +7d (7 days from now), +2w (2 weeks), +1m (1 month), +1y (1 year)
+
+    - Keywords: now, today, tomorrow, yesterday
+
+    Note: Relative dates and keywords use UTC. ISO dates without timezone are
+    interpreted as local time and converted to UTC.
+
+    Examples:
+
+    - `xaffinity reminder create --type one-time --due-date +7d --owner-id 123 --person-id 456`
+
+    - `xaffinity reminder create --type one-time --due-date tomorrow --owner-id 123 --person-id 456`
+
+    - `xaffinity reminder create --type recurring --reset-type email --reminder-days 30 \\
+      --owner-id 123`
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         _ = warnings
@@ -420,7 +460,7 @@ def reminder_create(
         if parsed_type is None:
             raise CLIError("Missing reminder type.", error_type="usage_error", exit_code=2)
         parsed_reset = parse_choice(reset_type, _REMINDER_RESET_MAP, label="reset type")
-        due_date_value = parse_iso_datetime(due_date, label="due-date") if due_date else None
+        due_date_value = parse_date_flexible(due_date, label="due-date") if due_date else None
 
         client = ctx.get_client(warnings=warnings)
         reminder = client.reminders.create(
@@ -486,7 +526,12 @@ def reminder_create(
     help="Reminder type (one-time, recurring).",
 )
 @click.option("--content", type=str, default=None, help="Reminder content.")
-@click.option("--due-date", type=str, default=None, help="Due date (ISO-8601).")
+@click.option(
+    "--due-date",
+    type=str,
+    default=None,
+    help="Due date: ISO-8601 (2026-01-23), relative (+7d, +2w), or keyword (today, tomorrow).",
+)
 @click.option(
     "--reset-type",
     type=click.Choice(sorted(_REMINDER_RESET_MAP.keys())),
@@ -511,12 +556,25 @@ def reminder_update(
     reminder_days: int | None,
     is_completed: bool | None,
 ) -> None:
-    """Update a reminder."""
+    """
+    Update a reminder.
+
+    Due date formats:
+
+    - ISO-8601: 2026-01-23, 2026-01-23T14:00:00Z
+
+    - Relative: +7d (7 days from now), +2w (2 weeks), +1m (1 month), +1y (1 year)
+
+    - Keywords: now, today, tomorrow, yesterday
+
+    Note: Relative dates and keywords use UTC. ISO dates without timezone are
+    interpreted as local time and converted to UTC.
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         parsed_type = parse_choice(reminder_type, _REMINDER_TYPE_MAP, label="reminder type")
         parsed_reset = parse_choice(reset_type, _REMINDER_RESET_MAP, label="reset type")
-        due_date_value = parse_iso_datetime(due_date, label="due-date") if due_date else None
+        due_date_value = parse_date_flexible(due_date, label="due-date") if due_date else None
 
         client = ctx.get_client(warnings=warnings)
         reminder = client.reminders.update(

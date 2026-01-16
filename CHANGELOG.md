@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - SDK: `retries` parameter on `persons.get()`, `companies.get()`, and `opportunities.get()` methods. Enables automatic retry with exponential backoff on 404 errors to handle V1→V2 eventual consistency after create operations. Default is `retries=0` (fail fast).
+- CLI: Reminder date options now accept relative dates and keywords in addition to ISO-8601:
+  - `--due-date`: `+7d`, `+2w`, `+1m`, `+1y`, `today`, `tomorrow`, `yesterday`, `now`
+  - `--due-after`, `--due-before`: Same formats for filtering in `reminder ls`
+  - Example: `xaffinity reminder create --due-date +7d --type one-time --owner-id 123`
 - Docs: V1→V2 eventual consistency guide covering 404 after create and stale data after update scenarios.
 - Tests: Integration test suite for SDK write operations (`tests/integration/`).
 

@@ -676,9 +676,15 @@ xaffinity note delete 9876
 
 ### `xaffinity reminder ls`
 
+The `--due-after` and `--due-before` options accept the same date formats as `--due-date`:
+- **ISO-8601**: `2025-01-15`, `2025-01-15T09:00:00Z`
+- **Relative**: `+7d`, `+2w`, `+1m`, `+1y`
+- **Keywords**: `now`, `today`, `tomorrow`, `yesterday`
+
 ```bash
 xaffinity reminder ls
 xaffinity reminder ls --owner-id 42 --status active --json
+xaffinity reminder ls --due-after today --due-before +7d
 ```
 
 ### `xaffinity reminder get <reminderId>`
@@ -689,7 +695,14 @@ xaffinity reminder get 12345
 
 ### `xaffinity reminder create`
 
+The `--due-date` option accepts multiple formats:
+- **ISO-8601**: `2025-01-15`, `2025-01-15T09:00:00Z`
+- **Relative**: `+7d` (7 days), `+2w` (2 weeks), `+1m` (1 month), `+1y` (1 year)
+- **Keywords**: `now`, `today`, `tomorrow`, `yesterday`
+
 ```bash
+xaffinity reminder create --owner-id 42 --type one-time --due-date +7d --person-id 123
+xaffinity reminder create --owner-id 42 --type one-time --due-date tomorrow --person-id 123
 xaffinity reminder create --owner-id 42 --type one-time --due-date 2025-01-15T09:00:00Z --person-id 123
 xaffinity reminder create --owner-id 42 --type recurring --reset-type interaction --reminder-days 3 --company-id 456
 ```
