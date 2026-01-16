@@ -304,10 +304,10 @@ def reminder_ls(
                                 "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
-                        if page.next_page_token and not stopped_mid_page:
+                        if page.next_cursor and not stopped_mid_page:
                             pagination = {
                                 "reminders": {
-                                    "nextCursor": page.next_page_token,
+                                    "nextCursor": page.next_cursor,
                                     "prevCursor": None,
                                 }
                             }
@@ -320,8 +320,8 @@ def reminder_ls(
 
                 if first_page and not all_pages and max_results is None:
                     pagination = (
-                        {"reminders": {"nextCursor": page.next_page_token, "prevCursor": None}}
-                        if page.next_page_token
+                        {"reminders": {"nextCursor": page.next_cursor, "prevCursor": None}}
+                        if page.next_cursor
                         else None
                     )
                     return CommandOutput(
@@ -332,7 +332,7 @@ def reminder_ls(
                     )
                 first_page = False
 
-                page_token = page.next_page_token
+                page_token = page.next_cursor
                 if not page_token:
                     break
 

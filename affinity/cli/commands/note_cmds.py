@@ -178,8 +178,8 @@ def note_ls(
                                 "Results limited by --max-results. Use --all to fetch all results."
                             )
                         pagination = None
-                        if page.next_page_token and not stopped_mid_page:
-                            pagination = {"nextCursor": page.next_page_token, "prevCursor": None}
+                        if page.next_cursor and not stopped_mid_page:
+                            pagination = {"nextCursor": page.next_cursor, "prevCursor": None}
                         return CommandOutput(
                             data=results[:max_results],  # Direct array, not wrapped
                             context=cmd_context,
@@ -189,8 +189,8 @@ def note_ls(
 
                 if first_page and not all_pages and max_results is None:
                     pagination = (
-                        {"nextCursor": page.next_page_token, "prevCursor": None}
-                        if page.next_page_token
+                        {"nextCursor": page.next_cursor, "prevCursor": None}
+                        if page.next_cursor
                         else None
                     )
                     return CommandOutput(
@@ -201,7 +201,7 @@ def note_ls(
                     )
                 first_page = False
 
-                page_token = page.next_page_token
+                page_token = page.next_cursor
                 if not page_token:
                     break
 

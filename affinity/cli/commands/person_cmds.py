@@ -367,7 +367,7 @@ def person_ls(
                     page_size=page_size,
                     page_token=cursor,
                 ):
-                    next_cursor = v1_page.next_page_token
+                    next_cursor = v1_page.next_cursor
                     prev_cursor = None  # V1 doesn't have prev cursor
 
                     if v1_page.data:
@@ -409,7 +409,7 @@ def person_ls(
                     page_size=page_size,
                     page_token=cursor,
                 ):
-                    next_cursor = search_page.next_page_token
+                    next_cursor = search_page.next_cursor
                     prev_cursor = None  # Search doesn't have prev cursor
 
                     for idx, person in enumerate(search_page.data):
@@ -599,7 +599,7 @@ def _resolve_person_by_email(*, client: Any, email: str) -> PersonId:
                 matches.append(person)
                 if len(matches) >= 20:
                     break
-        if len(matches) >= 20 or not page.next_page_token:
+        if len(matches) >= 20 or not page.next_cursor:
             break
 
     if not matches:
@@ -643,7 +643,7 @@ def _resolve_person_by_name(*, client: Any, name: str) -> PersonId:
                 matches.append(person)
                 if len(matches) >= 20:
                     break
-        if len(matches) >= 20 or not page.next_page_token:
+        if len(matches) >= 20 or not page.next_cursor:
             break
 
     if not matches:

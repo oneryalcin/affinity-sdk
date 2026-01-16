@@ -94,9 +94,9 @@ async def dump_entity_files_bundle(
                         break
                 if max_files is not None and produced >= max_files:
                     break
-                if not resp.next_page_token:
+                if not resp.next_cursor:
                     break
-                token = resp.next_page_token
+                token = resp.next_cursor
 
             for _ in range(workers):
                 await queue.put(None)

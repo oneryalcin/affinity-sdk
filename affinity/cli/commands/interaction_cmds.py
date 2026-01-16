@@ -288,7 +288,7 @@ def _fetch_interactions_chunked(
                         chunks_processed=chunks_processed,
                     )
 
-            page_token = page.next_page_token
+            page_token = page.next_cursor
             if not page_token:
                 break
 
