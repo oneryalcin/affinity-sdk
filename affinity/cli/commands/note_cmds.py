@@ -308,6 +308,11 @@ def note_create(
     """
     Create a note attached to an entity.
 
+    Note: The Affinity API escapes underscores in note content (e.g., "test_note"
+    becomes "test\\_note"). This is server-side markdown escaping and cannot be
+    prevented. If you need to search for or compare note content, account for
+    this transformation.
+
     Examples:
 
     - `xaffinity note create --content "Meeting notes" --person-id 12345`

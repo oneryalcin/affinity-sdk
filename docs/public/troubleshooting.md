@@ -23,6 +23,24 @@ If `get()` returns old values after calling `update()`, this is also due to V1â†
 
 See [Stale data after update](guides/errors-and-retries.md#stale-data-after-update) for details.
 
+## Underscores escaped in note content
+
+When you create or update a note, the Affinity API escapes underscores in the content:
+
+```
+Input:  "test_note_content"
+Output: "test\_note\_content"
+```
+
+This is server-side markdown escaping and cannot be prevented. If you need to search for or compare note content, account for this transformation:
+
+```python
+# When checking note content, allow for escaped underscores
+original = "my_note"
+from_api = note.content
+assert from_api in (original, original.replace("_", r"\_"))
+```
+
 ## Rate limits
 
 The client tracks rate-limit state and retries some requests automatically.
