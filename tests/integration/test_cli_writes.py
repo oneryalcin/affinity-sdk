@@ -16,14 +16,15 @@ Usage:
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
+import time
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from click.testing import CliRunner
+
+from affinity.cli.main import cli
 
 if TYPE_CHECKING:
     from affinity import Affinity
@@ -60,6 +61,17 @@ class CLIResult:
         return self.exit_code == 0
 
 
+def run_cli_with_retry(*args: str, api_key: str, retries: int = 3, delay: float = 1.0) -> CLIResult:
+    """Run CLI command with retries for eventual consistency."""
+    last_result = run_cli(*args, api_key=api_key)
+    for _ in range(retries):
+        if last_result.success:
+            return last_result
+        time.sleep(delay)
+        last_result = run_cli(*args, api_key=api_key)
+    return last_result
+
+
 def run_cli(*args: str, api_key: str) -> CLIResult:
     """
     Run a CLI command with the given arguments.
@@ -71,22 +83,18 @@ def run_cli(*args: str, api_key: str) -> CLIResult:
     Returns:
         CLIResult with exit code, stdout, and stderr
     """
-    cmd = [sys.executable, "-m", "affinity.cli", *args, "--output", "json"]
-    env = {"AFFINITY_API_KEY": api_key}
-
-    result = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        env={**dict(__import__("os").environ), **env},
-        cwd=Path(__file__).parent.parent.parent,
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [*args, "--output", "json"],
+        env={"AFFINITY_API_KEY": api_key},
+        catch_exceptions=False,
     )
 
     return CLIResult(
-        exit_code=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        exit_code=result.exit_code,
+        stdout=result.output,
+        stderr="",
     )
 
 
@@ -95,10 +103,11 @@ def run_cli(*args: str, api_key: str) -> CLIResult:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("sandbox_client")
 class TestPersonCRUDWorkflow:
     """Test person create → get → update → delete workflow via CLI."""
 
-    def test_person_crud_cycle(self, sandbox_api_key: str, _sandbox_client: Affinity) -> None:
+    def test_person_crud_cycle(self, sandbox_api_key: str) -> None:
         """Verify person CRUD operations work correctly via CLI."""
         marker = get_test_marker()
         person_id: int | None = None
@@ -116,18 +125,18 @@ class TestPersonCRUDWorkflow:
                 f"{marker.lower()}@example.com",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Create failed: {result.stderr}"
+            assert result.success, f"Create failed: {result.stdout}"
             data = result.json
-            assert "person" in data
-            person_id = data["person"]["id"]
+            assert data["data"] is not None and "person" in data["data"]
+            person_id = data["data"]["person"]["id"]
             assert person_id is not None
 
             # Get (verify creation)
             result = run_cli("person", "get", str(person_id), api_key=sandbox_api_key)
-            assert result.success, f"Get failed: {result.stderr}"
+            assert result.success, f"Get failed: {result.stdout}"
             data = result.json
-            assert data["person"]["firstName"] == f"{marker}_First"
-            assert data["person"]["lastName"] == f"{marker}_Last"
+            assert data["data"]["person"]["firstName"] == f"{marker}_First"
+            assert data["data"]["person"]["lastName"] == f"{marker}_Last"
 
             # Update
             result = run_cli(
@@ -138,14 +147,14 @@ class TestPersonCRUDWorkflow:
                 f"{marker}_UpdatedFirst",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Update failed: {result.stderr}"
+            assert result.success, f"Update failed: {result.stdout}"
             data = result.json
-            assert data["person"]["firstName"] == f"{marker}_UpdatedFirst"
+            assert data["data"]["person"]["firstName"] == f"{marker}_UpdatedFirst"
 
             # Verify update persisted
             result = run_cli("person", "get", str(person_id), api_key=sandbox_api_key)
             assert result.success
-            assert result.json["person"]["firstName"] == f"{marker}_UpdatedFirst"
+            assert result.json["data"]["person"]["firstName"] == f"{marker}_UpdatedFirst"
 
         finally:
             # Cleanup: Delete
@@ -163,36 +172,39 @@ class TestPersonCRUDWorkflow:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("sandbox_client")
 class TestCompanyCRUDWorkflow:
     """Test company create → get → update → delete workflow via CLI."""
 
-    def test_company_crud_cycle(self, sandbox_api_key: str, _sandbox_client: Affinity) -> None:
+    def test_company_crud_cycle(self, sandbox_api_key: str) -> None:
         """Verify company CRUD operations work correctly via CLI."""
         marker = get_test_marker()
         company_id: int | None = None
 
         try:
             # Create
+            # Use dashes instead of underscores for valid domain format
+            domain = marker.lower().replace("_", "-") + ".example.com"
             result = run_cli(
                 "company",
                 "create",
                 "--name",
                 f"{marker}_Company",
                 "--domain",
-                f"{marker.lower()}.example.com",
+                domain,
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Create failed: {result.stderr}"
+            assert result.success, f"Create failed: {result.stdout}"
             data = result.json
-            assert "company" in data
-            company_id = data["company"]["id"]
+            assert data["data"] is not None and "company" in data["data"]
+            company_id = data["data"]["company"]["id"]
             assert company_id is not None
 
-            # Get (verify creation)
-            result = run_cli("company", "get", str(company_id), api_key=sandbox_api_key)
-            assert result.success, f"Get failed: {result.stderr}"
+            # Get (verify creation) - use retry for V1→V2 eventual consistency
+            result = run_cli_with_retry("company", "get", str(company_id), api_key=sandbox_api_key)
+            assert result.success, f"Get failed: {result.stdout}"
             data = result.json
-            assert data["company"]["name"] == f"{marker}_Company"
+            assert data["data"]["company"]["name"] == f"{marker}_Company"
 
             # Update
             result = run_cli(
@@ -203,9 +215,9 @@ class TestCompanyCRUDWorkflow:
                 f"{marker}_UpdatedCompany",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Update failed: {result.stderr}"
+            assert result.success, f"Update failed: {result.stdout}"
             data = result.json
-            assert data["company"]["name"] == f"{marker}_UpdatedCompany"
+            assert data["data"]["company"]["name"] == f"{marker}_UpdatedCompany"
 
         finally:
             # Cleanup: Delete
@@ -222,10 +234,11 @@ class TestCompanyCRUDWorkflow:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("sandbox_client")
 class TestNoteCRUDWorkflow:
     """Test note create → get → update → delete workflow via CLI."""
 
-    def test_note_crud_on_person(self, sandbox_api_key: str, _sandbox_client: Affinity) -> None:
+    def test_note_crud_on_person(self, sandbox_api_key: str) -> None:
         """Verify note CRUD operations on a person via CLI."""
         marker = get_test_marker()
         person_id: int | None = None
@@ -238,10 +251,12 @@ class TestNoteCRUDWorkflow:
                 "create",
                 "--first-name",
                 f"{marker}_NoteTest",
+                "--last-name",
+                "Test",
                 api_key=sandbox_api_key,
             )
-            assert result.success
-            person_id = result.json["person"]["id"]
+            assert result.success, f"Person create failed: {result.stdout}"
+            person_id = result.json["data"]["person"]["id"]
 
             # Create note
             result = run_cli(
@@ -253,15 +268,16 @@ class TestNoteCRUDWorkflow:
                 f"Test note content for {marker}",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Note create failed: {result.stderr}"
+            assert result.success, f"Note create failed: {result.stdout}"
             data = result.json
-            assert "note" in data
-            note_id = data["note"]["id"]
+            assert data["data"] is not None and "note" in data["data"]
+            note_id = data["data"]["note"]["id"]
 
             # Get note
             result = run_cli("note", "get", str(note_id), api_key=sandbox_api_key)
-            assert result.success, f"Note get failed: {result.stderr}"
-            assert f"Test note content for {marker}" in result.json["note"]["content"]
+            assert result.success, f"Note get failed: {result.stdout}"
+            # Note: API may escape underscores, so check for base text
+            assert "Test note content" in result.json["data"]["note"]["content"]
 
             # Update note
             result = run_cli(
@@ -272,12 +288,12 @@ class TestNoteCRUDWorkflow:
                 f"Updated note content for {marker}",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Note update failed: {result.stderr}"
-            assert "Updated note content" in result.json["note"]["content"]
+            assert result.success, f"Note update failed: {result.stdout}"
+            assert "Updated note content" in result.json["data"]["note"]["content"]
 
             # Delete note
             result = run_cli("note", "delete", str(note_id), "--yes", api_key=sandbox_api_key)
-            assert result.success, f"Note delete failed: {result.stderr}"
+            assert result.success, f"Note delete failed: {result.stdout}"
             note_id = None  # Mark as deleted
 
         finally:
@@ -308,7 +324,7 @@ class TestListEntryWorkflow:
         lists_response = sandbox_client.lists.list(limit=100)
         person_list = None
         for lst in lists_response.data:
-            if lst.type.value == 0:  # Person list
+            if lst.type == 0:  # Person list
                 person_list = lst
                 break
 
@@ -322,10 +338,12 @@ class TestListEntryWorkflow:
                 "create",
                 "--first-name",
                 f"{marker}_ListEntry",
+                "--last-name",
+                "Test",
                 api_key=sandbox_api_key,
             )
-            assert result.success
-            person_id = result.json["person"]["id"]
+            assert result.success, f"Person create failed: {result.stdout}"
+            person_id = result.json["data"]["person"]["id"]
 
             # Add person to list
             result = run_cli(
@@ -337,10 +355,10 @@ class TestListEntryWorkflow:
                 str(person_id),
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Add entry failed: {result.stderr}"
+            assert result.success, f"Add entry failed: {result.stdout}"
             data = result.json
-            assert "listEntry" in data
-            entry_id = data["listEntry"]["id"]
+            assert data["data"] is not None and "listEntry" in data["data"]
+            entry_id = data["data"]["listEntry"]["id"]
 
             # Get entry to verify
             result = run_cli(
@@ -351,7 +369,7 @@ class TestListEntryWorkflow:
                 str(entry_id),
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Get entry failed: {result.stderr}"
+            assert result.success, f"Get entry failed: {result.stdout}"
 
             # Delete entry
             result = run_cli(
@@ -363,7 +381,7 @@ class TestListEntryWorkflow:
                 "--yes",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Delete entry failed: {result.stderr}"
+            assert result.success, f"Delete entry failed: {result.stdout}"
             entry_id = None  # Mark as deleted
 
         finally:
@@ -387,12 +405,11 @@ class TestListEntryWorkflow:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("sandbox_client")
 class TestReminderCRUDWorkflow:
     """Test reminder create → get → update → delete workflow via CLI."""
 
-    def test_reminder_crud_cycle(
-        self, sandbox_api_key: str, _sandbox_client: Affinity, sandbox_user_id: UserId
-    ) -> None:
+    def test_reminder_crud_cycle(self, sandbox_api_key: str, sandbox_user_id: UserId) -> None:
         """Verify reminder CRUD operations via CLI."""
         marker = get_test_marker()
         person_id: int | None = None
@@ -405,12 +422,15 @@ class TestReminderCRUDWorkflow:
                 "create",
                 "--first-name",
                 f"{marker}_ReminderTest",
+                "--last-name",
+                "Test",
                 api_key=sandbox_api_key,
             )
-            assert result.success
-            person_id = result.json["person"]["id"]
+            assert result.success, f"Person create failed: {result.stdout}"
+            person_id = result.json["data"]["person"]["id"]
 
             # Create reminder (due in 7 days)
+            due_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
             result = run_cli(
                 "reminder",
                 "create",
@@ -418,20 +438,22 @@ class TestReminderCRUDWorkflow:
                 str(person_id),
                 "--owner-id",
                 str(sandbox_user_id),
-                "--due-in",
-                "7d",
+                "--type",
+                "one-time",
+                "--due-date",
+                due_date,
                 "--content",
                 f"Test reminder for {marker}",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Reminder create failed: {result.stderr}"
+            assert result.success, f"Reminder create failed: {result.stdout}"
             data = result.json
-            assert "reminder" in data
-            reminder_id = data["reminder"]["id"]
+            assert data["data"] is not None and "reminder" in data["data"]
+            reminder_id = data["data"]["reminder"]["id"]
 
             # Get reminder
             result = run_cli("reminder", "get", str(reminder_id), api_key=sandbox_api_key)
-            assert result.success, f"Reminder get failed: {result.stderr}"
+            assert result.success, f"Reminder get failed: {result.stdout}"
 
             # Update reminder
             result = run_cli(
@@ -442,13 +464,13 @@ class TestReminderCRUDWorkflow:
                 f"Updated reminder for {marker}",
                 api_key=sandbox_api_key,
             )
-            assert result.success, f"Reminder update failed: {result.stderr}"
+            assert result.success, f"Reminder update failed: {result.stdout}"
 
             # Delete reminder
             result = run_cli(
                 "reminder", "delete", str(reminder_id), "--yes", api_key=sandbox_api_key
             )
-            assert result.success, f"Reminder delete failed: {result.stderr}"
+            assert result.success, f"Reminder delete failed: {result.stdout}"
             reminder_id = None
 
         finally:
@@ -469,12 +491,11 @@ class TestReminderCRUDWorkflow:
 # =============================================================================
 
 
+@pytest.mark.usefixtures("sandbox_client")
 class TestCLIOutputFormats:
     """Test that CLI output formats are correct for write operations."""
 
-    def test_create_output_includes_context(
-        self, sandbox_api_key: str, _sandbox_client: Affinity
-    ) -> None:
+    def test_create_output_includes_context(self, sandbox_api_key: str) -> None:
         """Verify create command output includes proper context."""
         marker = get_test_marker()
         person_id: int | None = None
@@ -485,17 +506,21 @@ class TestCLIOutputFormats:
                 "create",
                 "--first-name",
                 f"{marker}_Context",
+                "--last-name",
+                "Test",
                 api_key=sandbox_api_key,
             )
-            assert result.success
+            assert result.success, f"Create failed: {result.stdout}"
             data = result.json
-            person_id = data["person"]["id"]
+            person_id = data["data"]["person"]["id"]
 
-            # Verify output structure
-            assert "person" in data
+            # Verify CLI output structure
+            assert "ok" in data and data["ok"] is True
+            assert "data" in data and data["data"] is not None
+            assert "person" in data["data"]
             assert "meta" in data
-            assert "context" in data["meta"]
-            assert data["meta"]["context"]["name"] == "person create"
+            assert "command" in data
+            assert data["command"]["name"] == "person create"
 
         finally:
             if person_id:
