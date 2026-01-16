@@ -18,8 +18,8 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from click.testing import CliRunner
@@ -53,7 +53,7 @@ class CLIResult:
     @property
     def json(self) -> dict[str, Any]:
         """Parse stdout as JSON."""
-        return json.loads(self.stdout)
+        return cast(dict[str, Any], json.loads(self.stdout))
 
     @property
     def success(self) -> bool:
@@ -429,8 +429,7 @@ class TestReminderCRUDWorkflow:
             assert result.success, f"Person create failed: {result.stdout}"
             person_id = result.json["data"]["person"]["id"]
 
-            # Create reminder (due in 7 days)
-            due_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            # Create reminder (due in 7 days) - using relative date format
             result = run_cli(
                 "reminder",
                 "create",
@@ -441,7 +440,7 @@ class TestReminderCRUDWorkflow:
                 "--type",
                 "one-time",
                 "--due-date",
-                due_date,
+                "+7d",
                 "--content",
                 f"Test reminder for {marker}",
                 api_key=sandbox_api_key,
@@ -538,3 +537,58 @@ class TestCLIOutputFormats:
         data = result.json
         assert "error" in data
         assert "type" in data["error"]
+
+
+# =============================================================================
+# Test: Client-Side Validation
+# =============================================================================
+
+
+class TestClientSideValidation:
+    """Test that client-side validation catches errors before API call."""
+
+    def test_domain_underscore_rejected_with_hint(self, sandbox_api_key: str) -> None:
+        """Verify domain with underscore is rejected client-side with helpful hint."""
+        result = run_cli(
+            "company",
+            "create",
+            "--name",
+            "Test Company",
+            "--domain",
+            "test_company.example.com",
+            api_key=sandbox_api_key,
+        )
+
+        assert not result.success
+        assert result.exit_code == 2  # Usage error exit code
+
+        data = result.json
+        assert data["ok"] is False
+        assert "error" in data
+        assert "underscore" in data["error"]["message"].lower()
+        # Verify hint suggests dash replacement
+        assert data["error"]["hint"] is not None
+        assert "test-company.example.com" in data["error"]["hint"]
+
+    def test_domain_url_rejected_with_hint(self, sandbox_api_key: str) -> None:
+        """Verify URL passed as domain is rejected client-side with helpful hint."""
+        result = run_cli(
+            "company",
+            "create",
+            "--name",
+            "Test Company",
+            "--domain",
+            "https://example.com/path",
+            api_key=sandbox_api_key,
+        )
+
+        assert not result.success
+        assert result.exit_code == 2  # Usage error exit code
+
+        data = result.json
+        assert data["ok"] is False
+        assert "error" in data
+        assert "url" in data["error"]["message"].lower()
+        # Verify hint extracts domain
+        assert data["error"]["hint"] is not None
+        assert "example.com" in data["error"]["hint"]
