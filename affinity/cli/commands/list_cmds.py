@@ -588,7 +588,7 @@ def list_export(
                 exit_code=2,
                 error_type="usage_error",
             )
-        if cursor and page_size != 200:
+        if cursor and page_size != 100:
             raise CLIError(
                 "--cursor cannot be combined with --page-size (cursor encodes page size).",
                 exit_code=2,
@@ -644,7 +644,7 @@ def list_export(
             ctx_modifiers["fields"] = list(fields)
         if filter_expr:
             ctx_modifiers["filter"] = filter_expr
-        if page_size != 200:
+        if page_size != 100:
             ctx_modifiers["pageSize"] = page_size
         if cursor:
             ctx_modifiers["cursor"] = cursor

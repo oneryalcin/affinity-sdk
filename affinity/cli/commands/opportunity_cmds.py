@@ -806,7 +806,7 @@ def opportunity_files_dump(
             ctx_modifiers["outDir"] = out_dir
         if overwrite:
             ctx_modifiers["overwrite"] = True
-        if concurrency != 4:
+        if concurrency != 3:
             ctx_modifiers["concurrency"] = concurrency
         if page_size != 100:
             ctx_modifiers["pageSize"] = page_size
