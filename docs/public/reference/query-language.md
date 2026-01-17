@@ -288,6 +288,53 @@ For `listEntries` queries, `fields.*` paths support human-readable field names:
 
 Field names are resolved case-insensitively against the list's field definitions. If a name is not found, it passes through unchanged (allowing direct use of field IDs like `fields.12345` or `fields.field-260415`).
 
+### Field Value Normalization
+
+When selecting custom fields in `listEntries` queries, reference field values are **normalized to display strings** for readability:
+
+| Field Type | API Returns | Normalized To |
+|------------|-------------|---------------|
+| Dropdown | `{"text": "Active", "id": 1}` | `"Active"` |
+| Multi-select | `[{"text": "A"}, {"text": "B"}]` | `["A", "B"]` |
+| Person reference | `{"firstName": "Jane", "lastName": "Doe", "id": 123}` | `"Jane Doe"` |
+| Company reference | `{"name": "Acme Corp", "id": 456, "domain": "acme.com"}` | `"Acme Corp"` |
+| Multi-person | `[{"firstName": "Jane", ...}, {"firstName": "John", ...}]` | `["Jane Doe", "John Smith"]` |
+
+**Example:**
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "select": ["entityName", "fields.Status", "fields.Owner"]
+}
+```
+
+**Output:**
+```json
+{
+  "data": [
+    {
+      "entityName": "Acme Corp",
+      "fields": {
+        "Status": "Active",
+        "Owner": "Jane Doe"
+      }
+    }
+  ]
+}
+```
+
+**Need full entity details?** Use `include` to fetch complete person/company records:
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "include": ["persons", "companies"]
+}
+```
+
 ### Discovering Available Fields
 
 Use the CLI to see what fields are available on each entity:

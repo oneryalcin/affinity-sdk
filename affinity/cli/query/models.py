@@ -426,6 +426,9 @@ class QueryResult:
     pagination: dict[str, Any] | None = None
     rate_limit: Any | None = None  # RateLimitSnapshot from client
     warnings: list[str] = field(default_factory=list)
+    # Track explicit selections for display formatting (field flattening)
+    explicit_select: list[str] | None = None  # e.g., ["id", "fields.*", "fields.Status"]
+    explicit_expand: list[str] | None = None  # e.g., ["interactionDates"]
 
 
 # Enable forward references

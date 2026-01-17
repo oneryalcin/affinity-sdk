@@ -499,6 +499,179 @@ class TestNormalizeListEntryFields:
 
         assert result["fields"] == {"Tags": ["VIP", "Priority"]}
 
+    def test_normalizes_person_reference_field(self) -> None:
+        """Normalizes person reference field to display name."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Owner",
+                            "value": {"data": {"firstName": "Jane", "lastName": "Doe", "id": 123}},
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Owner": "Jane Doe"}
+
+    def test_normalizes_company_reference_field(self) -> None:
+        """Normalizes company reference field to name."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Account",
+                            "value": {
+                                "data": {"name": "Acme Corp", "id": 456, "domain": "acme.com"}
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Account": "Acme Corp"}
+
+    def test_normalizes_multi_select_person_field(self) -> None:
+        """Normalizes multi-select person field to list of names."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Team Members",
+                            "value": {
+                                "data": [
+                                    {"firstName": "Jane", "lastName": "Doe"},
+                                    {"firstName": "John", "lastName": "Smith"},
+                                ]
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Team Members": ["Jane Doe", "John Smith"]}
+
+    def test_normalizes_multi_select_company_field(self) -> None:
+        """Normalizes multi-select company field to list of names."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Partner Companies",
+                            "value": {
+                                "data": [
+                                    {"name": "Acme Corp", "id": 1},
+                                    {"name": "TechStart", "id": 2},
+                                ]
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Partner Companies": ["Acme Corp", "TechStart"]}
+
+    def test_normalizes_person_with_first_name_only(self) -> None:
+        """Handles person with only first name."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Owner",
+                            "value": {"data": {"firstName": "Jane", "id": 123}},
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Owner": "Jane"}
+
+    def test_normalizes_person_with_last_name_only(self) -> None:
+        """Handles person with only last name."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Owner",
+                            "value": {"data": {"lastName": "Doe", "id": 123}},
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Owner": "Doe"}
+
+    def test_normalizes_person_with_empty_names(self) -> None:
+        """Handles person with empty/missing names."""
+        record = {
+            "id": 1,
+            "entity": {
+                "id": 100,
+                "fields": {
+                    "requested": True,
+                    "data": {
+                        "field-1": {
+                            "id": "field-1",
+                            "name": "Owner",
+                            "value": {"data": {"firstName": "", "lastName": "", "id": 123}},
+                        }
+                    },
+                },
+            },
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["fields"] == {"Owner": None}
+
     def test_adds_aliases_without_entity(self) -> None:
         """Adds listEntryId and entityType aliases even without entity."""
         record = {"id": 1, "type": "company", "firstName": "John"}

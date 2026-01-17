@@ -205,6 +205,159 @@ def format_json(
 
 
 # =============================================================================
+# Field Flattening Functions
+# =============================================================================
+
+
+def _extract_display_value(value: Any) -> Any:
+    """Extract human-readable display value from complex field values.
+
+    Handles:
+    - Lists: ["A", "B"] → "A, B"
+    - Location dicts: {"city": "NYC", "country": "USA"} → "NYC, USA"
+    - Primitives: pass through unchanged
+
+    Note: Person/company references are normalized at the executor layer,
+    so by the time we get here, they're already strings.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        # Join list values with comma
+        if all(isinstance(x, (str, int, float, bool)) for x in value):
+            return ", ".join(str(x) for x in value)
+        # List of dicts - try to extract display values
+        if all(isinstance(x, dict) for x in value):
+            names = [_extract_display_value(x) for x in value]
+            return ", ".join(str(n) for n in names if n)
+        return value
+    if isinstance(value, dict):
+        # Location fields (not covered by executor normalization)
+        if "city" in value or "country" in value:
+            parts = [value.get("city"), value.get("state"), value.get("country")]
+            return ", ".join(p for p in parts if p) or None
+        # Interaction reference (email, meeting)
+        if "type" in value and "sentAt" in value:
+            return value.get("sentAt")
+        if "type" in value and "startTime" in value:
+            return value.get("startTime")
+        # Generic dict - return as-is
+        return value
+    return value
+
+
+def _flatten_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten record['fields'] dict to top-level 'fields.X' keys.
+
+    Input:  {"id": 1, "fields": {"Status": "New", "Owner": "Jane Doe"}}
+    Output: {"id": 1, "fields.Status": "New", "fields.Owner": "Jane Doe"}
+
+    Edge case: {"id": 1, "fields": {}} → {"id": 1}  (no fields.* columns added)
+    """
+    result = {}
+    for key, value in record.items():
+        if key == "fields" and isinstance(value, dict):
+            # Empty dict produces no fields.* columns (handled naturally by loop)
+            for field_name, field_value in value.items():
+                # Extract display value for complex field types
+                display_value = _extract_display_value(field_value)
+                result[f"fields.{field_name}"] = display_value
+        else:
+            result[key] = value
+    return result
+
+
+def _flatten_interaction_dates(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten interactionDates to top-level columns.
+
+    Input:  {"id": 1, "interactionDates": {"lastMeeting": {"date": "2026-01-10", "daysSince": 7}}}
+    Output: {"id": 1, "lastMeeting": "2026-01-10", "lastMeetingDaysSince": 7}
+    """
+    result = {}
+    for key, value in record.items():
+        if key == "interactionDates" and isinstance(value, dict):
+            for interaction_type, interaction_data in value.items():
+                if isinstance(interaction_data, dict):
+                    if "date" in interaction_data:
+                        result[interaction_type] = interaction_data["date"]
+                    if "daysSince" in interaction_data:
+                        result[f"{interaction_type}DaysSince"] = interaction_data["daysSince"]
+                    if "daysUntil" in interaction_data:
+                        result[f"{interaction_type}DaysUntil"] = interaction_data["daysUntil"]
+                else:
+                    result[interaction_type] = interaction_data
+        else:
+            result[key] = value
+    return result
+
+
+def _apply_explicit_flattening(
+    data: list[dict[str, Any]],
+    explicit_select: list[str] | None,
+    explicit_expand: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Apply flattening for explicitly-selected nested structures.
+
+    Only flattens when user explicitly requested the data via select or expand.
+    This ensures default behavior (hiding complex nested columns) is preserved
+    while showing data the user explicitly asked for.
+    """
+    if not data:
+        return data
+
+    # Check if fields were explicitly selected
+    flatten_fields = False
+    if explicit_select:
+        flatten_fields = any(s == "fields.*" or s.startswith("fields.") for s in explicit_select)
+
+    # Check if interactionDates was explicitly expanded
+    flatten_interactions = False
+    if explicit_expand:
+        flatten_interactions = "interactionDates" in explicit_expand
+
+    if not flatten_fields and not flatten_interactions:
+        return data
+
+    result = []
+    for record in data:
+        row = dict(record)
+        if flatten_fields:
+            row = _flatten_fields(row)
+        if flatten_interactions:
+            row = _flatten_interaction_dates(row)
+        result.append(row)
+
+    return result
+
+
+def _get_excluded_columns(
+    explicit_select: list[str] | None,
+    explicit_expand: list[str] | None,
+) -> frozenset[str]:
+    """Get columns to exclude, respecting explicit selections.
+
+    Returns a modified set of excluded columns based on what was explicitly selected.
+    If fields were explicitly selected, they've been flattened to fields.X columns.
+    If interactionDates was explicitly expanded, it's been flattened to individual columns.
+    """
+    # Start with default exclusions
+    excluded = set(_EXCLUDED_TABLE_COLUMNS)
+
+    # If fields were explicitly selected, don't exclude fields
+    # (they're now flattened to fields.X columns, so "fields" key doesn't exist anyway)
+    if explicit_select and any(s == "fields.*" or s.startswith("fields.") for s in explicit_select):
+        excluded.discard("fields")
+
+    # If interactionDates was explicitly expanded, don't exclude interaction_dates
+    # (they're now flattened to individual columns)
+    if explicit_expand and "interactionDates" in explicit_expand:
+        excluded.discard("interaction_dates")
+        excluded.discard("interactionDates")
+
+    return frozenset(excluded)
+
+
+# =============================================================================
 # Table Output (Rich Table)
 # =============================================================================
 
@@ -260,10 +413,21 @@ def format_table(
     else:
         display_data = result.data
 
+    # Apply flattening for explicitly-selected nested structures (fields.*, interactionDates)
+    display_data = _apply_explicit_flattening(
+        display_data,
+        explicit_select=result.explicit_select,
+        explicit_expand=result.explicit_expand,
+    )
+
+    # Get excluded columns, respecting explicit selections
+    excluded = _get_excluded_columns(
+        explicit_select=result.explicit_select,
+        explicit_expand=result.explicit_expand,
+    )
+
     # Filter out excluded columns (following CLI convention - ls commands don't show fields)
-    filtered_data = [
-        {k: v for k, v in row.items() if k not in _EXCLUDED_TABLE_COLUMNS} for row in display_data
-    ]
+    filtered_data = [{k: v for k, v in row.items() if k not in excluded} for row in display_data]
 
     # Build Rich table using CLI's standard function
     table, omitted = _table_from_rows(filtered_data)
@@ -877,8 +1041,14 @@ def format_query_result(
 
     if format == "markdown":
         # Data table + pagination footer
-        fieldnames = list(result.data[0].keys()) if result.data else []
-        output = format_markdown(result.data or [], fieldnames)
+        # Apply flattening for explicitly-selected nested structures
+        display_data = _apply_explicit_flattening(
+            result.data or [],
+            explicit_select=result.explicit_select,
+            explicit_expand=result.explicit_expand,
+        )
+        fieldnames = list(display_data[0].keys()) if display_data else []
+        output = format_markdown(display_data, fieldnames)
         footer = _format_markdown_footer(len(result.data or []), result.pagination)
         if footer:
             output += f"\n\n{footer}"
@@ -891,8 +1061,14 @@ def format_query_result(
                 "Included data omitted in %s output (use --output json to see included entities)",
                 format,
             )
-        fieldnames = list(result.data[0].keys()) if result.data else []
-        return format_data(result.data or [], format, fieldnames=fieldnames)
+        # Apply flattening for explicitly-selected nested structures
+        display_data = _apply_explicit_flattening(
+            result.data or [],
+            explicit_select=result.explicit_select,
+            explicit_expand=result.explicit_expand,
+        )
+        fieldnames = list(display_data[0].keys()) if display_data else []
+        return format_data(display_data, format, fieldnames=fieldnames)
 
     if format == "table":
         return format_table(result)

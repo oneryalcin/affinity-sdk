@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.9.12 - 2026-01-17
+
+### Changed
+- CLI: Query `listEntries` now normalizes reference field values to display strings:
+  - Person fields: `{"firstName": "Jane", "lastName": "Doe"}` → `"Jane Doe"`
+  - Company fields: `{"name": "Acme Corp", "id": 123}` → `"Acme Corp"`
+  - Multi-person/company fields: Arrays of names instead of raw objects
+  - Use `expand` or `include` for full entity data when needed
+- CLI: Query output with explicit `select` on `fields.*` paths now flattens fields to top-level columns in table/CSV/markdown formats. JSON output preserves nested structure.
+
 ## 0.9.11 - 2026-01-17
 
 ### Added

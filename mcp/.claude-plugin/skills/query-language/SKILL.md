@@ -484,6 +484,19 @@ To select all custom fields, use `fields.*` wildcard in `select`:
 | `fields.<Name>` | Custom field value by name |
 | `fields.*` | All custom fields (wildcard) |
 
+### Field Value Normalization
+
+Reference field values are **normalized to display strings** for readability:
+
+| Field Type | API Returns | Normalized To |
+|------------|-------------|---------------|
+| Dropdown | `{"text": "Active", "id": 1}` | `"Active"` |
+| Multi-select | `[{"text": "A"}, {"text": "B"}]` | `["A", "B"]` |
+| Person reference | `{"firstName": "Jane", "lastName": "Doe"}` | `"Jane Doe"` |
+| Company reference | `{"name": "Acme Corp", "id": 456}` | `"Acme Corp"` |
+
+**Note:** Use `expand` or `include` to get full entity objects when you need IDs or other properties.
+
 ## Field Paths
 
 Access nested fields using dot notation:

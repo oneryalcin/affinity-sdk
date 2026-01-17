@@ -73,6 +73,23 @@ def _set_nested_value(target: dict[str, Any], path: str, value: Any) -> None:
     current[parts[-1]] = value
 
 
+def _extract_person_display_name(data: dict[str, Any]) -> str | None:
+    """Extract display name from a person reference dict.
+
+    Args:
+        data: Dict with firstName/lastName keys
+
+    Returns:
+        Combined name like "Jane Doe", or None if both empty
+    """
+    first = data.get("firstName", "")
+    last = data.get("lastName", "")
+    first = first.strip() if isinstance(first, str) else ""
+    last = last.strip() if isinstance(last, str) else ""
+    name = f"{first} {last}".strip()
+    return name if name else None
+
+
 def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
     """Normalize list entry field values from API format to query-friendly format.
 
@@ -120,14 +137,31 @@ def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
                             normalized_fields[field_name] = data["text"]
                         # Handle multi-select (array of values)
                         elif isinstance(data, list):
-                            # Extract text from each item if it's a dropdown list
+                            # Extract text/names from each item
                             extracted = []
                             for item in data:
                                 if isinstance(item, dict) and "text" in item:
+                                    # Dropdown item
                                     extracted.append(item["text"])
+                                elif isinstance(item, dict) and (
+                                    "firstName" in item or "lastName" in item
+                                ):
+                                    # Person reference in multi-select
+                                    name = _extract_person_display_name(item)
+                                    if name:
+                                        extracted.append(name)
+                                elif isinstance(item, dict) and "name" in item:
+                                    # Company reference in multi-select
+                                    extracted.append(item["name"])
                                 else:
                                     extracted.append(item)
                             normalized_fields[field_name] = extracted
+                        # Handle person reference: {"firstName": "Jane", "lastName": "Doe"}
+                        elif isinstance(data, dict) and ("firstName" in data or "lastName" in data):
+                            normalized_fields[field_name] = _extract_person_display_name(data)
+                        # Handle company reference: {"name": "Acme", "domain": "acme.com"}
+                        elif isinstance(data, dict) and "name" in data:
+                            normalized_fields[field_name] = data["name"]
                         else:
                             normalized_fields[field_name] = data
                     else:
@@ -326,6 +360,8 @@ class ExecutionContext:
             ),
             meta=meta,
             warnings=self.warnings,
+            explicit_select=self.query.select,
+            explicit_expand=self.query.expand,
         )
 
 
