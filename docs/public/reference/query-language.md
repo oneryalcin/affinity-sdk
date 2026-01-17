@@ -484,7 +484,7 @@ Both `include` and quantifiers fetch relationship data, but serve different purp
 }
 ```
 
-Included data appears in results:
+Included data appears separately from main records:
 
 ```json
 {
@@ -492,14 +492,21 @@ Included data appears in results:
     {
       "id": 123,
       "firstName": "John",
-      "companies": [
-        { "id": 456, "name": "Acme Inc" }
-      ],
-      "opportunities": []
+      "organizationIds": [456]
     }
-  ]
+  ],
+  "included": {
+    "companies": [
+      { "id": 456, "name": "Acme Inc", "domain": "acme.com" }
+    ],
+    "opportunities": []
+  }
 }
 ```
+
+In **table output**, included data renders as separate tables with headers like "Included: companies".
+
+In **JSON output**, the `included` section contains deduplicated records keyed by relationship name. Parent records reference included entities via ID fields (e.g., `organizationIds` for companies).
 
 ## Expand (Computed Data)
 

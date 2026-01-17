@@ -300,7 +300,10 @@ Fetch related entities in a single query:
 | `companies` | `persons`, `opportunities`, `interactions`, `notes` |
 | `opportunities` | `persons`, `companies`, `interactions`, `notes` |
 
-**Warning:** Includes cause N+1 API calls (one per parent record). Use `--dry-run` to preview the cost.
+**Note:** Includes fetch relationship IDs in parallel (N calls), then batch-fetch full records via V2 API. Use `--dry-run` to preview the cost.
+
+In **table output**, included data appears as separate tables (e.g., "Included: companies").
+In **JSON output**, included data appears in a separate `included` section with deduplicated records.
 
 ## Expanding Computed Data
 

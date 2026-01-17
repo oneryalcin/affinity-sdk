@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CLI: Query `include` clause now displays included relationships as separate tables in table output (e.g., "Included: companies"). JSON output includes full `included` and `included_by_parent` mappings for correlation.
 - SDK: `with_interaction_dates` and `with_interaction_persons` parameters for `CompanyService.get()` and `PersonService.get()`. When enabled, routes to V1 API to fetch interaction date summaries (last/next meeting, email dates, team member IDs).
 - CLI: `--expand interactions` option for `list export` command. Adds interaction date summaries to each list entry (last meeting, next meeting, last email, last interaction with daysSince/daysUntil calculations and team member names). Supports both JSON and CSV output formats.
 - CLI: `expand: ["interactionDates"]` support in `query` command. Enriches records with interaction date summaries directly on each record in `result.data`. Works with `persons`, `companies`, and `listEntries` queries.
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - SDK: `OpportunityService.get_associated_people()` and `get_associated_companies()` now use V2 batch lookup instead of individual V1 fetches, reducing N+1 API calls (e.g., 50 people now fetched in 2 calls instead of 51).
 - SDK: Query executor `_batch_fetch_by_ids()` now uses V2 batch lookup for persons and companies, improving query performance on relationship includes.
+- CLI: Query `include` clause now fetches relationship IDs in parallel, then batch-fetches full records via V2 API, reducing API calls from N×M to N+1 for deduped lookups.
 
 ### Changed (Breaking)
 - MCP: Query tool default format changed from `json` to `toon` for better token efficiency (~40% fewer tokens).
