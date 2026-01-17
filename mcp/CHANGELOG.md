@@ -5,9 +5,13 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.7] - Unreleased
+## [1.8.8] - 2026-01-17
 
 ### Added
+- **Query tool: TOON format default**: Query tool now defaults to TOON format for ~40% token reduction. Use `format: "json"` for JSON output.
+- **Query tool: Format parameter**: The `format` parameter now works correctly. Supports `toon`, `markdown`, `json`, `jsonl`, `csv`.
+- **Query tool: Include inline expansion**: Included relationships now display inline by default with display names (e.g., company names instead of IDs).
+- **Query tool: Interaction dates expansion**: Support for `expand: ["interactionDates"]` to enrich records with last/next meeting, email dates.
 - **Query tool: Advanced relationship filtering**: The `query` tool now supports filtering based on related entities:
   - `all_` quantifier: Filter where all related items match a condition (e.g., all companies have ".com" domain)
   - `none_` quantifier: Filter where no related items match a condition (e.g., no spam interactions)
@@ -16,12 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→persons/opportunities/interactions/notes/listEntries, opportunities→persons/companies/interactions
   - Note: These features cause N+1 API calls to fetch relationship data; use `dryRun` to preview
 
-
 ### Changed
 - **Gateway tools diagnostic errors**: `execute-read-command` and `execute-write-command` now return diagnostic info when "Command is required" error occurs, including `argsLength` and `argsPreview` to help debug intermittent argument passing issues
-- **CLI minimum version**: Now requires CLI 0.9.9+ (was 0.9.8)
+- **CLI minimum version**: Now requires CLI 0.9.11+ (was 0.9.9)
+
+### Changed (Breaking)
+- **Query tool default format**: Changed from `json` to `toon`. Existing integrations expecting JSON should explicitly set `format: "json"`.
 
 ### Fixed
+- **Query tool format parameter**: Now correctly honors the `format` parameter instead of always using JSON.
 - **Query tool always returned execution plan**: Fixed bash boolean handling bug where `${dry_run:+--dry-run}` always expanded because the string `"false"` is non-empty. Query tool now correctly executes queries instead of always returning dry-run plans. (Bug introduced in 1.8.4)
 
 ## [1.8.5] - 2026-01-13

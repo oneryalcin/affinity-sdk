@@ -1,10 +1,10 @@
 {
   "_generated": {
     "by": "tools/generate_cli_commands_registry.py",
-    "cliVersion": "0.9.10"
+    "cliVersion": "0.9.11"
   },
   "version": 1,
-  "cliVersion": "0.9.10",
+  "cliVersion": "0.9.11",
   "commands": [
     {
       "name": "company create",

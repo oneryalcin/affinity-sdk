@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.9.11 - 2026-01-17
+
 ### Added
-- CLI: Query `include` clause now displays included relationships as separate tables in table output (e.g., "Included: companies"). JSON output includes full `included` and `included_by_parent` mappings for correlation.
+- CLI: Query `include` clause now displays included relationships inline by default. Use `--include-style=separate` for separate tables or `--include-style=ids-only` for raw IDs. JSON output includes full `included` and `included_by_parent` mappings for correlation.
+- CLI: Query `include` extended syntax for custom display fields: `include: {companies: {display: ["name", "domain"]}}`.
 - SDK: `with_interaction_dates` and `with_interaction_persons` parameters for `CompanyService.get()` and `PersonService.get()`. When enabled, routes to V1 API to fetch interaction date summaries (last/next meeting, email dates, team member IDs).
 - CLI: `--expand interactions` option for `list export` command. Adds interaction date summaries to each list entry (last meeting, next meeting, last email, last interaction with daysSince/daysUntil calculations and team member names). Supports both JSON and CSV output formats.
 - CLI: `expand: ["interactionDates"]` support in `query` command. Enriches records with interaction date summaries directly on each record in `result.data`. Works with `persons`, `companies`, and `listEntries` queries.
@@ -22,22 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `get_associated_person_ids_batch(company_ids)` / `get_associated_opportunity_ids_batch(company_ids)`
   - `get_associated_person_ids_batch(opportunity_ids)` / `get_associated_company_ids_batch(opportunity_ids)`
   - All return `dict[EntityId, list[AssocId]]` with `on_error="raise"|"skip"` parameter.
-
-### Changed
-- SDK: `OpportunityService.get_associated_people()` and `get_associated_companies()` now use V2 batch lookup instead of individual V1 fetches, reducing N+1 API calls (e.g., 50 people now fetched in 2 calls instead of 51).
-- SDK: Query executor `_batch_fetch_by_ids()` now uses V2 batch lookup for persons and companies, improving query performance on relationship includes.
-- CLI: Query `include` clause now fetches relationship IDs in parallel, then batch-fetches full records via V2 API, reducing API calls from N×M to N+1 for deduped lookups.
-
-### Changed (Breaking)
-- MCP: Query tool default format changed from `json` to `toon` for better token efficiency (~40% fewer tokens).
-- CLI: TOON query output now includes full envelope structure instead of data-only format. The `data` prefix is added to the array header: `data[N]{fields}:` instead of `[N]{fields}:`.
-
-### Fixed
-- MCP: Query tool now honors the `format` parameter instead of always using JSON output.
-
-## 0.9.10 - 2026-01-16
-
-### Added
 - SDK: `retries` parameter on `persons.get()`, `companies.get()`, and `opportunities.get()` methods. Enables automatic retry with exponential backoff on 404 errors to handle V1→V2 eventual consistency after create operations. Default is `retries=0` (fail fast).
 - CLI: Reminder date options now accept relative dates and keywords in addition to ISO-8601:
   - `--due-date`: `+7d`, `+2w`, `+1m`, `+1y`, `today`, `tomorrow`, `yesterday`, `now`
@@ -50,7 +37,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs: V1→V2 eventual consistency guide covering 404 after create and stale data after update scenarios.
 - Tests: Integration test suite for SDK write operations (`tests/integration/`).
 
+### Changed
+- SDK: `OpportunityService.get_associated_people()` and `get_associated_companies()` now use V2 batch lookup instead of individual V1 fetches, reducing N+1 API calls (e.g., 50 people now fetched in 2 calls instead of 51).
+- SDK: Query executor `_batch_fetch_by_ids()` now uses V2 batch lookup for persons and companies, improving query performance on relationship includes.
+- CLI: Query `include` clause now fetches relationship IDs in parallel, then batch-fetches full records via V2 API, reducing API calls from N×M to N+1 for deduped lookups.
+
+### Changed (Breaking)
+- MCP: Query tool default format changed from `json` to `toon` for better token efficiency (~40% fewer tokens).
+- CLI: TOON query output now includes full envelope structure instead of data-only format. The `data` prefix is added to the array header: `data[N]{fields}:` instead of `[N]{fields}:`.
+
 ### Fixed
+- MCP: Query tool now honors the `format` parameter instead of always using JSON output.
 - SDK: `ListEntryService.batch_update_fields()` now uses correct V2 API payload format. Previously failed with "Missing discriminator for property operation" error.
 
 ## 0.9.9 - 2026-01-14
