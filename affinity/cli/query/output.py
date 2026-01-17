@@ -6,8 +6,8 @@ This module is CLI-only and NOT part of the public SDK API.
 Supported output formats:
 - JSON: Full structure with data, included, pagination, meta
 - JSONL: One JSON object per line (data rows only)
-- Markdown: GitHub-flavored markdown table (data rows only)
-- TOON: Token-Optimized Object Notation (data rows only)
+- Markdown: GitHub-flavored markdown table + pagination footer
+- TOON: Full envelope (token-efficient format)
 - CSV: Comma-separated values (data rows only)
 - Table: Rich terminal tables
 """
@@ -16,11 +16,18 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from rich.console import Console
 
-from ..formatters import OutputFormat, format_data, format_jsonl
+from ..formatters import (
+    OutputFormat,
+    format_data,
+    format_jsonl,
+    format_markdown,
+    format_toon_envelope,
+)
 from .models import ExecutionPlan, QueryResult
 
 logger = logging.getLogger(__name__)
@@ -290,6 +297,323 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
 
 
 # =============================================================================
+# Markdown Pagination Footer
+# =============================================================================
+
+
+def _format_markdown_footer(count: int, pagination: dict[str, Any] | None) -> str | None:
+    """Generate pagination footer for markdown output.
+
+    Args:
+        count: Number of rows in the output data
+        pagination: Pagination dict with hasMore (bool), total (int|None)
+
+    Note: `count` reflects rows returned after any limit/filter applied.
+    `total` is the total matching records (may differ if limit < total).
+
+    Truth table:
+    | count | total | hasMore | Output |
+    |-------|-------|---------|--------|
+    | 0 | 0 | false | `> _No results_` |
+    | 0 | N/A | false | None (no footer) |
+    | 0 | any | true | `> _more results available (none shown)_` |
+    | N | N | false | None (complete results) |
+    | N | M>N | false | `> _N of M results_` |
+    | N | M | true | `> _N of M results | more available_` |
+    | N | N/A | true | `> _N results | more available_` |
+    """
+    if not pagination:
+        return None
+
+    total = pagination.get("total")
+    has_more = pagination.get("hasMore", False)
+
+    # Edge cases - handle total=0 explicitly first (most specific)
+    # Note: total=0 is distinct from total=None (unknown)
+    if pagination.get("total") == 0:
+        return "> _No results_"
+    # Empty data with unknown total and no more pages - no footer needed
+    if count == 0 and not has_more and total is None:
+        return None
+    if count == 0 and has_more:
+        return "> _more results available (none shown due to limit)_"
+
+    # Only hide footer if we have exactly all results AND no more available.
+    # Note: count < total is valid when limit is applied.
+    if total is not None and count == total and not has_more:
+        return None  # Complete results, no footer needed
+
+    # Build footer - always show if hasMore or if count < total
+    if total and has_more:
+        return f"> _{count} of {total} results | more available_"
+    elif total and count < total:
+        return f"> _{count} of {total} results_"  # Limited, but no more pages
+    elif has_more:
+        return f"> _{count} results | more available_"
+    return None
+
+
+# =============================================================================
+# Truncation Support
+# =============================================================================
+
+# Bytes reserved for truncation metadata section
+# Calculation: "truncation:\n  rowsShown: 999999\n  rowsOmitted: 999999\n" ≈ 55 bytes
+# Doubled for safety buffer → 100 bytes
+_TRUNCATION_SECTION_RESERVE = 100
+
+# Bytes reserved for header line when envelope is very large
+# Calculation: "data[0]{field1,field2,...,field20}:\n" ≈ 40 bytes
+# Rounded up for safety → 50 bytes
+_HEADER_RESERVE = 50
+
+# Bytes reserved for markdown truncation footer
+# Calculation: "\n\n> _...truncated (999999 rows shown)_" ≈ 42 bytes
+# Rounded up for safety → 50 bytes
+_MARKDOWN_FOOTER_RESERVE = 50
+
+# Regex for parsing TOON array header: "name[count]{field1,field2,...}:"
+# Requires named arrays (data[N], included_companies[N]) - assumes Phase 2 format change complete
+_TOON_ARRAY_HEADER_RE = re.compile(r"^(\w+)\[(\d+)\]\{([^}]*)\}:$")
+
+
+def _parse_toon_header(header: str) -> tuple[str, int, str] | None:
+    """Parse TOON array header, returning (name, count, fieldnames) or None."""
+    match = _TOON_ARRAY_HEADER_RE.match(header)
+    if match:
+        return match.group(1), int(match.group(2)), match.group(3)
+    return None
+
+
+def truncate_toon_output(content: str, max_bytes: int) -> tuple[str, bool]:
+    """Truncate TOON output, preserving envelope structure.
+
+    Returns (truncated_content, was_truncated).
+    """
+    if len(content.encode()) <= max_bytes:
+        return content, False
+
+    lines = content.split("\n")
+
+    # Find data section boundaries using regex
+    data_start = None
+    parsed_header = None
+    for i, line in enumerate(lines):
+        parsed = _parse_toon_header(line)
+        if parsed and parsed[0] == "data":
+            data_start = i
+            parsed_header = parsed
+            break
+
+    if data_start is None or parsed_header is None:
+        # No valid data section - could be old anonymous format [N]{...}:
+        # Log warning to help diagnose; fall back to line-based truncation
+        logger.warning(
+            "TOON truncation requires named array format (data[N]{...}:). "
+            "Old anonymous format [N]{...}: is not supported. Falling back to line truncation."
+        )
+        # Truncate to last complete line (avoid corrupting mid-row)
+        truncated = content[:max_bytes]
+        last_newline = truncated.rfind("\n")
+        if last_newline > 0:
+            truncated = truncated[:last_newline]
+        return truncated, True
+
+    _, original_count, fieldnames = parsed_header
+
+    # Find end of data section (first non-indented line after header)
+    data_end = next(
+        (
+            i
+            for i, line in enumerate(lines[data_start + 1 :], data_start + 1)
+            if line and not line.startswith("  ")
+        ),
+        len(lines),
+    )
+
+    # Preserve envelope (everything after data section)
+    envelope_lines = lines[data_end:]
+    envelope_size = sum(len(line.encode()) + 1 for line in envelope_lines)
+
+    # Edge case: envelope alone exceeds max_bytes - keep as much envelope as fits
+    if envelope_size >= max_bytes - _TRUNCATION_SECTION_RESERVE:
+        header = f"data[0]{{{fieldnames}}}:\n"
+        trunc_str = "truncation:\n  rowsShown: 0\n  reason: envelope exceeds limit\n"
+
+        # Keep as much envelope as fits
+        remaining = max_bytes - len(header.encode()) - len(trunc_str.encode()) - _HEADER_RESERVE
+        kept_envelope: list[str] = []
+        kept_size = 0
+        for line in envelope_lines:
+            line_size = len(line.encode()) + 1
+            if kept_size + line_size > remaining:
+                break
+            kept_envelope.append(line)
+            kept_size += line_size
+
+        return header + trunc_str + "\n".join(kept_envelope), True
+
+    # Calculate how many data rows we can keep
+    available = max_bytes - envelope_size - _TRUNCATION_SECTION_RESERVE
+    data_header = lines[data_start]
+
+    kept_rows = []
+    current_size = len(data_header.encode()) + 1
+    for line in lines[data_start + 1 : data_end]:
+        line_size = len(line.encode()) + 1
+        if current_size + line_size > available:
+            break
+        kept_rows.append(line)
+        current_size += line_size
+
+    # Rebuild with updated count and native TOON truncation key
+    rows_omitted = original_count - len(kept_rows)
+    new_header = f"data[{len(kept_rows)}]{{{fieldnames}}}:"
+
+    # Insert truncation section between data and envelope (native TOON key)
+    truncation_section = [
+        "truncation:",
+        f"  rowsShown: {len(kept_rows)}",
+        f"  rowsOmitted: {rows_omitted}",
+    ]
+    result_lines = [new_header, *kept_rows, *truncation_section, *envelope_lines]
+    return "\n".join(result_lines), True
+
+
+def truncate_markdown_output(
+    content: str, max_bytes: int, *, original_total: int | None = None
+) -> tuple[str, bool]:
+    """Truncate markdown table, keeping header and preserving pagination context.
+
+    Args:
+        content: Markdown table content
+        max_bytes: Maximum byte size
+        original_total: Original total from pagination (preserved in truncation footer)
+    """
+    if len(content.encode()) <= max_bytes:
+        return content, False
+
+    lines = content.split("\n")
+
+    # Defensive: ensure we have at least header + separator
+    if len(lines) < 2:
+        logger.warning("Markdown truncation: malformed input (fewer than 2 lines)")
+        return content[:max_bytes], True
+
+    # Defensive: verify header looks like a markdown table
+    if not lines[0].startswith("|") or not lines[1].startswith("|"):
+        logger.warning("Markdown truncation: input doesn't look like a markdown table")
+        # Fall back to simple byte truncation
+        truncated = content[:max_bytes]
+        last_newline = truncated.rfind("\n")
+        if last_newline > 0:
+            truncated = truncated[:last_newline]
+        return truncated, True
+
+    header = lines[:2]  # Header row + separator
+
+    kept_rows = []
+    current_size = sum(len(line.encode()) + 1 for line in header) + _MARKDOWN_FOOTER_RESERVE
+    for line in lines[2:]:
+        if not line.startswith("|"):
+            continue  # Skip footer if present
+        line_size = len(line.encode()) + 1
+        if current_size + line_size > max_bytes:
+            break
+        kept_rows.append(line)
+        current_size += line_size
+
+    result = "\n".join(header + kept_rows)
+    # Preserve original total in truncation footer when available
+    if original_total is not None:
+        result += f"\n\n> _...truncated ({len(kept_rows)} of {original_total} rows shown)_"
+    else:
+        result += f"\n\n> _...truncated ({len(kept_rows)} rows shown)_"
+    return result, True
+
+
+def truncate_jsonl_output(content: str, max_bytes: int) -> tuple[str, bool]:
+    """Truncate JSONL output, removing lines from end.
+
+    Appends a final {"truncated": true} line to signal truncation.
+    JSONL consumers process line-by-line and can handle this metadata line.
+    """
+    if len(content.encode()) <= max_bytes:
+        return content, False
+
+    # Defensive: handle empty content
+    if not content.strip():
+        return '{"truncated":true}', True
+
+    lines = content.rstrip("\n").split("\n")
+
+    # Defensive: verify lines look like JSON (start with { or [)
+    valid_json_lines = [line for line in lines if line.strip().startswith(("{", "["))]
+    if len(valid_json_lines) < len(lines) * 0.5:  # Less than 50% valid
+        logger.warning("JSONL truncation: content doesn't look like valid JSONL")
+
+    truncation_line = '{"truncated":true}'
+    available = max_bytes - len(truncation_line.encode()) - 1  # -1 for newline
+
+    kept_lines = []
+    current_size = 0
+    for line in lines:
+        line_size = len(line.encode()) + 1  # +1 for newline
+        if current_size + line_size > available:
+            break
+        kept_lines.append(line)
+        current_size += line_size
+
+    return "\n".join(kept_lines) + "\n" + truncation_line, True
+
+
+def truncate_csv_output(content: str, max_bytes: int) -> tuple[str, bool]:
+    """Truncate CSV output, keeping header row.
+
+    CSV format cannot include a truncation notice without breaking the format
+    (any extra row would be parsed as data). Truncation is signaled only via
+    the MCP response's `truncated: true` flag.
+    """
+    if len(content.encode()) <= max_bytes:
+        return content, False
+
+    lines = content.split("\n")
+
+    # Defensive: handle empty or single-line content
+    if not lines:
+        logger.warning("CSV truncation: empty content")
+        return content, True
+    if len(lines) == 1:
+        # Only header, no data rows to truncate
+        return content[:max_bytes], True
+
+    # Defensive: verify header looks like CSV (contains comma)
+    header = lines[0]
+    if "," not in header:
+        logger.warning("CSV truncation: header doesn't contain comma, may not be valid CSV")
+
+    header_size = len(header.encode()) + 1
+
+    # Defensive: if header alone exceeds max, truncate header
+    if header_size > max_bytes:
+        logger.warning("CSV truncation: header exceeds max_bytes, truncating header")
+        return header[:max_bytes], True
+
+    kept_rows = []
+    current_size = header_size
+    for line in lines[1:]:
+        if not line:  # Skip empty lines
+            continue
+        line_size = len(line.encode()) + 1
+        if current_size + line_size > max_bytes:
+            break
+        kept_rows.append(line)
+        current_size += line_size
+
+    return "\n".join([header, *kept_rows]), True
+
+
+# =============================================================================
 # Unified Format Output
 # =============================================================================
 
@@ -303,28 +627,55 @@ def format_query_result(
 ) -> str:
     """Format query result with full structure support.
 
-    For formats that only support flat data (markdown, toon, csv),
-    the included/pagination/meta are omitted with a warning.
-
     Args:
         result: Query result to format
-        format: Output format (json, jsonl, markdown, toon, csv)
+        format: Output format (json, jsonl, markdown, toon, csv, table)
         pretty: Pretty-print JSON output
         include_meta: Include metadata in JSON output
 
     Returns:
         Formatted string
+
+    Note:
+        - JSON: Full envelope (data, included, pagination, meta)
+        - TOON: Full envelope (token-efficient format)
+        - Markdown: Data table + pagination footer
+        - CSV/JSONL: Data only (export formats - warn if losing included data)
     """
     if format == "json":
         # Full structure
         return format_json(result, pretty=pretty, include_meta=include_meta)
 
     if format == "jsonl":
-        # Data rows only, one per line
+        # Data rows only, one per line (export format)
+        if result.included:
+            logger.warning(
+                "Included data omitted in %s output (use --output json to see included entities)",
+                format,
+            )
         return format_jsonl(result.data or [])
 
-    if format in ("markdown", "toon", "csv"):
-        # Data only - warn if losing information
+    if format == "toon":
+        # Full envelope in token-efficient format
+        fieldnames = list(result.data[0].keys()) if result.data else []
+        return format_toon_envelope(
+            result.data or [],
+            fieldnames,
+            pagination=result.pagination,
+            included=result.included,
+        )
+
+    if format == "markdown":
+        # Data table + pagination footer
+        fieldnames = list(result.data[0].keys()) if result.data else []
+        output = format_markdown(result.data or [], fieldnames)
+        footer = _format_markdown_footer(len(result.data or []), result.pagination)
+        if footer:
+            output += f"\n\n{footer}"
+        return output
+
+    if format == "csv":
+        # Data only (export format)
         if result.included:
             logger.warning(
                 "Included data omitted in %s output (use --output json to see included entities)",

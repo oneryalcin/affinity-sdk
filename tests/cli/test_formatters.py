@@ -13,6 +13,9 @@ from affinity.cli.formatters import (
     _detect_numeric_columns,
     _empty_output,
     _md_escape,
+    _toon_cell,
+    _toon_number,
+    _toon_primitive,
     _toon_quote,
     format_csv,
     format_data,
@@ -20,6 +23,7 @@ from affinity.cli.formatters import (
     format_jsonl,
     format_markdown,
     format_toon,
+    format_toon_envelope,
     to_cell,
 )
 
@@ -564,3 +568,190 @@ class TestEdgeCases:
         # Should extract A from dict, keep B, skip None
         assert "A" in result
         assert "B" in result
+
+
+class TestToonNumber:
+    """Tests for _toon_number() TOON spec-compliant number formatting."""
+
+    def test_toon_number_integer(self) -> None:
+        """Integer passes through."""
+        assert _toon_number(42) == "42"
+        assert _toon_number(-17) == "-17"
+        assert _toon_number(0) == "0"
+
+    def test_toon_number_float(self) -> None:
+        """Float with fractional part."""
+        assert _toon_number(3.14) == "3.14"
+        assert _toon_number(-2.5) == "-2.5"
+
+    def test_toon_number_float_integer_form(self) -> None:
+        """Float without fractional part becomes integer form."""
+        assert _toon_number(1.0) == "1"
+        assert _toon_number(42.0) == "42"
+        assert _toon_number(-10.0) == "-10"
+
+    def test_toon_number_negative_zero(self) -> None:
+        """-0.0 normalizes to 0."""
+        assert _toon_number(-0.0) == "0"
+
+    def test_toon_number_nan(self) -> None:
+        """NaN normalizes to null per spec §3."""
+        assert _toon_number(float("nan")) == "null"
+
+    def test_toon_number_infinity(self) -> None:
+        """Infinity normalizes to null per spec §3."""
+        assert _toon_number(float("inf")) == "null"
+        assert _toon_number(float("-inf")) == "null"
+
+
+class TestToonCell:
+    """Tests for _toon_cell() tabular context formatting."""
+
+    def test_toon_cell_none(self) -> None:
+        """None becomes null literal per spec."""
+        assert _toon_cell(None) == "null"
+
+    def test_toon_cell_bool(self) -> None:
+        """Booleans are unquoted literals."""
+        assert _toon_cell(True) == "true"
+        assert _toon_cell(False) == "false"
+
+    def test_toon_cell_number(self) -> None:
+        """Numbers use _toon_number()."""
+        assert _toon_cell(42) == "42"
+        assert _toon_cell(3.14) == "3.14"
+        assert _toon_cell(1.0) == "1"
+
+    def test_toon_cell_string(self) -> None:
+        """Strings use to_cell() then _toon_quote()."""
+        assert _toon_cell("hello") == "hello"
+        assert _toon_cell("has,comma") == '"has,comma"'
+
+    def test_toon_cell_nan_infinity(self) -> None:
+        """NaN and Infinity become null."""
+        assert _toon_cell(float("nan")) == "null"
+        assert _toon_cell(float("inf")) == "null"
+
+
+class TestToonPrimitive:
+    """Tests for _toon_primitive() key-value context formatting."""
+
+    def test_toon_primitive_none(self) -> None:
+        """None becomes null."""
+        assert _toon_primitive(None) == "null"
+
+    def test_toon_primitive_bool(self) -> None:
+        """Booleans are unquoted."""
+        assert _toon_primitive(True) == "true"
+        assert _toon_primitive(False) == "false"
+
+    def test_toon_primitive_number(self) -> None:
+        """Numbers use _toon_number()."""
+        assert _toon_primitive(42) == "42"
+        assert _toon_primitive(3.14) == "3.14"
+
+    def test_toon_primitive_string(self) -> None:
+        """Strings are quoted when needed."""
+        assert _toon_primitive("hello") == "hello"
+        assert _toon_primitive("has:colon") == '"has:colon"'
+
+    def test_toon_primitive_nested_structure(self) -> None:
+        """Nested structures become JSON-quoted."""
+        result = _toon_primitive({"key": "value"})
+        assert result in ('"{"key":"value"}"', '"{\\"key\\":\\"value\\"}"')
+
+    def test_toon_primitive_list(self) -> None:
+        """Lists become JSON-quoted."""
+        result = _toon_primitive([1, 2, 3])
+        assert "[1,2,3]" in result
+
+
+class TestFormatToonEnvelope:
+    """Tests for format_toon_envelope() full envelope formatting."""
+
+    def test_format_toon_envelope_basic(self) -> None:
+        """Basic envelope with data only."""
+        data = [{"id": 1, "name": "Acme"}, {"id": 2, "name": "Beta"}]
+        result = format_toon_envelope(data, ["id", "name"])
+        assert result.startswith("data[2]{id,name}:")
+        assert "\n  1,Acme" in result
+        assert "\n  2,Beta" in result
+
+    def test_format_toon_envelope_with_pagination(self) -> None:
+        """Envelope with pagination section."""
+        data = [{"id": 1, "name": "Alice"}]
+        pagination = {"hasMore": True, "total": 100}
+        result = format_toon_envelope(data, ["id", "name"], pagination=pagination)
+        assert "data[1]{id,name}:" in result
+        assert "pagination:" in result
+        assert "hasMore: true" in result
+        assert "total: 100" in result
+
+    def test_format_toon_envelope_with_included(self) -> None:
+        """Envelope with included entities."""
+        data = [{"id": 1, "name": "Alice"}]
+        included = {"companies": [{"id": 100, "name": "Acme Corp"}]}
+        result = format_toon_envelope(data, ["id", "name"], included=included)
+        assert "data[1]{id,name}:" in result
+        # Included entities use flat root-level keys
+        assert "included_companies[1]{id,name}:" in result
+
+    def test_format_toon_envelope_full(self) -> None:
+        """Full envelope with data, pagination, and included."""
+        data = [{"id": 1, "name": "Alice"}]
+        pagination = {"hasMore": False, "total": 1}
+        included = {
+            "companies": [{"id": 100, "name": "Acme"}],
+            "persons": [{"id": 200, "firstName": "Bob"}],
+        }
+        result = format_toon_envelope(
+            data, ["id", "name"], pagination=pagination, included=included
+        )
+        assert "data[1]{id,name}:" in result
+        assert "pagination:" in result
+        assert "included_companies[1]{id,name}:" in result
+        assert "included_persons[1]{id,firstName}:" in result
+
+    def test_format_toon_envelope_empty_data(self) -> None:
+        """Empty data produces correct format."""
+        result = format_toon_envelope([], [])
+        assert result == "data[0]{}:"
+
+        # With fieldnames
+        result = format_toon_envelope([], ["id", "name"])
+        assert result == "data[0]{id,name}:"
+
+        # With pagination
+        result = format_toon_envelope([], ["id"], pagination={"hasMore": False, "total": 0})
+        assert "data[0]{id}:" in result
+        assert "pagination:" in result
+        assert "total: 0" in result
+
+    def test_format_toon_envelope_null_values(self) -> None:
+        """Null values become null literal."""
+        data = [{"id": 1, "name": None}]
+        result = format_toon_envelope(data, ["id", "name"])
+        assert "1,null" in result
+
+    def test_format_toon_envelope_empty_included(self) -> None:
+        """Empty included dict doesn't add sections."""
+        data = [{"id": 1}]
+        result = format_toon_envelope(data, ["id"], included={})
+        assert "included_" not in result
+
+        # Empty list for entity type
+        result = format_toon_envelope(data, ["id"], included={"companies": []})
+        assert "included_companies" not in result
+
+    def test_format_toon_envelope_included_union_keys(self) -> None:
+        """Included entities with different keys use union."""
+        data = [{"id": 1}]
+        included = {
+            "companies": [
+                {"id": 100, "name": "Acme"},
+                {"id": 101, "domain": "beta.com"},  # Different key
+            ]
+        }
+        result = format_toon_envelope(data, ["id"], included=included)
+        # Should have union of all keys
+        assert "included_companies[2]{id,name,domain}:" in result

@@ -2554,6 +2554,11 @@
           "required": false,
           "help": "Include execution metadata in output."
         },
+        "--max-output-bytes": {
+          "type": "int",
+          "required": false,
+          "help": "Truncate output to max bytes (for MCP use). Exits with code 100 if truncated."
+        },
         "--max-records": {
           "type": "int",
           "required": false,

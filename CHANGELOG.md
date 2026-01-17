@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- MCP: Query tool `format` parameter now functional (was previously ignored). Supports `toon`, `markdown`, `json`, `jsonl`, `csv`.
+- CLI: `--max-output-bytes` option for `query` command. Enables format-aware truncation for MCP use, returning exit code 100 when truncated.
+- CLI: `format_toon_envelope()` function for TOON output with full envelope (`data[N]{...}:`, `pagination:`, `included_*:` sections).
+
+### Changed (Breaking)
+- MCP: Query tool default format changed from `json` to `toon` for better token efficiency (~40% fewer tokens).
+- CLI: TOON query output now includes full envelope structure instead of data-only format. The `data` prefix is added to the array header: `data[N]{fields}:` instead of `[N]{fields}:`.
+
+### Fixed
+- MCP: Query tool now honors the `format` parameter instead of always using JSON output.
+
 ## 0.9.10 - 2026-01-16
 
 ### Added

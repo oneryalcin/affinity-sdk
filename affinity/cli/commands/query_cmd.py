@@ -105,6 +105,12 @@ from ..options import output_options
     is_flag=True,
     help="Show detailed progress.",
 )
+@click.option(
+    "--max-output-bytes",
+    type=int,
+    default=None,
+    help="Truncate output to max bytes (for MCP use). Exits with code 100 if truncated.",
+)
 @output_options
 @click.pass_obj
 def query_cmd(
@@ -123,6 +129,7 @@ def query_cmd(
     include_meta: bool,
     quiet: bool,
     verbose: bool,
+    max_output_bytes: int | None,
 ) -> None:
     """Execute a structured query against Affinity data.
 
@@ -175,6 +182,7 @@ def query_cmd(
             include_meta=include_meta,
             quiet=quiet,
             verbose=verbose,
+            max_output_bytes=max_output_bytes,
         )
     except CLIError as e:
         # Display error cleanly without traceback
@@ -202,8 +210,10 @@ def _query_cmd_impl(
     include_meta: bool,
     quiet: bool,
     verbose: bool,
+    max_output_bytes: int | None,
 ) -> None:
     """Internal implementation of query command."""
+    from affinity.cli.constants import EXIT_TRUNCATED
     from affinity.cli.query import (
         QueryExecutionError,
         QueryInterruptedError,
@@ -219,7 +229,12 @@ def _query_cmd_impl(
         format_dry_run,
         format_dry_run_json,
         format_json,
+        format_query_result,
         format_table,
+        truncate_csv_output,
+        truncate_jsonl_output,
+        truncate_markdown_output,
+        truncate_toon_output,
     )
     from affinity.cli.query.progress import RichQueryProgress, create_progress_callback
 
@@ -378,6 +393,8 @@ def _query_cmd_impl(
         raise CLIError(f"Query execution failed: {e}") from None
 
     # Format and output results
+    was_truncated = False
+
     if csv_flag:
         from ..csv_utils import write_csv_to_stdout
 
@@ -395,26 +412,39 @@ def _query_cmd_impl(
         sys.exit(0)
     elif ctx.output == "json":
         output = format_json(result, pretty=pretty, include_meta=include_meta)
-    elif ctx.output in ("jsonl", "markdown", "toon", "csv"):
-        # Use unified formatters for new output formats
-        from ..formatters import format_data
+        # JSON truncation handled by MCP bash layer (mcp_json_truncate)
+    elif ctx.output in ("toon", "markdown"):
+        # TOON and markdown support full envelope (pagination, included)
+        output = format_query_result(result, ctx.output, pretty=pretty, include_meta=include_meta)
 
-        if not result.data:
-            click.echo("No results.", err=True)
-            sys.exit(0)
+        # Apply truncation if requested
+        if max_output_bytes and len(output.encode()) > max_output_bytes:
+            original_total = result.pagination.get("total") if result.pagination else None
+            if ctx.output == "toon":
+                output, was_truncated = truncate_toon_output(output, max_output_bytes)
+            elif ctx.output == "markdown":
+                output, was_truncated = truncate_markdown_output(
+                    output, max_output_bytes, original_total=original_total
+                )
+    elif ctx.output in ("jsonl", "csv"):
+        # Data-only export formats
+        output = format_query_result(result, ctx.output, pretty=pretty, include_meta=include_meta)
 
-        # Collect all unique field names from data
-        keys: set[str] = set()
-        for record in result.data:
-            keys.update(record.keys())
-        fieldnames = sorted(keys)
-
-        output = format_data(result.data, ctx.output, fieldnames=fieldnames)
+        # Apply truncation if requested
+        if max_output_bytes and len(output.encode()) > max_output_bytes:
+            if ctx.output == "jsonl":
+                output, was_truncated = truncate_jsonl_output(output, max_output_bytes)
+            elif ctx.output == "csv":
+                output, was_truncated = truncate_csv_output(output, max_output_bytes)
     else:
         # Default to table for interactive use
         output = format_table(result)
 
     click.echo(output)
+
+    # Signal truncation via exit code (MCP bash layer reads this)
+    if was_truncated:
+        sys.exit(EXIT_TRUNCATED)
 
     # Show summary if not quiet
     if not quiet and include_meta and result.meta:

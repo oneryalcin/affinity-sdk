@@ -414,6 +414,52 @@ else
     ((++failed)) || true
 fi
 
+printf "\n--- Query format parameter tests ---\n"
+
+# Test: format=toon (default) is accepted
+printf "  query (format=toon)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","limit":5},"format":"toon","dryRun":true}' 2>&1)
+if echo "$output" | grep -qi 'error.*format\|validation_error'; then
+    printf '%sFAIL%s (toon should be accepted)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+else
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+fi
+
+# Test: format=markdown is accepted
+printf "  query (format=markdown)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","limit":5},"format":"markdown","dryRun":true}' 2>&1)
+if echo "$output" | grep -qi 'error.*format\|validation_error'; then
+    printf '%sFAIL%s (markdown should be accepted)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+else
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+fi
+
+# Test: format=json is accepted
+printf "  query (format=json)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","limit":5},"format":"json","dryRun":true}' 2>&1)
+if echo "$output" | grep -qi 'error.*format\|validation_error'; then
+    printf '%sFAIL%s (json should be accepted)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+else
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+fi
+
+# Test: invalid format is rejected
+printf "  query (invalid format)... "
+output=$("${MCPBASH_BIN}" run-tool "query" --args '{"query":{"from":"persons","limit":5},"format":"invalid"}' 2>&1)
+if echo "$output" | grep -qi 'validation_error\|format must be'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (invalid format should be rejected)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
 if [[ "${API_CONFIGURED}" != "1" ]]; then
     skip_test "get-entity-dossier (live)" "API not configured"
 elif [[ "${SKIP_LIVE:-0}" == "1" ]]; then

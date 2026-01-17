@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 from typing import Any, Literal
 
@@ -517,6 +518,113 @@ def _toon_quote(text: str) -> str:
     escaped = escaped.replace("\t", "\\t")
 
     return f'"{escaped}"'
+
+
+def _toon_number(value: int | float) -> str:
+    """Format number per TOON canonical form (spec §3, §4.5).
+
+    Rules:
+    - NaN and ±Infinity normalize to null (spec §3)
+    - No exponent notation (1000000 not 1e6)
+    - Integer form if no fractional part (1 not 1.0)
+    - -0 normalizes to 0
+    """
+    if isinstance(value, float):
+        # NaN and Infinity normalize to null (spec §3)
+        if math.isnan(value) or math.isinf(value):
+            return "null"
+        if value == 0.0:
+            return "0"  # Handles -0.0 → "0"
+        if value.is_integer():
+            return str(int(value))  # 1.0 → "1"
+    return str(value)
+
+
+def _toon_cell(value: Any) -> str:
+    """Format value for TABULAR context (inside data rows).
+
+    Used for: data rows, included entity rows.
+    Numbers and booleans are unquoted literals in TOON.
+    """
+    if value is None:
+        return "null"  # TOON spec: null literal for null values
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return _toon_number(value)
+    # Everything else goes through to_cell() for string conversion, then quoting
+    return _toon_quote(to_cell(value))
+
+
+def _toon_primitive(value: Any) -> str:
+    """Format value for KEY-VALUE context (pagination, non-tabular sections).
+
+    Used for: pagination section, metadata sections.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return _toon_number(value)
+    if isinstance(value, str):
+        return _toon_quote(value)
+    # Nested structures (list, dict): fall back to compact JSON
+    return _toon_quote(json.dumps(value, separators=(",", ":")))
+
+
+def format_toon_envelope(
+    data: list[dict[str, Any]],
+    fieldnames: list[str],
+    *,
+    pagination: dict[str, Any] | None = None,
+    included: dict[str, list[dict[str, Any]]] | None = None,
+) -> str:
+    """Format full query result envelope as TOON.
+
+    TOON supports root-level objects with multiple keys.
+    This preserves all envelope data while being token-efficient.
+
+    Args:
+        data: List of data records
+        fieldnames: Column names for the data section
+        pagination: Pagination info (hasMore, total, nextUrl, etc.)
+        included: Included entities by type (companies, persons, etc.)
+
+    Returns:
+        TOON-formatted string with data, pagination, and included sections
+    """
+    lines = []
+
+    # Data section (tabular)
+    lines.append(f"data[{len(data)}]{{{','.join(fieldnames)}}}:")
+    for row in data:
+        cells = [_toon_cell(row.get(f)) for f in fieldnames]
+        lines.append("  " + ",".join(cells))
+
+    # Pagination section (if present) - flat key-value pairs
+    if pagination:
+        lines.append("pagination:")
+        for key, value in pagination.items():
+            lines.append(f"  {key}: {_toon_primitive(value)}")
+
+    # Included section - each entity type as a separate tabular array at root level
+    # (Not nested under "included:" - TOON spec prefers flat structure)
+    if included:
+        for entity_type, entities in included.items():
+            if entities:
+                # Use union of all keys (entities may have different fields)
+                # Note: Fields appear in first-seen order. This is intentional - sorting
+                # would be surprising since common fields (id, name) often appear first.
+                entity_fields = list(dict.fromkeys(k for e in entities for k in e))
+                lines.append(
+                    f"included_{entity_type}[{len(entities)}]{{{','.join(entity_fields)}}}:"
+                )
+                for entity in entities:
+                    cells = [_toon_cell(entity.get(f)) for f in entity_fields]
+                    lines.append("  " + ",".join(cells))
+
+    return "\n".join(lines)
 
 
 def _empty_output(format: OutputFormat, fieldnames: list[str] | None = None) -> str:

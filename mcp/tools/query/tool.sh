@@ -11,6 +11,13 @@ dry_run="$(mcp_args_get '.dryRun // false')"
 max_records="$(mcp_args_int '.maxRecords' --default 1000)"
 timeout_secs="$(mcp_args_int '.timeout' --default 120)"
 max_output_bytes="$(mcp_args_int '.maxOutputBytes' --default 50000)"
+format="$(mcp_args_get '.format // "toon"')"
+
+# Validate format parameter
+case "$format" in
+  toon|markdown|json|jsonl|csv) ;;
+  *) mcp_result_error '{"type": "validation_error", "message": "format must be toon, markdown, json, jsonl, or csv"}'; exit 0 ;;
+esac
 
 # Log tool invocation
 xaffinity_log_debug "query" "dryRun=$dry_run maxRecords=$max_records timeout=$timeout_secs"
@@ -36,8 +43,10 @@ stderr_file=$(mktemp)
 trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
 # Build command for transparency logging (actual execution uses run_xaffinity_with_progress)
-declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--json")
+declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--output" "$format")
 [[ "$dry_run" == "true" ]] && cmd_display+=("--dry-run")
+# For non-JSON formats, CLI handles truncation via --max-output-bytes
+[[ "$format" != "json" ]] && cmd_display+=("--max-output-bytes" "$max_output_bytes")
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
@@ -50,12 +59,21 @@ fi
 # - CLI emits step-by-step progress (fetch, filter, aggregate) when stderr is not a TTY
 # - --stdin pipes query JSON to the command
 # - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
+# - --max-output-bytes for non-JSON formats (CLI handles truncation, returns exit code 100 if truncated)
 set +e
 printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
-    query --max-records "$max_records" --timeout "$timeout_secs" --json \
-    $([[ "$dry_run" == "true" ]] && echo "--dry-run") >"$stdout_file"
+    query --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
+    $([[ "$dry_run" == "true" ]] && echo "--dry-run") \
+    $([[ "$format" != "json" ]] && echo "--max-output-bytes" "$max_output_bytes") >"$stdout_file"
 exit_code=$?
 set -e
+
+# Handle truncation exit code (100 = success but output was truncated)
+was_truncated=false
+if [[ $exit_code -eq 100 ]]; then
+    was_truncated=true
+    exit_code=0  # Treat as success for MCP response
+fi
 
 stdout_content=$(cat "$stdout_file")
 stderr_content=$(cat "$stderr_file")
@@ -81,23 +99,38 @@ log_metric "query_output_bytes" "${#stdout_content}" "dryRun=$dry_run"
 # Note: CLI emits 100% progress via NDJSON when query completes (forwarded by run_xaffinity_with_progress)
 
 if [[ $exit_code -eq 0 ]]; then
-    # Validate stdout is valid JSON before using --argjson
-    if mcp_is_valid_json "$stdout_content"; then
-        # Apply semantic truncation
-        if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes"); then
-            mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
+    # Format-specific response handling
+    if [[ "$format" == "json" ]]; then
+        # JSON format: validate and apply semantic truncation via mcp_json_truncate
+        if mcp_is_valid_json "$stdout_content"; then
+            if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes"); then
+                mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
+            else
+                # Truncation failed (output too large, can't truncate safely)
+                mcp_result_error "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '.error + {executed: $cmd}')"
+            fi
         else
-            # Truncation failed (output too large, can't truncate safely)
-            mcp_result_error "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '.error + {executed: $cmd}')"
+            # Invalid JSON - shouldn't happen for --output json
+            printf '%s' "$stdout_content" > "$stdout_file"
+            mcp_result_error "$(jq_tool -n --rawfile stdout "$stdout_file" --argjson cmd "$cmd_json" \
+                '{type: "invalid_json_output", message: "CLI returned non-JSON output", output: $stdout, executed: $cmd}')"
         fi
     else
-        # Use temp files to avoid "Argument list too long" error with large outputs
+        # Non-JSON formats (toon, markdown, csv, jsonl): wrap text in MCP response structure
+        # CLI already handled truncation via --max-output-bytes (exit code 100 if truncated)
+        # Use jq -Rs to safely escape the text content as a JSON string
         printf '%s' "$stdout_content" > "$stdout_file"
-        mcp_result_error "$(jq_tool -n --rawfile stdout "$stdout_file" --argjson cmd "$cmd_json" \
-            '{type: "invalid_json_output", message: "CLI returned non-JSON output", output: $stdout, executed: $cmd}')"
+
+        if [[ "$was_truncated" == "true" ]]; then
+            mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
+                '{content: [{type: "text", text: $text}], truncated: true, executed: $cmd}')"
+        else
+            mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
+                '{content: [{type: "text", text: $text}], truncated: false, executed: $cmd}')"
+        fi
     fi
 else
-    # Use temp files to avoid "Argument list too long" error with large outputs
+    # Error handling - same for all formats
     printf '%s' "$stderr_content" > "$stderr_file"
     printf '%s' "$stdout_content" > "$stdout_file"
     mcp_result_error "$(jq_tool -n --rawfile stderr "$stderr_file" --rawfile stdout "$stdout_file" \

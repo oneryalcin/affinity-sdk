@@ -84,9 +84,9 @@
       },
       "format": {
         "type": "string",
-        "enum": ["json", "jsonl", "markdown", "toon", "csv"],
-        "default": "json",
-        "description": "Output format. Use 'markdown' for analysis (best LLM comprehension), 'toon' for large datasets (40% fewer tokens), 'json' for programmatic processing."
+        "enum": ["toon", "markdown", "json", "jsonl", "csv"],
+        "default": "toon",
+        "description": "Output format (applies to query results only; ignored when dryRun=true which always returns JSON execution plan). Options: 'toon' (default, 40% fewer tokens for large results), 'markdown' (best for analysis/summarization), 'json' (full envelope with pagination/includes), 'csv'/'jsonl' (for export/downstream processing)"
       }
     }
   },

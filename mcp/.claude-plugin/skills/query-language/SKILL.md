@@ -525,7 +525,7 @@ Returns execution plan with:
 | `maxRecords` | integer | 1000 | Safety limit (max 10000) |
 | `timeout` | integer | 120 | Query timeout in seconds |
 | `maxOutputBytes` | integer | 50000 | Truncation limit for results |
-| `format` | string | "json" | Output format (see Output Formats below) |
+| `format` | string | "toon" | Output format (see Output Formats below) |
 
 ## Output Formats
 
@@ -533,22 +533,22 @@ The `format` parameter controls how results are returned. Choose based on your u
 
 | Format | Token Efficiency | Best For | Description |
 |--------|-----------------|----------|-------------|
-| `json` | Low | Programmatic use | Full JSON structure with `data`, `included`, `pagination` |
-| `jsonl` | Medium | Streaming | One JSON object per line (data rows only) |
-| `markdown` | Medium-High | **LLM analysis** | GitHub-flavored table (best comprehension) |
-| `toon` | **High (~40% fewer)** | Large datasets | Token-Optimized Object Notation |
-| `csv` | Medium | Spreadsheets | Comma-separated values |
+| `toon` | **High (~40% fewer)** | **Default** - large datasets | Full envelope with `data`, `pagination`, `included` |
+| `json` | Low | Programmatic use | Full JSON structure (same data as TOON) |
+| `markdown` | Medium-High | **LLM analysis** | GitHub-flavored table + pagination footer (best comprehension) |
+| `jsonl` | Medium | Streaming | One JSON object per line (data only) |
+| `csv` | Medium | Spreadsheets | Comma-separated values (data only) |
 
 ### Format Recommendations
 
 - **For LLM analysis tasks**: Use `markdown` - LLMs are trained on documentation and tables
 - **For large result sets**: Use `toon` to minimize tokens (30-60% smaller than JSON)
-- **For programmatic processing**: Use `json` (default) for full structure
+- **For programmatic processing**: Use `json` for full structure
 - **For streaming workflows**: Use `jsonl` for line-by-line processing
 
 ### Format Examples
 
-**JSON (default):**
+**JSON:**
 ```json
 {"data": [{"id": 1, "name": "Acme"}], "included": {...}, "pagination": {...}}
 ```
@@ -567,14 +567,17 @@ The `format` parameter controls how results are returned. Choose based on your u
 | 2 | Beta |
 ```
 
-**TOON:**
+**TOON (default):**
 ```
-[2]{id,name}:
+data[2]{id,name}:
   1,Acme
   2,Beta
+pagination:
+  hasMore: false
+  total: 2
 ```
 
-**Note:** When using `jsonl`, `markdown`, `toon`, or `csv`, the `included` and `pagination` fields are omitted. Use `json` format if you need related entities or pagination info.
+**Note:** `jsonl` and `csv` are data-only export formats (no envelope). `toon`, `json`, and `markdown` preserve pagination and included entity information.
 
 ## Best Practices
 
