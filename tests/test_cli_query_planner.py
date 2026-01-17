@@ -623,3 +623,112 @@ class TestFilterPushdown:
         fetch_step = plan.steps[0]
         # Should not crash and should have no pushdown
         assert fetch_step.filter_pushdown is False
+
+
+class TestParentFilterStripping:
+    """Tests for parent filter field stripping from client-side filter steps.
+
+    For REQUIRES_PARENT entities (like listEntries), the parent_filter_field
+    (e.g., listId) is used to scope the API call, NOT as a client-side filter.
+    This test ensures the planner correctly strips these conditions to avoid
+    unnecessary filter steps that would disable early termination.
+
+    Regression test for bug where listEntries queries with limit would fetch
+    ALL records because listId was treated as a client-side filter.
+    """
+
+    @pytest.fixture
+    def planner(self) -> QueryPlanner:
+        """Create a planner for testing."""
+        return create_planner()
+
+    @pytest.mark.req("QUERY-PLAN-PARENT-001")
+    def test_listid_only_filter_creates_no_filter_step(self, planner: QueryPlanner) -> None:
+        """Query with only listId filter should not create client-side filter step.
+
+        listId is the parent_filter_field for listEntries and is used to scope
+        the API call, not as a client-side filter.
+        """
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "eq", "value": 12345},
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        # Should NOT have a filter step
+        filter_steps = [s for s in plan.steps if s.operation == "filter"]
+        assert len(filter_steps) == 0, (
+            "listId-only filter should not create client-side filter step - "
+            "listId is used to scope the fetch, not as a client-side filter"
+        )
+
+    @pytest.mark.req("QUERY-PLAN-PARENT-001")
+    def test_listname_only_filter_creates_no_filter_step(self, planner: QueryPlanner) -> None:
+        """Query with only listName filter should not create client-side filter step.
+
+        listName is resolved to listId which is the parent_filter_field.
+        """
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        # Should NOT have a filter step
+        filter_steps = [s for s in plan.steps if s.operation == "filter"]
+        assert len(filter_steps) == 0, (
+            "listName-only filter should not create client-side filter step - "
+            "listName resolves to listId which scopes the fetch"
+        )
+
+    @pytest.mark.req("QUERY-PLAN-PARENT-002")
+    def test_listid_with_other_filter_strips_listid(self, planner: QueryPlanner) -> None:
+        """Query with listId AND other conditions should strip listId from filter step.
+
+        The filter step should only contain the non-parent conditions.
+        """
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 12345},
+                        {"path": "entityName", "op": "contains", "value": "Acme"},
+                    ]
+                },
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        # Should have exactly one filter step
+        filter_steps = [s for s in plan.steps if s.operation == "filter"]
+        assert len(filter_steps) == 1
+
+        # The filter step should describe only the entityName condition
+        assert "entityName" in filter_steps[0].description
+        assert "listId" not in filter_steps[0].description
+
+    @pytest.mark.req("QUERY-PLAN-PARENT-003")
+    def test_no_full_scan_warning_for_listid_only(self, planner: QueryPlanner) -> None:
+        """Query with only listId filter should not have full scan recommendation."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "eq", "value": 12345},
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        # Should not have the "requires client-side filtering" recommendation
+        assert not plan.requires_full_scan, (
+            "listId-only filter should not require full scan - "
+            "it's used to scope the fetch, not as a client-side filter"
+        )

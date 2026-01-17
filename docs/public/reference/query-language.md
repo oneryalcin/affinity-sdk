@@ -29,6 +29,7 @@ xaffinity query --query '{"from": "persons", "limit": 10}'
   "select": ["id", "firstName", "lastName"],
   "where": { ... },
   "include": ["companies"],
+  "expand": ["interactionDates"],
   "orderBy": [{ "field": "lastName", "direction": "asc" }],
   "groupBy": "status",
   "aggregate": { ... },
@@ -46,6 +47,7 @@ xaffinity query --query '{"from": "persons", "limit": 10}'
 | `select` | string[] | No | Fields to return (default: all) |
 | `where` | WhereClause | No | Filter conditions |
 | `include` | string[] | No | Related entities to fetch |
+| `expand` | string[] | No | Computed data to add (e.g., `interactionDates`) |
 | `orderBy` | OrderByClause[] | No | Sort order |
 | `groupBy` | string | No | Field to group by |
 | `aggregate` | AggregateMap | No | Aggregate functions |
@@ -498,6 +500,83 @@ Included data appears in results:
   ]
 }
 ```
+
+## Expand (Computed Data)
+
+Unlike `include` (which fetches separate related entities), `expand` enriches records with computed data directly on each record.
+
+### Available Expansions
+
+| Expansion | Description | Supported Entities |
+|-----------|-------------|-------------------|
+| `interactionDates` | Last/next meeting, email dates, team members | `persons`, `companies`, `listEntries` |
+
+### Expand Syntax
+
+```json
+{
+  "from": "companies",
+  "where": {"path": "name", "op": "contains", "value": "Acme"},
+  "expand": ["interactionDates"],
+  "limit": 10
+}
+```
+
+### Expand vs Include
+
+| Feature | `include` | `expand` |
+|---------|-----------|----------|
+| Purpose | Fetch related entities | Add computed data to records |
+| Output Location | `result.included` or embedded | Merged into `result.data` |
+| Example | `include: ["companies"]` → separate company records | `expand: ["interactionDates"]` → dates on each record |
+
+### Interaction Dates Output
+
+When using `expand: ["interactionDates"]`, each record includes:
+
+```json
+{
+  "id": 123,
+  "name": "Acme Corp",
+  "interactionDates": {
+    "lastMeeting": {
+      "date": "2026-01-08T10:00:00Z",
+      "daysSince": 5,
+      "teamMemberIds": [1, 2],
+      "teamMemberNames": ["Bob Smith", "Carol Jones"]
+    },
+    "nextMeeting": {
+      "date": "2026-01-20T14:00:00Z",
+      "daysUntil": 7,
+      "teamMemberIds": [3],
+      "teamMemberNames": ["Alice Wong"]
+    },
+    "lastEmail": {
+      "date": "2026-01-10T09:30:00Z",
+      "daysSince": 3
+    },
+    "lastInteraction": {
+      "date": "2026-01-10T09:30:00Z",
+      "daysSince": 3
+    }
+  }
+}
+```
+
+### With listEntries
+
+For `listEntries` queries, interaction dates are fetched for the underlying company or person:
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "expand": ["interactionDates"],
+  "select": ["entityId", "entityName", "fields.Status"]
+}
+```
+
+**Note:** Expansion requires N+1 API calls (one per record). For large result sets, use `limit` or consider `list export --expand interactions` for streaming output.
 
 ## Error Responses
 

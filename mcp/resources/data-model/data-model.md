@@ -113,6 +113,13 @@ To select all custom fields explicitly, use `fields.*` wildcard:
 {"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["listEntryId", "entityName", "fields.*"]}
 ```
 
+### Query tool expand (interaction dates)
+Use `expand: ["interactionDates"]` to add last/next meeting dates and email activity to each record:
+```json
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates"], "limit": 50}
+```
+Unlike `include` (which fetches related entities separately), `expand` merges computed data directly into each record.
+
 ### Multi-select field filtering
 Multi-select dropdown fields (like "Team Member") return arrays from the API. The query engine handles these automatically:
 - `eq` with scalar: checks if value is IN the array (membership)
@@ -131,6 +138,26 @@ interaction ls --type all --company-id 12345                                   #
 interaction ls --type email --type meeting --company-id 12345 --days 90        # Emails and meetings, last 90 days
 interaction ls --type meeting --company-id 12345 --days 90 --max-results 10    # Recent meetings with company
 interaction ls --type email --person-id 67890 --max-results 5                  # Most recent emails with person
+```
+
+### Get interaction date summaries
+For quick overview of last/next meetings and email activity without fetching full interaction history:
+```bash
+company get 12345 --with-interaction-dates                 # Last/next meeting dates, email dates
+person get 67890 --with-interaction-dates                  # Same for persons
+list export Dealflow --expand interactions --json          # Interaction dates for all list entries
+```
+
+The `--with-interaction-dates` flag returns:
+- `lastMeeting.date`, `lastMeeting.daysSince`, `lastMeeting.teamMembers`
+- `nextMeeting.date`, `nextMeeting.daysUntil`, `nextMeeting.teamMembers`
+- `lastEmail.date`, `lastEmail.daysSince`
+- `lastInteraction.date`, `lastInteraction.daysSince`
+
+### Find unreplied emails
+```bash
+list export Dealflow --check-unreplied-emails --json       # Find unreplied incoming emails
+list export Dealflow --check-unreplied-emails --unreplied-lookback-days 60  # Custom lookback
 ```
 
 ### Search companies globally

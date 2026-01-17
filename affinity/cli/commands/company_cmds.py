@@ -1120,6 +1120,18 @@ def company_files_upload(
     is_flag=True,
     help="Fetch all pages for expansions (still capped by --max-results if set).",
 )
+@click.option(
+    "--with-interaction-dates",
+    "with_interaction_dates",
+    is_flag=True,
+    help="Include interaction date summaries (last/next meeting, email dates).",
+)
+@click.option(
+    "--with-interaction-persons",
+    "with_interaction_persons",
+    is_flag=True,
+    help="Include person IDs for each interaction (requires --with-interaction-dates).",
+)
 @output_options
 @click.pass_obj
 def company_get(
@@ -1137,6 +1149,8 @@ def company_get(
     list_entry_fields_scope: ListEntryFieldsScope,
     max_results: int | None,
     all_pages: bool,
+    with_interaction_dates: bool,
+    with_interaction_persons: bool,
 ) -> None:
     """
     Get a company by id, URL, domain, or name.
@@ -1360,6 +1374,8 @@ def company_get(
             company_id,
             field_ids=field_ids,
             field_types=field_types_param,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
         )
         company_payload = serialize_model_for_cli(company)
         fields_raw = getattr(company, "fields_raw", None)

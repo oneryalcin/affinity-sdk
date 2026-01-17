@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ..interaction_utils import resolve_interaction_names_async, transform_interaction_data
 from .aggregates import apply_having, compute_aggregates, group_and_aggregate
 from .exceptions import (
     QueryExecutionError,
@@ -31,6 +32,7 @@ from .filters import (
 )
 from .models import ExecutionPlan, PlanStep, Query, QueryResult, WhereClause
 from .schema import (
+    EXPANSION_REGISTRY,
     SCHEMA_REGISTRY,
     UNBOUNDED_ENTITIES,
     FetchStrategy,
@@ -646,10 +648,12 @@ class QueryExecutor:
                 # Only use streaming for GLOBAL entities (persons, companies, opportunities)
                 if schema and schema.fetch_strategy == FetchStrategy.GLOBAL:
                     await self._execute_streaming(plan, ctx)
-                    # Handle includes after streaming (if any)
+                    # Handle includes and expands after streaming (if any)
                     for step in plan.steps:
                         if step.operation == "include":
                             await self._execute_include(step, ctx)
+                        elif step.operation == "expand":
+                            await self._execute_expand(step, ctx)
                     return ctx.build_result()
 
             # Execute steps in dependency order (normal path)
@@ -698,6 +702,8 @@ class QueryExecutor:
             await self._execute_filter_with_preinclude(step, ctx)
         elif step.operation == "include":
             await self._execute_include(step, ctx)
+        elif step.operation == "expand":
+            await self._execute_expand(step, ctx)
         elif step.operation == "aggregate":
             self._execute_aggregate(step, ctx)
         elif step.operation == "sort":
@@ -1524,6 +1530,178 @@ class QueryExecutor:
 
         # Update progress
         self.progress.on_step_progress(step, len(included_records), None)
+
+    async def _execute_expand(self, step: PlanStep, ctx: ExecutionContext) -> None:
+        """Execute an expand step (enrich records with computed data).
+
+        Unlike include (which fetches related entities into ctx.included),
+        expand modifies records in ctx.records directly.
+
+        Uses the sync Affinity client (self.sync_client) for SDK calls since
+        service.get() methods are synchronous.
+        """
+        expansion_name = step.expansion
+        if not expansion_name:
+            return
+
+        expansion_def = EXPANSION_REGISTRY.get(expansion_name)
+        if not expansion_def:
+            raise QueryExecutionError(f"Unknown expansion: {expansion_name}", step=step)
+
+        entity_type = step.entity
+
+        # For listEntries, we need to expand based on the underlying entity type
+        if entity_type == "listEntries":
+            await self._expand_list_entries(step, ctx, expansion_def)
+        elif entity_type in expansion_def.supported_entities:
+            await self._expand_direct_entities(step, ctx, entity_type, expansion_def)
+        else:
+            raise QueryExecutionError(
+                f"Expansion '{expansion_name}' not supported for '{entity_type}'. "
+                f"Supported: {', '.join(expansion_def.supported_entities)}",
+                step=step,
+            )
+
+    async def _expand_direct_entities(
+        self,
+        step: PlanStep,
+        ctx: ExecutionContext,
+        entity_type: str,
+        expansion_def: Any,
+    ) -> None:
+        """Expand records by re-fetching with expansion params.
+
+        Uses the async Affinity client directly for SDK calls.
+        """
+        from affinity.models.entities import Company, Person
+        from affinity.types import CompanyId, PersonId
+
+        # Shared cache for person name resolution across all records
+        person_name_cache: dict[int, str] = {}
+
+        async def fetch_with_expansion(record: dict[str, Any]) -> None:
+            raw_id = record.get("id")
+            if raw_id is None:
+                return
+
+            async with self.rate_limiter:
+                try:
+                    # Call async service.get() with expansion params
+                    entity: Company | Person
+                    if entity_type == "companies":
+                        entity = await self.client.companies.get(
+                            CompanyId(raw_id), **expansion_def.fetch_params
+                        )
+                    elif entity_type == "persons":
+                        entity = await self.client.persons.get(
+                            PersonId(raw_id), **expansion_def.fetch_params
+                        )
+                    else:
+                        return  # Unknown type, skip
+
+                    # Transform and merge interaction dates
+                    if expansion_def.name == "interactionDates":
+                        # Transform without client (async name resolution done separately)
+                        record["interactionDates"] = transform_interaction_data(
+                            entity.interaction_dates,
+                            entity.interactions,
+                        )
+                        # Resolve person names asynchronously
+                        await resolve_interaction_names_async(
+                            self.client,
+                            record["interactionDates"],
+                            person_name_cache,
+                        )
+                except Exception as e:
+                    logger.debug(f"Failed to expand {expansion_def.name} for record {raw_id}: {e}")
+                    record["interactionDates"] = None
+
+        # Execute in parallel with bounded concurrency
+        tasks = [fetch_with_expansion(r) for r in ctx.records]
+        await asyncio.gather(*tasks)
+
+        # Update progress
+        self.progress.on_step_progress(step, len(ctx.records), None)
+
+    async def _expand_list_entries(
+        self,
+        step: PlanStep,
+        ctx: ExecutionContext,
+        expansion_def: Any,
+    ) -> None:
+        """Expand list entries by fetching their underlying entities.
+
+        Uses the async Affinity client directly for SDK calls.
+        """
+        from affinity.models.entities import Company, Person
+        from affinity.types import CompanyId, PersonId
+
+        # Shared cache for person name resolution across all records
+        person_name_cache: dict[int, str] = {}
+
+        async def fetch_entity_expansion(record: dict[str, Any]) -> None:
+            # For list entries, entityId and entityType may be nested in entity
+            raw_id = record.get("entityId")
+            entity_type = record.get("entityType")
+
+            # Also check nested entity structure
+            if raw_id is None and "entity" in record:
+                entity_data = record.get("entity", {})
+                if isinstance(entity_data, dict):
+                    raw_id = entity_data.get("id")
+            if entity_type is None:
+                entity_type = record.get("type")
+
+            if raw_id is None or entity_type is None:
+                return
+
+            # Map list entry entity types to service names
+            if entity_type == "company":
+                service_name = "companies"
+            elif entity_type == "person":
+                service_name = "persons"
+            else:
+                return  # Skip unsupported entity types (e.g., opportunities)
+
+            if service_name not in expansion_def.supported_entities:
+                return
+
+            async with self.rate_limiter:
+                try:
+                    # Call async service.get() with expansion params
+                    entity: Company | Person
+                    if entity_type == "company":
+                        entity = await self.client.companies.get(
+                            CompanyId(raw_id), **expansion_def.fetch_params
+                        )
+                    else:  # person
+                        entity = await self.client.persons.get(
+                            PersonId(raw_id), **expansion_def.fetch_params
+                        )
+
+                    if expansion_def.name == "interactionDates":
+                        # Transform without client (async name resolution done separately)
+                        record["interactionDates"] = transform_interaction_data(
+                            entity.interaction_dates,
+                            entity.interactions,
+                        )
+                        # Resolve person names asynchronously
+                        await resolve_interaction_names_async(
+                            self.client,
+                            record["interactionDates"],
+                            person_name_cache,
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Failed to expand {expansion_def.name} for {entity_type} {raw_id}: {e}"
+                    )
+                    record["interactionDates"] = None
+
+        tasks = [fetch_entity_expansion(r) for r in ctx.records]
+        await asyncio.gather(*tasks)
+
+        # Update progress
+        self.progress.on_step_progress(step, len(ctx.records), None)
 
     async def _execute_pre_include(
         self,

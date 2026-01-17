@@ -13,7 +13,9 @@ from .exceptions import QueryValidationError
 from .filters import partition_where, requires_relationship_data
 from .models import ExecutionPlan, PlanStep, Query, WhereClause
 from .schema import (
+    EXPANSION_REGISTRY,
     UNBOUNDED_ENTITIES,
+    FetchStrategy,
     RelationshipDef,
     find_relationship_by_target,
     get_entity_schema,
@@ -58,6 +60,69 @@ MAX_RECORDS_WARNING_THRESHOLD = 1000
 
 # Memory estimation (bytes per record)
 BYTES_PER_RECORD = 2000
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _strip_parent_filter(where: WhereClause | None, parent_field: str | None) -> WhereClause | None:
+    """Remove parent filter field conditions from where clause.
+
+    For REQUIRES_PARENT entities (like listEntries), the parent_filter_field
+    (e.g., listId) is used to scope the API call, NOT as a client-side filter.
+    This function strips those conditions to avoid unnecessary filter steps.
+
+    Args:
+        where: The where clause to process
+        parent_field: The parent filter field name (e.g., "listId", "listName")
+
+    Returns:
+        Where clause without parent filter conditions, or None if empty.
+    """
+    if where is None or parent_field is None:
+        return where
+
+    # For listEntries, both listId and listName are parent filters
+    parent_fields = {parent_field}
+    if parent_field == "listId":
+        parent_fields.add("listName")
+
+    # Single condition - check if it's the parent filter
+    if where.path is not None:
+        if where.path in parent_fields:
+            return None  # This condition is handled by the fetch
+        return where  # Keep other conditions
+
+    # Compound condition - recursively strip parent filters from children
+    if where.and_ is not None:
+        filtered = [_strip_parent_filter(child, parent_field) for child in where.and_]
+        filtered = [c for c in filtered if c is not None]
+        if not filtered:
+            return None
+        if len(filtered) == 1:
+            return filtered[0]
+        return WhereClause(and_=filtered)
+
+    if where.or_ is not None:
+        filtered = [_strip_parent_filter(child, parent_field) for child in where.or_]
+        filtered = [c for c in filtered if c is not None]
+        if not filtered:
+            return None
+        if len(filtered) == 1:
+            return filtered[0]
+        return WhereClause(or_=filtered)
+
+    # Not, quantifiers, exists - recurse on nested where
+    if where.not_ is not None:
+        inner = _strip_parent_filter(where.not_, parent_field)
+        if inner is None:
+            return None
+        return WhereClause(not_=inner)
+
+    # Pass through quantifiers and exists unchanged (they don't contain parent filters)
+    return where
 
 
 # =============================================================================
@@ -116,9 +181,19 @@ class QueryPlanner:
             is_client_side=False,
         )
 
-        # Check for filter pushdown opportunities
-        if query.from_ == "listEntries" and query.where is not None:
-            pushdown = self._analyze_filter_pushdown(query.where)
+        # Step 2: Client-side filter (if WHERE clause and no pushdown)
+        # For REQUIRES_PARENT entities, strip parent filter (already used to scope fetch)
+        client_side_where = query.where
+        if (
+            entity_schema.fetch_strategy == FetchStrategy.REQUIRES_PARENT
+            and entity_schema.parent_filter_field
+            and query.where is not None
+        ):
+            client_side_where = _strip_parent_filter(query.where, entity_schema.parent_filter_field)
+
+        # Check for filter pushdown opportunities (only if there are client-side filters)
+        if query.from_ == "listEntries" and client_side_where is not None:
+            pushdown = self._analyze_filter_pushdown(client_side_where)
             if pushdown:
                 fetch_step.filter_pushdown = True
                 fetch_step.pushdown_filter = pushdown
@@ -132,18 +207,17 @@ class QueryPlanner:
         steps.append(fetch_step)
         step_id += 1
 
-        # Step 2: Client-side filter (if WHERE clause and no pushdown)
         # Track required_rels for unbounded query detection
         filter_required_rels: set[str] = set()
-        if query.where is not None:
+        if client_side_where is not None:
             # Check if filter requires relationship data (quantifiers, exists, _count)
-            required_rels = requires_relationship_data(query.where)
+            required_rels = requires_relationship_data(client_side_where)
             filter_required_rels = required_rels  # Store for unbounded check later
             filter_api_calls = 0
             filter_warnings: list[str] = []
 
             # Check for lazy loading optimization opportunity
-            cheap_filter, expensive_filter = partition_where(query.where, query.from_)
+            cheap_filter, expensive_filter = partition_where(client_side_where, query.from_)
             has_lazy_loading = cheap_filter is not None and expensive_filter is not None
 
             if required_rels and entity_schema:
@@ -182,7 +256,7 @@ class QueryPlanner:
                         f"(1 per record for quantifier/exists/_count filter)"
                     )
 
-            filter_description = self._describe_where(query.where)
+            filter_description = self._describe_where(client_side_where)
             if has_lazy_loading:
                 filter_description += " [lazy loading]"
 
@@ -192,7 +266,9 @@ class QueryPlanner:
                 description=filter_description,
                 entity=query.from_,
                 estimated_api_calls=filter_api_calls,
-                estimated_records=self._estimate_filtered_records(estimated_records, query.where),
+                estimated_records=self._estimate_filtered_records(
+                    estimated_records, client_side_where
+                ),
                 is_client_side=filter_api_calls == 0,  # Only client-side if no API calls
                 depends_on=[0],
                 warnings=filter_warnings,
@@ -247,6 +323,49 @@ class QueryPlanner:
                     )
 
                 steps.append(include_step)
+                step_id += 1
+
+        # Step 3b: Expansions (N+1 API calls for computed data)
+        if query.expand is not None:
+            for expansion in query.expand:
+                expansion_def = EXPANSION_REGISTRY.get(expansion)
+                if expansion_def is None:
+                    raise QueryValidationError(
+                        f"Unknown expansion '{expansion}'. "
+                        f"Available: {', '.join(EXPANSION_REGISTRY.keys())}",
+                        field="expand",
+                    )
+
+                # Check if entity supports this expansion
+                # For listEntries, check is done at runtime based on entityType
+                if (
+                    query.from_ != "listEntries"
+                    and query.from_ not in expansion_def.supported_entities
+                ):
+                    raise QueryValidationError(
+                        f"Expansion '{expansion}' not supported for '{query.from_}'. "
+                        f"Supported entities: {', '.join(expansion_def.supported_entities)}",
+                        field="expand",
+                    )
+
+                expand_calls = estimated_records  # N+1 API calls
+                expand_step = PlanStep(
+                    step_id=step_id,
+                    operation="expand",
+                    description=f"Expand {expansion} (N+1 API calls)",
+                    entity=query.from_,
+                    expansion=expansion,
+                    estimated_api_calls=expand_calls,
+                    is_client_side=False,
+                    depends_on=[step_id - 1],
+                )
+
+                expand_step.warnings.append(
+                    f"Fetching {expansion} requires {expand_calls} API calls "
+                    f"({estimated_records} records x 1 call each)"
+                )
+
+                steps.append(expand_step)
                 step_id += 1
 
         # Step 4: Aggregation (if applicable)
@@ -311,7 +430,7 @@ class QueryPlanner:
         has_expensive = (
             isinstance(total_api_calls, int) and total_api_calls >= EXPENSIVE_OPERATION_THRESHOLD
         )
-        requires_full_scan = not fetch_step.filter_pushdown and query.where is not None
+        requires_full_scan = not fetch_step.filter_pushdown and client_side_where is not None
 
         if (
             isinstance(total_api_calls, int)

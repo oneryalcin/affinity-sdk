@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SDK: `with_interaction_dates` and `with_interaction_persons` parameters for `CompanyService.get()` and `PersonService.get()`. When enabled, routes to V1 API to fetch interaction date summaries (last/next meeting, email dates, team member IDs).
+- CLI: `--expand interactions` option for `list export` command. Adds interaction date summaries to each list entry (last meeting, next meeting, last email, last interaction with daysSince/daysUntil calculations and team member names). Supports both JSON and CSV output formats.
+- CLI: `expand: ["interactionDates"]` support in `query` command. Enriches records with interaction date summaries directly on each record in `result.data`. Works with `persons`, `companies`, and `listEntries` queries.
+- CLI: `--check-unreplied-emails` flag for `list export` command. Detects unreplied incoming emails for each list entry and adds date, daysSince, and subject to output. Use `--unreplied-lookback-days` to configure lookback period (default: 30 days).
+- CLI: `--with-interaction-dates` and `--with-interaction-persons` flags for `company get` and `person get` commands. Fetches interaction date summaries directly in entity get operations.
 - MCP: Query tool `format` parameter now functional (was previously ignored). Supports `toon`, `markdown`, `json`, `jsonl`, `csv`.
 - CLI: `--max-output-bytes` option for `query` command. Enables format-aware truncation for MCP use, returning exit code 100 when truncated.
 - CLI: `format_toon_envelope()` function for TOON output with full envelope (`data[N]{...}:`, `pagination:`, `included_*:` sections).

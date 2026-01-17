@@ -10,13 +10,15 @@
   },
   "list export": {
     "relatedCommands": ["list ls", "field ls", "list-entry get"],
-    "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word field names AND values MUST be quoted (e.g., --filter '\"Team Member\"=\"John Smith\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead.",
+    "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word field names AND values MUST be quoted (e.g., --filter '\"Team Member\"=\"John Smith\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead. Use --expand interactions for meeting/email dates. Use --check-unreplied-emails to find unreplied incoming emails.",
     "examples": [
       "list export \"Pipeline\" --all",
       "list export \"Pipeline\" --filter 'Status=New' --all",
       "list export \"Pipeline\" --filter 'Status=\"Intro Meeting\"' --all",
       "list export \"Pipeline\" --filter '\"Team Member\"=~\"LB\"' --all",
-      "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
+      "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv",
+      "list export \"Pipeline\" --expand interactions --json",
+      "list export \"Pipeline\" --check-unreplied-emails --json"
     ]
   },
   "list-entry get": {
@@ -29,12 +31,13 @@
   },
   "company get": {
     "relatedCommands": ["company ls", "company field"],
-    "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. For list-entry fields: requires --expand list-entries AND --max-results N (N<=3) with --show-list-entry-fields.",
+    "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
     "examples": [
       "company get 12345",
       "company get domain:wellybox.com",
       "company get domain:wellybox.com --expand list-entries",
-      "company get domain:wellybox.com --expand list-entries --show-list-entry-fields --max-results 3"
+      "company get domain:wellybox.com --expand list-entries --show-list-entry-fields --max-results 3",
+      "company get 12345 --with-interaction-dates"
     ]
   },
   "person ls": {
@@ -47,11 +50,12 @@
   },
   "person get": {
     "relatedCommands": ["person ls", "person field"],
-    "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships.",
+    "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
     "examples": [
       "person get 12345",
       "person get email:john@example.com",
-      "person get 12345 --expand list-entries"
+      "person get 12345 --expand list-entries",
+      "person get 12345 --with-interaction-dates"
     ]
   },
   "opportunity ls": {
@@ -99,11 +103,12 @@
   },
   "query": {
     "relatedCommands": ["person ls", "company ls", "opportunity ls", "list export"],
-    "whenToUse": "For complex data queries requiring: multi-condition AND/OR filtering, related entity includes (persons with companies), aggregations (count/sum/avg), groupBy analysis, or multi-field sorting. Use individual commands (person get, list export) for simple lookups.",
+    "whenToUse": "For complex data queries requiring: multi-condition AND/OR filtering, related entity includes (persons with companies), expand (interactionDates for meeting/email dates), aggregations (count/sum/avg), groupBy analysis, or multi-field sorting. Use individual commands (person get, list export) for simple lookups.",
     "examples": [
       "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
       "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"]}' --dry-run",
-      "query --query '{\"from\": \"opportunities\", \"groupBy\": \"status\", \"aggregate\": {\"count\": {\"count\": true}, \"total\": {\"sum\": \"amount\"}}}' --dry-run"
+      "query --query '{\"from\": \"opportunities\", \"groupBy\": \"status\", \"aggregate\": {\"count\": {\"count\": true}, \"total\": {\"sum\": \"amount\"}}}' --dry-run",
+      "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\"], \"limit\": 50}' --dry-run"
     ]
   }
 }

@@ -486,7 +486,11 @@ def test_list_export_expand_invalid_on_person_list(
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
     assert "not valid for person lists" in payload["error"]["message"]
-    assert payload["error"]["details"]["validExpand"] == ["companies", "opportunities"]
+    assert payload["error"]["details"]["validExpand"] == [
+        "companies",
+        "interactions",
+        "opportunities",
+    ]
 
 
 def test_list_export_expand_invalid_on_company_list(
@@ -519,7 +523,11 @@ def test_list_export_expand_invalid_on_company_list(
     payload = json.loads(result.output.strip())
     assert payload["ok"] is False
     assert "not valid for company lists" in payload["error"]["message"]
-    assert payload["error"]["details"]["validExpand"] == ["opportunities", "persons"]
+    assert payload["error"]["details"]["validExpand"] == [
+        "interactions",
+        "opportunities",
+        "persons",
+    ]
 
 
 def test_list_export_expand_cursor_combination_fails(

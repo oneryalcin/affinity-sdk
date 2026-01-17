@@ -62,6 +62,7 @@ For simple lookups, prefer `execute-read-command` with individual commands.
 | `$version` | Query format version (default: "1.0") |
 | `where` | Filter conditions |
 | `include` | Related entities to fetch |
+| `expand` | Computed data to add to records (e.g., `interactionDates`) |
 | `select` | Fields to return (default: all) |
 | `orderBy` | Sort order |
 | `groupBy` | Field to group by (requires `aggregate`) |
@@ -298,6 +299,77 @@ Fetch related entities in a single query:
 | `opportunities` | `persons`, `companies`, `interactions` |
 | `lists` | `entries` |
 | `listEntries` | `entity` (dynamically resolves to person/company/opportunity based on entityType) |
+
+## Expand Computed Data
+
+Unlike `include` (which fetches related entities), `expand` adds computed data directly to each record:
+
+```json
+{
+  "from": "companies",
+  "expand": ["interactionDates"],
+  "limit": 50
+}
+```
+
+### Available Expansions
+
+| Expansion | Supported Entities | Description |
+|-----------|-------------------|-------------|
+| `interactionDates` | `persons`, `companies`, `listEntries` | Last/next meeting dates, email dates, team members |
+
+### Interaction Dates Output
+
+When using `expand: ["interactionDates"]`, each record includes:
+
+```json
+{
+  "id": 123,
+  "name": "Acme Corp",
+  "interactionDates": {
+    "lastMeeting": {
+      "date": "2026-01-08T10:00:00Z",
+      "daysSince": 5,
+      "teamMembers": ["Bob Smith", "Carol Jones"]
+    },
+    "nextMeeting": {
+      "date": "2026-01-20T14:00:00Z",
+      "daysUntil": 7,
+      "teamMembers": ["Alice Wong"]
+    },
+    "lastEmail": {
+      "date": "2026-01-10T09:30:00Z",
+      "daysSince": 3
+    },
+    "lastInteraction": {
+      "date": "2026-01-10T09:30:00Z",
+      "daysSince": 3
+    }
+  }
+}
+```
+
+### Include vs Expand
+
+| Feature | `include` | `expand` |
+|---------|-----------|----------|
+| Purpose | Fetch related entities | Add computed data to records |
+| Output | Separate `included` section | Merged into each record |
+| Example | `include: ["companies"]` → company records | `expand: ["interactionDates"]` → dates on each record |
+
+### Example: Pipeline with Interaction Dates
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "expand": ["interactionDates"],
+  "select": ["entityId", "entityName", "fields.Status"],
+  "limit": 100
+}
+```
+
+**Note:** `expand` causes N+1 API calls (one per record). Use `dryRun: true` to preview the cost.
 
 ## Aggregations
 

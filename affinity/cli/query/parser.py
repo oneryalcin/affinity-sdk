@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from .exceptions import QueryParseError, QueryValidationError
 from .models import Query, WhereClause
-from .schema import SCHEMA_REGISTRY, FetchStrategy
+from .schema import EXPANSION_REGISTRY, SCHEMA_REGISTRY, FetchStrategy
 
 # =============================================================================
 # Version Configuration
@@ -511,6 +511,37 @@ def validate_query_semantics(query: Query) -> list[str]:
             )
         if query.limit == 0:
             warnings.append("Query has limit=0, which will return no results.")
+
+    # Validate expand paths
+    if query.expand is not None:
+        for expansion in query.expand:
+            if not expansion or not isinstance(expansion, str):
+                raise QueryValidationError(
+                    f"Invalid expand path: {expansion!r}",
+                    field="expand",
+                )
+            expansion_def = EXPANSION_REGISTRY.get(expansion)
+            if expansion_def is None:
+                raise QueryValidationError(
+                    f"Unknown expansion: '{expansion}'. "
+                    f"Available: {', '.join(EXPANSION_REGISTRY.keys())}",
+                    field="expand",
+                )
+            # Check if entity supports this expansion (listEntries validated at runtime)
+            if query.from_ != "listEntries" and query.from_ not in expansion_def.supported_entities:
+                raise QueryValidationError(
+                    f"Expansion '{expansion}' not supported for '{query.from_}'. "
+                    f"Supported entities: {', '.join(expansion_def.supported_entities)}",
+                    field="expand",
+                )
+
+        # Warn about N+1 API calls for large result sets
+        if query.from_ == "listEntries" and (query.limit is None or query.limit > 100):
+            warnings.append(
+                f"expand: {query.expand} on listEntries requires fetching each "
+                "entity individually (N+1 queries). Consider adding 'limit' for "
+                "large lists, or use 'list export --expand interactions' for streaming output."
+            )
 
     return warnings
 

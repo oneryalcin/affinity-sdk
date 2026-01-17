@@ -216,29 +216,76 @@ class CompanyService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Company:
         """
         Get a single company by ID.
 
         Args:
             company_id: The company ID
-            field_ids: Specific field IDs to include
-            field_types: Field types to include
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include (e.g., ["enriched", "global"])
             retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
-                Set to 2-3 if calling immediately after create() to handle V1→V2
-                eventual consistency lag.
+                Set to 2-3 if calling immediately after create() to handle eventual
+                consistency lag.
+            with_interaction_dates: Include interaction date summaries (last/next
+                meeting dates, email dates).
+            with_interaction_persons: Include person IDs for each interaction.
+                Only applies when with_interaction_dates=True.
 
         Returns:
-            Company object with requested field data
+            Company object with requested field data. When with_interaction_dates=True,
+            the Company will have interaction_dates and interactions populated.
 
         Raises:
             NotFoundError: If company does not exist after all retries.
+
+        Note:
+            When combining with_interaction_dates with field_ids/field_types,
+            two API calls are made internally and the results are merged.
         """
         last_error: NotFoundError | None = None
         attempts = retries + 1  # retries=0 means 1 attempt
+        has_field_filters = field_ids is not None or field_types is not None
 
         for attempt in range(attempts):
             try:
+                if with_interaction_dates:
+                    # Fetch interaction data
+                    v1_params: dict[str, Any] = {"with_interaction_dates": True}
+                    if with_interaction_persons:
+                        v1_params["with_interaction_persons"] = True
+                    interaction_data = self._client.get(
+                        f"/organizations/{company_id}",
+                        params=v1_params,
+                        v1=True,
+                    )
+
+                    # If field filtering is also requested, fetch filtered fields and merge
+                    if has_field_filters:
+                        v2_params: dict[str, Any] = {}
+                        if field_ids:
+                            v2_params["fieldIds"] = [str(fid) for fid in field_ids]
+                        if field_types:
+                            v2_params["fieldTypes"] = [ft.value for ft in field_types]
+
+                        filtered_data = self._client.get(
+                            f"/companies/{company_id}",
+                            params=v2_params,
+                        )
+
+                        # Merge: filtered fields + interaction data
+                        filtered_data["interaction_dates"] = interaction_data.get(
+                            "interaction_dates"
+                        )
+                        filtered_data["interactions"] = interaction_data.get("interactions")
+                        return Company.model_validate(filtered_data)
+
+                    # No field filtering, return interaction data directly
+                    return Company.model_validate(interaction_data)
+
+                # Standard path - supports field filtering
                 params: dict[str, Any] = {}
                 if field_ids:
                     params["fieldIds"] = [str(field_id) for field_id in field_ids]
@@ -976,29 +1023,76 @@ class AsyncCompanyService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Company:
         """
         Get a single company by ID.
 
         Args:
             company_id: The company ID
-            field_ids: Specific field IDs to include
-            field_types: Field types to include
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include (e.g., ["enriched", "global"])
             retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
-                Set to 2-3 if calling immediately after create() to handle V1→V2
-                eventual consistency lag.
+                Set to 2-3 if calling immediately after create() to handle eventual
+                consistency lag.
+            with_interaction_dates: Include interaction date summaries (last/next
+                meeting dates, email dates).
+            with_interaction_persons: Include person IDs for each interaction.
+                Only applies when with_interaction_dates=True.
 
         Returns:
-            Company object with requested field data
+            Company object with requested field data. When with_interaction_dates=True,
+            the Company will have interaction_dates and interactions populated.
 
         Raises:
             NotFoundError: If company does not exist after all retries.
+
+        Note:
+            When combining with_interaction_dates with field_ids/field_types,
+            two API calls are made internally and the results are merged.
         """
         last_error: NotFoundError | None = None
         attempts = retries + 1  # retries=0 means 1 attempt
+        has_field_filters = field_ids is not None or field_types is not None
 
         for attempt in range(attempts):
             try:
+                if with_interaction_dates:
+                    # Fetch interaction data
+                    v1_params: dict[str, Any] = {"with_interaction_dates": True}
+                    if with_interaction_persons:
+                        v1_params["with_interaction_persons"] = True
+                    interaction_data = await self._client.get(
+                        f"/organizations/{company_id}",
+                        params=v1_params,
+                        v1=True,
+                    )
+
+                    # If field filtering is also requested, fetch filtered fields and merge
+                    if has_field_filters:
+                        v2_params: dict[str, Any] = {}
+                        if field_ids:
+                            v2_params["fieldIds"] = [str(fid) for fid in field_ids]
+                        if field_types:
+                            v2_params["fieldTypes"] = [ft.value for ft in field_types]
+
+                        filtered_data = await self._client.get(
+                            f"/companies/{company_id}",
+                            params=v2_params,
+                        )
+
+                        # Merge: filtered fields + interaction data
+                        filtered_data["interaction_dates"] = interaction_data.get(
+                            "interaction_dates"
+                        )
+                        filtered_data["interactions"] = interaction_data.get("interactions")
+                        return Company.model_validate(filtered_data)
+
+                    # No field filtering, return interaction data directly
+                    return Company.model_validate(interaction_data)
+
+                # Standard path - supports field filtering
                 params: dict[str, Any] = {}
                 if field_ids:
                     params["fieldIds"] = [str(field_id) for field_id in field_ids]

@@ -296,6 +296,11 @@ Expansions:
 - `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
 - `--list-entry-fields-scope list-only|all`: control which fields appear in list-entry tables (human output only).
 
+Interaction dates (V1 API):
+
+- `--with-interaction-dates`: include interaction date summaries (last/next meeting, email dates). Uses V1 API.
+- `--with-interaction-persons`: include person IDs involved in each interaction (requires `--with-interaction-dates`).
+
 ```bash
 xaffinity person get 26229794 --all-fields --expand lists
 xaffinity person get 26229794 --expand list-entries --list "Dealflow" --max-results 200
@@ -303,6 +308,10 @@ xaffinity person get 26229794 --expand list-entries --list "Dealflow" --list-ent
 xaffinity person get 26229794 --expand list-entries --max-results 1 --show-list-entry-fields
 xaffinity person get 26229794 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
 xaffinity person get 26229794 --all-fields --expand lists --json | jq '.data.person.name'
+
+# Include interaction dates (last meeting, next meeting, email dates)
+xaffinity person get 26229794 --with-interaction-dates --json
+xaffinity person get 26229794 --with-interaction-dates --with-interaction-persons --json
 ```
 
 ### `xaffinity person create`
@@ -411,6 +420,11 @@ Expansions:
 - `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
 - `--list-entry-fields-scope list-only|all`: control which fields appear in list-entry tables (human output only).
 
+Interaction dates (V1 API):
+
+- `--with-interaction-dates`: include interaction date summaries (last/next meeting, email dates). Uses V1 API.
+- `--with-interaction-persons`: include person IDs involved in each interaction (requires `--with-interaction-dates`).
+
 ```bash
 xaffinity company get 224925494 --all-fields --expand lists
 xaffinity company get 224925494 --expand list-entries --list "Dealflow" --max-results 200
@@ -419,6 +433,10 @@ xaffinity company get 224925494 --expand list-entries --max-results 1 --show-lis
 xaffinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
 xaffinity company get 224925494 --expand people --max-results 50
 xaffinity company get 224925494 --all-fields --expand lists --json | jq '.data.company.name'
+
+# Include interaction dates (last meeting, next meeting, email dates)
+xaffinity company get 224925494 --with-interaction-dates --json
+xaffinity company get 224925494 --with-interaction-dates --with-interaction-persons --json
 ```
 
 ### `xaffinity company create`
@@ -570,12 +588,25 @@ Options:
 - `--field <id-or-name>` (repeatable): include specific fields
 - `--saved-view <name>`: use a saved view's field selection
 - `--filter <expression>`: filter expression
+- `--expand <type>` (repeatable): expand associated entities or interaction data
+  - `persons`, `companies`, `opportunities`: Expand related entities
+  - `interactions`: Add interaction date summaries (last/next meeting, email dates)
+- `--check-unreplied-emails`: Check for unreplied incoming emails for each list entry
+- `--unreplied-lookback-days <days>`: Lookback period for unreplied email detection (default: 30)
 
 ```bash
 xaffinity list export 123 --csv > out.csv
 xaffinity list export "My Pipeline" --saved-view "Board" --csv > out.csv
 xaffinity list export 123 --field Stage --field Amount --filter '"Stage" = "Active"' --csv > out.csv
 xaffinity list export 123 --csv --csv-bom > out.csv
+
+# Include interaction dates (last meeting, next meeting, email dates)
+xaffinity list export "Dealflow" --expand interactions --format json
+xaffinity list export "Dealflow" --expand interactions --csv > pipeline.csv
+
+# Check for unreplied incoming emails
+xaffinity list export "Pipeline" --check-unreplied-emails --json
+xaffinity list export "Pipeline" --check-unreplied-emails --unreplied-lookback-days 60 --csv > unreplied.csv
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.

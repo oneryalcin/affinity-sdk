@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Literal
+from typing import Any, Literal
 
 
 class FetchStrategy(Enum):
@@ -48,6 +48,26 @@ class RelationshipDef:
 
 
 @dataclass(frozen=True)
+class ExpansionDef:
+    """Defines how to expand/enrich records with computed data.
+
+    Unlike relationships (which fetch separate entities), expansions
+    add computed data directly to the main records.
+
+    Attributes:
+        name: Expansion name (e.g., "interactionDates")
+        supported_entities: Entity types that support this expansion
+        fetch_params: Parameters to pass to service.get() to fetch expansion data
+        requires_refetch: Whether entity must be re-fetched with params
+    """
+
+    name: str
+    supported_entities: frozenset[str]
+    fetch_params: dict[str, Any]
+    requires_refetch: bool = True
+
+
+@dataclass(frozen=True)
 class EntitySchema:
     """Schema definition for an entity type.
 
@@ -78,6 +98,7 @@ class EntitySchema:
     parent_filter_field: str | None = None
     parent_id_type: str | None = None
     parent_method_name: str | None = None
+    supported_expansions: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         """Validate schema configuration at definition time."""
@@ -163,6 +184,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             ),
         },
         fetch_strategy=FetchStrategy.GLOBAL,
+        supported_expansions=frozenset(["interactionDates"]),
     ),
     "companies": EntitySchema(
         name="companies",
@@ -214,6 +236,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
             ),
         },
         fetch_strategy=FetchStrategy.GLOBAL,
+        supported_expansions=frozenset(["interactionDates"]),
     ),
     "opportunities": EntitySchema(
         name="opportunities",
@@ -309,6 +332,8 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         parent_filter_field="listId",
         parent_id_type="ListId",
         parent_method_name="entries",
+        # listEntries supports expansion by fetching the underlying entity
+        supported_expansions=frozenset(["interactionDates"]),
     ),
     "interactions": EntitySchema(
         name="interactions",
@@ -361,6 +386,23 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
 #   {t for t, s in SCHEMA_REGISTRY.items()
 #    if s.fetch_strategy == FetchStrategy.GLOBAL and t != "lists"}
 UNBOUNDED_ENTITIES: frozenset[str] = frozenset({"persons", "companies", "opportunities"})
+
+
+# =============================================================================
+# Expansion Registry
+# =============================================================================
+
+EXPANSION_REGISTRY: dict[str, ExpansionDef] = {
+    "interactionDates": ExpansionDef(
+        name="interactionDates",
+        supported_entities=frozenset(["persons", "companies"]),
+        fetch_params={
+            "with_interaction_dates": True,
+            "with_interaction_persons": True,
+        },
+        requires_refetch=True,
+    ),
+}
 
 
 def get_entity_schema(entity_name: str) -> EntitySchema | None:

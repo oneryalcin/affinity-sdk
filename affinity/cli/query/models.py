@@ -248,6 +248,11 @@ class Query(BaseModel):
     # Optional: includes (relationships to fetch)
     include: list[str] | None = None
 
+    # Optional: expansions (computed data to add to records)
+    # Unlike include (which fetches separate entities into result.included),
+    # expand adds computed data directly to each record in result.data
+    expand: list[str] | None = None
+
     # Optional: named subqueries
     subqueries: dict[str, SubqueryDef] | None = None
 
@@ -279,6 +284,7 @@ class PlanStep:
         "fetch_streaming",
         "filter",
         "include",
+        "expand",
         "aggregate",
         "sort",
         "limit",
@@ -298,6 +304,9 @@ class PlanStep:
     filter_pushdown: bool = False
     pushdown_filter: str | None = None
     client_filter: WhereClause | None = None
+
+    # Expansion name when operation="expand"
+    expansion: str | None = None
 
 
 @dataclass

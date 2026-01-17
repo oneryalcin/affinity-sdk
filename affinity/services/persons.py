@@ -277,29 +277,41 @@ class PersonService:
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """
         Get a single person by ID.
 
         Args:
             person_id: The person ID
-            field_ids: Specific field IDs to include (V2 API)
-            field_types: Field types to include (V2 API)
-            include_field_values: If True, use V1 API to fetch embedded field values.
-                This saves one API call when you need both person info and field values.
-                Note: V1 response is ~2-3x larger than V2; consider this when fetching
-                many persons. V1 may include field values for deleted fields.
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include (e.g., ["enriched", "global"])
+            include_field_values: If True, fetch embedded field values. This saves
+                one API call when you need both person info and field values.
+                Cannot be combined with field_ids/field_types.
             retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
-                Set to 2-3 if calling immediately after create() to handle V1→V2
-                eventual consistency lag.
+                Set to 2-3 if calling immediately after create() to handle eventual
+                consistency lag.
+            with_interaction_dates: Include interaction date summaries (last/next
+                meeting dates, email dates).
+            with_interaction_persons: Include person IDs for each interaction.
+                Only applies when with_interaction_dates=True.
 
         Returns:
             Person object with requested field data.
             When include_field_values=True, the Person will have a `field_values`
             attribute containing the list of FieldValue objects.
+            When with_interaction_dates=True, the Person will have interaction_dates
+            and interactions populated.
 
         Raises:
             NotFoundError: If person does not exist after all retries.
+            ValueError: If include_field_values is combined with field_ids/field_types.
+
+        Note:
+            When combining with_interaction_dates with field_ids/field_types,
+            two API calls are made internally and the results are merged.
         """
         return self._get_with_retry(
             person_id,
@@ -307,6 +319,8 @@ class PersonService:
             field_types=field_types,
             include_field_values=include_field_values,
             retries=retries,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
         )
 
     def _get_with_retry(
@@ -317,6 +331,8 @@ class PersonService:
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """Internal: get with retry logic."""
         last_error: NotFoundError | None = None
@@ -329,6 +345,8 @@ class PersonService:
                     field_ids=field_ids,
                     field_types=field_types,
                     include_field_values=include_field_values,
+                    with_interaction_dates=with_interaction_dates,
+                    with_interaction_persons=with_interaction_persons,
                 )
             except NotFoundError as e:
                 last_error = e
@@ -344,26 +362,76 @@ class PersonService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """Internal: actual get implementation."""
+        has_field_filters = field_ids is not None or field_types is not None
+
+        # include_field_values returns embedded field values, which is incompatible
+        # with field_ids/field_types filtering (different data structures)
+        if include_field_values and has_field_filters:
+            raise ValueError(
+                "Cannot combine 'include_field_values' with 'field_ids' or 'field_types'. "
+                "Use include_field_values alone for embedded field values, or use "
+                "field_ids/field_types alone for filtered fields."
+            )
+
+        # Path 1: include_field_values (V1 API, may include interaction dates)
         if include_field_values:
-            # Use V1 API which returns field values embedded
-            data = self._client.get(f"/persons/{person_id}", v1=True)
+            v1_params: dict[str, Any] = {}
+            if with_interaction_dates:
+                v1_params["with_interaction_dates"] = True
+            if with_interaction_persons:
+                v1_params["with_interaction_persons"] = True
 
-            # Extract field_values before normalization
+            data = self._client.get(
+                f"/persons/{person_id}",
+                params=v1_params or None,
+                v1=True,
+            )
+
             field_values_data = data.get("field_values", [])
-
-            # Normalize V1 response to V2 schema
             normalized = _normalize_v1_person_response(data)
             person = Person.model_validate(normalized)
-
-            # Attach field_values as an attribute
-            # Using object.__setattr__ to bypass Pydantic's frozen/immutable if needed
             object.__setattr__(person, "field_values", field_values_data)
-
             return person
 
-        # Standard V2 path
+        # Path 2: with_interaction_dates (may need merge if field filters present)
+        if with_interaction_dates:
+            v1_params = {"with_interaction_dates": True}
+            if with_interaction_persons:
+                v1_params["with_interaction_persons"] = True
+
+            interaction_data = self._client.get(
+                f"/persons/{person_id}",
+                params=v1_params,
+                v1=True,
+            )
+
+            # If field filtering is also requested, fetch filtered fields and merge
+            if has_field_filters:
+                v2_params: dict[str, Any] = {}
+                if field_ids:
+                    v2_params["fieldIds"] = [str(fid) for fid in field_ids]
+                if field_types:
+                    v2_params["fieldTypes"] = [ft.value for ft in field_types]
+
+                filtered_data = self._client.get(
+                    f"/persons/{person_id}",
+                    params=v2_params,
+                )
+
+                # Merge: filtered fields + interaction data
+                filtered_data["interaction_dates"] = interaction_data.get("interaction_dates")
+                filtered_data["interactions"] = interaction_data.get("interactions")
+                return Person.model_validate(filtered_data)
+
+            # No field filtering, normalize and return V1 data
+            normalized = _normalize_v1_person_response(interaction_data)
+            return Person.model_validate(normalized)
+
+        # Path 3: Standard path (supports field filtering)
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]
@@ -1052,29 +1120,41 @@ class AsyncPersonService:
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """
         Get a single person by ID.
 
         Args:
             person_id: The person ID
-            field_ids: Specific field IDs to include (V2 API)
-            field_types: Field types to include (V2 API)
-            include_field_values: If True, use V1 API to fetch embedded field values.
-                This saves one API call when you need both person info and field values.
-                Note: V1 response is ~2-3x larger than V2; consider this when fetching
-                many persons. V1 may include field values for deleted fields.
+            field_ids: Specific field IDs to include in response
+            field_types: Field types to include (e.g., ["enriched", "global"])
+            include_field_values: If True, fetch embedded field values. This saves
+                one API call when you need both person info and field values.
+                Cannot be combined with field_ids/field_types.
             retries: Number of retries on 404 NotFoundError. Default is 0 (fail fast).
-                Set to 2-3 if calling immediately after create() to handle V1→V2
-                eventual consistency lag.
+                Set to 2-3 if calling immediately after create() to handle eventual
+                consistency lag.
+            with_interaction_dates: Include interaction date summaries (last/next
+                meeting dates, email dates).
+            with_interaction_persons: Include person IDs for each interaction.
+                Only applies when with_interaction_dates=True.
 
         Returns:
             Person object with requested field data.
             When include_field_values=True, the Person will have a `field_values`
             attribute containing the list of FieldValue objects.
+            When with_interaction_dates=True, the Person will have interaction_dates
+            and interactions populated.
 
         Raises:
             NotFoundError: If person does not exist after all retries.
+            ValueError: If include_field_values is combined with field_ids/field_types.
+
+        Note:
+            When combining with_interaction_dates with field_ids/field_types,
+            two API calls are made internally and the results are merged.
         """
         return await self._get_with_retry(
             person_id,
@@ -1082,6 +1162,8 @@ class AsyncPersonService:
             field_types=field_types,
             include_field_values=include_field_values,
             retries=retries,
+            with_interaction_dates=with_interaction_dates,
+            with_interaction_persons=with_interaction_persons,
         )
 
     async def _get_with_retry(
@@ -1092,6 +1174,8 @@ class AsyncPersonService:
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
         retries: int = 0,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """Internal: get with retry logic."""
         last_error: NotFoundError | None = None
@@ -1104,6 +1188,8 @@ class AsyncPersonService:
                     field_ids=field_ids,
                     field_types=field_types,
                     include_field_values=include_field_values,
+                    with_interaction_dates=with_interaction_dates,
+                    with_interaction_persons=with_interaction_persons,
                 )
             except NotFoundError as e:
                 last_error = e
@@ -1119,25 +1205,76 @@ class AsyncPersonService:
         field_ids: Sequence[AnyFieldId] | None = None,
         field_types: Sequence[FieldType] | None = None,
         include_field_values: bool = False,
+        with_interaction_dates: bool = False,
+        with_interaction_persons: bool = False,
     ) -> Person:
         """Internal: actual get implementation."""
+        has_field_filters = field_ids is not None or field_types is not None
+
+        # include_field_values returns embedded field values, which is incompatible
+        # with field_ids/field_types filtering (different data structures)
+        if include_field_values and has_field_filters:
+            raise ValueError(
+                "Cannot combine 'include_field_values' with 'field_ids' or 'field_types'. "
+                "Use include_field_values alone for embedded field values, or use "
+                "field_ids/field_types alone for filtered fields."
+            )
+
+        # Path 1: include_field_values (V1 API, may include interaction dates)
         if include_field_values:
-            # Use V1 API which returns field values embedded
-            data = await self._client.get(f"/persons/{person_id}", v1=True)
+            v1_params: dict[str, Any] = {}
+            if with_interaction_dates:
+                v1_params["with_interaction_dates"] = True
+            if with_interaction_persons:
+                v1_params["with_interaction_persons"] = True
 
-            # Extract field_values before normalization
+            data = await self._client.get(
+                f"/persons/{person_id}",
+                params=v1_params or None,
+                v1=True,
+            )
+
             field_values_data = data.get("field_values", [])
-
-            # Normalize V1 response to V2 schema
             normalized = _normalize_v1_person_response(data)
             person = Person.model_validate(normalized)
-
-            # Attach field_values as an attribute
             object.__setattr__(person, "field_values", field_values_data)
-
             return person
 
-        # Standard V2 path
+        # Path 2: with_interaction_dates (may need merge if field filters present)
+        if with_interaction_dates:
+            v1_params = {"with_interaction_dates": True}
+            if with_interaction_persons:
+                v1_params["with_interaction_persons"] = True
+
+            interaction_data = await self._client.get(
+                f"/persons/{person_id}",
+                params=v1_params,
+                v1=True,
+            )
+
+            # If field filtering is also requested, fetch filtered fields and merge
+            if has_field_filters:
+                v2_params: dict[str, Any] = {}
+                if field_ids:
+                    v2_params["fieldIds"] = [str(fid) for fid in field_ids]
+                if field_types:
+                    v2_params["fieldTypes"] = [ft.value for ft in field_types]
+
+                filtered_data = await self._client.get(
+                    f"/persons/{person_id}",
+                    params=v2_params,
+                )
+
+                # Merge: filtered fields + interaction data
+                filtered_data["interaction_dates"] = interaction_data.get("interaction_dates")
+                filtered_data["interactions"] = interaction_data.get("interactions")
+                return Person.model_validate(filtered_data)
+
+            # No field filtering, normalize and return V1 data
+            normalized = _normalize_v1_person_response(interaction_data)
+            return Person.model_validate(normalized)
+
+        # Path 3: Standard path (supports field filtering)
         params: dict[str, Any] = {}
         if field_ids:
             params["fieldIds"] = [str(field_id) for field_id in field_ids]

@@ -336,6 +336,9 @@ class Company(AffinityModel):
     # Interaction dates
     interaction_dates: InteractionDates | None = Field(None, alias="interactionDates")
 
+    # V1: only returned when with_interaction_dates=true; preserve shape for forward compatibility.
+    interactions: dict[str, Any] | None = None
+
 
 class CompanyCreate(AffinityModel):
     """Data for creating a new company (V1 API)."""

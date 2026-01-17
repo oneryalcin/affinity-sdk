@@ -302,6 +302,52 @@ Fetch related entities in a single query:
 
 **Warning:** Includes cause N+1 API calls (one per parent record). Use `--dry-run` to preview the cost.
 
+## Expanding Computed Data
+
+Use `expand` to add computed data directly to each record (unlike `include` which fetches separate entities).
+
+### Interaction Dates
+
+Add interaction date summaries to records:
+
+```json
+{
+  "from": "companies",
+  "expand": ["interactionDates"],
+  "limit": 50
+}
+```
+
+Output includes interaction summaries on each record:
+
+```json
+{
+  "id": 123,
+  "name": "Acme Corp",
+  "interactionDates": {
+    "lastMeeting": { "date": "2026-01-08T10:00:00Z", "daysSince": 5 },
+    "nextMeeting": { "date": "2026-01-20T14:00:00Z", "daysUntil": 7 },
+    "lastEmail": { "date": "2026-01-10T09:30:00Z", "daysSince": 3 }
+  }
+}
+```
+
+### Available Expansions
+
+| Expansion | Description | Supported Entities |
+|-----------|-------------|-------------------|
+| `interactionDates` | Last/next meeting, email dates | `persons`, `companies`, `listEntries` |
+
+### Expand vs Include
+
+| Feature | `include` | `expand` |
+|---------|-----------|----------|
+| **Purpose** | Fetch related entities | Add computed data |
+| **Output** | Separate records | Merged into each record |
+| **Example** | Related company records | Dates, counts, summaries |
+
+**Warning:** Expand also causes N+1 API calls. For large datasets, consider using `list export --expand interactions` for streaming output.
+
 ## Aggregations
 
 ### Basic Aggregates

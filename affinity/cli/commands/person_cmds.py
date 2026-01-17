@@ -833,6 +833,18 @@ def _resolve_person_field_ids(
     is_flag=True,
     help="Fetch all pages for expansions (still capped by --max-results if set).",
 )
+@click.option(
+    "--with-interaction-dates",
+    "with_interaction_dates",
+    is_flag=True,
+    help="Include interaction date summaries (last/next meeting, email dates).",
+)
+@click.option(
+    "--with-interaction-persons",
+    "with_interaction_persons",
+    is_flag=True,
+    help="Include person IDs for each interaction (requires --with-interaction-dates).",
+)
 @output_options
 @click.pass_obj
 def person_get(
@@ -850,6 +862,8 @@ def person_get(
     list_entry_fields_scope: ListEntryFieldsScope,
     max_results: int | None,
     all_pages: bool,
+    with_interaction_dates: bool,
+    with_interaction_persons: bool,
 ) -> None:
     """
     Get a person by id, URL, email, or name.
@@ -1016,7 +1030,19 @@ def person_get(
                 params["fieldTypes"] = requested_types
                 selection_resolved = {"fieldTypes": requested_types}
 
-        person_payload = client._http.get(f"/persons/{int(person_id)}", params=params or None)
+        # Add interaction date parameters
+        if with_interaction_dates:
+            params["with_interaction_dates"] = True
+        if with_interaction_persons:
+            params["with_interaction_persons"] = True
+
+        # Use V1 API when interaction dates are requested, V2 otherwise
+        if with_interaction_dates:
+            person_payload = client._http.get(
+                f"/persons/{int(person_id)}", params=params or None, v1=True
+            )
+        else:
+            person_payload = client._http.get(f"/persons/{int(person_id)}", params=params or None)
 
         data: dict[str, Any] = {"person": person_payload}
         pagination: dict[str, Any] = {}
