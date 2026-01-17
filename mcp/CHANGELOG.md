@@ -5,10 +5,16 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-01-18
+
+### Changed
+- **`execute-read-command` tool guidance**: Updated description to clarify when to use `query` tool (bulk data with TOON format support) vs `execute-read-command` (CLI commands without query equivalent like `field ls`, `field history`, `interaction ls`)
+
 ## [1.9.0] - 2026-01-18
 
 ### Fixed
 - **"Command is required" intermittent error**: Upgraded mcp-bash framework from 0.9.13 to 0.10.0, which fixes a critical bug where complex filter arguments with escaped quotes (e.g., `--filter 'Status in ["New", "Intro Meeting"]'`) would intermittently fail with "Command is required" error despite arguments being received. The bug was caused by TSV double-escaping corrupting JSON payloads during argument extraction.
+- **Removed dead `format` parameter from `execute-read-command`**: The `format` parameter was documented in tool.meta.json but never implemented - the tool always outputs JSON. Removed the parameter to avoid confusion. (The `query` tool's `format` parameter works correctly.)
 
 ### Added
 - **User-configurable settings (MCPB)**: Added `user-config.json` schema for implementing apps (Claude Desktop, etc.) to collect and pass configuration:
