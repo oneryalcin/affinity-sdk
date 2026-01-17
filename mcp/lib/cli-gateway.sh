@@ -16,12 +16,14 @@
 # Returns: 0 if valid, 1 if invalid (with mcp_result_error emitted)
 validate_registry() {
     if [[ ! -f "$REGISTRY_FILE" ]]; then
-        mcp_result_error '{"type": "configuration_error", "message": "Command registry not found. Run: python tools/generate_cli_commands_registry.py"}'
+        mcp_error "configuration_error" "Command registry not found" \
+            --hint "Run: python tools/generate_cli_commands_registry.py"
         return 1
     fi
 
     if ! jq_tool -e '.commands | type == "array"' "$REGISTRY_FILE" >/dev/null 2>&1; then
-        mcp_result_error '{"type": "configuration_error", "message": "Command registry is invalid or corrupted"}'
+        mcp_error "configuration_error" "Command registry is invalid or corrupted" \
+            --hint "Regenerate registry: python tools/generate_cli_commands_registry.py"
         return 1
     fi
 
@@ -45,8 +47,8 @@ validate_registry() {
     ' "$REGISTRY_FILE" 2>/dev/null)
 
     if [[ -n "$validation_result" ]]; then
-        mcp_result_error "$(jq_tool -n --arg msg "Registry validation failed: $validation_result" \
-            '{type: "configuration_error", message: $msg}')"
+        mcp_error "configuration_error" "Registry validation failed: $validation_result" \
+            --hint "Regenerate registry: python tools/generate_cli_commands_registry.py"
         return 1
     fi
 
@@ -139,7 +141,8 @@ validate_command() {
 
     # Reject any token starting with - (flags belong in argv, not command)
     if [[ "$cmd" =~ (^|[[:space:]])-. ]]; then
-        mcp_result_error '{"type": "validation_error", "message": "Flags not allowed in command path"}'
+        mcp_error "validation_error" "Flags not allowed in command path" \
+            --hint "Put flags like --limit in argv, not in command string"
         return 1
     fi
 
@@ -169,17 +172,18 @@ validate_command() {
             if [[ "$actual_cat" == "local" ]]; then
                 suggest_tool="execute-read-command"
             fi
-            mcp_result_error "$(jq_tool -n --arg cmd "$cmd" --arg expected "$tool_type" --arg actual "$actual_cat" --arg suggest "$suggest_tool" \
-                '{type: "validation_error", message: ("Command \"\($cmd)\" is category \"\($actual)\", use \($suggest) instead")}')"
+            mcp_error "validation_error" "Command \"$cmd\" is category \"$actual_cat\", use $suggest_tool instead" \
+                --hint "Use $suggest_tool for $actual_cat commands"
         else
             # Try to find similar commands for "Did you mean" suggestion
             local suggestion
             suggestion=$(find_similar_command "$cmd" "$all_commands")
             if [[ -n "$suggestion" ]]; then
-                mcp_result_error "$(jq_tool -n --arg cmd "$cmd" --arg suggest "$suggestion" \
-                    '{type: "command_not_found", message: ("Unknown command: " + $cmd), hint: ("Did you mean \"" + $suggest + "\"?")}')"
+                mcp_error "command_not_found" "Unknown command: $cmd" \
+                    --hint "Did you mean \"$suggestion\"?"
             else
-                mcp_result_error "$(jq_tool -n --arg cmd "$cmd" '{type: "command_not_found", message: ("Unknown command: " + $cmd), hint: "Use discover-commands to find available commands"}')"
+                mcp_error "command_not_found" "Unknown command: $cmd" \
+                    --hint "Use discover-commands to find available commands"
             fi
         fi
         return 1
@@ -206,7 +210,8 @@ validate_argv() {
     cmd_schema=$(jq_tool --arg cmd "$cmd" '.commands[] | select(.name == $cmd)' "$REGISTRY_FILE")
 
     if [[ -z "$cmd_schema" ]]; then
-        mcp_result_error '{"type": "internal_error", "message": "Command schema not found"}'
+        mcp_error "internal_error" "Command schema not found" \
+            --hint "Registry may be out of sync; regenerate with: python tools/generate_cli_commands_registry.py"
         return 1
     fi
 
@@ -257,7 +262,8 @@ validate_argv() {
 
             # Check if flag is in allowed list (use -- to prevent grep treating flags as options)
             if ! printf '%s' "$allowed_flags" | grep -qxF -- "$flag_name"; then
-                mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Unknown flag: " + $f), hint: "Use discover-commands to see valid parameters"}')"
+                mcp_error "validation_error" "Unknown flag: $flag_name" \
+                    --hint "Use discover-commands to see valid parameters for this command"
                 return 1
             fi
 
@@ -272,7 +278,8 @@ validate_argv() {
             if [[ "$flag_type" == "flag" ]]; then
                 # Boolean flag (no value expected) - reject ANY use of = syntax
                 if [[ "$has_equals" == "true" ]]; then
-                    mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " does not accept a value (use without =)")}')"
+                    mcp_error "validation_error" "Flag $flag_name does not accept a value (use without =)" \
+                        --hint "Use just $flag_name without =value"
                     return 1
                 fi
             else
@@ -280,7 +287,8 @@ validate_argv() {
                 if [[ "$has_equals" == "false" ]]; then
                     # Value should be next argument
                     if [[ $((i + 1)) -ge $argc ]]; then
-                        mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " requires a value")}')"
+                        mcp_error "validation_error" "Flag $flag_name requires a value" \
+                            --hint "Add a value after $flag_name or use $flag_name=value"
                         return 1
                     fi
                     local next_arg="${argv[$((i + 1))]}"
@@ -288,7 +296,8 @@ validate_argv() {
                     if [[ "$next_arg" == -* ]]; then
                         local next_flag_name="${next_arg%%=*}"
                         if printf '%s' "$allowed_flags" | grep -qxF -- "$next_flag_name"; then
-                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " requires a value, got another flag")}')"
+                            mcp_error "validation_error" "Flag $flag_name requires a value, got another flag" \
+                                --hint "Add a value between $flag_name and $next_arg"
                             return 1
                         fi
                     fi
@@ -300,13 +309,15 @@ validate_argv() {
                 case "$flag_type" in
                     int|integer)
                         if ! [[ "$flag_value" =~ ^-?[0-9]+$ ]]; then
-                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" --arg v "$flag_value" '{type: "validation_error", message: ("Flag " + $f + " requires integer, got: " + $v)}')"
+                            mcp_error "validation_error" "Flag $flag_name requires integer, got: $flag_value" \
+                                --hint "Provide a numeric value like $flag_name=10"
                             return 1
                         fi
                         ;;
                     bool|boolean)
                         if ! [[ "$flag_value" =~ ^(true|false)$ ]]; then
-                            mcp_result_error "$(jq_tool -n --arg f "$flag_name" --arg v "$flag_value" '{type: "validation_error", message: ("Flag " + $f + " requires true/false, got: " + $v)}')"
+                            mcp_error "validation_error" "Flag $flag_name requires true/false, got: $flag_value" \
+                                --hint "Use $flag_name=true or $flag_name=false"
                             return 1
                         fi
                         ;;
@@ -318,7 +329,8 @@ validate_argv() {
                 local allows_multiple
                 allows_multiple=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$flag_name" '.parameters[$f].multiple // false')
                 if [[ "$allows_multiple" != "true" ]]; then
-                    mcp_result_error "$(jq_tool -n --arg f "$flag_name" '{type: "validation_error", message: ("Flag " + $f + " cannot be specified multiple times")}')"
+                    mcp_error "validation_error" "Flag $flag_name cannot be specified multiple times" \
+                        --hint "Remove duplicate $flag_name from argv"
                     return 1
                 fi
             fi
@@ -334,8 +346,8 @@ validate_argv() {
                         if ! [[ "$arg" =~ ^-?[0-9]+$ ]]; then
                             local pos_name
                             pos_name=$(printf '%s' "$positional_defs" | jq_tool -r --argjson idx "$positional_count" '.[$idx].name // "argument"')
-                            mcp_result_error "$(jq_tool -n --arg name "$pos_name" --arg v "$arg" \
-                                '{type: "validation_error", message: ($name + " requires integer, got: " + $v)}')"
+                            mcp_error "validation_error" "$pos_name requires integer, got: $arg" \
+                                --hint "Provide a numeric value for $pos_name"
                             return 1
                         fi
                         ;;
@@ -348,15 +360,15 @@ validate_argv() {
 
     # Check required positional arguments
     if [[ $positional_count -lt $required_positional_count ]]; then
-        mcp_result_error "$(jq_tool -n --argjson got "$positional_count" --argjson need "$required_positional_count" \
-            '{type: "validation_error", message: ("Missing required arguments: need " + ($need|tostring) + ", got " + ($got|tostring))}')"
+        mcp_error "validation_error" "Missing required arguments: need $required_positional_count, got $positional_count" \
+            --hint "Use discover-commands to see required arguments for this command"
         return 1
     fi
 
     # Check for too many positional arguments
     if [[ $positional_count -gt $total_positional_count ]]; then
-        mcp_result_error "$(jq_tool -n --argjson got "$positional_count" --argjson max "$total_positional_count" \
-            '{type: "validation_error", message: ("Too many arguments: expected at most " + ($max|tostring) + ", got " + ($got|tostring))}')"
+        mcp_error "validation_error" "Too many arguments: expected at most $total_positional_count, got $positional_count" \
+            --hint "Remove extra arguments from argv"
         return 1
     fi
 
@@ -365,7 +377,8 @@ validate_argv() {
     required_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '.parameters // {} | to_entries[] | select(.key | startswith("-")) | select(.value.required == true) | .key' 2>/dev/null || printf '')
     for req_flag in $required_flags; do
         if [[ -z "${provided_flags[$req_flag]:-}" ]]; then
-            mcp_result_error "$(jq_tool -n --arg f "$req_flag" '{type: "validation_error", message: ("Missing required flag: " + $f)}')"
+            mcp_error "validation_error" "Missing required flag: $req_flag" \
+                --hint "Add $req_flag to your argv"
             return 1
         fi
     done

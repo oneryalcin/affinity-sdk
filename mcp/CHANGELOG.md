@@ -5,6 +5,30 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-01-18
+
+### Fixed
+- **"Command is required" intermittent error**: Upgraded mcp-bash framework from 0.9.13 to 0.10.0, which fixes a critical bug where complex filter arguments with escaped quotes (e.g., `--filter 'Status in ["New", "Intro Meeting"]'`) would intermittently fail with "Command is required" error despite arguments being received. The bug was caused by TSV double-escaping corrupting JSON payloads during argument extraction.
+
+### Added
+- **User-configurable settings (MCPB)**: Added `user-config.json` schema for implementing apps (Claude Desktop, etc.) to collect and pass configuration:
+  - `api_key`: Affinity API key (required, masked in UI)
+  - `read_only`: Restrict to read-only operations
+  - `disable_destructive`: Block destructive commands entirely
+  - `session_cache_ttl`: API response cache lifetime (0-3600 seconds)
+  - `debug_mode`: Enable verbose logging
+- **Registry/marketplace metadata**: Added MCPB manifest fields for registry listing:
+  - License (MIT), keywords, homepage, documentation, and support URLs
+
+### Changed
+- **mcp-bash framework 0.10.0**: Updated from 0.9.13; fixes TSV parsing vulnerability in `tools/call` handler. No changes required to tool code - fix is internal to framework.
+- **LLM-actionable error hints**: Adopted `mcp_error --hint` SDK helper across all tools and validation code. Errors now include actionable guidance for LLM self-correction:
+  - `query` tool: Format validation, missing "from" field
+  - `execute-read-command` / `execute-write-command`: Command required, argv validation, reserved flags, cancellation
+  - `execute-write-command`: Destructive disabled, confirmation required, --yes flag errors
+  - `discover-commands`: Invalid category
+  - `cli-gateway.sh`: Registry errors, command not found (with "Did you mean" suggestions), unknown flags, type validation, missing required flags
+
 ## [1.8.8] - 2026-01-17
 
 ### Added

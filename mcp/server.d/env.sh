@@ -31,6 +31,28 @@ export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_D
 # See mcp-bash docs/DEBUGGING.md for details.
 # ==============================================================================
 
+# ==============================================================================
+# Boolean Translation for user_config
+# ==============================================================================
+# user_config passes "true"/"false" strings, but existing code checks for "1"
+# Translate for backwards compatibility with env-var based configuration
+
+if [[ "${AFFINITY_MCP_READ_ONLY:-}" == "true" ]]; then
+    export AFFINITY_MCP_READ_ONLY="1"
+elif [[ "${AFFINITY_MCP_READ_ONLY:-}" == "false" ]]; then
+    unset AFFINITY_MCP_READ_ONLY
+fi
+
+if [[ "${AFFINITY_MCP_DISABLE_DESTRUCTIVE:-}" == "true" ]]; then
+    export AFFINITY_MCP_DISABLE_DESTRUCTIVE="1"
+elif [[ "${AFFINITY_MCP_DISABLE_DESTRUCTIVE:-}" == "false" ]]; then
+    unset AFFINITY_MCP_DISABLE_DESTRUCTIVE
+fi
+
+# ==============================================================================
+# Session Cache Configuration
+# ==============================================================================
+
 # Create session cache on server startup
 if [[ -z "${AFFINITY_SESSION_CACHE:-}" ]]; then
     export AFFINITY_SESSION_CACHE="${TMPDIR:-/tmp}/xaffinity-mcp-session-$$"
@@ -44,7 +66,12 @@ export AFFINITY_SESSION_CACHE_TTL="${AFFINITY_SESSION_CACHE_TTL:-600}"
 # ==============================================================================
 # Debug Mode Auto-Configuration
 # ==============================================================================
-# When MCPBASH_LOG_LEVEL=debug, automatically enable xaffinity debug features
+# When MCPBASH_LOG_LEVEL=debug (or "true" from user_config), enable xaffinity debug features
+
+# Translate boolean "true" from user_config to "debug" level
+if [[ "${MCPBASH_LOG_LEVEL:-}" == "true" ]]; then
+    export MCPBASH_LOG_LEVEL="debug"
+fi
 
 if [[ "${MCPBASH_LOG_LEVEL:-info}" == "debug" ]]; then
     # Enable xaffinity-specific debug logging

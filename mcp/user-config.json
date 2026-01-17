@@ -1,0 +1,35 @@
+{
+  "api_key": {
+    "type": "string",
+    "title": "Affinity API Key",
+    "description": "Your Affinity CRM API key (found in Settings > API Keys)",
+    "sensitive": true,
+    "required": true
+  },
+  "read_only": {
+    "type": "boolean",
+    "title": "Read-Only Mode",
+    "description": "Restrict to read-only operations (no creates, updates, or deletes)",
+    "default": false
+  },
+  "disable_destructive": {
+    "type": "boolean",
+    "title": "Disable Destructive Commands",
+    "description": "Block destructive commands (delete operations) even with confirmation",
+    "default": false
+  },
+  "session_cache_ttl": {
+    "type": "number",
+    "title": "Session Cache TTL",
+    "description": "How long to cache API responses (seconds). Lower = fresher data, higher = fewer API calls",
+    "min": 0,
+    "max": 3600,
+    "default": 600
+  },
+  "debug_mode": {
+    "type": "boolean",
+    "title": "Debug Mode",
+    "description": "Enable verbose logging for troubleshooting",
+    "default": false
+  }
+}

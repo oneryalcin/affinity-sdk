@@ -21,15 +21,17 @@ xaffinity_log_debug "execute-read-command" "args_len=$args_len"
 # Parse arguments using mcp-bash SDK
 # Provide diagnostic info if command is missing
 if ! command="$(mcp_args_get '.command')"; then
-    mcp_result_error "$(jq_tool -n --argjson len "$args_len" \
-        '{type: "validation_error", message: "Command is required", diagnostic: {argsLength: $len, hint: "If argsLength is 0, arguments were not passed to tool subprocess"}}')"
+    mcp_error "validation_error" "Command is required" \
+        --hint "Use discover-commands to find available CLI commands" \
+        --data "$(jq_tool -n --argjson len "$args_len" '{argsLength: $len}')"
     exit 0
 fi
 if [[ -z "$command" || "$command" == "null" ]]; then
     # Extract first 200 chars of args for debugging (without secrets)
     args_preview="${args_raw:0:200}"
-    mcp_result_error "$(jq_tool -n --argjson len "$args_len" --arg preview "$args_preview" \
-        '{type: "validation_error", message: "Command is required (field missing or null)", diagnostic: {argsLength: $len, argsPreview: $preview}}')"
+    mcp_error "validation_error" "Command is required (field missing or null)" \
+        --hint "Pass command as a string, e.g. command: \"person get\"" \
+        --data "$(jq_tool -n --argjson len "$args_len" --arg preview "$args_preview" '{argsLength: $len, argsPreview: $preview}')"
     exit 0
 fi
 argv_json="$(mcp_args_get '.argv // []')"
@@ -51,7 +53,8 @@ if [[ -z "$argv_json" ]]; then
     argv_json='[]'
 fi
 if ! printf '%s' "$argv_json" | jq_tool -e 'type == "array" and all(type == "string")' >/dev/null 2>&1; then
-    mcp_result_error '{"type": "validation_error", "message": "argv must be an array of strings"}'
+    mcp_error "validation_error" "argv must be an array of strings" \
+        --hint 'Pass argv as: ["arg1", "--flag", "value"] or omit for commands without arguments'
     exit 0
 fi
 
@@ -61,7 +64,8 @@ mapfile -d '' argv < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 # Reject reserved flags that the tool appends automatically
 for arg in "${argv[@]}"; do
     if [[ "$arg" == "--json" ]]; then
-        mcp_result_error '{"type": "validation_error", "message": "--json is reserved; do not pass it in argv (tools append it automatically)"}'
+        mcp_error "validation_error" "--json is reserved; do not pass it in argv (tools append it automatically)" \
+            --hint "Remove --json from argv; JSON output is enabled by default"
         exit 0
     fi
 done
@@ -81,7 +85,7 @@ cmd_args+=("--json")
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 
@@ -130,7 +134,7 @@ cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_args[@]}")
 
 # Check for cancellation after execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 

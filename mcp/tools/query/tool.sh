@@ -16,7 +16,8 @@ format="$(mcp_args_get '.format // "toon"')"
 # Validate format parameter
 case "$format" in
   toon|markdown|json|jsonl|csv) ;;
-  *) mcp_result_error '{"type": "validation_error", "message": "format must be toon, markdown, json, jsonl, or csv"}'; exit 0 ;;
+  *) mcp_error "validation_error" "format must be toon, markdown, json, jsonl, or csv" \
+       --hint "Use toon (default, token-efficient) or json (full structure)"; exit 0 ;;
 esac
 
 # Track start time for latency metrics
@@ -25,7 +26,8 @@ start_time_ms=$(_get_time_ms)
 
 # Validate query has required 'from' field
 if ! printf '%s' "$query_json" | jq_tool -e '.from' >/dev/null 2>&1; then
-    mcp_result_error '{"type": "validation_error", "message": "Query must have a \"from\" field specifying the entity type"}'
+    mcp_error "validation_error" 'Query must have a "from" field specifying the entity type' \
+        --hint "Valid types: persons, companies, opportunities, listEntries, interactions, notes"
     exit 0
 fi
 
@@ -92,7 +94,7 @@ declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--ti
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 
@@ -125,7 +127,7 @@ cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_display[@]}")
 
 # Check for cancellation after execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 

@@ -31,8 +31,8 @@ fi
 case "$category" in
     all|read|write|local) ;;
     *)
-        mcp_result_error "$(jq_tool -n --arg cat "$category" \
-            '{type: "validation_error", message: ("Unknown category: " + $cat + ". Valid values: all, read, write, local")}')"
+        mcp_error "validation_error" "Unknown category: $category" \
+            --hint "Valid values: all, read, write, local"
         exit 0
         ;;
 esac

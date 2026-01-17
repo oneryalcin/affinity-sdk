@@ -21,15 +21,17 @@ xaffinity_log_debug "execute-write-command" "args_len=$args_len"
 # Parse arguments using mcp-bash SDK
 # Provide diagnostic info if command is missing
 if ! command="$(mcp_args_get '.command')"; then
-    mcp_result_error "$(jq_tool -n --argjson len "$args_len" \
-        '{type: "validation_error", message: "Command is required", diagnostic: {argsLength: $len, hint: "If argsLength is 0, arguments were not passed to tool subprocess"}}')"
+    mcp_error "validation_error" "Command is required" \
+        --hint "Use discover-commands to find available CLI commands" \
+        --data "$(jq_tool -n --argjson len "$args_len" '{argsLength: $len}')"
     exit 0
 fi
 if [[ -z "$command" || "$command" == "null" ]]; then
     # Extract first 200 chars of args for debugging (without secrets)
     args_preview="${args_raw:0:200}"
-    mcp_result_error "$(jq_tool -n --argjson len "$args_len" --arg preview "$args_preview" \
-        '{type: "validation_error", message: "Command is required (field missing or null)", diagnostic: {argsLength: $len, argsPreview: $preview}}')"
+    mcp_error "validation_error" "Command is required (field missing or null)" \
+        --hint "Pass command as a string, e.g. command: \"entry field set\"" \
+        --data "$(jq_tool -n --argjson len "$args_len" --arg preview "$args_preview" '{argsLength: $len, argsPreview: $preview}')"
     exit 0
 fi
 argv_json="$(mcp_args_get '.argv // []')"
@@ -51,7 +53,8 @@ if [[ -z "$argv_json" ]]; then
     argv_json='[]'
 fi
 if ! printf '%s' "$argv_json" | jq_tool -e 'type == "array" and all(type == "string")' >/dev/null 2>&1; then
-    mcp_result_error '{"type": "validation_error", "message": "argv must be an array of strings"}'
+    mcp_error "validation_error" "argv must be an array of strings" \
+        --hint 'Pass argv as: ["arg1", "--flag", "value"] or omit for commands without arguments'
     exit 0
 fi
 
@@ -61,7 +64,8 @@ mapfile -d '' argv < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 # Reject reserved flags that the tool appends automatically
 for arg in "${argv[@]}"; do
     if [[ "$arg" == "--json" ]]; then
-        mcp_result_error '{"type": "validation_error", "message": "--json is reserved; do not pass it in argv (tools append it automatically)"}'
+        mcp_error "validation_error" "--json is reserved; do not pass it in argv (tools append it automatically)" \
+            --hint "Remove --json from argv; JSON output is enabled by default"
         exit 0
     fi
 done
@@ -71,7 +75,8 @@ validate_argv "$command" "${argv[@]}" || exit 0
 
 # Block destructive commands entirely if policy disables them
 if [[ "${AFFINITY_MCP_DISABLE_DESTRUCTIVE:-}" == "1" ]] && is_destructive "$command"; then
-    mcp_result_error '{"type": "destructive_disabled", "message": "Destructive commands are disabled by policy (AFFINITY_MCP_DISABLE_DESTRUCTIVE=1)"}'
+    mcp_error "destructive_disabled" "Destructive commands are disabled by policy (AFFINITY_MCP_DISABLE_DESTRUCTIVE=1)" \
+        --hint "Contact your administrator to enable destructive operations"
     exit 0
 fi
 
@@ -83,7 +88,8 @@ if is_destructive "$command"; then
         [[ "$arg" == "--yes" || "$arg" == "-y" ]] && has_yes=true && break
     done
     if [[ "$has_yes" == "true" ]]; then
-        mcp_result_error '{"type": "validation_error", "message": "--yes flag not allowed in argv; use confirm parameter instead"}'
+        mcp_error "validation_error" "--yes flag not allowed in argv; use confirm parameter instead" \
+            --hint 'Remove --yes from argv and add "confirm": true to your request'
         exit 0
     fi
 
@@ -92,8 +98,8 @@ if is_destructive "$command"; then
         '.commands[] | select(.name == $cmd) | .parameters["--yes"] // empty' \
         "$REGISTRY_FILE")
     if [[ -z "$supports_yes" ]]; then
-        mcp_result_error "$(jq_tool -n --arg cmd "$command" \
-            '{type: "internal_error", message: ("Destructive command " + $cmd + " does not support --yes flag; registry may be out of sync")}')"
+        mcp_error "internal_error" "Destructive command $command does not support --yes flag; registry may be out of sync" \
+            --hint "Report this issue - the command registry needs to be regenerated"
         exit 0
     fi
 
@@ -111,15 +117,9 @@ if is_destructive "$command"; then
         fi
     else
         # Build example showing how to confirm
-        mcp_result_error "$(jq_tool -n \
-            --arg cmd "$command" \
-            --argjson argv "$argv_json" \
-            '{
-                type: "confirmation_required",
-                message: "Destructive command requires confirm=true",
-                hint: "Add \"confirm\": true to your request to proceed",
-                example: {command: $cmd, argv: $argv, confirm: true}
-            }')"
+        mcp_error "confirmation_required" "Destructive command requires confirm=true" \
+            --hint 'Add "confirm": true to your request to proceed' \
+            --data "$(jq_tool -n --arg cmd "$command" --argjson argv "$argv_json" '{example: {command: $cmd, argv: $argv, confirm: true}}')"
         exit 0
     fi
 fi
@@ -133,7 +133,7 @@ cmd_args+=("--json")
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 
@@ -182,7 +182,7 @@ cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_args[@]}")
 
 # Check for cancellation after execution
 if mcp_is_cancelled; then
-    mcp_result_error '{"type": "cancelled", "message": "Operation cancelled by client"}'
+    mcp_error "cancelled" "Operation cancelled by client"
     exit 0
 fi
 
