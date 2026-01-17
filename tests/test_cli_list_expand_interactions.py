@@ -266,7 +266,9 @@ def test_list_export_expand_invalid_option() -> None:
     )
 
     assert result.exit_code == 2
-    assert "Invalid value for '--expand'" in result.output
+    # Check for key parts of the error message (handles Rich formatting with ANSI codes)
+    assert "Invalid value" in result.output
+    assert "--expand" in result.output
 
 
 # ==============================================================================
