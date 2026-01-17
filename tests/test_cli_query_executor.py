@@ -3848,3 +3848,134 @@ class TestQuantifierIntegration:
 # setup. The unit tests above verify all field extraction and resolution logic.
 # Integration testing should be done via manual testing or a dedicated integration
 # test suite that runs against a test environment.
+
+
+# =============================================================================
+# Phase 3: _batch_fetch_by_ids V2 batch lookup tests
+# =============================================================================
+
+
+class TestBatchFetchByIds:
+    """Tests for _batch_fetch_by_ids V2 batch optimization."""
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_uses_iter_for_v2_entities(self, mock_client: AsyncMock) -> None:
+        """Verify _batch_fetch_by_ids uses iter(ids=...) for V2 entities."""
+        mock_company = MagicMock()
+        mock_company.model_dump = MagicMock(
+            return_value={"id": 100, "name": "Acme Corp", "domain": "acme.com"}
+        )
+
+        async def mock_iter(ids: list[int]):
+            for id_ in ids:
+                yield MagicMock(
+                    model_dump=MagicMock(
+                        return_value={"id": id_, "name": f"Company {id_}", "domain": f"co{id_}.com"}
+                    )
+                )
+
+        mock_service = MagicMock()
+        mock_service.iter = mock_iter
+        mock_service.get = AsyncMock()  # Should not be called
+
+        mock_client.companies = mock_service
+
+        executor = QueryExecutor(mock_client)
+        result = await executor._batch_fetch_by_ids("companies", [100, 200, 300])
+
+        # Verify results
+        assert len(result) == 3
+        assert result[0]["id"] == 100
+        assert result[1]["id"] == 200
+        assert result[2]["id"] == 300
+
+        # Verify get() was NOT called (batch was used)
+        mock_service.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_falls_back_to_get_for_v1_entities(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """Verify _batch_fetch_by_ids uses individual get() for V1-only entities like notes."""
+        mock_note = MagicMock()
+        mock_note.model_dump = MagicMock(return_value={"id": 1, "content": "Note content"})
+
+        mock_service = MagicMock()
+        mock_service.get = AsyncMock(return_value=mock_note)
+        # iter exists but notes are V1-only, so should fall back to get()
+
+        mock_client.notes = mock_service
+
+        executor = QueryExecutor(mock_client)
+        # Since "notes" is not in V2_BATCH_ENTITIES, should use get()
+        await executor._batch_fetch_by_ids("notes", [1, 2])
+
+        # Verify get() was called for each ID
+        assert mock_service.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_handles_iter_failure_with_fallback(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """Verify _batch_fetch_by_ids falls back to get() if iter() fails."""
+
+        async def failing_iter(_ids: list[int]):
+            raise Exception("Simulated batch failure")
+            yield  # Make it a generator
+
+        mock_record = MagicMock()
+        mock_record.model_dump = MagicMock(return_value={"id": 100, "name": "Fallback Company"})
+
+        mock_service = MagicMock()
+        mock_service.iter = failing_iter
+        mock_service.get = AsyncMock(return_value=mock_record)
+
+        mock_client.companies = mock_service
+
+        executor = QueryExecutor(mock_client)
+        result = await executor._batch_fetch_by_ids("companies", [100])
+
+        # Should have fallen back to get()
+        assert len(result) == 1
+        assert result[0]["id"] == 100
+        mock_service.get.assert_called_once_with(100)
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_returns_id_only_for_unknown_entity(
+        self, mock_client: AsyncMock
+    ) -> None:
+        """Verify _batch_fetch_by_ids returns ID-only dict for unknown entities."""
+        executor = QueryExecutor(mock_client)
+        result = await executor._batch_fetch_by_ids("unknown_entity", [1, 2, 3])
+
+        assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_handles_get_errors_gracefully(self, mock_client: AsyncMock) -> None:
+        """Verify _batch_fetch_by_ids returns ID-only for failed individual fetches."""
+
+        async def failing_iter(_ids: list[int]):
+            raise Exception("Batch failed")
+            yield
+
+        async def partial_failure_get(id_: int):
+            if id_ == 200:
+                raise Exception("Not found")
+            record = MagicMock()
+            record.model_dump = MagicMock(return_value={"id": id_, "name": f"Company {id_}"})
+            return record
+
+        mock_service = MagicMock()
+        mock_service.iter = failing_iter
+        mock_service.get = partial_failure_get
+
+        mock_client.companies = mock_service
+
+        executor = QueryExecutor(mock_client)
+        result = await executor._batch_fetch_by_ids("companies", [100, 200, 300])
+
+        # Should have 3 results: 100 full, 200 ID-only, 300 full
+        assert len(result) == 3
+        assert result[0]["name"] == "Company 100"
+        assert result[1] == {"id": 200}  # Fallback on error
+        assert result[2]["name"] == "Company 300"

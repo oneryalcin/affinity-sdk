@@ -1199,48 +1199,57 @@ def test_company_service_v2_params_pagination_and_related_endpoints() -> None:
 
 
 def test_company_service_get_associated_people_v1() -> None:
+    """Tests get_associated_person_ids (V1) and get_associated_people (V2 batch)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         url = request.url
+        # V1: get person IDs from company
         if request.method == "GET" and url == httpx.URL("https://v1.example/organizations/2"):
             return httpx.Response(
                 200,
                 json={"id": 2, "name": "Acme", "person_ids": [1, 2, 3]},
                 request=request,
             )
-        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+        # V2: batch lookup persons
+        if request.method == "GET" and "https://v2.example/v2/persons" in str(url):
+            # Handle batch lookup with ids parameter
+            ids = url.params.get_list("ids")
+            data = []
+            for id_str in ids:
+                id_val = int(id_str)
+                if id_val == 1:
+                    data.append(
+                        {
+                            "id": 1,
+                            "firstName": "Ada",
+                            "lastName": "Lovelace",
+                            "primaryEmailAddress": "ada@example.com",
+                            "type": "external",
+                        }
+                    )
+                elif id_val == 2:
+                    data.append(
+                        {
+                            "id": 2,
+                            "firstName": "Alan",
+                            "lastName": "Turing",
+                            "primaryEmailAddress": "alan@example.com",
+                            "type": "internal",
+                        }
+                    )
+                elif id_val == 3:
+                    data.append(
+                        {
+                            "id": 3,
+                            "firstName": "Grace",
+                            "lastName": "Hopper",
+                            "primaryEmailAddress": "grace@example.com",
+                            "type": "external",
+                        }
+                    )
             return httpx.Response(
                 200,
-                json={
-                    "id": 1,
-                    "firstName": "Ada",
-                    "lastName": "Lovelace",
-                    "primaryEmailAddress": "ada@example.com",
-                    "type": 0,
-                },
-                request=request,
-            )
-        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/2"):
-            return httpx.Response(
-                200,
-                json={
-                    "id": 2,
-                    "firstName": "Alan",
-                    "lastName": "Turing",
-                    "primaryEmailAddress": "alan@example.com",
-                    "type": 1,
-                },
-                request=request,
-            )
-        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/3"):
-            return httpx.Response(
-                200,
-                json={
-                    "id": 3,
-                    "firstName": "Grace",
-                    "lastName": "Hopper",
-                    "primaryEmailAddress": "grace@example.com",
-                    "type": 0,
-                },
+                json={"data": data, "pagination": {"nextUrl": None}},
                 request=request,
             )
         return httpx.Response(404, json={"message": "not found"}, request=request)
@@ -1275,36 +1284,47 @@ def test_company_service_get_associated_people_v1() -> None:
 
 @pytest.mark.asyncio
 async def test_async_company_service_get_associated_people_v1() -> None:
+    """Tests async get_associated_person_ids (V1) and get_associated_people (V2 batch)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         url = request.url
+        # V1: get person IDs from company
         if request.method == "GET" and url == httpx.URL("https://v1.example/organizations/2"):
             return httpx.Response(
                 200,
                 json={"id": 2, "name": "Acme", "person_ids": [1, 2]},
                 request=request,
             )
-        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/1"):
+        # V2: batch lookup persons
+        if request.method == "GET" and "https://v2.example/v2/persons" in str(url):
+            # Handle batch lookup with ids parameter
+            ids = url.params.get_list("ids")
+            data = []
+            for id_str in ids:
+                id_val = int(id_str)
+                if id_val == 1:
+                    data.append(
+                        {
+                            "id": 1,
+                            "firstName": "Ada",
+                            "lastName": "Lovelace",
+                            "primaryEmailAddress": "ada@example.com",
+                            "type": "external",
+                        }
+                    )
+                elif id_val == 2:
+                    data.append(
+                        {
+                            "id": 2,
+                            "firstName": "Alan",
+                            "lastName": "Turing",
+                            "primaryEmailAddress": "alan@example.com",
+                            "type": "internal",
+                        }
+                    )
             return httpx.Response(
                 200,
-                json={
-                    "id": 1,
-                    "firstName": "Ada",
-                    "lastName": "Lovelace",
-                    "primaryEmailAddress": "ada@example.com",
-                    "type": 0,
-                },
-                request=request,
-            )
-        if request.method == "GET" and url == httpx.URL("https://v1.example/persons/2"):
-            return httpx.Response(
-                200,
-                json={
-                    "id": 2,
-                    "firstName": "Alan",
-                    "lastName": "Turing",
-                    "primaryEmailAddress": "alan@example.com",
-                    "type": 1,
-                },
+                json={"data": data, "pagination": {"nextUrl": None}},
                 request=request,
             )
         return httpx.Response(404, json={"message": "not found"}, request=request)
@@ -2450,3 +2470,407 @@ async def test_async_company_service_get_associated_opportunity_ids() -> None:
         svc = AsyncCompanyService(client)
         opp_ids = await svc.get_associated_opportunity_ids(CompanyId(company_id))
         assert opp_ids == [OpportunityId(800), OpportunityId(900)]
+
+
+# =============================================================================
+# Phase 1: get_associated_people() V2 batch lookup tests
+# =============================================================================
+
+
+def test_company_service_get_associated_people_uses_batch_lookup() -> None:
+    """Verify get_associated_people uses V2 batch lookup, not N+1 individual calls."""
+    company_id = 123
+    api_calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        api_calls.append(str(request.url))
+
+        # V1 call to get person IDs
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                    "person_ids": [1, 2, 3],
+                },
+                request=request,
+            )
+
+        # V2 batch lookup
+        if request.method == "GET" and "https://v2.example/v2/persons" in str(request.url):
+            # Verify we got ids parameter
+            ids = request.url.params.get_list("ids")
+            assert ids is not None
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 1, "firstName": "John", "lastName": "Doe", "type": "external"},
+                        {"id": 2, "firstName": "Jane", "lastName": "Smith", "type": "external"},
+                        {"id": 3, "firstName": "Bob", "lastName": "Wilson", "type": "external"},
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        people = svc.get_associated_people(CompanyId(company_id))
+
+        assert len(people) == 3
+        assert people[0].first_name == "John"
+        assert people[1].first_name == "Jane"
+        assert people[2].first_name == "Bob"
+
+        # Verify batch lookup was used (1 V1 + 1 V2, not 1 V1 + 3 individual V1)
+        assert len(api_calls) == 2
+        assert f"https://v1.example/organizations/{company_id}" in api_calls[0]
+        assert "https://v2.example/v2/persons" in api_calls[1]
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_people_empty() -> None:
+    """Verify get_associated_people handles empty person_ids."""
+    company_id = 123
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (
+            request.method == "GET"
+            and str(request.url) == f"https://v1.example/organizations/{company_id}"
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "id": company_id,
+                    "name": "Empty Corp",
+                    "domain": "empty.com",
+                    "person_ids": [],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        people = svc.get_associated_people(CompanyId(company_id))
+        assert people == []
+    finally:
+        http.close()
+
+
+# =============================================================================
+# Phase 2: Batch association methods tests
+# =============================================================================
+
+
+def test_person_service_get_associated_company_ids_batch_success() -> None:
+    """Test batch company ID lookup for multiple persons."""
+    person_ids = [PersonId(1), PersonId(2)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/persons/1" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "organization_ids": [100, 101],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/persons/2" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "first_name": "Jane",
+                    "last_name": "Smith",
+                    "organization_ids": [100, 102],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        result = svc.get_associated_company_ids_batch(person_ids)
+
+        assert PersonId(1) in result
+        assert PersonId(2) in result
+        assert result[PersonId(1)] == [CompanyId(100), CompanyId(101)]
+        assert result[PersonId(2)] == [CompanyId(100), CompanyId(102)]
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_company_ids_batch_skip_error() -> None:
+    """Test batch company ID lookup with skip error mode."""
+    person_ids = [PersonId(1), PersonId(2)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/persons/1" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "organization_ids": [100],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/persons/2" in url:
+            return httpx.Response(
+                404,
+                json={"message": "not found"},
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        result = svc.get_associated_company_ids_batch(person_ids, on_error="skip")
+
+        # Person 1 succeeded, Person 2 was skipped
+        assert PersonId(1) in result
+        assert PersonId(2) not in result
+        assert result[PersonId(1)] == [CompanyId(100)]
+    finally:
+        http.close()
+
+
+def test_person_service_get_associated_company_ids_batch_raise_error() -> None:
+    """Test batch company ID lookup raises AffinityError when on_error='raise'."""
+    import pytest
+
+    from affinity.exceptions import AffinityError
+
+    person_ids = [PersonId(1), PersonId(2)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/persons/1" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "organization_ids": [100],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/persons/2" in url:
+            return httpx.Response(
+                404,
+                json={"message": "not found"},
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        with pytest.raises(AffinityError):
+            svc.get_associated_company_ids_batch(person_ids, on_error="raise")
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_person_ids_batch_raise_error() -> None:
+    """Test batch person ID lookup raises AffinityError when on_error='raise'."""
+    import pytest
+
+    from affinity.exceptions import AffinityError
+
+    company_ids = [CompanyId(100), CompanyId(200)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/organizations/100" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Company A",
+                    "person_ids": [1, 2],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/organizations/200" in url:
+            return httpx.Response(
+                404,
+                json={"message": "not found"},
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        with pytest.raises(AffinityError):
+            svc.get_associated_person_ids_batch(company_ids, on_error="raise")
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_person_ids_batch_success() -> None:
+    """Test batch person ID lookup for multiple companies."""
+    company_ids = [CompanyId(100), CompanyId(200)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/organizations/100" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Company A",
+                    "person_ids": [1, 2],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/organizations/200" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "name": "Company B",
+                    "person_ids": [2, 3],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        result = svc.get_associated_person_ids_batch(company_ids)
+
+        assert CompanyId(100) in result
+        assert CompanyId(200) in result
+        assert result[CompanyId(100)] == [PersonId(1), PersonId(2)]
+        assert result[CompanyId(200)] == [PersonId(2), PersonId(3)]
+    finally:
+        http.close()
+
+
+def test_company_service_get_associated_opportunity_ids_batch_success() -> None:
+    """Test batch opportunity ID lookup for multiple companies."""
+    company_ids = [CompanyId(100), CompanyId(200)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "GET" and "https://v1.example/organizations/100" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Company A",
+                    "opportunity_ids": [10, 20],
+                },
+                request=request,
+            )
+        if request.method == "GET" and "https://v1.example/organizations/200" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "name": "Company B",
+                    "opportunity_ids": [30],
+                },
+                request=request,
+            )
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        result = svc.get_associated_opportunity_ids_batch(company_ids)
+
+        assert CompanyId(100) in result
+        assert CompanyId(200) in result
+        assert result[CompanyId(100)] == [OpportunityId(10), OpportunityId(20)]
+        assert result[CompanyId(200)] == [OpportunityId(30)]
+    finally:
+        http.close()

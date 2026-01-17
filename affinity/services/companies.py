@@ -11,9 +11,9 @@ import asyncio
 import builtins
 import time
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from ..exceptions import BetaEndpointDisabledError, NotFoundError
+from ..exceptions import AffinityError, BetaEndpointDisabledError, NotFoundError
 from ..filters import FilterExpression
 from ..models.entities import (
     Company,
@@ -284,6 +284,43 @@ class CompanyService:
             return ids[:max_results]
         return ids
 
+    def get_associated_person_ids_batch(
+        self,
+        company_ids: Sequence[CompanyId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[CompanyId, builtins.list[PersonId]]:
+        """
+        Get person associations for multiple companies.
+
+        Makes one V1 API call per company.
+
+        Args:
+            company_ids: Sequence of company IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping company_id -> list of person_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails.
+        """
+        result: dict[CompanyId, builtins.list[PersonId]] = {}
+        for company_id in company_ids:
+            try:
+                result[company_id] = self.get_associated_person_ids(company_id)
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                # skip: continue without this company
+            except Exception as e:
+                if on_error == "raise":
+                    raise AffinityError(
+                        f"Failed to get associations for company {company_id}: {e}"
+                    ) from e
+                # skip: continue without this company
+        return result
+
     def get_associated_people(
         self,
         company_id: CompanyId,
@@ -291,15 +328,36 @@ class CompanyService:
         max_results: int | None = None,
     ) -> builtins.list[Person]:
         """
-        Get associated people for a company.
+        Get Person objects associated with a company.
 
-        V1-only exception. Performs one request per person ID.
+        Uses V2 batch lookup for efficiency (1 API call per 100 persons
+        instead of 1 per person).
         """
         person_ids = self.get_associated_person_ids(company_id, max_results=max_results)
+        if not person_ids:
+            return []
+
+        # Use V2 batch lookup: GET /persons?ids=1&ids=2&ids=3
+        # Note: person_ids is already truncated by get_associated_person_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(pid) for pid in person_ids]}
+
         people: builtins.list[Person] = []
-        for person_id in person_ids:
-            data = self._client.get(f"/persons/{person_id}", v1=True)
-            people.append(Person.model_validate(data))
+        data = self._client.get("/persons", params=params)  # V2 batch
+        for item in data.get("data", []):
+            people.append(Person.model_validate(item))
+
+        # Handle pagination if needed (>100 persons)
+        # Note: max_results check is defensive - person_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(people) < max_results):
+            data = self._client.get_url(next_url)
+            for item in data.get("data", []):
+                people.append(Person.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return people[:max_results]
         return people
 
     def get_associated_opportunity_ids(
@@ -336,6 +394,43 @@ class CompanyService:
         if max_results is not None and max_results >= 0:
             return ids[:max_results]
         return ids
+
+    def get_associated_opportunity_ids_batch(
+        self,
+        company_ids: Sequence[CompanyId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[CompanyId, builtins.list[OpportunityId]]:
+        """
+        Get opportunity associations for multiple companies.
+
+        Makes one V1 API call per company.
+
+        Args:
+            company_ids: Sequence of company IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping company_id -> list of opportunity_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails.
+        """
+        result: dict[CompanyId, builtins.list[OpportunityId]] = {}
+        for company_id in company_ids:
+            try:
+                result[company_id] = self.get_associated_opportunity_ids(company_id)
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                # skip: continue without this company
+            except Exception as e:
+                if on_error == "raise":
+                    raise AffinityError(
+                        f"Failed to get associations for company {company_id}: {e}"
+                    ) from e
+                # skip: continue without this company
+        return result
 
     def get_list_entries(
         self,
@@ -1186,6 +1281,43 @@ class AsyncCompanyService:
             return ids[:max_results]
         return ids
 
+    async def get_associated_person_ids_batch(
+        self,
+        company_ids: Sequence[CompanyId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[CompanyId, builtins.list[PersonId]]:
+        """
+        Get person associations for multiple companies.
+
+        Makes one V1 API call per company.
+
+        Args:
+            company_ids: Sequence of company IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping company_id -> list of person_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails.
+        """
+        result: dict[CompanyId, builtins.list[PersonId]] = {}
+        for company_id in company_ids:
+            try:
+                result[company_id] = await self.get_associated_person_ids(company_id)
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                # skip: continue without this company
+            except Exception as e:
+                if on_error == "raise":
+                    raise AffinityError(
+                        f"Failed to get associations for company {company_id}: {e}"
+                    ) from e
+                # skip: continue without this company
+        return result
+
     async def get_associated_people(
         self,
         company_id: CompanyId,
@@ -1193,18 +1325,36 @@ class AsyncCompanyService:
         max_results: int | None = None,
     ) -> builtins.list[Person]:
         """
-        Get associated people for a company.
+        Get Person objects associated with a company.
 
-        V1-only exception. Performs one request per person ID.
+        Uses V2 batch lookup for efficiency (1 API call per 100 persons
+        instead of 1 per person).
         """
-        person_ids = await self.get_associated_person_ids(
-            company_id,
-            max_results=max_results,
-        )
+        person_ids = await self.get_associated_person_ids(company_id, max_results=max_results)
+        if not person_ids:
+            return []
+
+        # Use V2 batch lookup: GET /persons?ids=1&ids=2&ids=3
+        # Note: person_ids is already truncated by get_associated_person_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(pid) for pid in person_ids]}
+
         people: builtins.list[Person] = []
-        for person_id in person_ids:
-            data = await self._client.get(f"/persons/{person_id}", v1=True)
-            people.append(Person.model_validate(data))
+        data = await self._client.get("/persons", params=params)  # V2 batch
+        for item in data.get("data", []):
+            people.append(Person.model_validate(item))
+
+        # Handle pagination if needed (>100 persons)
+        # Note: max_results check is defensive - person_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(people) < max_results):
+            data = await self._client.get_url(next_url)
+            for item in data.get("data", []):
+                people.append(Person.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return people[:max_results]
         return people
 
     async def get_associated_opportunity_ids(
@@ -1241,6 +1391,43 @@ class AsyncCompanyService:
         if max_results is not None and max_results >= 0:
             return ids[:max_results]
         return ids
+
+    async def get_associated_opportunity_ids_batch(
+        self,
+        company_ids: Sequence[CompanyId],
+        *,
+        on_error: Literal["raise", "skip"] = "raise",
+    ) -> dict[CompanyId, builtins.list[OpportunityId]]:
+        """
+        Get opportunity associations for multiple companies.
+
+        Makes one V1 API call per company.
+
+        Args:
+            company_ids: Sequence of company IDs to fetch
+            on_error: How to handle errors - "raise" (default) or "skip" failed IDs
+
+        Returns:
+            Dict mapping company_id -> list of opportunity_ids
+
+        Raises:
+            AffinityError: If on_error="raise" and any fetch fails.
+        """
+        result: dict[CompanyId, builtins.list[OpportunityId]] = {}
+        for company_id in company_ids:
+            try:
+                result[company_id] = await self.get_associated_opportunity_ids(company_id)
+            except AffinityError:
+                if on_error == "raise":
+                    raise
+                # skip: continue without this company
+            except Exception as e:
+                if on_error == "raise":
+                    raise AffinityError(
+                        f"Failed to get associations for company {company_id}: {e}"
+                    ) from e
+                # skip: continue without this company
+        return result
 
     # =========================================================================
     # Write Operations (V1 API)

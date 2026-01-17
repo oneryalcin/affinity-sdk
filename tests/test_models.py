@@ -605,6 +605,9 @@ def test_public_service_return_types_do_not_expose_dict() -> None:
         for name, member in inspect.getmembers(cls):
             if name.startswith("_"):
                 continue
+            # *_batch methods intentionally return dict[EntityId, list[AssocId]] mappings
+            if name.endswith("_batch"):
+                continue
             if not inspect.isfunction(member):
                 continue
             hints = get_type_hints(member, include_extras=True)

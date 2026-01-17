@@ -473,10 +473,10 @@ class OpportunityService:
         max_results: int | None = None,
     ) -> builtins.list[Person]:
         """
-        Get associated people for an opportunity.
+        Get Person objects associated with an opportunity.
 
-        V1-only exception. Performs one V1 request to get person IDs,
-        then one V1 request per person to fetch full Person objects.
+        Uses V2 batch lookup for efficiency (1 API call per 100 persons
+        instead of 1 per person).
 
         Args:
             opportunity_id: The opportunity ID
@@ -484,18 +484,32 @@ class OpportunityService:
 
         Returns:
             List of Person objects associated with this opportunity
-
-        Note:
-            For large associations (N > 50), be aware of rate limits.
-            This method makes 1 + N API calls where N is the number of people.
         """
         person_ids = self.get_associated_person_ids(opportunity_id, max_results=max_results)
+        if not person_ids:
+            return []
+
+        # Use V2 batch lookup: GET /persons?ids=1&ids=2&ids=3
+        # Note: person_ids is already truncated by get_associated_person_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(pid) for pid in person_ids]}
 
         people: builtins.list[Person] = []
-        for person_id in person_ids:
-            # Use V1 for consistency with CompanyService pattern
-            data = self._client.get(f"/persons/{person_id}", v1=True)
-            people.append(Person.model_validate(data))
+        data = self._client.get("/persons", params=params)  # V2 batch
+        for item in data.get("data", []):
+            people.append(Person.model_validate(item))
+
+        # Handle pagination if needed (>100 persons)
+        # Note: max_results check is defensive - person_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(people) < max_results):
+            data = self._client.get_url(next_url)
+            for item in data.get("data", []):
+                people.append(Person.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return people[:max_results]
         return people
 
     def get_associated_company_ids(
@@ -545,10 +559,10 @@ class OpportunityService:
         max_results: int | None = None,
     ) -> builtins.list[Company]:
         """
-        Get associated companies for an opportunity.
+        Get Company objects associated with an opportunity.
 
-        V1-only exception. Performs one V1 request to get company IDs,
-        then one V1 request per company to fetch full Company objects.
+        Uses V2 batch lookup for efficiency (1 API call per 100 companies
+        instead of 1 per company).
 
         Args:
             opportunity_id: The opportunity ID
@@ -556,18 +570,32 @@ class OpportunityService:
 
         Returns:
             List of Company objects associated with this opportunity
-
-        Note:
-            For large associations (N > 50), be aware of rate limits.
-            This method makes 1 + N API calls where N is the number of companies.
         """
         company_ids = self.get_associated_company_ids(opportunity_id, max_results=max_results)
+        if not company_ids:
+            return []
+
+        # Use V2 batch lookup: GET /companies?ids=1&ids=2&ids=3
+        # Note: company_ids is already truncated by get_associated_company_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(cid) for cid in company_ids]}
 
         companies: builtins.list[Company] = []
-        for company_id in company_ids:
-            # V1 uses "organizations" terminology
-            data = self._client.get(f"/organizations/{company_id}", v1=True)
-            companies.append(Company.model_validate(data))
+        data = self._client.get("/companies", params=params)  # V2 batch
+        for item in data.get("data", []):
+            companies.append(Company.model_validate(item))
+
+        # Handle pagination if needed (>100 companies)
+        # Note: max_results check is defensive - company_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(companies) < max_results):
+            data = self._client.get_url(next_url)
+            for item in data.get("data", []):
+                companies.append(Company.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return companies[:max_results]
         return companies
 
     def get_associations(
@@ -1132,10 +1160,10 @@ class AsyncOpportunityService:
         max_results: int | None = None,
     ) -> builtins.list[Person]:
         """
-        Get associated people for an opportunity.
+        Get Person objects associated with an opportunity.
 
-        V1-only exception. Performs one V1 request to get person IDs,
-        then one V1 request per person to fetch full Person objects.
+        Uses V2 batch lookup for efficiency (1 API call per 100 persons
+        instead of 1 per person).
 
         Args:
             opportunity_id: The opportunity ID
@@ -1143,17 +1171,32 @@ class AsyncOpportunityService:
 
         Returns:
             List of Person objects associated with this opportunity
-
-        Note:
-            For large associations (N > 50), be aware of rate limits.
-            This method makes 1 + N API calls where N is the number of people.
         """
         person_ids = await self.get_associated_person_ids(opportunity_id, max_results=max_results)
+        if not person_ids:
+            return []
+
+        # Use V2 batch lookup: GET /persons?ids=1&ids=2&ids=3
+        # Note: person_ids is already truncated by get_associated_person_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(pid) for pid in person_ids]}
 
         people: builtins.list[Person] = []
-        for person_id in person_ids:
-            data = await self._client.get(f"/persons/{person_id}", v1=True)
-            people.append(Person.model_validate(data))
+        data = await self._client.get("/persons", params=params)  # V2 batch
+        for item in data.get("data", []):
+            people.append(Person.model_validate(item))
+
+        # Handle pagination if needed (>100 persons)
+        # Note: max_results check is defensive - person_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(people) < max_results):
+            data = await self._client.get_url(next_url)
+            for item in data.get("data", []):
+                people.append(Person.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return people[:max_results]
         return people
 
     async def get_associated_company_ids(
@@ -1202,10 +1245,10 @@ class AsyncOpportunityService:
         max_results: int | None = None,
     ) -> builtins.list[Company]:
         """
-        Get associated companies for an opportunity.
+        Get Company objects associated with an opportunity.
 
-        V1-only exception. Performs one V1 request to get company IDs,
-        then one V1 request per company to fetch full Company objects.
+        Uses V2 batch lookup for efficiency (1 API call per 100 companies
+        instead of 1 per company).
 
         Args:
             opportunity_id: The opportunity ID
@@ -1213,17 +1256,32 @@ class AsyncOpportunityService:
 
         Returns:
             List of Company objects associated with this opportunity
-
-        Note:
-            For large associations (N > 50), be aware of rate limits.
-            This method makes 1 + N API calls where N is the number of companies.
         """
         company_ids = await self.get_associated_company_ids(opportunity_id, max_results=max_results)
+        if not company_ids:
+            return []
+
+        # Use V2 batch lookup: GET /companies?ids=1&ids=2&ids=3
+        # Note: company_ids is already truncated by get_associated_company_ids if max_results set
+        params: dict[str, Any] = {"ids": [int(cid) for cid in company_ids]}
 
         companies: builtins.list[Company] = []
-        for company_id in company_ids:
-            data = await self._client.get(f"/organizations/{company_id}", v1=True)
-            companies.append(Company.model_validate(data))
+        data = await self._client.get("/companies", params=params)  # V2 batch
+        for item in data.get("data", []):
+            companies.append(Company.model_validate(item))
+
+        # Handle pagination if needed (>100 companies)
+        # Note: max_results check is defensive - company_ids was already truncated above
+        pagination = data.get("pagination", {})
+        next_url = pagination.get("nextUrl")
+        while next_url and (max_results is None or len(companies) < max_results):
+            data = await self._client.get_url(next_url)
+            for item in data.get("data", []):
+                companies.append(Company.model_validate(item))
+            next_url = data.get("pagination", {}).get("nextUrl")
+
+        if max_results:
+            return companies[:max_results]
         return companies
 
     async def get_associations(

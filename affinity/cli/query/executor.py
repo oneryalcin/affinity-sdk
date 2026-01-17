@@ -1697,8 +1697,9 @@ class QueryExecutor:
     ) -> list[dict[str, Any]]:
         """Batch fetch records by IDs for IDs-only relationship upgrade.
 
-        Uses the appropriate service's get() method for each ID.
-        Could be optimized with batch endpoints if available.
+        Uses V2 batch lookup (service.iter(ids=...)) for companies, persons,
+        and opportunities. Falls back to individual get() calls for V1-only
+        entities or if batch lookup fails.
         """
         # Get schema to find service attribute
         schema = SCHEMA_REGISTRY.get(entity_type)
@@ -1706,24 +1707,44 @@ class QueryExecutor:
             return [{"id": id_} for id_ in ids]  # Fallback to ID-only
 
         service = getattr(self.client, schema.service_attr, None)
-        if service is None or not hasattr(service, "get"):
+        if service is None:
             return [{"id": id_} for id_ in ids]  # Fallback to ID-only
 
-        async def fetch_one(id_: int) -> dict[str, Any]:
-            async with self.rate_limiter:
-                try:
-                    record = await service.get(id_)
-                    if hasattr(record, "model_dump"):
-                        result: dict[str, Any] = record.model_dump(mode="json", by_alias=True)
-                        return result
-                    return dict(record)  # type: ignore[arg-type]
-                except Exception as e:
-                    # See Finding #46 about broad exception handling trade-offs
-                    logger.debug(f"Failed to fetch {entity_type} with id {id_}: {e}")
-                    return {"id": id_}  # Fallback on error
+        # Try batch lookup first (V2 entities only - they support ids param)
+        # V1-only services (notes, interactions, tasks) have iter() but WITHOUT ids param
+        V2_BATCH_ENTITIES = {"companies", "persons", "opportunities"}
+        if entity_type in V2_BATCH_ENTITIES and hasattr(service, "iter"):
+            try:
+                records: list[dict[str, Any]] = []
+                # self.client is AsyncAffinity, so service.iter() returns AsyncIterator
+                async for item in service.iter(ids=ids):
+                    records.append(item.model_dump(mode="json", by_alias=True))
+                return records
+            except Exception as e:
+                # Fall through to individual fetches for graceful per-ID degradation
+                logger.debug(f"Batch lookup failed for {entity_type}, trying individual: {e}")
 
-        results = await asyncio.gather(*[fetch_one(id_) for id_ in ids])
-        return [r for r in results if r is not None]
+        # Fallback: individual fetches (V1-only entities OR batch-failed V2 entities)
+        # Preserves per-ID graceful degradation: 99 successes + 1 failure = 99 full + 1 ID-only
+        if hasattr(service, "get"):
+
+            async def fetch_one(id_: int) -> dict[str, Any]:
+                async with self.rate_limiter:
+                    try:
+                        record = await service.get(id_)
+                        if hasattr(record, "model_dump"):
+                            result: dict[str, Any] = record.model_dump(mode="json", by_alias=True)
+                            return result
+                        return dict(record)  # type: ignore[arg-type]
+                    except Exception as e:
+                        # See Finding #46 about broad exception handling trade-offs
+                        logger.debug(f"Failed to fetch {entity_type} {id_}: {e}")
+                        return {"id": id_}  # ID-only stub on failure
+
+            results = await asyncio.gather(*[fetch_one(id_) for id_ in ids])
+            return list(results)
+
+        return [{"id": id_} for id_ in ids]  # Fallback to ID-only
 
     def _execute_aggregate(self, _step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute aggregation step."""

@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP: Query tool `format` parameter now functional (was previously ignored). Supports `toon`, `markdown`, `json`, `jsonl`, `csv`.
 - CLI: `--max-output-bytes` option for `query` command. Enables format-aware truncation for MCP use, returning exit code 100 when truncated.
 - CLI: `format_toon_envelope()` function for TOON output with full envelope (`data[N]{...}:`, `pagination:`, `included_*:` sections).
+- SDK: Batch association methods for PersonService, CompanyService, and OpportunityService:
+  - `get_associated_company_ids_batch(person_ids)` / `get_associated_opportunity_ids_batch(person_ids)`
+  - `get_associated_person_ids_batch(company_ids)` / `get_associated_opportunity_ids_batch(company_ids)`
+  - `get_associated_person_ids_batch(opportunity_ids)` / `get_associated_company_ids_batch(opportunity_ids)`
+  - All return `dict[EntityId, list[AssocId]]` with `on_error="raise"|"skip"` parameter.
+
+### Changed
+- SDK: `OpportunityService.get_associated_people()` and `get_associated_companies()` now use V2 batch lookup instead of individual V1 fetches, reducing N+1 API calls (e.g., 50 people now fetched in 2 calls instead of 51).
+- SDK: Query executor `_batch_fetch_by_ids()` now uses V2 batch lookup for persons and companies, improving query performance on relationship includes.
 
 ### Changed (Breaking)
 - MCP: Query tool default format changed from `json` to `toon` for better token efficiency (~40% fewer tokens).

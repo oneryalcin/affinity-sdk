@@ -170,7 +170,7 @@ def test_opportunity_create_update_delete(respx_mock: respx.MockRouter) -> None:
 
 
 def test_opportunity_get_expand_persons(respx_mock: respx.MockRouter) -> None:
-    """Test --expand persons fetches associated persons via V1 API."""
+    """Test --expand persons fetches associated persons via V2 batch API."""
     # V2 get for opportunity
     respx_mock.get("https://api.affinity.co/v2/opportunities/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Series A", "listId": 41780})
@@ -188,28 +188,28 @@ def test_opportunity_get_expand_persons(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
-    # V1 get for each person
-    respx_mock.get("https://api.affinity.co/persons/1001").mock(
+    # V2 batch get for persons
+    respx_mock.route(method="GET", url__startswith="https://api.affinity.co/v2/persons?ids=").mock(
         return_value=Response(
             200,
             json={
-                "id": 1001,
-                "first_name": "Alice",
-                "last_name": "Smith",
-                "emails": ["alice@example.com"],
-                "type": 1,
-            },
-        )
-    )
-    respx_mock.get("https://api.affinity.co/persons/1002").mock(
-        return_value=Response(
-            200,
-            json={
-                "id": 1002,
-                "first_name": "Bob",
-                "last_name": "Jones",
-                "emails": ["bob@example.com"],
-                "type": 1,
+                "data": [
+                    {
+                        "id": 1001,
+                        "firstName": "Alice",
+                        "lastName": "Smith",
+                        "emails": ["alice@example.com"],
+                        "type": "external",
+                    },
+                    {
+                        "id": 1002,
+                        "firstName": "Bob",
+                        "lastName": "Jones",
+                        "emails": ["bob@example.com"],
+                        "type": "external",
+                    },
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )
@@ -231,7 +231,7 @@ def test_opportunity_get_expand_persons(respx_mock: respx.MockRouter) -> None:
 
 
 def test_opportunity_get_expand_companies(respx_mock: respx.MockRouter) -> None:
-    """Test --expand companies fetches associated companies via V1 API."""
+    """Test --expand companies fetches associated companies via V2 batch API."""
     # V2 get for opportunity
     respx_mock.get("https://api.affinity.co/v2/opportunities/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Series A", "listId": 41780})
@@ -249,14 +249,17 @@ def test_opportunity_get_expand_companies(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
-    # V1 get for organization
-    respx_mock.get("https://api.affinity.co/organizations/2001").mock(
+    # V2 batch get for companies
+    respx_mock.route(
+        method="GET", url__startswith="https://api.affinity.co/v2/companies?ids="
+    ).mock(
         return_value=Response(
             200,
             json={
-                "id": 2001,
-                "name": "Acme Corp",
-                "domain": "acme.com",
+                "data": [
+                    {"id": 2001, "name": "Acme Corp", "domain": "acme.com"},
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )
@@ -278,7 +281,7 @@ def test_opportunity_get_expand_companies(respx_mock: respx.MockRouter) -> None:
 
 
 def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
-    """Test --expand persons --expand companies fetches both."""
+    """Test --expand persons --expand companies fetches both via V2 batch API."""
     # V2 get for opportunity
     respx_mock.get("https://api.affinity.co/v2/opportunities/123").mock(
         return_value=Response(200, json={"id": 123, "name": "Series A", "listId": 41780})
@@ -296,27 +299,35 @@ def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
-    # V1 get for person
-    respx_mock.get("https://api.affinity.co/persons/1001").mock(
+    # V2 batch get for persons
+    respx_mock.route(method="GET", url__startswith="https://api.affinity.co/v2/persons?ids=").mock(
         return_value=Response(
             200,
             json={
-                "id": 1001,
-                "first_name": "Alice",
-                "last_name": "Smith",
-                "emails": ["alice@example.com"],
-                "type": 1,
+                "data": [
+                    {
+                        "id": 1001,
+                        "firstName": "Alice",
+                        "lastName": "Smith",
+                        "emails": ["alice@example.com"],
+                        "type": "external",
+                    },
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )
-    # V1 get for organization
-    respx_mock.get("https://api.affinity.co/organizations/2001").mock(
+    # V2 batch get for companies
+    respx_mock.route(
+        method="GET", url__startswith="https://api.affinity.co/v2/companies?ids="
+    ).mock(
         return_value=Response(
             200,
             json={
-                "id": 2001,
-                "name": "Acme Corp",
-                "domain": "acme.com",
+                "data": [
+                    {"id": 2001, "name": "Acme Corp", "domain": "acme.com"},
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )

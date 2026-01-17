@@ -15,6 +15,7 @@ from affinity.policies import Policies
 class _FakeFilesListResponse:
     data: list[EntityFile]
     next_page_token: str | None = None
+    next_cursor: str | None = None
 
 
 class _FakeFilesService:

@@ -205,17 +205,39 @@ def test_get_associated_person_ids_with_max_results() -> None:
 
 @pytest.mark.req("FR-004")
 def test_get_associated_people() -> None:
-    """Test get_associated_people returns full Person objects."""
+    """Test get_associated_people returns full Person objects via V2 batch lookup."""
     opp_id = 100
+    import re
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if request.method == "GET" and url == f"https://v1.example/opportunities/{opp_id}":
             return httpx.Response(200, json=_v1_opportunity_payload(opp_id), request=request)
-        if request.method == "GET" and url == "https://v1.example/persons/1001":
-            return httpx.Response(200, json=_v1_person_payload(1001), request=request)
-        if request.method == "GET" and url == "https://v1.example/persons/1002":
-            return httpx.Response(200, json=_v1_person_payload(1002), request=request)
+        # V2 batch lookup: /persons?ids=1001&ids=1002
+        if request.method == "GET" and re.match(r"https://v2\.example/v2/persons\?ids=", url):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 1001,
+                            "firstName": "Person1001",
+                            "lastName": "Test",
+                            "emails": ["person1001@example.com"],
+                            "type": "external",
+                        },
+                        {
+                            "id": 1002,
+                            "firstName": "Person1002",
+                            "lastName": "Test",
+                            "emails": ["person1002@example.com"],
+                            "type": "external",
+                        },
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
         return httpx.Response(404, json={"message": "not found"}, request=request)
 
     http = HTTPClient(
@@ -269,15 +291,26 @@ def test_get_associated_company_ids() -> None:
 
 @pytest.mark.req("FR-004")
 def test_get_associated_companies() -> None:
-    """Test get_associated_companies returns full Company objects."""
+    """Test get_associated_companies returns full Company objects via V2 batch lookup."""
     opp_id = 100
+    import re
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if request.method == "GET" and url == f"https://v1.example/opportunities/{opp_id}":
             return httpx.Response(200, json=_v1_opportunity_payload(opp_id), request=request)
-        if request.method == "GET" and url == "https://v1.example/organizations/2001":
-            return httpx.Response(200, json=_v1_organization_payload(2001), request=request)
+        # V2 batch lookup: /companies?ids=2001
+        if request.method == "GET" and re.match(r"https://v2\.example/v2/companies\?ids=", url):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 2001, "name": "Company 2001", "domain": "company2001.com"},
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
         return httpx.Response(404, json={"message": "not found"}, request=request)
 
     http = HTTPClient(
@@ -547,17 +580,39 @@ async def test_async_get_associated_person_ids() -> None:
 
 @pytest.mark.req("FR-004")
 async def test_async_get_associated_people() -> None:
-    """Test async get_associated_people returns full Person objects."""
+    """Test async get_associated_people returns full Person objects via V2 batch lookup."""
     opp_id = 100
+    import re
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if request.method == "GET" and url == f"https://v1.example/opportunities/{opp_id}":
             return httpx.Response(200, json=_v1_opportunity_payload(opp_id), request=request)
-        if request.method == "GET" and url == "https://v1.example/persons/1001":
-            return httpx.Response(200, json=_v1_person_payload(1001), request=request)
-        if request.method == "GET" and url == "https://v1.example/persons/1002":
-            return httpx.Response(200, json=_v1_person_payload(1002), request=request)
+        # V2 batch lookup: /persons?ids=1001&ids=1002
+        if request.method == "GET" and re.match(r"https://v2\.example/v2/persons\?ids=", url):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 1001,
+                            "firstName": "Person1001",
+                            "lastName": "Test",
+                            "emails": ["person1001@example.com"],
+                            "type": "external",
+                        },
+                        {
+                            "id": 1002,
+                            "firstName": "Person1002",
+                            "lastName": "Test",
+                            "emails": ["person1002@example.com"],
+                            "type": "external",
+                        },
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
         return httpx.Response(404, json={"message": "not found"}, request=request)
 
     http = AsyncHTTPClient(
@@ -611,15 +666,26 @@ async def test_async_get_associated_company_ids() -> None:
 
 @pytest.mark.req("FR-004")
 async def test_async_get_associated_companies() -> None:
-    """Test async get_associated_companies returns full Company objects."""
+    """Test async get_associated_companies returns full Company objects via V2 batch lookup."""
     opp_id = 100
+    import re
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if request.method == "GET" and url == f"https://v1.example/opportunities/{opp_id}":
             return httpx.Response(200, json=_v1_opportunity_payload(opp_id), request=request)
-        if request.method == "GET" and url == "https://v1.example/organizations/2001":
-            return httpx.Response(200, json=_v1_organization_payload(2001), request=request)
+        # V2 batch lookup: /companies?ids=2001
+        if request.method == "GET" and re.match(r"https://v2\.example/v2/companies\?ids=", url):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 2001, "name": "Company 2001", "domain": "company2001.com"},
+                    ],
+                    "pagination": {"nextUrl": None},
+                },
+                request=request,
+            )
         return httpx.Response(404, json={"message": "not found"}, request=request)
 
     http = AsyncHTTPClient(

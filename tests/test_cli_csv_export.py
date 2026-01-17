@@ -701,28 +701,39 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
         )
     )
 
-    # Mock person details
-    respx_mock.get("https://api.affinity.co/persons/101").mock(
+    # Mock V2 batch lookup for persons
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/v2/persons\?ids=.*").mock(
         return_value=Response(
             200,
             json={
-                "id": 101,
-                "first_name": "Alice",
-                "last_name": "Smith",
-                "emails": ["alice@example.com"],
-                "type": 1,
+                "data": [
+                    {
+                        "id": 101,
+                        "firstName": "Alice",
+                        "lastName": "Smith",
+                        "emails": ["alice@example.com"],
+                        "type": "internal",
+                    }
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )
 
-    # Mock company details
-    respx_mock.get("https://api.affinity.co/organizations/201").mock(
+    # Mock V2 batch lookup for companies
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/v2/companies\?ids=.*").mock(
         return_value=Response(
             200,
             json={
-                "id": 201,
-                "name": "Acme Corp",
-                "domain": "acme.com",
+                "data": [
+                    {
+                        "id": 201,
+                        "name": "Acme Corp",
+                        "domain": "acme.com",
+                        "domains": ["acme.com"],
+                    }
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )

@@ -183,36 +183,39 @@ def test_company_get_expand_list_entries_filtered_by_list_id(respx_mock: respx.M
 
 
 def test_company_get_expand_persons_v1(respx_mock: respx.MockRouter) -> None:
+    """Test company get with --expand persons uses V2 batch lookup."""
     respx_mock.get("https://api.affinity.co/v2/companies/123").mock(
         return_value=Response(
             200,
             json={"id": 123, "name": "Acme Corp", "domain": "acme.com", "domains": ["acme.com"]},
         )
     )
+    # V1: Get person IDs from company
     respx_mock.get("https://api.affinity.co/organizations/123").mock(
         return_value=Response(200, json={"id": 123, "person_ids": [11, 22]})
     )
-    respx_mock.get("https://api.affinity.co/persons/11").mock(
+    # V2: Batch lookup persons
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/v2/persons\?ids=.*").mock(
         return_value=Response(
             200,
             json={
-                "id": 11,
-                "first_name": "Ada",
-                "last_name": "Lovelace",
-                "primary_email": "ada@example.com",
-                "type": 0,
-            },
-        )
-    )
-    respx_mock.get("https://api.affinity.co/persons/22").mock(
-        return_value=Response(
-            200,
-            json={
-                "id": 22,
-                "first_name": "Alan",
-                "last_name": "Turing",
-                "primary_email": "alan@example.com",
-                "type": 1,
+                "data": [
+                    {
+                        "id": 11,
+                        "firstName": "Ada",
+                        "lastName": "Lovelace",
+                        "primaryEmailAddress": "ada@example.com",
+                        "type": "external",
+                    },
+                    {
+                        "id": 22,
+                        "firstName": "Alan",
+                        "lastName": "Turing",
+                        "primaryEmailAddress": "alan@example.com",
+                        "type": "internal",
+                    },
+                ],
+                "pagination": {"nextUrl": None},
             },
         )
     )
