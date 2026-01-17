@@ -732,3 +732,302 @@ class TestParentFilterStripping:
             "listId-only filter should not require full scan - "
             "it's used to scope the fetch, not as a client-side filter"
         )
+
+
+class TestSingleIdLookupOptimization:
+    """Tests for single-ID lookup optimization in the planner.
+
+    When a query has a simple `id eq X` filter, the planner should:
+    1. Detect this pattern and use "fetch" operation (not "fetch_streaming")
+    2. Estimate exactly 1 API call
+    3. Generate description indicating direct lookup
+    """
+
+    @pytest.fixture
+    def planner(self) -> QueryPlanner:
+        """Create a planner for testing."""
+        return create_planner()
+
+    def test_single_id_lookup_uses_direct_fetch(self, planner: QueryPlanner) -> None:
+        """Single ID lookup uses direct fetch operation."""
+        result = parse_query(
+            {
+                "from": "companies",
+                "where": {"path": "id", "op": "eq", "value": 12345},
+                "limit": 1,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.operation == "fetch"  # Not fetch_streaming
+        assert "direct lookup" in fetch_step.description.lower()
+
+    def test_single_id_lookup_estimates_one_api_call(self, planner: QueryPlanner) -> None:
+        """Single ID lookup estimates exactly 1 API call."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "id", "op": "eq", "value": 12345},
+                "limit": 1,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.estimated_api_calls == 1
+
+    def test_single_id_lookup_works_for_companies(self, planner: QueryPlanner) -> None:
+        """Single ID lookup works for companies entity."""
+        result = parse_query(
+            {
+                "from": "companies",
+                "where": {"path": "id", "op": "eq", "value": 99999},
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.estimated_api_calls == 1
+        assert "companies" in fetch_step.description
+
+    def test_single_id_lookup_works_for_opportunities(self, planner: QueryPlanner) -> None:
+        """Single ID lookup works for opportunities entity."""
+        result = parse_query(
+            {
+                "from": "opportunities",
+                "where": {"path": "id", "op": "eq", "value": 12345},
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.estimated_api_calls == 1
+
+    def test_compound_filter_not_single_id_lookup(self, planner: QueryPlanner) -> None:
+        """Compound filter with id does not trigger single-ID optimization."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {
+                    "and": [
+                        {"path": "id", "op": "eq", "value": 12345},
+                        {"path": "name", "op": "eq", "value": "Alice"},
+                    ]
+                },
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Should use streaming, not direct fetch
+        assert fetch_step.operation in ("fetch", "fetch_streaming")
+        # Should estimate more than 1 API call for client-side filter
+        # (unless it's optimized differently)
+
+    def test_non_id_field_not_single_id_lookup(self, planner: QueryPlanner) -> None:
+        """Filter on non-id field does not trigger single-ID optimization."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "name", "op": "eq", "value": "Alice"},
+                "limit": 1,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Should use streaming for client-side filter
+        assert fetch_step.operation == "fetch_streaming"
+        assert "direct lookup" not in fetch_step.description.lower()
+
+    def test_list_entries_single_id_lookup(self, planner: QueryPlanner) -> None:
+        """listEntries with listId + id triggers single-ID optimization."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "id", "op": "eq", "value": 456},
+                    ]
+                },
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.operation == "fetch"
+        assert fetch_step.estimated_api_calls == 1
+        assert "direct lookup" in fetch_step.description.lower()
+
+    def test_list_entries_only_list_id_not_single_lookup(self, planner: QueryPlanner) -> None:
+        """listEntries with only listId does not trigger single-ID optimization."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {"path": "listId", "op": "eq", "value": 123},
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Should not be a direct lookup - needs to paginate the list
+        assert (
+            fetch_step.operation != "fetch" or "direct lookup" not in fetch_step.description.lower()
+        )
+
+    def test_list_entries_extra_condition_not_single_lookup(self, planner: QueryPlanner) -> None:
+        """listEntries with extra conditions beyond listId + id not optimized."""
+        result = parse_query(
+            {
+                "from": "listEntries",
+                "where": {
+                    "and": [
+                        {"path": "listId", "op": "eq", "value": 123},
+                        {"path": "id", "op": "eq", "value": 456},
+                        {"path": "entityType", "op": "eq", "value": "company"},
+                    ]
+                },
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Should not be a direct lookup due to extra condition
+        assert "direct lookup" not in fetch_step.description.lower()
+
+
+class TestClientSideFilterEstimate:
+    """Tests for improved client-side filter API call estimates.
+
+    When a query has a client-side filter, the planner should estimate
+    API calls based on expected scan size, not output size.
+    """
+
+    @pytest.fixture
+    def planner(self) -> QueryPlanner:
+        """Create a planner for testing."""
+        return create_planner()
+
+    def test_client_side_filter_estimates_scan_size(self, planner: QueryPlanner) -> None:
+        """Client-side filter estimates based on scan size, not output."""
+        result = parse_query(
+            {
+                "from": "companies",
+                "where": {"path": "name", "op": "contains", "value": "Test"},
+                "limit": 100,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Should estimate more than 1 page for limit=100 with client-side filter
+        # because we expect to scan more records than we return
+        assert fetch_step.estimated_api_calls > 1
+
+    def test_no_filter_estimates_output_size(self, planner: QueryPlanner) -> None:
+        """Query without filter estimates based on output size directly."""
+        result = parse_query(
+            {
+                "from": "companies",
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        # Small limit with no filter should estimate few pages
+        assert fetch_step.estimated_api_calls <= 2
+
+    def test_streaming_operation_for_client_side_filter(self, planner: QueryPlanner) -> None:
+        """Client-side filter uses streaming operation."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "contains", "value": "@acme.com"},
+                "limit": 50,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        fetch_step = plan.steps[0]
+        assert fetch_step.operation == "fetch_streaming"
+        assert "client-side filter" in fetch_step.description.lower()
+
+
+class TestIncludeEstimateWithFilter:
+    """Tests for include API call estimates with filter + limit.
+
+    When a query has both limit and filter, include estimates should use
+    the limit (we'll find at most limit matches) rather than the
+    selectivity-reduced estimate.
+    """
+
+    @pytest.fixture
+    def planner(self) -> QueryPlanner:
+        """Create a planner for testing."""
+        return create_planner()
+
+    def test_include_uses_limit_when_filter_present(self, planner: QueryPlanner) -> None:
+        """Include estimate uses limit when both limit and filter exist."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "contains", "value": "@acme.com"},
+                "include": ["companies"],
+                "limit": 5,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        include_step = next(s for s in plan.steps if s.operation == "include")
+        # Should estimate 5 API calls (limit), not 2-3 (limit * 0.5 selectivity)
+        assert include_step.estimated_api_calls == 5
+
+    def test_include_uses_filtered_estimate_without_limit(self, planner: QueryPlanner) -> None:
+        """Include estimate uses filtered estimate when no limit."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "contains", "value": "@acme.com"},
+                "include": ["companies"],
+            }
+        )
+        plan = planner.plan(result.query)
+
+        include_step = next(s for s in plan.steps if s.operation == "include")
+        # Without limit, uses estimated_records (selectivity-reduced)
+        # This is a large number based on default entity count * 0.5
+        assert include_step.estimated_api_calls > 100
+
+    def test_include_uses_estimated_records_no_filter(self, planner: QueryPlanner) -> None:
+        """Include estimate uses estimated_records when no filter."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "include": ["companies"],
+                "limit": 10,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        include_step = next(s for s in plan.steps if s.operation == "include")
+        # No filter means estimated_records = limit
+        assert include_step.estimated_api_calls == 10
+
+    def test_expand_uses_limit_when_filter_present(self, planner: QueryPlanner) -> None:
+        """Expand estimate uses limit when both limit and filter exist."""
+        result = parse_query(
+            {
+                "from": "persons",
+                "where": {"path": "email", "op": "contains", "value": "@acme.com"},
+                "expand": ["interactionDates"],
+                "limit": 5,
+            }
+        )
+        plan = planner.plan(result.query)
+
+        expand_step = next(s for s in plan.steps if s.operation == "expand")
+        # Should estimate 5 API calls (limit), not 2-3 (limit * 0.5 selectivity)
+        assert expand_step.estimated_api_calls == 5

@@ -1720,6 +1720,11 @@ class AsyncListEntryService:
         async for entry in self.all(field_ids=field_ids, field_types=field_types, filter=filter):
             yield entry
 
+    async def get(self, entry_id: ListEntryId) -> ListEntryWithEntity:
+        """Get a single list entry by ID."""
+        data = await self._client.get(f"/lists/{self._list_id}/list-entries/{entry_id}")
+        return _safe_model_validate(ListEntryWithEntity, data)
+
     # -------------------------------------------------------------------------
     # Membership helpers (V2 for read only)
     # -------------------------------------------------------------------------

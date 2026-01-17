@@ -369,3 +369,425 @@ class TestStreamingPathWithExpand:
         assert "lastMeeting" in record["interactionDates"]
         assert "teamMemberNames" in record["interactionDates"]["lastMeeting"]
         assert record["interactionDates"]["lastMeeting"]["teamMemberNames"] == ["Team Member"]
+
+
+# ==============================================================================
+# Executor Path Regression Tests - Expand via _execute_step
+# ==============================================================================
+
+
+class TestExpandViaSingleIdLookup:
+    """Regression tests for expand via single-ID lookup optimization paths.
+
+    These tests ensure expand works correctly when the executor uses single-ID
+    lookup optimization (service.get(id)) instead of streaming through pages.
+
+    Paths tested:
+    - GLOBAL entities (persons/companies) with where: {path: "id", op: "eq", value: X}
+    - REQUIRES_PARENT entities (listEntries) with both parent ID and entity ID
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXPAND-005")
+    async def test_single_id_lookup_global_entity_with_expand(self) -> None:
+        """Expand should work when single-ID lookup optimization is used for persons.
+
+        When query is `from: persons, where: {path: "id", op: "eq", value: 123}`
+        with expand, the executor uses service.get(id) directly instead of
+        streaming. This tests that expand is executed in that path (line 790).
+        """
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import InteractionDates, Person
+
+        # Query that will trigger single-ID lookup (id equality filter)
+        query_dict = {
+            "from": "persons",
+            "where": {"path": "id", "op": "eq", "value": 123},
+            "expand": ["interactionDates"],
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Mock person returned by service.get() - initial lookup (no expansion)
+        mock_person = MagicMock(spec=Person)
+        mock_person.id = 123
+        mock_person.model_dump = MagicMock(
+            return_value={
+                "id": 123,
+                "firstName": "Test",
+                "lastName": "User",
+                "type": "external",
+            }
+        )
+
+        # Mock person with interaction dates for expand step
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = datetime(2026, 1, 8, tzinfo=timezone.utc)
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+
+        mock_person_expanded = MagicMock(spec=Person)
+        mock_person_expanded.interaction_dates = mock_interaction_dates
+        mock_person_expanded.interactions = {"last_event": {"person_ids": [456]}}
+
+        # Mock team member for name resolution
+        mock_team_member = MagicMock(spec=Person)
+        mock_team_member.full_name = "Team Member"
+
+        # Track get() calls to verify single-ID lookup is used
+        get_call_count = 0
+
+        async def mock_get(_person_id, **kwargs):
+            nonlocal get_call_count
+            get_call_count += 1
+            if kwargs.get("with_interaction_dates"):
+                return mock_person_expanded
+            # First call is the initial lookup, subsequent may be name resolution
+            if get_call_count == 1:
+                return mock_person
+            return mock_team_member
+
+        # Create mock async client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=1,
+        )
+
+        query_result = await executor.execute(plan)
+
+        # Verify single-ID lookup was used (get() called for initial fetch)
+        assert get_call_count >= 1, "service.get() should have been called for single-ID lookup"
+
+        # Verify expand was executed
+        assert len(query_result.data) == 1
+        record = query_result.data[0]
+        assert "interactionDates" in record, (
+            "Expand step was not executed in single-ID lookup path. "
+            "interactionDates missing from record."
+        )
+        assert record["interactionDates"] is not None
+        assert "lastMeeting" in record["interactionDates"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXPAND-006")
+    async def test_single_id_lookup_requires_parent_with_expand(self) -> None:
+        """Expand should work for listEntries single-ID lookup with expand.
+
+        When query has both listId and id equality conditions, the executor uses
+        service.get(entry_id) directly. This tests expand in that path (line 884).
+        """
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import InteractionDates, ListEntry, Person
+
+        # Query that triggers parent+entity ID lookup
+        query_dict = {
+            "from": "listEntries",
+            "where": {
+                "and": [
+                    {"path": "listId", "op": "eq", "value": 100},
+                    {"path": "id", "op": "eq", "value": 456},
+                ]
+            },
+            "expand": ["interactionDates"],
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Mock list entry returned by service.get()
+        mock_entry = MagicMock(spec=ListEntry)
+        mock_entry.id = 456
+        mock_entry.entity_id = 789
+        mock_entry.entity_type = 0  # Person
+        mock_entry.model_dump = MagicMock(
+            return_value={
+                "id": 456,
+                "listId": 100,
+                "entityId": 789,
+                "entityType": 0,
+            }
+        )
+
+        # Mock person with interaction dates for expand
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = datetime(2026, 1, 12, tzinfo=timezone.utc)
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 15, tzinfo=timezone.utc)
+
+        mock_person_expanded = MagicMock(spec=Person)
+        mock_person_expanded.interaction_dates = mock_interaction_dates
+        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+
+        # Track service calls
+        entry_get_called = False
+        person_get_called = False
+
+        async def mock_entry_get(_entry_id, **_kwargs):
+            nonlocal entry_get_called
+            entry_get_called = True
+            return mock_entry
+
+        async def mock_person_get(_person_id, **kwargs):
+            nonlocal person_get_called
+            if kwargs.get("with_interaction_dates"):
+                person_get_called = True
+                return mock_person_expanded
+            return MagicMock(full_name="Team Member")
+
+        # Create mock async client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+
+        # Mock lists.entries(list_id).get(entry_id) chain
+        mock_entries_service = MagicMock()
+        mock_entries_service.get = mock_entry_get
+        mock_client.lists.entries = MagicMock(return_value=mock_entries_service)
+
+        # Mock persons.get for expand
+        mock_client.persons.get = mock_person_get
+
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=1,
+        )
+
+        query_result = await executor.execute(plan)
+
+        # Verify single-ID lookup was used
+        assert entry_get_called, "lists.entries(list_id).get() should have been called"
+
+        # Verify expand was executed
+        assert len(query_result.data) == 1
+        record = query_result.data[0]
+        assert "interactionDates" in record, (
+            "Expand step was not executed in REQUIRES_PARENT single-ID lookup path. "
+            "interactionDates missing from record."
+        )
+        assert person_get_called, "persons.get() with interaction params should have been called"
+
+
+class TestExpandViaExecuteStepPath:
+    """Regression tests for expand via _execute_step path.
+
+    The _execute_step path is used when:
+    - Query has sort/orderBy (can't use streaming)
+    - Query has aggregate/groupBy (can't use streaming)
+    - Entity uses REQUIRES_PARENT strategy without single-ID optimization
+
+    This tests the dispatch at line 909 in executor.py.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXPAND-007")
+    async def test_execute_step_path_with_sort_and_expand(self) -> None:
+        """Expand should work when _execute_step path is used (query with orderBy).
+
+        When query has orderBy, streaming can't be used and all steps go through
+        _execute_step. This tests expand dispatch at line 909.
+        """
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import InteractionDates, Person
+
+        # Query with orderBy forces _execute_step path (can't stream)
+        query_dict = {
+            "from": "persons",
+            "expand": ["interactionDates"],
+            "orderBy": [{"field": "firstName", "direction": "asc"}],
+            "limit": 5,
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Verify streaming is disabled
+        from affinity.cli.query.executor import can_use_streaming
+
+        assert can_use_streaming(plan.query) is False, "orderBy should disable streaming"
+
+        # Mock person data for fetch step
+        mock_person1 = MagicMock(spec=Person)
+        mock_person1.id = 1
+        mock_person1.model_dump = MagicMock(
+            return_value={"id": 1, "firstName": "Alice", "type": "external"}
+        )
+        mock_person2 = MagicMock(spec=Person)
+        mock_person2.id = 2
+        mock_person2.model_dump = MagicMock(
+            return_value={"id": 2, "firstName": "Bob", "type": "external"}
+        )
+
+        # Mock interaction dates for expand
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = datetime(2026, 1, 8, tzinfo=timezone.utc)
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+
+        mock_person_expanded = MagicMock(spec=Person)
+        mock_person_expanded.interaction_dates = mock_interaction_dates
+        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+
+        # Create mock async client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+
+        # Mock persons.all() for fetch step
+        mock_page = MagicMock()
+        mock_page.data = [mock_person1, mock_person2]
+
+        async def mock_pages(**_kwargs):
+            yield mock_page
+
+        mock_persons_all = MagicMock()
+        mock_persons_all.pages = mock_pages
+        mock_client.persons.all = MagicMock(return_value=mock_persons_all)
+
+        # Mock persons.get for expand step
+        async def mock_get(_person_id, **kwargs):
+            if kwargs.get("with_interaction_dates"):
+                return mock_person_expanded
+            return MagicMock(full_name="Team Member")
+
+        mock_client.persons.get = mock_get
+
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=1,
+        )
+
+        query_result = await executor.execute(plan)
+
+        # Verify records are sorted (orderBy was applied)
+        assert len(query_result.data) == 2
+        assert query_result.data[0]["firstName"] == "Alice"
+        assert query_result.data[1]["firstName"] == "Bob"
+
+        # Verify expand was executed via _execute_step
+        for record in query_result.data:
+            assert "interactionDates" in record, (
+                "Expand step was not executed via _execute_step path. "
+                f"interactionDates missing from record: {record}"
+            )
+            assert record["interactionDates"] is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-EXPAND-008")
+    async def test_execute_step_path_list_entries_with_expand(self) -> None:
+        """Expand should work for listEntries via _execute_step (non-optimized path).
+
+        When listEntries query doesn't have both parent+entity ID (can't use
+        single-ID lookup), steps go through _execute_step. Tests line 909.
+        """
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import InteractionDates, ListEntry, Person
+
+        # Query with only listId (no entity ID) - can't use single-ID lookup
+        query_dict = {
+            "from": "listEntries",
+            "where": {"path": "listId", "op": "eq", "value": 100},
+            "expand": ["interactionDates"],
+            "limit": 2,
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Mock list entry
+        mock_entry = MagicMock(spec=ListEntry)
+        mock_entry.id = 456
+        mock_entry.entity_id = 789
+        mock_entry.entity_type = 0  # Person
+        mock_entry.model_dump = MagicMock(
+            return_value={
+                "id": 456,
+                "listId": 100,
+                "entityId": 789,
+                "entityType": 0,
+            }
+        )
+
+        # Mock interaction dates for expand
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = datetime(2026, 1, 18, tzinfo=timezone.utc)
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 20, tzinfo=timezone.utc)
+
+        mock_person_expanded = MagicMock(spec=Person)
+        mock_person_expanded.interaction_dates = mock_interaction_dates
+        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+
+        # Create mock async client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+
+        # Mock lists.entries(list_id).pages() for fetch
+        # The executor checks for nested_service.pages() first (direct pages method)
+        mock_page = MagicMock()
+        mock_page.data = [mock_entry]
+
+        async def mock_pages(**_kwargs):
+            yield mock_page
+
+        mock_entries_service = MagicMock()
+        mock_entries_service.pages = mock_pages  # Direct pages() method
+        mock_client.lists.entries = MagicMock(return_value=mock_entries_service)
+
+        # Mock persons.get for expand
+        expand_get_called = False
+
+        async def mock_person_get(_person_id, **kwargs):
+            nonlocal expand_get_called
+            if kwargs.get("with_interaction_dates"):
+                expand_get_called = True
+                return mock_person_expanded
+            return MagicMock(full_name="Team Member")
+
+        mock_client.persons.get = mock_person_get
+
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=1,
+        )
+
+        query_result = await executor.execute(plan)
+
+        # Verify expand was executed
+        assert len(query_result.data) == 1
+        record = query_result.data[0]
+        assert "interactionDates" in record, (
+            "Expand step was not executed via _execute_step for listEntries. "
+            "interactionDates missing from record."
+        )
+        assert expand_get_called, "persons.get() with interaction params should have been called"

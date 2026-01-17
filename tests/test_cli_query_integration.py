@@ -244,11 +244,57 @@ class TestIncludeOutputIntegration:
     """Integration tests for include display in different output formats.
 
     Tests verify that included data is correctly rendered in table and JSON outputs.
+    The default include_style is "inline" which merges included data into parent rows.
     """
 
     @pytest.mark.req("QUERY-INCLUDE-OUTPUT-001")
-    def test_include_data_renders_in_table_output(self) -> None:
-        """Test that included data appears as separate table in table output."""
+    def test_include_data_renders_inline_by_default(self) -> None:
+        """Test that included data appears inline by default (merged into parent rows)."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_table
+
+        # Create result with included data AND included_by_parent for inline expansion
+        result = QueryResult(
+            data=[
+                {"id": 1, "firstName": "Alice", "organizationIds": [100, 101]},
+                {"id": 2, "firstName": "Bob", "organizationIds": [100]},
+            ],
+            included={
+                "companies": [
+                    {"id": 100, "name": "Acme Corp", "domain": "acme.com"},
+                    {"id": 101, "name": "Beta Inc", "domain": "beta.io"},
+                ]
+            },
+            included_by_parent={
+                "companies": {
+                    1: [
+                        {"id": 100, "name": "Acme Corp", "domain": "acme.com"},
+                        {"id": 101, "name": "Beta Inc", "domain": "beta.io"},
+                    ],
+                    2: [{"id": 100, "name": "Acme Corp", "domain": "acme.com"}],
+                }
+            },
+        )
+
+        output = format_table(result)  # Default is inline
+
+        # Main data should be in output
+        assert "Alice" in output
+        assert "Bob" in output
+
+        # Included data should appear as inline column with display values
+        # Note: Rich may truncate column headers, so check for partial match
+        assert "included.compan" in output  # Column header (may be truncated)
+        assert "Acme Corp" in output
+        # Note: Rich may wrap "Beta Inc" across lines, so check for "Beta" separately
+        assert "Beta" in output
+
+        # Should NOT have separate tables (inline mode)
+        assert "Included: companies" not in output
+
+    @pytest.mark.req("QUERY-INCLUDE-OUTPUT-001b")
+    def test_include_data_renders_as_separate_table_with_style(self) -> None:
+        """Test that included data appears as separate table with include_style='separate'."""
         from affinity.cli.query.models import QueryResult
         from affinity.cli.query.output import format_table
 
@@ -266,7 +312,7 @@ class TestIncludeOutputIntegration:
             },
         )
 
-        output = format_table(result)
+        output = format_table(result, include_style="separate")
 
         # Main data should be in output
         assert "Alice" in output
@@ -305,7 +351,7 @@ class TestIncludeOutputIntegration:
 
     @pytest.mark.req("QUERY-INCLUDE-OUTPUT-003")
     def test_multiple_includes_render_as_separate_tables(self) -> None:
-        """Test that multiple include types each get their own table."""
+        """Test that multiple include types each get their own table (with separate style)."""
         from affinity.cli.query.models import QueryResult
         from affinity.cli.query.output import format_table
 
@@ -321,7 +367,7 @@ class TestIncludeOutputIntegration:
             },
         )
 
-        output = format_table(result)
+        output = format_table(result, include_style="separate")
 
         # Each relationship should have its own section
         assert "Included: persons" in output

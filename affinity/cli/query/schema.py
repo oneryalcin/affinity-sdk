@@ -37,6 +37,8 @@ class RelationshipDef:
         filter_field: For global_service: the filter param name
         cardinality: Whether the relationship is one-to-one or one-to-many
         requires_n_plus_1: Does fetching require per-record API calls?
+        display_fields: Default fields to display in inline expansion.
+            If None, uses _display_value() fallback priority: name → firstName → title → email → id
     """
 
     target_entity: str
@@ -45,6 +47,7 @@ class RelationshipDef:
     filter_field: str | None = None
     cardinality: Literal["one", "many"] = "many"
     requires_n_plus_1: bool = True
+    display_fields: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -155,12 +158,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_company_ids",
                 requires_n_plus_1=True,
+                display_fields=("name",),
             ),
             "opportunities": RelationshipDef(
                 target_entity="opportunities",
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_opportunity_ids",
                 requires_n_plus_1=True,
+                display_fields=("name",),
             ),
             "interactions": RelationshipDef(
                 target_entity="interactions",
@@ -168,6 +173,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="interactions",
                 filter_field="person_id",
                 requires_n_plus_1=True,  # API requires one entity ID per call
+                display_fields=("type", "happenedAt"),
             ),
             "notes": RelationshipDef(
                 target_entity="notes",
@@ -175,12 +181,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="notes",
                 filter_field="person_id",
                 requires_n_plus_1=True,  # API requires one entity ID per call
+                display_fields=("content",),
             ),
             "listEntries": RelationshipDef(
                 target_entity="listEntries",
                 fetch_strategy="entity_method",
                 method_or_service="get_list_entries",
                 requires_n_plus_1=True,
+                display_fields=("id",),  # List entries don't have a name field
             ),
         },
         fetch_strategy=FetchStrategy.GLOBAL,
@@ -207,12 +215,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_person_ids",
                 requires_n_plus_1=True,
+                display_fields=("firstName", "lastName"),
             ),
             "opportunities": RelationshipDef(
                 target_entity="opportunities",
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_opportunity_ids",
                 requires_n_plus_1=True,
+                display_fields=("name",),
             ),
             "interactions": RelationshipDef(
                 target_entity="interactions",
@@ -220,6 +230,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="interactions",
                 filter_field="company_id",
                 requires_n_plus_1=True,  # API requires one entity ID per call
+                display_fields=("type", "happenedAt"),
             ),
             "notes": RelationshipDef(
                 target_entity="notes",
@@ -227,12 +238,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="notes",
                 filter_field="company_id",
                 requires_n_plus_1=True,  # API requires one entity ID per call
+                display_fields=("content",),
             ),
             "listEntries": RelationshipDef(
                 target_entity="listEntries",
                 fetch_strategy="entity_method",
                 method_or_service="get_list_entries",
                 requires_n_plus_1=True,
+                display_fields=("id",),  # List entries don't have a name field
             ),
         },
         fetch_strategy=FetchStrategy.GLOBAL,
@@ -258,12 +271,14 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_person_ids",
                 requires_n_plus_1=True,
+                display_fields=("firstName", "lastName"),
             ),
             "companies": RelationshipDef(
                 target_entity="companies",
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_company_ids",
                 requires_n_plus_1=True,
+                display_fields=("name",),
             ),
             "interactions": RelationshipDef(
                 target_entity="interactions",
@@ -271,6 +286,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="interactions",
                 filter_field="opportunity_id",
                 requires_n_plus_1=True,  # API requires one entity ID per call
+                display_fields=("type", "happenedAt"),
             ),
         },
         api_version="v1",
@@ -296,6 +312,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 method_or_service="entries",
                 cardinality="many",
                 requires_n_plus_1=True,
+                display_fields=("id",),  # List entries don't have a name field
             ),
         },
         fetch_strategy=FetchStrategy.GLOBAL,
@@ -355,6 +372,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 fetch_strategy="entity_method",
                 method_or_service="get_associated_person_ids",
                 requires_n_plus_1=True,
+                display_fields=("firstName", "lastName"),
             ),
         },
         api_version="v1",

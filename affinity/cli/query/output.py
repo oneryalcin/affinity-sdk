@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, Literal
 
 from rich.console import Console
 
@@ -31,6 +31,135 @@ from ..formatters import (
 from .models import ExecutionPlan, QueryResult
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Include Style Type
+# =============================================================================
+
+IncludeStyle = Literal["inline", "separate", "ids-only"]
+
+
+# =============================================================================
+# Inline Expansion Functions
+# =============================================================================
+
+
+def _display_value(
+    record: dict[str, Any] | None,
+    display_fields: list[str] | None = None,
+) -> str:
+    """Extract display-friendly value from included record.
+
+    Args:
+        record: The included record to extract display value from
+        display_fields: Custom field priority list from include config.
+            If provided, tries these fields in order.
+            If None, uses default priority: name → firstName lastName → title → email → id
+
+    Returns:
+        Human-readable display string for the record
+    """
+    if record is None:
+        return "<unknown>"
+
+    # If custom display fields specified, use them
+    if display_fields:
+        values = []
+        for field in display_fields:
+            val = record.get(field)
+            if val is not None and val != "":
+                values.append(str(val))
+        if values:
+            return " ".join(values)
+        # Fall through to default if no custom fields have values
+
+    # Try name first (companies, opportunities)
+    if record.get("name"):
+        return str(record["name"])
+
+    # Try firstName + lastName for persons
+    if record.get("firstName"):
+        first = record["firstName"]
+        last = record.get("lastName", "")
+        return f"{first} {last}".strip()
+
+    # Fallback chain
+    for field in ("title", "email"):
+        if record.get(field):
+            return str(record[field])
+
+    # Last resort: id or unknown
+    if record.get("id"):
+        return f"<unknown> ({record['id']})"
+    return "<unknown>"
+
+
+def expand_includes(
+    data: list[dict[str, Any]],
+    included_by_parent: dict[str, dict[int, list[dict[str, Any]]]] | None,
+    include_configs: dict[str, Any] | None = None,
+    source_entity: str | None = None,
+) -> list[dict[str, Any]]:
+    """Merge included data into parent records with inline display values.
+
+    Adds new columns named "included.{relationship}" containing human-readable
+    values extracted from the included records.
+
+    Display field priority:
+    1. Custom display fields from include_configs (user-specified in query)
+    2. Default display_fields from schema registry (per-entity defaults)
+    3. _display_value() fallback: name → firstName lastName → title → email → id
+
+    Args:
+        data: List of parent records
+        included_by_parent: Mapping of {rel_name: {parent_id: [related_records]}}
+        include_configs: Optional mapping of {rel_name: IncludeConfig} for custom display fields
+        source_entity: Optional source entity name (e.g., "persons") for schema lookup
+
+    Returns:
+        New list of records with included data merged as "included.{rel}" columns
+    """
+    from .schema import get_relationship
+
+    if not included_by_parent:
+        return data
+
+    expanded = []
+    for row in data:
+        row = dict(row)  # Copy to avoid mutation
+        parent_id = row.get("id")
+
+        for rel_name, parent_map in included_by_parent.items():
+            related = parent_map.get(parent_id, []) if parent_id is not None else []
+            # Column name: included.companies, included.persons, etc.
+            col_name = f"included.{rel_name}"
+
+            # Get display fields in priority order:
+            # 1. Custom from include_configs (user-specified)
+            # 2. Default from schema registry
+            display_fields: list[str] | None = None
+
+            # Check custom config first
+            if include_configs:
+                config = include_configs.get(rel_name)
+                if config is not None:
+                    # Handle both IncludeConfig objects and dicts
+                    if hasattr(config, "display"):
+                        display_fields = config.display
+                    elif isinstance(config, dict):
+                        display_fields = config.get("display")
+
+            # Fall back to schema defaults if no custom fields
+            if display_fields is None and source_entity:
+                rel_def = get_relationship(source_entity, rel_name)
+                if rel_def and rel_def.display_fields:
+                    display_fields = list(rel_def.display_fields)
+
+            row[col_name] = [_display_value(r, display_fields) for r in related]
+
+        expanded.append(row)
+    return expanded
+
 
 # =============================================================================
 # JSON Output
@@ -95,11 +224,19 @@ _EXCLUDED_TABLE_COLUMNS = frozenset(
 )
 
 
-def format_table(result: QueryResult) -> str:  # pragma: no cover
+def format_table(
+    result: QueryResult,
+    *,
+    include_style: IncludeStyle = "inline",
+) -> str:  # pragma: no cover
     """Format query result as a Rich table (matching CLI conventions).
 
     Args:
         result: Query result
+        include_style: How to display included data:
+            - "inline": Merge included data into parent rows as "included.{rel}" columns (default)
+            - "separate": Show included data as separate tables after main table
+            - "ids-only": Don't expand, show raw ID arrays
 
     Returns:
         Rendered table string
@@ -110,9 +247,22 @@ def format_table(result: QueryResult) -> str:  # pragma: no cover
     if not result.data:
         return "No results."
 
+    # Prepare data based on include style
+    display_data: list[dict[str, Any]]
+    if include_style == "inline" and result.included_by_parent:
+        # Merge included data into parent rows, using custom display fields if specified
+        display_data = expand_includes(
+            result.data,
+            result.included_by_parent,
+            result.include_configs,
+            result.source_entity,
+        )
+    else:
+        display_data = result.data
+
     # Filter out excluded columns (following CLI convention - ls commands don't show fields)
     filtered_data = [
-        {k: v for k, v in row.items() if k not in _EXCLUDED_TABLE_COLUMNS} for row in result.data
+        {k: v for k, v in row.items() if k not in _EXCLUDED_TABLE_COLUMNS} for row in display_data
     ]
 
     # Build Rich table using CLI's standard function
@@ -138,10 +288,11 @@ def format_table(result: QueryResult) -> str:  # pragma: no cover
 
     main_output = output + "\n".join(footer_parts)
 
-    # Add included tables (Option B: separate sections for included data)
-    included_output = format_included_tables(result)
-    if included_output:
-        main_output += "\n\n" + included_output
+    # Add included tables only for "separate" style (Option B display)
+    if include_style == "separate":
+        included_output = format_included_tables(result)
+        if included_output:
+            main_output += "\n\n" + included_output
 
     return main_output
 
@@ -221,7 +372,7 @@ def format_dry_run(plan: ExecutionPlan, *, verbose: bool = False) -> str:  # pra
         lines.append("  where: <filter condition>")
 
     if plan.query.include is not None:
-        lines.append(f"  include: {', '.join(plan.query.include)}")
+        lines.append(f"  include: {', '.join(plan.query.include.keys())}")
 
     if plan.query.order_by is not None:
         order_fields = [ob.field or "expr" for ob in plan.query.order_by]
@@ -276,7 +427,7 @@ def format_dry_run(plan: ExecutionPlan, *, verbose: bool = False) -> str:  # pra
         lines.append("")
 
     # Assumptions (always show in verbose, or when includes present)
-    has_includes = plan.query.include is not None and len(plan.query.include) > 0
+    has_includes = bool(plan.query.include)
     if verbose or has_includes:
         lines.append("Assumptions:")
         if plan.query.limit is not None:
@@ -320,7 +471,14 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
         "query": {
             "from": plan.query.from_,
             "where": plan.query.where.model_dump() if plan.query.where else None,
-            "include": plan.query.include,
+            "include": (
+                {
+                    name: cfg.model_dump(exclude_none=True)
+                    for name, cfg in plan.query.include.items()
+                }
+                if plan.query.include
+                else None
+            ),
             "orderBy": [ob.model_dump() for ob in plan.query.order_by]
             if plan.query.order_by
             else None,

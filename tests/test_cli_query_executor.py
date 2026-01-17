@@ -605,6 +605,51 @@ class TestQueryExecutor:
         assert len(result.data) == 1
         assert result.data[0]["name"] == "Alice"
 
+    @pytest.mark.req("QUERY-EXEC-002")
+    @pytest.mark.asyncio
+    async def test_execute_fetch_streaming_operation(
+        self, mock_client: AsyncMock, mock_service: AsyncMock
+    ) -> None:
+        """Execute plan with fetch_streaming operation (used for client-side filters).
+
+        Regression test: The planner sets operation="fetch_streaming" for queries
+        with client-side filters. The executor must route this to _execute_fetch(),
+        not silently skip it.
+        """
+        mock_client.persons = mock_service
+
+        query = Query(
+            from_="persons",
+            where=WhereClause(path="name", op="eq", value="Alice"),
+        )
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(
+                    step_id=0,
+                    operation="fetch_streaming",  # Key: test the streaming operation
+                    entity="persons",
+                    description="Fetch persons (paginated, client-side filter)",
+                    estimated_api_calls=1,
+                ),
+                PlanStep(step_id=1, operation="filter", description="Filter", depends_on=[0]),
+            ],
+            total_api_calls=1,
+            estimated_records_fetched=1,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=False,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # fetch_streaming must be handled - records should be fetched and filtered
+        assert len(result.data) == 1
+        assert result.data[0]["name"] == "Alice"
+
     @pytest.mark.req("QUERY-EXEC-004")
     @pytest.mark.asyncio
     async def test_execute_aggregations(self, mock_client: AsyncMock) -> None:

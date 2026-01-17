@@ -2589,6 +2589,16 @@
           "required": false,
           "help": "Include execution metadata in output."
         },
+        "--include-style": {
+          "type": "string",
+          "required": false,
+          "help": "How to display included data: inline (default), separate tables, or raw IDs.",
+          "choices": [
+            "inline",
+            "separate",
+            "ids-only"
+          ]
+        },
         "--max-output-bytes": {
           "type": "int",
           "required": false,

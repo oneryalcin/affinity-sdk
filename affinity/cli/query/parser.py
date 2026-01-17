@@ -483,15 +483,24 @@ def validate_query_semantics(query: Query) -> list[str]:
             field="having",
         )
 
-    # Validate include paths
+    # Validate include specifications
+    # After normalization, query.include is dict[str, IncludeConfig]
     if query.include is not None:
-        for include_path in query.include:
-            # Basic validation - detailed validation happens in schema.py
-            if not include_path or not isinstance(include_path, str):
+        for rel_name, include_config in query.include.items():
+            # Validate relationship name
+            if not rel_name or not isinstance(rel_name, str):
                 raise QueryValidationError(
-                    f"Invalid include path: {include_path!r}",
+                    f"Invalid include path: {rel_name!r}",
                     field="include",
                 )
+            # Validate display fields if specified
+            if include_config.display is not None:
+                for field_name in include_config.display:
+                    if not field_name or not isinstance(field_name, str):
+                        raise QueryValidationError(
+                            f"Invalid display field in include.{rel_name}: {field_name!r}",
+                            field=f"include.{rel_name}.display",
+                        )
 
     # Validate select paths
     if query.select is not None:

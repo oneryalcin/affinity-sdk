@@ -111,6 +111,12 @@ from ..options import output_options
     default=None,
     help="Truncate output to max bytes (for MCP use). Exits with code 100 if truncated.",
 )
+@click.option(
+    "--include-style",
+    type=click.Choice(["inline", "separate", "ids-only"]),
+    default="inline",
+    help="How to display included data: inline (default), separate tables, or raw IDs.",
+)
 @output_options
 @click.pass_obj
 def query_cmd(
@@ -130,6 +136,7 @@ def query_cmd(
     quiet: bool,
     verbose: bool,
     max_output_bytes: int | None,
+    include_style: str,
 ) -> None:
     """Execute a structured query against Affinity data.
 
@@ -183,6 +190,7 @@ def query_cmd(
             quiet=quiet,
             verbose=verbose,
             max_output_bytes=max_output_bytes,
+            include_style=include_style,
         )
     except CLIError as e:
         # Display error cleanly without traceback
@@ -211,6 +219,7 @@ def _query_cmd_impl(
     quiet: bool,
     verbose: bool,
     max_output_bytes: int | None,
+    include_style: str,
 ) -> None:
     """Internal implementation of query command."""
     from affinity.cli.constants import EXIT_TRUNCATED
@@ -438,7 +447,11 @@ def _query_cmd_impl(
                 output, was_truncated = truncate_csv_output(output, max_output_bytes)
     else:
         # Default to table for interactive use
-        output = format_table(result)
+        # Cast include_style to the expected Literal type
+        from affinity.cli.query.output import IncludeStyle
+
+        style: IncludeStyle = include_style  # type: ignore[assignment]
+        output = format_table(result, include_style=style)
 
     click.echo(output)
 

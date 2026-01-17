@@ -127,6 +127,114 @@ def partition_where(
     return (None, where)
 
 
+def extract_single_id_lookup(where: WhereClause | None) -> int | None:
+    """Extract ID value if filter is a simple single-ID lookup.
+
+    Detects patterns like:
+        {"path": "id", "op": "eq", "value": 123}
+
+    This enables optimization: instead of scanning all pages with client-side
+    filtering, we can use service.get(id) directly (1 API call).
+
+    Args:
+        where: The WHERE clause to analyze
+
+    Returns:
+        The ID value (int) if this is a single-ID lookup, None otherwise.
+
+    Note:
+        Only detects exact match on "id" field with "eq" operator.
+        Does NOT match:
+        - Multiple conditions (AND/OR)
+        - Negation (NOT)
+        - Other operators (neq, in, etc.)
+        - Other fields (organizationIds, etc.)
+    """
+    if where is None:
+        return None
+
+    # Must be a simple condition (no AND/OR/NOT/quantifiers)
+    if where.and_ is not None or where.or_ is not None or where.not_ is not None:
+        return None
+    if where.all_ is not None or where.none_ is not None or where.exists_ is not None:
+        return None
+
+    # Must be path="id" with op="eq"
+    if where.path != "id" or where.op != "eq":
+        return None
+
+    # Value must be an integer (ID)
+    if not isinstance(where.value, int):
+        return None
+
+    return where.value
+
+
+def extract_parent_and_id_lookup(
+    where: WhereClause | None, parent_field: str
+) -> tuple[int, int] | None:
+    """Extract parent ID and entity ID from a compound filter.
+
+    Detects patterns like (for listEntries with parent_field="listId"):
+        {"and": [
+            {"path": "listId", "op": "eq", "value": 123},
+            {"path": "id", "op": "eq", "value": 456}
+        ]}
+
+    This enables single-ID lookup optimization for REQUIRES_PARENT entities.
+
+    Args:
+        where: The WHERE clause to analyze
+        parent_field: The field name for the parent ID (e.g., "listId")
+
+    Returns:
+        Tuple of (parent_id, entity_id) if pattern matches, None otherwise.
+
+    Note:
+        Only detects exact AND of two equality conditions.
+        Does NOT match nested ANDs, ORs, negation, or additional conditions.
+    """
+    if where is None:
+        return None
+
+    # Must be an AND with exactly 2 conditions
+    if where.and_ is None or len(where.and_) != 2:
+        return None
+
+    # No other compound operators allowed at this level
+    if where.or_ is not None or where.not_ is not None:
+        return None
+    if where.all_ is not None or where.none_ is not None or where.exists_ is not None:
+        return None
+
+    parent_id: int | None = None
+    entity_id: int | None = None
+
+    for clause in where.and_:
+        # Each clause must be a simple equality condition
+        if clause.and_ is not None or clause.or_ is not None or clause.not_ is not None:
+            return None
+        if clause.all_ is not None or clause.none_ is not None or clause.exists_ is not None:
+            return None
+        if clause.op != "eq":
+            return None
+        if not isinstance(clause.value, int):
+            return None
+
+        if clause.path == parent_field:
+            parent_id = clause.value
+        elif clause.path == "id":
+            entity_id = clause.value
+        else:
+            # Extra condition that's not parent or id - not a match
+            return None
+
+    if parent_id is not None and entity_id is not None:
+        return (parent_id, entity_id)
+
+    return None
+
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================

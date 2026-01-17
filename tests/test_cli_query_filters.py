@@ -1352,3 +1352,265 @@ class TestFindRelationshipByTarget:
         schema = SCHEMA_REGISTRY["notes"]  # notes has no relationships
         rel_name = find_relationship_by_target(schema, "anything")
         assert rel_name is None
+
+
+# =============================================================================
+# Single ID Lookup Extraction Tests (Performance Optimization)
+# =============================================================================
+
+
+class TestExtractSingleIdLookup:
+    """Tests for extract_single_id_lookup() optimization helper.
+
+    This function detects simple single-ID lookup patterns like:
+        {"path": "id", "op": "eq", "value": 123}
+
+    When detected, the executor can use service.get(id) directly
+    instead of scanning all pages with streaming.
+    """
+
+    def test_simple_id_lookup(self) -> None:
+        """Detects simple id eq X pattern."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(path="id", op="eq", value=123)
+        assert extract_single_id_lookup(where) == 123
+
+    def test_returns_none_for_other_path(self) -> None:
+        """Returns None when path is not 'id'."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(path="name", op="eq", value="Alice")
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_other_operator(self) -> None:
+        """Returns None for operators other than 'eq'."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(path="id", op="gt", value=123)
+        assert extract_single_id_lookup(where) is None
+
+        where2 = WhereClause(path="id", op="in", value=[123, 456])
+        assert extract_single_id_lookup(where2) is None
+
+    def test_returns_none_for_non_integer_value(self) -> None:
+        """Returns None when value is not an integer."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(path="id", op="eq", value="123")  # String, not int
+        assert extract_single_id_lookup(where) is None
+
+        where2 = WhereClause(path="id", op="eq", value=123.5)  # Float
+        assert extract_single_id_lookup(where2) is None
+
+    def test_returns_none_for_and_clause(self) -> None:
+        """Returns None for compound AND clause."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="id", op="eq", value=123),
+                WhereClause(path="name", op="eq", value="Alice"),
+            ]
+        )
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_or_clause(self) -> None:
+        """Returns None for compound OR clause."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(
+            or_=[
+                WhereClause(path="id", op="eq", value=123),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_not_clause(self) -> None:
+        """Returns None for NOT clause."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        where = WhereClause(not_=WhereClause(path="id", op="eq", value=123))
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_quantifier(self) -> None:
+        """Returns None for quantifier clause."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+        from affinity.cli.query.models import QuantifierClause
+
+        where = WhereClause(
+            all_=QuantifierClause(
+                path="companies",
+                where=WhereClause(path="id", op="eq", value=123),
+            )
+        )
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_exists(self) -> None:
+        """Returns None for exists clause."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+        from affinity.cli.query.models import ExistsClause
+
+        where = WhereClause(exists_=ExistsClause(**{"from": "companies"}))
+        assert extract_single_id_lookup(where) is None
+
+    def test_returns_none_for_none_where(self) -> None:
+        """Returns None when where is None."""
+        from affinity.cli.query.filters import extract_single_id_lookup
+
+        assert extract_single_id_lookup(None) is None
+
+
+class TestExtractParentAndIdLookup:
+    """Tests for extract_parent_and_id_lookup() optimization helper.
+
+    This function detects compound parent+id patterns like:
+        {"and": [
+            {"path": "listId", "op": "eq", "value": 123},
+            {"path": "id", "op": "eq", "value": 456}
+        ]}
+
+    When detected, the executor can use service.get(id) directly
+    for REQUIRES_PARENT entities like listEntries.
+    """
+
+    def test_extracts_parent_and_id(self) -> None:
+        """Detects AND pattern with parent field and id."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        result = extract_parent_and_id_lookup(where, "listId")
+        assert result == (123, 456)
+
+    def test_order_independent(self) -> None:
+        """Works regardless of condition order."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="id", op="eq", value=456),
+                WhereClause(path="listId", op="eq", value=123),
+            ]
+        )
+        result = extract_parent_and_id_lookup(where, "listId")
+        assert result == (123, 456)
+
+    def test_returns_none_for_wrong_parent_field(self) -> None:
+        """Returns None when parent field doesn't match."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="someOtherId", op="eq", value=123),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_missing_id(self) -> None:
+        """Returns None when id condition is missing."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="name", op="eq", value="test"),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_missing_parent(self) -> None:
+        """Returns None when parent condition is missing."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="id", op="eq", value=456),
+                WhereClause(path="name", op="eq", value="test"),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_more_than_two_conditions(self) -> None:
+        """Returns None when AND has more than 2 conditions."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="id", op="eq", value=456),
+                WhereClause(path="name", op="eq", value="test"),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_non_eq_operator(self) -> None:
+        """Returns None for operators other than eq."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="id", op="gt", value=456),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_non_integer_values(self) -> None:
+        """Returns None when values are not integers."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(path="listId", op="eq", value="123"),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_simple_condition(self) -> None:
+        """Returns None for simple non-AND condition."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(path="id", op="eq", value=456)
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_or_condition(self) -> None:
+        """Returns None for OR condition."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            or_=[
+                WhereClause(path="listId", op="eq", value=123),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_nested_and(self) -> None:
+        """Returns None for nested AND conditions."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        where = WhereClause(
+            and_=[
+                WhereClause(
+                    and_=[
+                        WhereClause(path="listId", op="eq", value=123),
+                    ]
+                ),
+                WhereClause(path="id", op="eq", value=456),
+            ]
+        )
+        assert extract_parent_and_id_lookup(where, "listId") is None
+
+    def test_returns_none_for_none(self) -> None:
+        """Returns None when where is None."""
+        from affinity.cli.query.filters import extract_parent_and_id_lookup
+
+        assert extract_parent_and_id_lookup(None, "listId") is None

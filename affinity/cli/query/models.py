@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 if TYPE_CHECKING:
     from ..results import ResultSummary
@@ -215,6 +215,23 @@ class SubqueryDef(BaseModel):
 # =============================================================================
 
 
+class IncludeConfig(BaseModel):
+    """Configuration for an included relationship.
+
+    Supports extended syntax for customizing display fields:
+        {"companies": {"display": ["name", "domain"]}}
+
+    Attributes:
+        display: List of field names to use for display value.
+            Fields are tried in order; first non-empty value is used.
+            If None, uses default priority: name → firstName lastName → title → email → id
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    display: list[str] | None = None
+
+
 class Query(BaseModel):
     """The main query model.
 
@@ -228,6 +245,12 @@ class Query(BaseModel):
             "include": ["companies"],
             "orderBy": [{"field": "lastName", "direction": "asc"}],
             "limit": 50
+        }
+
+        # Extended syntax with display fields:
+        {
+            "from": "persons",
+            "include": {"companies": {"display": ["name", "domain"]}}
         }
     """
 
@@ -246,7 +269,12 @@ class Query(BaseModel):
     where: WhereClause | None = None
 
     # Optional: includes (relationships to fetch)
-    include: list[str] | None = None
+    # Supports both simple and extended syntax:
+    #   Simple: ["companies", "opportunities"]
+    #   Extended: {"companies": {"display": ["name", "domain"]}}
+    #   Mixed: ["companies", {"opportunities": {"display": ["name"]}}]
+    # Normalized to dict[str, IncludeConfig] after validation
+    include: dict[str, IncludeConfig] | None = None
 
     # Optional: expansions (computed data to add to records)
     # Unlike include (which fetches separate entities into result.included),
@@ -267,6 +295,59 @@ class Query(BaseModel):
     # Optional: pagination
     limit: int | None = None
     cursor: str | None = None
+
+    @field_validator("include", mode="before")
+    @classmethod
+    def normalize_include(cls, v: Any) -> dict[str, dict[str, Any]] | None:
+        """Normalize include field to dict[str, IncludeConfig] form.
+
+        Supports multiple input formats:
+          - Simple list: ["companies", "opportunities"]
+          - Extended dict: {"companies": {"display": ["name", "domain"]}}
+          - Mixed list: ["companies", {"opportunities": {"display": ["name"]}}]
+
+        All formats are normalized to: {"companies": {...}, "opportunities": {...}}
+        """
+        if v is None:
+            return None
+
+        result: dict[str, dict[str, Any]] = {}
+
+        if isinstance(v, list):
+            # List format: mix of strings and dicts
+            for item in v:
+                if isinstance(item, str):
+                    # Simple string: "companies" → {"companies": {}}
+                    result[item] = {}
+                elif isinstance(item, dict):
+                    # Dict item: {"companies": {"display": [...]}}
+                    for rel_name, config in item.items():
+                        if isinstance(config, dict):
+                            result[rel_name] = config
+                        else:
+                            # Invalid config, let pydantic handle validation error
+                            result[rel_name] = {"_invalid": config}
+                else:
+                    # Invalid item type, let pydantic handle validation error
+                    continue
+
+        elif isinstance(v, dict):
+            # Dict format: {"companies": {"display": [...]}, "opportunities": {}}
+            for rel_name, config in v.items():
+                if config is None:
+                    # {"companies": null} → {"companies": {}}
+                    result[rel_name] = {}
+                elif isinstance(config, dict):
+                    result[rel_name] = config
+                else:
+                    # Invalid config, let pydantic handle validation error
+                    result[rel_name] = {"_invalid": config}
+
+        else:
+            # Invalid type - return as-is and let pydantic fail validation
+            return v  # type: ignore[no-any-return]
+
+        return result
 
 
 # =============================================================================
@@ -335,6 +416,11 @@ class QueryResult:
     # Per-parent mapping: {rel_name: {parent_id: [related_records]}}
     # Enables inline expansion in table output (correlating included data to parent records)
     included_by_parent: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
+    # Display configs from query.include (used for inline expansion)
+    # Maps relationship name to IncludeConfig for custom display fields
+    include_configs: dict[str, IncludeConfig] = field(default_factory=dict)
+    # Source entity name (e.g., "persons") for schema lookup in inline expansion
+    source_entity: str | None = None
     summary: ResultSummary | None = None  # Standardized result summary
     meta: dict[str, Any] = field(default_factory=dict)  # Additional metadata (executionTime, etc.)
     pagination: dict[str, Any] | None = None

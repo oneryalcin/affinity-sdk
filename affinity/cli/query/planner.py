@@ -7,10 +7,15 @@ This module is CLI-only and NOT part of the public SDK API.
 from __future__ import annotations
 
 from graphlib import TopologicalSorter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from .exceptions import QueryValidationError
-from .filters import partition_where, requires_relationship_data
+from .filters import (
+    extract_parent_and_id_lookup,
+    extract_single_id_lookup,
+    partition_where,
+    requires_relationship_data,
+)
 from .models import ExecutionPlan, PlanStep, Query, WhereClause
 from .schema import (
     EXPANSION_REGISTRY,
@@ -170,13 +175,53 @@ class QueryPlanner:
             )
 
         # Step 1: Fetch primary entity
-        estimated_records = self._estimate_primary_records(query)
+        # Check for single-ID lookup optimization first
+        single_id = extract_single_id_lookup(query.where)
+        base_entity_count = ESTIMATED_ENTITY_COUNTS.get(query.from_, DEFAULT_ENTITY_COUNT)
+
+        # Also check for REQUIRES_PARENT entities (e.g., listEntries with listId + id)
+        parent_and_id: tuple[int, int] | None = None
+        if (
+            single_id is None
+            and entity_schema.fetch_strategy == FetchStrategy.REQUIRES_PARENT
+            and entity_schema.parent_filter_field
+            and query.from_ == "listEntries"  # Currently only listEntries supported
+        ):
+            parent_and_id = extract_parent_and_id_lookup(
+                query.where, entity_schema.parent_filter_field
+            )
+
+        fetch_operation: Literal["fetch", "fetch_streaming"]
+        if single_id is not None or parent_and_id is not None:
+            # Single ID lookup: service.get(id) is 1 API call
+            estimated_records = 1
+            fetch_api_calls = 1
+            fetch_description = f"Fetch {query.from_} by ID (direct lookup)"
+            fetch_operation = "fetch"
+        elif query.where is not None:
+            # Client-side filter: must scan pages until enough matches found
+            # Estimate output size based on limit (for downstream steps)
+            estimated_records = self._estimate_primary_records(query)
+            # But estimate API calls based on scanning the full dataset
+            # With early termination, we expect to scan ~(records_needed / selectivity) records
+            # Heuristic: assume 50% selectivity, double the limit for expected scan size
+            scan_estimate = min(base_entity_count, (query.limit or base_entity_count) * 2)
+            fetch_api_calls = self._estimate_pages(scan_estimate)
+            fetch_description = f"Fetch {query.from_} (paginated, client-side filter)"
+            fetch_operation = "fetch_streaming"
+        else:
+            # No filter: can use limit directly
+            estimated_records = self._estimate_primary_records(query)
+            fetch_api_calls = self._estimate_pages(estimated_records)
+            fetch_description = f"Fetch {query.from_} (paginated)"
+            fetch_operation = "fetch"
+
         fetch_step = PlanStep(
             step_id=step_id,
-            operation="fetch",
-            description=f"Fetch {query.from_} (paginated)",
+            operation=fetch_operation,
+            description=fetch_description,
             entity=query.from_,
-            estimated_api_calls=self._estimate_pages(estimated_records),
+            estimated_api_calls=fetch_api_calls,
             estimated_records=estimated_records,
             is_client_side=False,
         )
@@ -279,7 +324,15 @@ class QueryPlanner:
             # Update estimated records after filter
             estimated_records = filter_step.estimated_records or estimated_records
 
+        # Fix: For include/expand estimation, use limit when both limit and filter exist
+        # With streaming + early termination, we stop at limit matches.
+        # Includes run on those limit records, not the selectivity-reduced estimate.
+        # Example: limit=5, filter=email contains "@acme.com" → expect 5 include calls
+        # (not 5 * 0.5 = 2 from selectivity heuristic)
+        include_estimate = query.limit if query.limit and query.where else estimated_records
+
         # Step 3: Includes (N+1 API calls)
+        # Note: query.include is now dict[str, IncludeConfig] after normalization
         if query.include is not None:
             for include_path in query.include:
                 # Validate relationship exists
@@ -304,7 +357,7 @@ class QueryPlanner:
                             field="include",
                         )
 
-                include_calls = self._estimate_include_calls(estimated_records, include_path, rel)
+                include_calls = self._estimate_include_calls(include_estimate, include_path, rel)
                 include_step = PlanStep(
                     step_id=step_id,
                     operation="include",
@@ -319,7 +372,7 @@ class QueryPlanner:
                 if rel.requires_n_plus_1:
                     include_step.warnings.append(
                         f"Fetching {include_path} requires {include_calls} API calls "
-                        f"({estimated_records} records x 1 call each)"
+                        f"({include_estimate} records x 1 call each)"
                     )
 
                 steps.append(include_step)
@@ -348,7 +401,7 @@ class QueryPlanner:
                         field="expand",
                     )
 
-                expand_calls = estimated_records  # N+1 API calls
+                expand_calls = include_estimate  # N+1 API calls
                 expand_step = PlanStep(
                     step_id=step_id,
                     operation="expand",
@@ -362,7 +415,7 @@ class QueryPlanner:
 
                 expand_step.warnings.append(
                     f"Fetching {expansion} requires {expand_calls} API calls "
-                    f"({estimated_records} records x 1 call each)"
+                    f"({include_estimate} records x 1 call each)"
                 )
 
                 steps.append(expand_step)

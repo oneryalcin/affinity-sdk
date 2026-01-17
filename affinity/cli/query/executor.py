@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from affinity import AsyncAffinity
     from affinity.models.pagination import PaginationProgress
 
+    from .schema import EntitySchema
+
 
 # =============================================================================
 # Field Projection Utilities
@@ -141,7 +143,9 @@ def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
     if entity and isinstance(entity, dict):
         record["entityId"] = entity.get("id")
         record["entityName"] = entity.get("name")
-    record["entityType"] = record.get("type")
+    # Copy V2 "type" to "entityType" for consistency, but don't overwrite V1 "entityType"
+    if "type" in record:
+        record["entityType"] = record["type"]
 
     # Ensure fields key always exists for predictable output
     if "fields" not in record:
@@ -314,6 +318,8 @@ class ExecutionContext:
             data=data,
             included=self.included,
             included_by_parent=self.included_by_parent,
+            include_configs=self.query.include or {},
+            source_entity=self.query.from_,
             summary=ResultSummary(
                 total_rows=len(data),
                 included_counts=included_counts,
@@ -645,6 +651,12 @@ class QueryExecutor:
             # Verify auth before starting
             await self._verify_auth()
 
+            # Check for single-ID lookup optimization
+            # This is much faster than streaming through all pages
+            single_id_result = await self._try_single_id_lookup(plan, ctx)
+            if single_id_result is not None:
+                return single_id_result
+
             # Check if streaming mode is applicable for early termination
             # Streaming works when: has limit OR explicit max_records, no sort/aggregate/groupBy
             if can_use_streaming(plan.query, max_records_explicit=self.max_records_explicit):
@@ -698,9 +710,200 @@ class QueryExecutor:
                 cause=e,
             ) from None
 
+    async def _try_single_id_lookup(
+        self, plan: ExecutionPlan, ctx: ExecutionContext
+    ) -> QueryResult | None:
+        """Attempt single-ID lookup optimization.
+
+        If the query is a simple `where: {path: "id", op: "eq", value: X}`,
+        use service.get(id) directly instead of streaming through all pages.
+
+        Also supports REQUIRES_PARENT entities like listEntries when the query
+        has both parent ID and entity ID as equality conditions.
+
+        Args:
+            plan: The execution plan
+            ctx: The execution context
+
+        Returns:
+            QueryResult if optimization applied, None to continue with normal execution.
+        """
+        from .filters import extract_single_id_lookup
+
+        query = plan.query
+        schema = SCHEMA_REGISTRY.get(query.from_)
+        if schema is None:
+            return None
+
+        # Try REQUIRES_PARENT optimization (e.g., listEntries)
+        if schema.fetch_strategy == FetchStrategy.REQUIRES_PARENT:
+            return await self._try_parent_entity_id_lookup(plan, ctx, schema)
+
+        # Try GLOBAL entity optimization
+        if schema.fetch_strategy != FetchStrategy.GLOBAL:
+            return None
+
+        single_id = extract_single_id_lookup(query.where)
+        if single_id is None:
+            return None
+
+        # Only applies to entities with direct get() support
+        if query.from_ not in ("persons", "companies", "opportunities"):
+            return None
+
+        logger.debug("Using single-ID lookup optimization for %s id=%s", query.from_, single_id)
+
+        # Create progress step
+        fetch_step = PlanStep(
+            step_id=0,
+            operation="fetch",
+            description=f"Fetch {query.from_} by ID (direct lookup)",
+            entity=query.from_,
+            estimated_api_calls=1,
+        )
+        self.progress.on_step_start(fetch_step)
+
+        try:
+            service = getattr(self.client, schema.service_attr)
+            # Use the appropriate typed ID based on entity
+            if query.from_ == "persons":
+                from affinity.types import PersonId
+
+                record = await service.get(PersonId(single_id))
+            elif query.from_ == "companies":
+                from affinity.types import CompanyId
+
+                record = await service.get(CompanyId(single_id))
+            elif query.from_ == "opportunities":
+                from affinity.types import OpportunityId
+
+                record = await service.get(OpportunityId(single_id))
+            else:
+                return None  # Shouldn't reach here
+
+            # Convert to dict
+            ctx.records = [record.model_dump(mode="json", by_alias=True)]
+            self.progress.on_step_complete(fetch_step, 1)
+
+            # Handle includes and expands if present
+            for step in plan.steps:
+                if step.operation == "include":
+                    await self._execute_include(step, ctx)
+                elif step.operation == "expand":
+                    await self._execute_expand(step, ctx)
+
+            return ctx.build_result()
+
+        except Exception as e:
+            # Check if it's a "not found" error (404)
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                # Record doesn't exist - return empty result
+                ctx.records = []
+                self.progress.on_step_complete(fetch_step, 0)
+                return ctx.build_result()
+            # Other error - fall through to normal execution
+            logger.debug("Single-ID lookup failed, falling back to streaming: %s", e)
+            return None
+
+    async def _try_parent_entity_id_lookup(
+        self, plan: ExecutionPlan, ctx: ExecutionContext, schema: EntitySchema
+    ) -> QueryResult | None:
+        """Attempt single-ID lookup for REQUIRES_PARENT entities.
+
+        For entities like listEntries that require a parent ID, this detects
+        patterns like:
+            {"and": [
+                {"path": "listId", "op": "eq", "value": 123},
+                {"path": "id", "op": "eq", "value": 456}
+            ]}
+
+        And uses service.get(entry_id) directly instead of streaming.
+
+        Args:
+            plan: The execution plan
+            ctx: The execution context
+            schema: The entity schema
+
+        Returns:
+            QueryResult if optimization applied, None to continue with normal execution.
+        """
+        from .filters import extract_parent_and_id_lookup
+
+        query = plan.query
+
+        # Check if this entity supports direct get()
+        # Currently only listEntries is supported
+        if query.from_ != "listEntries":
+            return None
+
+        # Extract parent ID and entity ID from the filter
+        parent_field = schema.parent_filter_field
+        parent_method = schema.parent_method_name
+        if parent_field is None or parent_method is None:
+            return None
+
+        ids = extract_parent_and_id_lookup(query.where, parent_field)
+        if ids is None:
+            return None
+
+        parent_id, entity_id = ids
+        logger.debug(
+            "Using single-ID lookup optimization for %s %s=%s id=%s",
+            query.from_,
+            parent_field,
+            parent_id,
+            entity_id,
+        )
+
+        # Create progress step
+        fetch_step = PlanStep(
+            step_id=0,
+            operation="fetch",
+            description=f"Fetch {query.from_} by ID (direct lookup)",
+            entity=query.from_,
+            estimated_api_calls=1,
+        )
+        self.progress.on_step_start(fetch_step)
+
+        try:
+            # Get the parent service and then the child service
+            parent_service = getattr(self.client, schema.service_attr)
+            # e.g., client.lists.entries(list_id)
+            child_service = getattr(parent_service, parent_method)(parent_id)
+            # Call get() on the child service
+            from affinity.types import ListEntryId
+
+            record = await child_service.get(ListEntryId(entity_id))
+
+            # Convert to dict
+            ctx.records = [record.model_dump(mode="json", by_alias=True)]
+            self.progress.on_step_complete(fetch_step, 1)
+
+            # Handle includes and expands if present
+            for step in plan.steps:
+                if step.operation == "include":
+                    await self._execute_include(step, ctx)
+                elif step.operation == "expand":
+                    await self._execute_expand(step, ctx)
+
+            return ctx.build_result()
+
+        except Exception as e:
+            # Check if it's a "not found" error (404)
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                # Record doesn't exist - return empty result
+                ctx.records = []
+                self.progress.on_step_complete(fetch_step, 0)
+                return ctx.build_result()
+            # Other error - fall through to normal execution
+            logger.debug("Single-ID lookup failed for %s, falling back: %s", query.from_, e)
+            return None
+
     async def _execute_step(self, step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute a single plan step."""
-        if step.operation == "fetch":
+        if step.operation in ("fetch", "fetch_streaming"):
             await self._execute_fetch(step, ctx)
         elif step.operation == "filter":
             await self._execute_filter_with_preinclude(step, ctx)
@@ -1709,11 +1912,15 @@ class QueryExecutor:
                 return
 
             # Map list entry entity types to service names
-            if entity_type == "company":
+            # Handles both V1 format (integer: 0=person, 1=company) and
+            # V2 format (string: "person", "company")
+            service_name: str | None = None
+            if entity_type in ("company", 1, "organization"):
                 service_name = "companies"
-            elif entity_type == "person":
+            elif entity_type in ("person", 0):
                 service_name = "persons"
-            else:
+
+            if service_name is None:
                 return  # Skip unsupported entity types (e.g., opportunities)
 
             if service_name not in expansion_def.supported_entities:
@@ -1723,11 +1930,11 @@ class QueryExecutor:
                 try:
                     # Call async service.get() with expansion params
                     entity: Company | Person
-                    if entity_type == "company":
+                    if service_name == "companies":
                         entity = await self.client.companies.get(
                             CompanyId(raw_id), **expansion_def.fetch_params
                         )
-                    else:  # person
+                    else:  # persons
                         entity = await self.client.persons.get(
                             PersonId(raw_id), **expansion_def.fetch_params
                         )
