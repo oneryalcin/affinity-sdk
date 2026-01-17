@@ -300,6 +300,23 @@ Fetch related entities in a single query:
 | `lists` | `entries` |
 | `listEntries` | `entity` (dynamically resolves to person/company/opportunity based on entityType) |
 
+### Include Output Format
+
+Included data appears in a separate `included` section keyed by relationship name:
+
+```json
+{
+  "data": [{"id": 123, "firstName": "John", "organizationIds": [456]}],
+  "included": {
+    "companies": [{"id": 456, "name": "Acme Inc", "domain": "acme.com"}]
+  }
+}
+```
+
+In **markdown** format, included data appears as separate tables with headers like "Included: companies".
+
+**Note:** Parent records reference included entities via ID fields (e.g., `organizationIds` for companies). The `included` section contains deduplicated records.
+
 ## Expand Computed Data
 
 Unlike `include` (which fetches related entities), `expand` adds computed data directly to each record:
