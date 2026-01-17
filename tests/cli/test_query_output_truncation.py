@@ -196,3 +196,112 @@ class TestTruncationExitCode:
         from affinity.cli.constants import EXIT_TRUNCATED
 
         assert EXIT_TRUNCATED == 100
+
+
+class TestFormatIncludedTables:
+    """Tests for format_included_tables() function (Option B display).
+
+    Tests the separate table display for included relationship data.
+    """
+
+    def test_empty_included_returns_empty_string(self) -> None:
+        """Empty included data returns empty string."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(data=[{"id": 1}], included={})
+        output = format_included_tables(result)
+        assert output == ""
+
+    def test_none_included_returns_empty_string(self) -> None:
+        """None included data returns empty string."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(data=[{"id": 1}])
+        output = format_included_tables(result)
+        assert output == ""
+
+    def test_single_relationship_formats_as_table(self) -> None:
+        """Single relationship formats as titled table."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(
+            data=[{"id": 1}],
+            included={
+                "companies": [
+                    {"id": 100, "name": "Acme Corp", "domain": "acme.com"},
+                    {"id": 101, "name": "Beta Inc", "domain": "beta.io"},
+                ]
+            },
+        )
+        output = format_included_tables(result)
+
+        assert "Included: companies" in output
+        assert "Acme Corp" in output
+        assert "Beta Inc" in output
+        assert "acme.com" in output
+
+    def test_multiple_relationships_formats_as_separate_tables(self) -> None:
+        """Multiple relationships format as separate titled tables."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(
+            data=[{"id": 1}],
+            included={
+                "companies": [{"id": 100, "name": "Acme Corp"}],
+                "persons": [{"id": 200, "firstName": "Alice", "lastName": "Smith"}],
+            },
+        )
+        output = format_included_tables(result)
+
+        assert "Included: companies" in output
+        assert "Included: persons" in output
+        assert "Acme Corp" in output
+        assert "Alice" in output
+
+    def test_empty_relationship_is_skipped(self) -> None:
+        """Empty relationship list is skipped."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(
+            data=[{"id": 1}],
+            included={
+                "companies": [{"id": 100, "name": "Acme Corp"}],
+                "empty_rel": [],  # Empty list should be skipped
+            },
+        )
+        output = format_included_tables(result)
+
+        assert "Included: companies" in output
+        assert "Included: empty_rel" not in output
+
+    def test_filters_excluded_columns(self) -> None:
+        """Excluded columns (like list_entries, fields) are filtered out."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_included_tables
+
+        result = QueryResult(
+            data=[{"id": 1}],
+            included={
+                "companies": [
+                    {
+                        "id": 100,
+                        "name": "Acme Corp",
+                        "list_entries": [{"listId": 1}],  # Should be excluded
+                        "fields": [{"fieldId": 2}],  # Should be excluded
+                        "interaction_dates": {},  # Should be excluded
+                    }
+                ]
+            },
+        )
+        output = format_included_tables(result)
+
+        assert "Acme Corp" in output
+        # Excluded columns should not appear (snake_case names)
+        assert "list_entries" not in output
+        assert "fields" not in output
+        assert "interaction_dates" not in output

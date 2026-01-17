@@ -248,6 +248,9 @@ class ExecutionContext:
     query: Query
     records: list[dict[str, Any]] = field(default_factory=list)
     included: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # Per-parent mapping: {rel_name: {parent_id: [related_records]}}
+    # Enables inline expansion in table output (correlating included data to parent records)
+    included_by_parent: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
     relationship_counts: dict[str, dict[int, int]] = field(default_factory=dict)
     # Structure: {rel_name: {record_id: [related_records]}} - for quantifier/exists filtering
     relationship_data: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
@@ -310,6 +313,7 @@ class ExecutionContext:
         return QueryResult(
             data=data,
             included=self.included,
+            included_by_parent=self.included_by_parent,
             summary=ResultSummary(
                 total_rows=len(data),
                 included_counts=included_counts,
@@ -1468,7 +1472,17 @@ class QueryExecutor:
             ctx.records = ctx.records[: ctx.max_records]
 
     async def _execute_include(self, step: PlanStep, ctx: ExecutionContext) -> None:
-        """Execute an include step (N+1 fetching)."""
+        """Execute an include step with batch fetch optimization.
+
+        For entity_method strategy:
+        - Fetches relationship IDs in parallel (N calls - inherent API limitation)
+        - Deduplicates and batch fetches full records using V2 batch lookup
+        - Maps results back to parent records for inline expansion
+
+        For global_service strategy:
+        - Calls service.list() per parent (already returns full records)
+        - Builds parent mapping for inline expansion
+        """
         if step.relationship is None or step.entity is None:
             return
 
@@ -1480,53 +1494,92 @@ class QueryExecutor:
             )
 
         included_records: list[dict[str, Any]] = []
+        parent_mapping: dict[int, list[dict[str, Any]]] = {}
 
         if rel.fetch_strategy == "entity_method":
-            # N+1: fetch for each record
-            async def fetch_one(record: dict[str, Any]) -> list[dict[str, Any]]:
+            # Phase 1: Fetch IDs for all records IN PARALLEL (preserve existing parallelism)
+            async def fetch_ids_for_record(
+                record: dict[str, Any],
+            ) -> tuple[int | None, list[int]]:
+                entity_id = record.get("id")
+                if entity_id is None:
+                    return None, []
+
+                service = getattr(self.client, step.entity or "")
+                method = getattr(service, rel.method_or_service, None)
+                if method is None:
+                    return entity_id, []
+
                 async with self.rate_limiter:
-                    entity_id = record.get("id")
-                    if entity_id is None:
-                        return []
-
-                    service = getattr(self.client, step.entity or "")
-                    method = getattr(service, rel.method_or_service, None)
-                    if method is None:
-                        return []
-
                     try:
                         ids = await method(entity_id)
-                        # If we got IDs, we need to fetch the full records
-                        # For now, just store the IDs
-                        return [{"id": id_} for id_ in ids]
+                        return entity_id, list(ids) if ids else []
                     except Exception:
-                        return []
+                        return entity_id, []
 
-            # Execute in parallel with bounded concurrency
-            tasks = [fetch_one(r) for r in ctx.records]
+            # Execute ID fetches in parallel with bounded concurrency
+            tasks = [fetch_ids_for_record(r) for r in ctx.records]
             results = await asyncio.gather(*tasks)
 
-            for result in results:
-                included_records.extend(result)
+            # Build parent-to-related-ids mapping
+            parent_to_related_ids: dict[int, list[int]] = {}
+            for entity_id, ids in results:
+                if entity_id is not None:
+                    parent_to_related_ids[entity_id] = ids
+
+            # Phase 2: Deduplicate and batch fetch full records
+            all_unique_ids = list({id_ for ids in parent_to_related_ids.values() for id_ in ids})
+
+            if all_unique_ids:
+                full_records = await self._batch_fetch_by_ids(rel.target_entity, all_unique_ids)
+            else:
+                full_records = []
+
+            # Phase 3: Build lookup table and map back to parents
+            records_by_id: dict[int, dict[str, Any]] = {
+                r["id"]: r for r in full_records if "id" in r
+            }
+
+            for parent_id, related_ids in parent_to_related_ids.items():
+                parent_records = [records_by_id.get(id_, {"id": id_}) for id_ in related_ids]
+                parent_mapping[parent_id] = parent_records
+                included_records.extend(parent_records)
+
+            # Deduplicate included_records (same record may appear for multiple parents)
+            seen_ids: set[int] = set()
+            unique_records: list[dict[str, Any]] = []
+            for record in included_records:
+                rec_id = record.get("id")
+                if isinstance(rec_id, int) and rec_id not in seen_ids:
+                    seen_ids.add(rec_id)
+                    unique_records.append(record)
+            included_records = unique_records
 
         elif rel.fetch_strategy == "global_service":
-            # Single filtered call per entity type
-            # This is more efficient than N+1
+            # N calls per parent (inherent API limitation - filter requires single entity ID)
             service = getattr(self.client, rel.method_or_service)
 
             # Collect all entity IDs
-            entity_ids = [r.get("id") for r in ctx.records if r.get("id") is not None]
+            entity_ids: list[int] = [r["id"] for r in ctx.records if isinstance(r.get("id"), int)]
 
-            for entity_id in entity_ids:
+            for ent_id in entity_ids:
                 try:
-                    filter_kwargs = {rel.filter_field: entity_id}
+                    filter_kwargs = {rel.filter_field: ent_id}
                     response = await service.list(**filter_kwargs)
+                    ent_records: list[dict[str, Any]] = []
                     for item in response.data:
-                        included_records.append(item.model_dump(mode="json", by_alias=True))
+                        record = item.model_dump(mode="json", by_alias=True)
+                        ent_records.append(record)
+                        included_records.append(record)
+                    parent_mapping[ent_id] = ent_records
                 except Exception:
+                    parent_mapping[ent_id] = []
                     continue
 
+        # Store flat list for backward compatibility (JSON/TOON output)
         ctx.included[step.relationship] = included_records
+        # Store per-parent mapping for inline expansion (table output)
+        ctx.included_by_parent[step.relationship] = parent_mapping
 
         # Update progress
         self.progress.on_step_progress(step, len(included_records), None)
@@ -1841,32 +1894,51 @@ class QueryExecutor:
 
                 return related
 
-        async def process_record(record: dict[str, Any]) -> None:
-            """Fetch and store relationship data for a single record."""
+        # Phase 1: Fetch IDs/records for all parent records in parallel
+        async def fetch_for_parent(
+            record: dict[str, Any],
+        ) -> tuple[int | None, list[dict[str, Any]]]:
+            """Fetch related records/IDs for a single parent record."""
             record_id = record.get(id_field)
             if record_id is None:
-                return
-
+                return (None, [])
             related = await fetch_for_record(record)
+            return (record_id, related)
 
-            # Handle IDs-only upgrade if needed
-            if (
-                needs_upgrade
-                and related
-                and isinstance(related[0].get("id"), int)
-                and len(related[0]) == 1
-            ):
-                # related is list of {"id": N}, need full records for property filtering
-                ids = [r["id"] for r in related]
-                related = await self._batch_fetch_by_ids(rel_info.target_entity, ids)
+        results = await asyncio.gather(*[fetch_for_parent(r) for r in ctx.records])
 
-            # Store for filtering: {rel_name: {record_id: data}}
+        # Build parent -> related_data mapping
+        parent_to_related: dict[int, list[dict[str, Any]]] = {}
+        for record_id, related in results:
+            if record_id is not None:
+                parent_to_related[record_id] = related
+
+        # Phase 2: If IDs-only and needs upgrade, batch fetch ALL unique IDs at once
+        if needs_upgrade:
+            # Collect all unique IDs needing upgrade
+            all_ids_to_fetch: set[int] = set()
+            for _rec_id, related in parent_to_related.items():
+                if related and isinstance(related[0].get("id"), int) and len(related[0]) == 1:
+                    all_ids_to_fetch.update(r["id"] for r in related)
+
+            if all_ids_to_fetch:
+                # Phase 3: Single batch fetch for all unique IDs
+                full_records = await self._batch_fetch_by_ids(
+                    rel_info.target_entity, list(all_ids_to_fetch)
+                )
+                records_by_id = {r["id"]: r for r in full_records if "id" in r}
+
+                # Phase 4: Map full records back to each parent
+                for record_id, related in parent_to_related.items():
+                    if related and isinstance(related[0].get("id"), int) and len(related[0]) == 1:
+                        parent_to_related[record_id] = [
+                            records_by_id.get(r["id"], r) for r in related
+                        ]
+
+        # Store results in context
+        for record_id, related in parent_to_related.items():
             ctx.relationship_data[rel_name][record_id] = related
             ctx.relationship_counts[rel_name][record_id] = len(related)
-
-        # Parallel fetch using asyncio.gather (matches existing executor pattern)
-        tasks = [process_record(r) for r in ctx.records]
-        await asyncio.gather(*tasks)
 
     async def _batch_fetch_by_ids(
         self,

@@ -2400,6 +2400,19 @@ class TestExecuteInclude:
         persons_service.get_associated_company_ids = AsyncMock(side_effect=[[100, 101], [102]])
         mock_client.persons = persons_service
 
+        # Setup companies service for batch fetch (V2 uses iter(ids=...))
+        async def mock_companies_iter(ids: list[int]):
+            for id_ in ids:
+                yield MagicMock(
+                    model_dump=MagicMock(
+                        return_value={"id": id_, "name": f"Company {id_}", "domain": f"co{id_}.com"}
+                    )
+                )
+
+        companies_service = MagicMock()
+        companies_service.iter = mock_companies_iter
+        mock_client.companies = companies_service
+
         query = Query(from_="persons", include=["companies"])
         plan = ExecutionPlan(
             query=query,
@@ -2428,8 +2441,16 @@ class TestExecuteInclude:
 
         assert len(result.data) == 2
         assert "companies" in result.included
-        # 3 total IDs returned (2 from Alice, 1 from Bob)
+        # 3 unique companies returned (100, 101, 102)
         assert len(result.included["companies"]) == 3
+        # Verify full records (not just IDs) are returned
+        assert all("name" in c for c in result.included["companies"])
+        # Verify included_by_parent is populated
+        assert "companies" in result.included_by_parent
+        assert 1 in result.included_by_parent["companies"]  # Alice's ID
+        assert 2 in result.included_by_parent["companies"]  # Bob's ID
+        assert len(result.included_by_parent["companies"][1]) == 2  # Alice has 2 companies
+        assert len(result.included_by_parent["companies"][2]) == 1  # Bob has 1 company
 
     @pytest.mark.asyncio
     async def test_include_global_service_strategy(self, mock_client: AsyncMock) -> None:
@@ -2568,6 +2589,19 @@ class TestExecuteInclude:
         )
         mock_client.persons = persons_service
 
+        # Setup companies service for batch fetch
+        async def mock_companies_iter(ids: list[int]):
+            for id_ in ids:
+                yield MagicMock(
+                    model_dump=MagicMock(
+                        return_value={"id": id_, "name": f"Company {id_}", "domain": f"co{id_}.com"}
+                    )
+                )
+
+        companies_service = MagicMock()
+        companies_service.iter = mock_companies_iter
+        mock_client.companies = companies_service
+
         query = Query(from_="persons", include=["companies"])
         plan = ExecutionPlan(
             query=query,
@@ -2598,6 +2632,12 @@ class TestExecuteInclude:
         assert len(result.data) == 2
         assert "companies" in result.included
         assert len(result.included["companies"]) == 1  # Only from Alice
+        # Verify included_by_parent still populated for successful fetches
+        assert "companies" in result.included_by_parent
+        assert 1 in result.included_by_parent["companies"]  # Alice's ID
+        assert 2 in result.included_by_parent["companies"]  # Bob's ID (empty due to error)
+        assert len(result.included_by_parent["companies"][1]) == 1  # Alice has 1 company
+        assert len(result.included_by_parent["companies"][2]) == 0  # Bob has 0 (error)
 
     @pytest.mark.asyncio
     async def test_include_record_missing_id(self, mock_client: AsyncMock) -> None:
@@ -2638,6 +2678,92 @@ class TestExecuteInclude:
         # Should complete but no companies included
         assert len(result.data) == 1
         assert result.included["companies"] == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.req("QUERY-INCLUDE-BATCH-001")
+    async def test_batch_fetch_handles_deleted_entities(self, mock_client: AsyncMock) -> None:
+        """Test batch fetch gracefully handles deleted/missing entities.
+
+        When some IDs don't return data from batch fetch (e.g., deleted entities),
+        the executor should include only the records that exist.
+        """
+        persons_service = MagicMock()
+        records = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        persons_service.all.return_value = create_mock_page_iterator(records)
+        # Alice has companies 100, 101; Bob has company 102
+        # Company 101 was deleted (won't be returned by batch fetch)
+        persons_service.get_associated_company_ids = AsyncMock(side_effect=[[100, 101], [102]])
+        mock_client.persons = persons_service
+
+        # Setup companies service - only returns 100 and 102, not 101 (deleted)
+        async def mock_companies_iter(ids: list[int]):
+            # Simulate 101 being deleted - only return 100 and 102
+            for id_ in ids:
+                if id_ == 101:
+                    continue  # Deleted entity - not returned
+                yield MagicMock(
+                    model_dump=MagicMock(
+                        return_value={"id": id_, "name": f"Company {id_}", "domain": f"co{id_}.com"}
+                    )
+                )
+
+        companies_service = MagicMock()
+        companies_service.iter = mock_companies_iter
+        mock_client.companies = companies_service
+
+        query = Query(from_="persons", include=["companies"])
+        plan = ExecutionPlan(
+            query=query,
+            steps=[
+                PlanStep(step_id=0, operation="fetch", entity="persons", description="Fetch"),
+                PlanStep(
+                    step_id=1,
+                    operation="include",
+                    entity="persons",
+                    relationship="companies",
+                    description="Include companies",
+                    depends_on=[0],
+                ),
+            ],
+            total_api_calls=3,
+            estimated_records_fetched=2,
+            estimated_memory_mb=0.01,
+            warnings=[],
+            recommendations=[],
+            has_expensive_operations=True,
+            requires_full_scan=False,
+        )
+
+        executor = QueryExecutor(mock_client)
+        result = await executor.execute(plan)
+
+        # Should have 3 entries in included (100, 101 as stub, 102)
+        # 101 is missing from API but included as ID-only fallback for parent mapping
+        assert len(result.data) == 2
+        included_ids = {c["id"] for c in result.included["companies"]}
+        assert 100 in included_ids
+        assert 102 in included_ids
+        # 101 is in included as ID-only fallback (preserves parent mapping)
+        assert 101 in included_ids
+
+        # Verify 100 and 102 have full data, 101 only has id
+        companies_by_id = {c["id"]: c for c in result.included["companies"]}
+        assert "name" in companies_by_id[100]  # Full record
+        assert "name" in companies_by_id[102]  # Full record
+        # 101 should be ID-only stub (no name field or just id field)
+        assert len(companies_by_id[101]) == 1 or "name" not in companies_by_id[101]
+
+        # Check per-parent mapping
+        # Alice had [100, 101] - should have both (101 as stub)
+        alice_companies = result.included_by_parent["companies"][1]
+        alice_ids = {c.get("id") for c in alice_companies}
+        assert 100 in alice_ids
+        # 101 should be tracked as ID-only fallback
+        assert 101 in alice_ids
+        # Bob had [102] - should have just 102
+        bob_companies = result.included_by_parent["companies"][2]
+        assert len(bob_companies) == 1
+        assert bob_companies[0]["id"] == 102
 
 
 # =============================================================================

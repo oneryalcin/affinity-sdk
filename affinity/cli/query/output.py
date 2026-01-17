@@ -136,7 +136,59 @@ def format_table(result: QueryResult) -> str:  # pragma: no cover
     if omitted > 0:
         footer_parts.append(f"({omitted} columns hidden — use --json for full data)")
 
-    return output + "\n".join(footer_parts)
+    main_output = output + "\n".join(footer_parts)
+
+    # Add included tables (Option B: separate sections for included data)
+    included_output = format_included_tables(result)
+    if included_output:
+        main_output += "\n\n" + included_output
+
+    return main_output
+
+
+def format_included_tables(result: QueryResult) -> str:  # pragma: no cover
+    """Format included data as separate tables (Option B display).
+
+    Renders each included relationship as a separate table section,
+    allowing users to see full included data without inline expansion.
+
+    Args:
+        result: Query result with included data
+
+    Returns:
+        Rendered included tables string, or empty string if no included data
+    """
+    from ..render import _table_from_rows
+
+    if not result.included:
+        return ""
+
+    sections: list[str] = []
+    console = Console(force_terminal=False, width=None)
+
+    for rel_name, records in result.included.items():
+        if not records:
+            continue
+
+        # Filter out excluded columns for included tables too
+        filtered_records = [
+            {k: v for k, v in row.items() if k not in _EXCLUDED_TABLE_COLUMNS} for row in records
+        ]
+
+        if not filtered_records:
+            continue
+
+        # Build Rich table using CLI's standard function
+        table, _omitted = _table_from_rows(filtered_records)
+        table.title = f"Included: {rel_name}"
+
+        with console.capture() as capture:
+            console.print(table)
+
+        section = capture.get()
+        sections.append(section.rstrip())
+
+    return "\n\n".join(sections)
 
 
 # =============================================================================

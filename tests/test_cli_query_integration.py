@@ -238,3 +238,110 @@ class TestModelSerialization:
         # Should have camelCase keys matching query language
         assert "id" in dumped
         assert "name" in dumped
+
+
+class TestIncludeOutputIntegration:
+    """Integration tests for include display in different output formats.
+
+    Tests verify that included data is correctly rendered in table and JSON outputs.
+    """
+
+    @pytest.mark.req("QUERY-INCLUDE-OUTPUT-001")
+    def test_include_data_renders_in_table_output(self) -> None:
+        """Test that included data appears as separate table in table output."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_table
+
+        # Create result with included data
+        result = QueryResult(
+            data=[
+                {"id": 1, "firstName": "Alice", "organizationIds": [100, 101]},
+                {"id": 2, "firstName": "Bob", "organizationIds": [100]},
+            ],
+            included={
+                "companies": [
+                    {"id": 100, "name": "Acme Corp", "domain": "acme.com"},
+                    {"id": 101, "name": "Beta Inc", "domain": "beta.io"},
+                ]
+            },
+        )
+
+        output = format_table(result)
+
+        # Main data should be in output
+        assert "Alice" in output
+        assert "Bob" in output
+
+        # Included data should appear as separate table
+        assert "Included: companies" in output
+        assert "Acme Corp" in output
+        assert "Beta Inc" in output
+
+    @pytest.mark.req("QUERY-INCLUDE-OUTPUT-002")
+    def test_include_data_appears_in_json_output(self) -> None:
+        """Test that included data appears in JSON output."""
+        import json
+
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_json
+
+        result = QueryResult(
+            data=[{"id": 1, "name": "Alice"}],
+            included={
+                "companies": [
+                    {"id": 100, "name": "Acme Corp"},
+                ]
+            },
+        )
+
+        output = format_json(result)
+        parsed = json.loads(output)
+
+        # JSON output should have both data and included
+        assert "data" in parsed
+        assert "included" in parsed
+        assert len(parsed["included"]["companies"]) == 1
+        assert parsed["included"]["companies"][0]["name"] == "Acme Corp"
+
+    @pytest.mark.req("QUERY-INCLUDE-OUTPUT-003")
+    def test_multiple_includes_render_as_separate_tables(self) -> None:
+        """Test that multiple include types each get their own table."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_table
+
+        result = QueryResult(
+            data=[{"id": 1, "name": "Acme Corp"}],
+            included={
+                "persons": [
+                    {"id": 200, "firstName": "Alice", "lastName": "Smith"},
+                ],
+                "opportunities": [
+                    {"id": 300, "name": "Big Deal", "status": "Active"},
+                ],
+            },
+        )
+
+        output = format_table(result)
+
+        # Each relationship should have its own section
+        assert "Included: persons" in output
+        assert "Included: opportunities" in output
+        assert "Alice" in output
+        assert "Big Deal" in output
+
+    @pytest.mark.req("QUERY-INCLUDE-OUTPUT-004")
+    def test_empty_includes_produce_no_extra_output(self) -> None:
+        """Test that empty included data doesn't add extra output."""
+        from affinity.cli.query.models import QueryResult
+        from affinity.cli.query.output import format_table
+
+        result = QueryResult(
+            data=[{"id": 1, "name": "Alice"}],
+            included={},  # Empty includes
+        )
+
+        output = format_table(result)
+
+        # Should have main data but no "Included:" sections
+        assert "Alice" in output
+        assert "Included:" not in output

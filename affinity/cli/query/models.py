@@ -332,6 +332,9 @@ class QueryResult:
 
     data: list[dict[str, Any]]
     included: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # Per-parent mapping: {rel_name: {parent_id: [related_records]}}
+    # Enables inline expansion in table output (correlating included data to parent records)
+    included_by_parent: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
     summary: ResultSummary | None = None  # Standardized result summary
     meta: dict[str, Any] = field(default_factory=dict)  # Additional metadata (executionTime, etc.)
     pagination: dict[str, Any] | None = None
