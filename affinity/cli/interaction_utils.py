@@ -10,6 +10,7 @@ This module provides:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
@@ -270,13 +271,21 @@ async def _resolve_person_names_async(
     client: AsyncAffinity,
     person_ids: list[int],
     cache: dict[int, str] | None = None,
+    *,
+    person_semaphore: asyncio.Semaphore | None = None,
 ) -> list[str]:
     """Resolve person IDs to names asynchronously, using cache when available.
+
+    Person fetches run in parallel with bounded concurrency via a SHARED semaphore.
 
     Args:
         client: AsyncAffinity client for async API calls
         person_ids: List of person IDs to resolve
         cache: Optional dict cache (mutated in place). Thread-safe under CPython GIL.
+        person_semaphore: Optional SHARED semaphore for bounded concurrent fetches.
+            IMPORTANT: Pass the same semaphore across all calls to limit total
+            concurrent person API calls. Creating a new semaphore per call defeats
+            the bounded concurrency purpose.
 
     Returns:
         List of person names in same order as input IDs.
@@ -285,42 +294,56 @@ async def _resolve_person_names_async(
     if cache is None:
         cache = {}
 
-    names: list[str] = []
-    for pid in person_ids:
-        if pid in cache:
-            names.append(cache[pid])
-            continue
+    # NOTE: Benign race possible - two tasks may both see same ID as uncached
+    # before either updates cache. Result: duplicate fetch, correct final state.
+    uncached_ids = [pid for pid in person_ids if pid not in cache]
 
-        try:
-            # Fetch person name from API asynchronously
-            from affinity.types import PersonId
+    if uncached_ids:
+        # Use SHARED semaphore from caller, or create local fallback (for backwards compat)
+        sem = person_semaphore or asyncio.Semaphore(10)
 
-            person = await client.persons.get(PersonId(pid))
-            name = person.full_name or f"Person {pid}"
-            cache[pid] = name
-            names.append(name)
-        except Exception:
-            # Cache as fallback to avoid repeated failures
-            cache[pid] = f"Person {pid}"
-            names.append(f"Person {pid}")
+        async def fetch_person(pid: int) -> None:
+            async with sem:
+                try:
+                    from affinity.types import PersonId
 
-    return names
+                    person = await client.persons.get(PersonId(pid))
+                    name = person.full_name or f"Person {pid}"
+                    cache[pid] = name
+                except Exception:
+                    # Cache as fallback to avoid repeated failures
+                    cache[pid] = f"Person {pid}"
+
+        # PERF: Parallelize person fetches with bounded concurrency
+        await asyncio.gather(*[fetch_person(pid) for pid in uncached_ids])
+
+    # Return names in original order
+    return [cache.get(pid, f"Person {pid}") for pid in person_ids]
 
 
+# PERF: section_iteration_boundary
 async def resolve_interaction_names_async(
     client: AsyncAffinity,
     interaction_data: dict[str, Any] | None,
     cache: dict[int, str] | None = None,
+    *,
+    person_semaphore: asyncio.Semaphore | None = None,
 ) -> None:
     """Resolve teamMemberNames in transformed interaction data asynchronously.
 
     Mutates the interaction_data dict in place, adding teamMemberNames
     to any section that has teamMemberIds.
 
+    Sections (lastMeeting, nextMeeting, lastEmail) are resolved in parallel.
+    Person fetches within each section use a SHARED semaphore for bounded concurrency.
+
     Args:
         client: AsyncAffinity client for async API calls
         interaction_data: Transformed interaction data from transform_interaction_data()
         cache: Optional dict cache for person names (mutated in place)
+        person_semaphore: Optional SHARED semaphore for bounded person resolution.
+            If not provided, a local semaphore is created (not recommended for
+            multi-record expansion - pass shared semaphore from caller).
     """
     if interaction_data is None:
         return
@@ -328,15 +351,20 @@ async def resolve_interaction_names_async(
     if cache is None:
         cache = {}
 
-    # Process each section that may have teamMemberIds
-    for section_key in ("lastMeeting", "nextMeeting", "lastEmail"):
+    async def resolve_section(section_key: str) -> None:
+        """Resolve person names for a single section."""
         section = interaction_data.get(section_key)
         if section and "teamMemberIds" in section:
             person_ids = section["teamMemberIds"]
             if person_ids:
                 section["teamMemberNames"] = await _resolve_person_names_async(
-                    client, person_ids, cache
+                    client, person_ids, cache, person_semaphore=person_semaphore
                 )
+
+    # PERF: Parallelize over sections (lastMeeting, nextMeeting, lastEmail)
+    await asyncio.gather(
+        *[resolve_section(key) for key in ("lastMeeting", "nextMeeting", "lastEmail")]
+    )
 
 
 # =============================================================================

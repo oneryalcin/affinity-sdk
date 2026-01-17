@@ -791,3 +791,252 @@ class TestExpandViaExecuteStepPath:
             "interactionDates missing from record."
         )
         assert expand_get_called, "persons.get() with interaction params should have been called"
+
+
+# ==============================================================================
+# Concurrency and Performance Tests - Expansion with Parallelization
+# ==============================================================================
+
+
+class TestExpandConcurrencyOptimizations:
+    """Tests for interactionDates expansion concurrency optimizations.
+
+    These tests verify the performance optimizations from the
+    interactionDates-concurrency-tuning-plan.md:
+    - Person resolution runs OUTSIDE rate limiter context
+    - Shared semaphore bounds all person fetches
+    - Sections (lastMeeting, nextMeeting, lastEmail) resolve in parallel
+    """
+
+    @pytest.mark.asyncio
+    async def test_person_semaphore_shared_across_concurrent_tasks(self) -> None:
+        """Person resolution uses SHARED semaphore - not 15x10=150 concurrent."""
+        import asyncio
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import Company, InteractionDates
+
+        # Track max concurrent person fetches
+        max_concurrent_person_fetches = 0
+        concurrent_person_fetches = 0
+
+        # Create 10 company records to expand
+        query_dict = {
+            "from": "companies",
+            "expand": ["interactionDates"],
+            "limit": 10,
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Mock company data
+        def make_mock_company(cid: int) -> MagicMock:
+            mock = MagicMock(spec=Company)
+            mock.id = cid
+            mock.name = f"Company {cid}"
+            mock.model_dump = MagicMock(return_value={"id": cid, "name": f"Company {cid}"})
+            return mock
+
+        mock_companies = [make_mock_company(i) for i in range(1, 11)]
+
+        # Mock company with interaction dates (for expand)
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = None
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+
+        mock_company_expanded = MagicMock(spec=Company)
+        mock_company_expanded.interaction_dates = mock_interaction_dates
+        # Each company has 3 team members -> 10 companies x 3 = 30 person fetches
+        mock_company_expanded.interactions = {"last_event": {"person_ids": [100, 101, 102]}}
+
+        async def mock_person_get(_person_id, **_kwargs):
+            nonlocal concurrent_person_fetches, max_concurrent_person_fetches
+            concurrent_person_fetches += 1
+            max_concurrent_person_fetches = max(
+                max_concurrent_person_fetches, concurrent_person_fetches
+            )
+            await asyncio.sleep(0.01)  # Small delay to allow overlap
+            concurrent_person_fetches -= 1
+            person = MagicMock()
+            person.full_name = f"Person {_person_id.value}"
+            return person
+
+        # Create mock async client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+
+        # Mock companies.all().pages() for fetch
+        mock_page = MagicMock()
+        mock_page.data = mock_companies
+
+        async def mock_pages(**_kwargs):
+            yield mock_page
+
+        mock_companies_all = MagicMock()
+        mock_companies_all.pages = mock_pages
+        mock_client.companies.all = MagicMock(return_value=mock_companies_all)
+
+        # Mock companies.get for expand
+        async def mock_company_get(_company_id, **kwargs):
+            if kwargs.get("with_interaction_dates"):
+                return mock_company_expanded
+            return make_mock_company(_company_id.value)
+
+        mock_client.companies.get = mock_company_get
+        mock_client.persons.get = mock_person_get
+
+        # Run with concurrency 15 (DEFAULT_CONCURRENCY)
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=15,
+        )
+
+        await executor.execute(plan)
+
+        # With shared semaphore(10), max concurrent person fetches should be <=10
+        # Without shared semaphore, it would be 15 tasks x 10 = 150
+        assert max_concurrent_person_fetches <= 10, (
+            f"Expected max 10 concurrent person fetches (shared semaphore), "
+            f"got {max_concurrent_person_fetches}. "
+            "This suggests per-call semaphore instead of shared."
+        )
+
+    @pytest.mark.asyncio
+    async def test_graceful_degradation_on_person_resolution_failure(self) -> None:
+        """Person resolution failure keeps interactionDates with unresolved IDs."""
+        from datetime import datetime, timezone
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+        from affinity.cli.query.parser import parse_query
+        from affinity.cli.query.planner import create_planner
+        from affinity.models.entities import Company, InteractionDates
+
+        query_dict = {
+            "from": "companies",
+            "where": {"path": "id", "op": "eq", "value": 123},
+            "expand": ["interactionDates"],
+        }
+        parse_result = parse_query(query_dict)
+        planner = create_planner()
+        plan = planner.plan(parse_result.query)
+
+        # Mock company
+        mock_company = MagicMock(spec=Company)
+        mock_company.id = 123
+        mock_company.model_dump = MagicMock(return_value={"id": 123, "name": "Test Company"})
+
+        # Mock company with interaction dates
+        mock_interaction_dates = MagicMock(spec=InteractionDates)
+        mock_interaction_dates.last_event_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+        mock_interaction_dates.next_event_date = None
+        mock_interaction_dates.last_email_date = None
+        mock_interaction_dates.last_interaction_date = datetime(2026, 1, 10, tzinfo=timezone.utc)
+
+        mock_company_expanded = MagicMock(spec=Company)
+        mock_company_expanded.interaction_dates = mock_interaction_dates
+        mock_company_expanded.interactions = {"last_event": {"person_ids": [456, 789]}}
+
+        # Mock client
+        mock_client = AsyncMock()
+        mock_client.whoami = AsyncMock()
+
+        async def mock_company_get(_company_id, **kwargs):
+            if kwargs.get("with_interaction_dates"):
+                return mock_company_expanded
+            return mock_company
+
+        mock_client.companies.get = mock_company_get
+
+        # Person API always fails
+        async def mock_person_get(_person_id, **_kwargs):
+            raise Exception("API Error - person service unavailable")
+
+        mock_client.persons.get = mock_person_get
+
+        executor = QueryExecutor(
+            client=mock_client,
+            max_records=100,
+            concurrency=1,
+        )
+
+        query_result = await executor.execute(plan)
+
+        # Verify graceful degradation: interactionDates preserved with fallback names
+        assert len(query_result.data) == 1
+        record = query_result.data[0]
+        assert "interactionDates" in record, (
+            "interactionDates should be preserved on person failure"
+        )
+        assert record["interactionDates"] is not None
+        assert "lastMeeting" in record["interactionDates"]
+        # Fallback names should be used
+        team_names = record["interactionDates"]["lastMeeting"].get("teamMemberNames", [])
+        assert team_names == ["Person 456", "Person 789"], (
+            f"Expected fallback names, got {team_names}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_shared_person_cache_deduplicates_fetches(self) -> None:
+        """Person IDs are deduplicated via shared cache across concurrent resolution calls."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        from affinity.cli.interaction_utils import _resolve_person_names_async
+
+        # Track which person IDs were fetched
+        fetched_person_ids: list[int] = []
+
+        async def mock_person_get(person_id):
+            # PersonId is a subclass of int, use int() to get value
+            pid = int(person_id)
+            fetched_person_ids.append(pid)
+            person = MagicMock()
+            person.full_name = f"Person {pid}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_person_get
+
+        # Simulate 3 concurrent resolution calls with overlapping person IDs
+        # Call 1: [100, 101], Call 2: [101, 102], Call 3: [100, 102]
+        person_id_lists = [[100, 101], [101, 102], [100, 102]]
+
+        # Shared cache across all resolution calls
+        shared_cache: dict[int, str] = {}
+        shared_semaphore = asyncio.Semaphore(10)
+
+        # Resolve all person IDs concurrently
+        results = await asyncio.gather(
+            *[
+                _resolve_person_names_async(
+                    mock_client, ids, shared_cache, person_semaphore=shared_semaphore
+                )
+                for ids in person_id_lists
+            ]
+        )
+
+        # Verify all results have correct names
+        assert results[0] == ["Person 100", "Person 101"]
+        assert results[1] == ["Person 101", "Person 102"]
+        assert results[2] == ["Person 100", "Person 102"]
+
+        # Cache should eventually contain all 3 unique persons
+        assert set(shared_cache.keys()) == {100, 101, 102}, (
+            f"Cache should have all persons: {shared_cache}"
+        )
+
+        # With cache sharing, total fetches may be 3-6 depending on race conditions
+        # (3 unique persons, but race may cause duplicate fetches before cache populated)
+        unique_fetched = set(fetched_person_ids)
+        assert unique_fetched == {100, 101, 102}, (
+            f"Should fetch all unique persons: {unique_fetched}"
+        )

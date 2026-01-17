@@ -10,9 +10,13 @@ from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from affinity.cli.interaction_utils import (
     INTERACTION_CSV_COLUMNS,
+    _resolve_person_names_async,
     flatten_interactions_for_csv,
+    resolve_interaction_names_async,
     transform_interaction_data,
 )
 
@@ -349,3 +353,236 @@ class TestInteractionCsvColumns:
     def test_has_ten_columns(self) -> None:
         """Test that there are exactly 10 columns."""
         assert len(INTERACTION_CSV_COLUMNS) == 10
+
+
+# ==============================================================================
+# Async Person Resolution Tests
+# ==============================================================================
+
+
+class TestResolvePersonNamesAsync:
+    """Tests for _resolve_person_names_async with parallel fetching."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_person_names_in_parallel(self) -> None:
+        """Person fetches should run in parallel, not sequentially."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Track concurrent calls
+        concurrent_calls = 0
+        max_concurrent = 0
+        call_times: list[float] = []
+
+        async def mock_get(person_id):
+            nonlocal concurrent_calls, max_concurrent
+            concurrent_calls += 1
+            max_concurrent = max(max_concurrent, concurrent_calls)
+            call_times.append(asyncio.get_event_loop().time())
+            await asyncio.sleep(0.01)  # Small delay to allow overlap
+            concurrent_calls -= 1
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        # Fetch 5 persons - should run in parallel
+        result = await _resolve_person_names_async(mock_client, [1, 2, 3, 4, 5])
+
+        assert result == ["Person 1", "Person 2", "Person 3", "Person 4", "Person 5"]
+        # With parallel execution, we should see >1 concurrent call
+        assert max_concurrent > 1, (
+            f"Expected parallel execution, but max concurrent was {max_concurrent}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_uses_shared_semaphore_for_bounded_concurrency(self) -> None:
+        """Person fetches should respect the shared semaphore limit."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        max_concurrent = 0
+        concurrent_calls = 0
+
+        async def mock_get(person_id):
+            nonlocal concurrent_calls, max_concurrent
+            concurrent_calls += 1
+            max_concurrent = max(max_concurrent, concurrent_calls)
+            await asyncio.sleep(0.01)
+            concurrent_calls -= 1
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        # Semaphore with limit of 3
+        semaphore = asyncio.Semaphore(3)
+
+        # Fetch 10 persons with semaphore limit of 3
+        result = await _resolve_person_names_async(
+            mock_client, list(range(1, 11)), person_semaphore=semaphore
+        )
+
+        assert len(result) == 10
+        # Should never exceed semaphore limit
+        assert max_concurrent <= 3, f"Expected max 3 concurrent, got {max_concurrent}"
+
+    @pytest.mark.asyncio
+    async def test_uses_cache_to_skip_fetches(self) -> None:
+        """Cached person IDs should not trigger API calls."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        call_count = 0
+
+        async def mock_get(person_id):
+            nonlocal call_count
+            call_count += 1
+            person = MagicMock()
+            person.full_name = f"Fetched {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        # Pre-populated cache
+        cache = {1: "Cached Alice", 3: "Cached Carol"}
+
+        result = await _resolve_person_names_async(mock_client, [1, 2, 3, 4], cache=cache)
+
+        assert result == ["Cached Alice", "Person 2", "Cached Carol", "Person 4"]
+        assert call_count == 2, "Only uncached IDs should trigger API calls"
+
+    @pytest.mark.asyncio
+    async def test_handles_api_errors_gracefully(self) -> None:
+        """API errors should result in fallback name, not propagate."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def mock_get(person_id):
+            if person_id.value == 2:
+                raise Exception("API Error")
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        result = await _resolve_person_names_async(mock_client, [1, 2, 3])
+
+        assert result == ["Person 1", "Person 2", "Person 3"]
+
+
+class TestResolveInteractionNamesAsync:
+    """Tests for resolve_interaction_names_async with section parallelization."""
+
+    @pytest.mark.asyncio
+    async def test_resolves_all_sections_in_parallel(self) -> None:
+        """Sections (lastMeeting, nextMeeting, lastEmail) should resolve in parallel."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def mock_get(person_id):
+            # Add delay to make parallel vs sequential observable
+            await asyncio.sleep(0.02)
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        interaction_data = {
+            "lastMeeting": {"teamMemberIds": [1, 2]},
+            "nextMeeting": {"teamMemberIds": [3]},
+            "lastEmail": {"teamMemberIds": [4, 5]},
+        }
+
+        start = asyncio.get_event_loop().time()
+        await resolve_interaction_names_async(mock_client, interaction_data)
+        duration = asyncio.get_event_loop().time() - start
+
+        # Verify all sections resolved
+        assert interaction_data["lastMeeting"]["teamMemberNames"] == ["Person 1", "Person 2"]
+        assert interaction_data["nextMeeting"]["teamMemberNames"] == ["Person 3"]
+        assert interaction_data["lastEmail"]["teamMemberNames"] == ["Person 4", "Person 5"]
+
+        # With 5 person fetches at 20ms each:
+        # - Sequential (sections): 3 sections x ~40ms = ~120ms
+        # - Parallel (sections + persons): ~40ms (2 persons is longest section)
+        # Allow some margin for test execution overhead
+        assert duration < 0.1, f"Expected parallel execution, took {duration:.3f}s"
+
+    @pytest.mark.asyncio
+    async def test_passes_shared_semaphore_to_person_resolution(self) -> None:
+        """Shared semaphore should limit concurrent person fetches across sections."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        max_concurrent = 0
+        concurrent_calls = 0
+
+        async def mock_get(person_id):
+            nonlocal concurrent_calls, max_concurrent
+            concurrent_calls += 1
+            max_concurrent = max(max_concurrent, concurrent_calls)
+            await asyncio.sleep(0.01)
+            concurrent_calls -= 1
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        # 9 person IDs across 3 sections, but semaphore limit of 2
+        interaction_data = {
+            "lastMeeting": {"teamMemberIds": [1, 2, 3]},
+            "nextMeeting": {"teamMemberIds": [4, 5, 6]},
+            "lastEmail": {"teamMemberIds": [7, 8, 9]},
+        }
+
+        semaphore = asyncio.Semaphore(2)
+        await resolve_interaction_names_async(
+            mock_client, interaction_data, person_semaphore=semaphore
+        )
+
+        # Should never exceed semaphore limit
+        assert max_concurrent <= 2, f"Expected max 2 concurrent, got {max_concurrent}"
+
+    @pytest.mark.asyncio
+    async def test_handles_none_interaction_data(self) -> None:
+        """Should handle None interaction_data gracefully."""
+        from unittest.mock import AsyncMock
+
+        mock_client = AsyncMock()
+
+        # Should not raise
+        await resolve_interaction_names_async(mock_client, None)
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_sections(self) -> None:
+        """Should handle interaction_data with missing sections."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def mock_get(person_id):
+            person = MagicMock()
+            person.full_name = f"Person {person_id.value}"
+            return person
+
+        mock_client = AsyncMock()
+        mock_client.persons.get = mock_get
+
+        # Only lastMeeting has teamMemberIds
+        interaction_data = {
+            "lastMeeting": {"teamMemberIds": [1]},
+            "lastInteraction": {"date": "2026-01-10"},  # No teamMemberIds
+        }
+
+        await resolve_interaction_names_async(mock_client, interaction_data)
+
+        assert interaction_data["lastMeeting"]["teamMemberNames"] == ["Person 1"]
+        assert "teamMemberNames" not in interaction_data.get("lastInteraction", {})

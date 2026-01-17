@@ -108,6 +108,16 @@ xaffinity session end
 
 See [Pipeline Optimization](commands.md#pipeline-optimization) for details.
 
+### Query Command Tuning
+
+For the `query` command, advanced users can tune concurrency:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `XAFFINITY_QUERY_CONCURRENCY` | 15 | Max concurrent API calls for fetches/expansions |
+
+Higher values speed up queries with `include` or `expand` but may trigger rate limits on smaller accounts.
+
 ## Progress + quiet mode
 
 - Long operations show progress bars/spinners on **stderr** when interactive.

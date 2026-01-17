@@ -79,8 +79,7 @@
       },
       "timeout": {
         "type": "integer",
-        "default": 120,
-        "description": "Query timeout in seconds (default 120)."
+        "description": "Query timeout in seconds. If not specified (0 or omitted), timeout is auto-calculated based on estimated API calls (~2s per call, minimum 30s). Specify explicitly to override."
       },
       "maxOutputBytes": {
         "type": "integer",

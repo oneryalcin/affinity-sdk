@@ -625,9 +625,17 @@ Returns execution plan with:
 | `query` | object | required | The JSON query object |
 | `dryRun` | boolean | false | Preview execution plan without running |
 | `maxRecords` | integer | 1000 | Safety limit (max 10000) |
-| `timeout` | integer | 120 | Query timeout in seconds |
+| `timeout` | integer | auto | Query timeout in seconds (auto-calculated from estimated API calls if not specified) |
 | `maxOutputBytes` | integer | 50000 | Truncation limit for results |
 | `format` | string | "toon" | Output format (see Output Formats below) |
+
+### Timeout Auto-Calculation
+
+When `timeout` is not specified, it's automatically calculated based on the query's estimated API calls:
+- **Formula**: ~2 seconds per API call, minimum 30 seconds
+- **Example**: Query with 100 API calls → 200 second timeout
+
+The auto-calculation runs a quick dry-run internally to estimate API calls, then sets an appropriate timeout. Specify `timeout` explicitly to override.
 
 ## Output Formats
 
@@ -680,6 +688,30 @@ pagination:
 ```
 
 **Note:** `jsonl` and `csv` are data-only export formats (no envelope). `toon`, `json`, and `markdown` preserve pagination and included entity information.
+
+## Performance
+
+### Expand InteractionDates
+
+The `interactionDates` expansion fetches meeting/email dates and team member names for each record. Performance optimizations:
+
+- **Parallel fetching**: Entity fetches and person name resolution run in parallel
+- **Shared concurrency limits**: Person API calls are bounded to prevent rate limiting
+- **Graceful degradation**: If person name lookup fails, falls back to "Person {id}" instead of failing the query
+- **Progress reporting**: Shows per-record progress for large expansions
+
+**Recommendations:**
+- For large datasets (500+ records), expect ~2 seconds per record
+- Use `limit` to scope the expansion appropriately
+- The timeout auto-calculates based on estimated API calls
+
+### Environment Variables
+
+For advanced tuning (power users only):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `XAFFINITY_QUERY_CONCURRENCY` | 15 | Max concurrent API calls for fetches/expansions |
 
 ## Best Practices
 

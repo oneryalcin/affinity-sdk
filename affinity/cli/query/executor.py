@@ -466,9 +466,10 @@ def _any_quantifier_needs_full_records(
 SAFE_MAX_RECORDS = 100
 DEFAULT_MAX_RECORDS = 10000  # Default --max-records value
 
-# Concurrency for N+1 operations - reduced from 10 to avoid rate limit bursts
+# Concurrency for N+1 operations (entity fetches with expansion)
 # Tunable via XAFFINITY_QUERY_CONCURRENCY environment variable
-DEFAULT_CONCURRENCY = 5
+# PERF: entity_concurrency_limit
+DEFAULT_CONCURRENCY = 15
 
 
 # =============================================================================
@@ -1854,6 +1855,7 @@ class QueryExecutor:
                 step=step,
             )
 
+    # PERF: rate_limiter_boundary - expand_direct_entities
     async def _expand_direct_entities(
         self,
         step: PlanStep,
@@ -1864,18 +1866,34 @@ class QueryExecutor:
         """Expand records by re-fetching with expansion params.
 
         Uses the async Affinity client directly for SDK calls.
+        Person name resolution runs OUTSIDE the rate limiter to avoid holding
+        permits during sequential person fetches.
         """
         from affinity.models.entities import Company, Person
         from affinity.types import CompanyId, PersonId
 
         # Shared cache for person name resolution across all records
         person_name_cache: dict[int, str] = {}
+        # SHARED semaphore for person resolution - bounded across ALL concurrent tasks
+        person_semaphore = asyncio.Semaphore(10)
+
+        record_count = len(ctx.records)
+        completed = 0
+
+        # Warn for expensive expansions
+        if record_count > 100:
+            logger.warning(
+                f"Expanding {expansion_def.name} for {record_count} {entity_type} records. "
+                f"This may take a while (~{record_count // 15}s estimated)."
+            )
 
         async def fetch_with_expansion(record: dict[str, Any]) -> None:
+            nonlocal completed
             raw_id = record.get("id")
             if raw_id is None:
                 return
 
+            # PERF: Entity fetch WITH rate limiter
             async with self.rate_limiter:
                 try:
                     # Call async service.get() with expansion params
@@ -1891,30 +1909,41 @@ class QueryExecutor:
                     else:
                         return  # Unknown type, skip
 
-                    # Transform and merge interaction dates
+                    # Transform interaction dates (no API calls)
                     if expansion_def.name == "interactionDates":
-                        # Transform without client (async name resolution done separately)
                         record["interactionDates"] = transform_interaction_data(
                             entity.interaction_dates,
                             entity.interactions,
                         )
-                        # Resolve person names asynchronously
-                        await resolve_interaction_names_async(
-                            self.client,
-                            record["interactionDates"],
-                            person_name_cache,
-                        )
                 except Exception as e:
                     logger.debug(f"Failed to expand {expansion_def.name} for record {raw_id}: {e}")
                     record["interactionDates"] = None
+                    return
+            # Rate limiter permit released here
+
+            # PERF: Person resolution OUTSIDE rate limiter, with SHARED semaphore
+            if expansion_def.name == "interactionDates" and record.get("interactionDates"):
+                try:
+                    await resolve_interaction_names_async(
+                        self.client,
+                        record["interactionDates"],
+                        person_name_cache,
+                        person_semaphore=person_semaphore,
+                    )
+                except Exception as e:
+                    # Graceful degradation: keep interactionDates with unresolved IDs
+                    logger.debug(f"Failed to resolve person names for record {raw_id}: {e}")
+
+            # Report progress after each record
+            completed += 1
+            # SAFETY: No await between read/increment/write - atomic under asyncio
+            self.progress.on_step_progress(step, completed, record_count)
 
         # Execute in parallel with bounded concurrency
         tasks = [fetch_with_expansion(r) for r in ctx.records]
         await asyncio.gather(*tasks)
 
-        # Update progress
-        self.progress.on_step_progress(step, len(ctx.records), None)
-
+    # PERF: rate_limiter_boundary - expand_list_entries
     async def _expand_list_entries(
         self,
         step: PlanStep,
@@ -1924,14 +1953,29 @@ class QueryExecutor:
         """Expand list entries by fetching their underlying entities.
 
         Uses the async Affinity client directly for SDK calls.
+        Person name resolution runs OUTSIDE the rate limiter to avoid holding
+        permits during sequential person fetches.
         """
         from affinity.models.entities import Company, Person
         from affinity.types import CompanyId, PersonId
 
         # Shared cache for person name resolution across all records
         person_name_cache: dict[int, str] = {}
+        # SHARED semaphore for person resolution - bounded across ALL concurrent tasks
+        person_semaphore = asyncio.Semaphore(10)
+
+        record_count = len(ctx.records)
+        completed = 0
+
+        # Warn for expensive expansions
+        if record_count > 100:
+            logger.warning(
+                f"Expanding {expansion_def.name} for {record_count} list entries. "
+                f"This may take a while (~{record_count // 15}s estimated)."
+            )
 
         async def fetch_entity_expansion(record: dict[str, Any]) -> None:
+            nonlocal completed
             # For list entries, entityId and entityType may be nested in entity
             raw_id = record.get("entityId")
             entity_type = record.get("entityType")
@@ -1962,6 +2006,7 @@ class QueryExecutor:
             if service_name not in expansion_def.supported_entities:
                 return
 
+            # PERF: Entity fetch WITH rate limiter
             async with self.rate_limiter:
                 try:
                     # Call async service.get() with expansion params
@@ -1975,29 +2020,40 @@ class QueryExecutor:
                             PersonId(raw_id), **expansion_def.fetch_params
                         )
 
+                    # Transform interaction dates (no API calls)
                     if expansion_def.name == "interactionDates":
-                        # Transform without client (async name resolution done separately)
                         record["interactionDates"] = transform_interaction_data(
                             entity.interaction_dates,
                             entity.interactions,
-                        )
-                        # Resolve person names asynchronously
-                        await resolve_interaction_names_async(
-                            self.client,
-                            record["interactionDates"],
-                            person_name_cache,
                         )
                 except Exception as e:
                     logger.debug(
                         f"Failed to expand {expansion_def.name} for {entity_type} {raw_id}: {e}"
                     )
                     record["interactionDates"] = None
+                    return
+            # Rate limiter permit released here
+
+            # PERF: Person resolution OUTSIDE rate limiter, with SHARED semaphore
+            if expansion_def.name == "interactionDates" and record.get("interactionDates"):
+                try:
+                    await resolve_interaction_names_async(
+                        self.client,
+                        record["interactionDates"],
+                        person_name_cache,
+                        person_semaphore=person_semaphore,
+                    )
+                except Exception as e:
+                    # Graceful degradation: keep interactionDates with unresolved IDs
+                    logger.debug(f"Failed to resolve person names for {entity_type} {raw_id}: {e}")
+
+            # Report progress after each record
+            completed += 1
+            # SAFETY: No await between read/increment/write - atomic under asyncio
+            self.progress.on_step_progress(step, completed, record_count)
 
         tasks = [fetch_entity_expansion(r) for r in ctx.records]
         await asyncio.gather(*tasks)
-
-        # Update progress
-        self.progress.on_step_progress(step, len(ctx.records), None)
 
     async def _execute_pre_include(
         self,

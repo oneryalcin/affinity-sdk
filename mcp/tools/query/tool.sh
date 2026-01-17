@@ -9,7 +9,7 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 query_json="$(mcp_args_require '.query' 'Query is required')"
 dry_run="$(mcp_args_get '.dryRun // false')"
 max_records="$(mcp_args_int '.maxRecords' --default 1000)"
-timeout_secs="$(mcp_args_int '.timeout' --default 120)"
+user_timeout_secs="$(mcp_args_int '.timeout' --default 0)"  # 0 = auto-calculate
 max_output_bytes="$(mcp_args_int '.maxOutputBytes' --default 50000)"
 format="$(mcp_args_get '.format // "toon"')"
 
@@ -18,9 +18,6 @@ case "$format" in
   toon|markdown|json|jsonl|csv) ;;
   *) mcp_result_error '{"type": "validation_error", "message": "format must be toon, markdown, json, jsonl, or csv"}'; exit 0 ;;
 esac
-
-# Log tool invocation
-xaffinity_log_debug "query" "dryRun=$dry_run maxRecords=$max_records timeout=$timeout_secs"
 
 # Track start time for latency metrics
 _get_time_ms() { local t; t=$(date +%s%3N 2>/dev/null); [[ "$t" =~ ^[0-9]+$ ]] && echo "$t" || echo "$(($(date +%s) * 1000))"; }
@@ -36,6 +33,51 @@ fi
 if [[ $max_records -gt 10000 ]]; then
     max_records=10000
 fi
+
+# Calculate dynamic timeout based on estimated API calls
+# - Run a quick dry-run to get estimatedApiCalls
+# - Calculate timeout as ~2 seconds per API call (generous for rate limits)
+# - User-specified timeout overrides if larger
+# - Minimum 30 seconds for simple queries
+calc_dynamic_timeout() {
+    local min_timeout=30
+    local per_call_secs=2
+
+    # Quick dry-run to get estimate (suppress warnings, stderr)
+    local dry_output
+    dry_output=$(printf '%s' "$query_json" | xaffinity query --dry-run --max-records "$max_records" --output json 2>/dev/null) || return 1
+
+    # Parse estimatedApiCalls from dry-run output
+    local estimated_calls
+    estimated_calls=$(printf '%s' "$dry_output" | jq_tool -r '.execution.estimatedApiCalls // 1')
+
+    # Calculate timeout: max(min_timeout, estimated_calls * per_call_secs)
+    local calc_timeout=$((estimated_calls * per_call_secs))
+    [[ $calc_timeout -lt $min_timeout ]] && calc_timeout=$min_timeout
+
+    echo "$calc_timeout"
+}
+
+# Determine effective timeout
+if [[ $user_timeout_secs -gt 0 ]]; then
+    # User specified timeout - use it
+    timeout_secs=$user_timeout_secs
+elif [[ "$dry_run" == "true" ]]; then
+    # Dry-run mode - short timeout is fine
+    timeout_secs=30
+else
+    # Calculate dynamic timeout based on estimated API calls
+    if dynamic_timeout=$(calc_dynamic_timeout 2>/dev/null); then
+        timeout_secs=$dynamic_timeout
+    else
+        # Fallback if dry-run fails
+        timeout_secs=120
+    fi
+fi
+
+# Log tool invocation (timeout_mode: user=specified, auto=calculated, dryrun=fixed)
+timeout_mode=$([[ $user_timeout_secs -gt 0 ]] && echo "user" || ([[ "$dry_run" == "true" ]] && echo "dryrun" || echo "auto"))
+xaffinity_log_debug "query" "dryRun=$dry_run maxRecords=$max_records timeout=$timeout_secs (${timeout_mode})"
 
 # Create temp files for stdout/stderr capture
 stdout_file=$(mktemp)
