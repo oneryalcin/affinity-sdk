@@ -2,4 +2,4 @@
 # Source this file in bash scripts: source mcp-bash.lock
 # Update: git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git vX.Y.Z
 MCPBASH_VERSION=0.10.0
-MCPBASH_COMMIT=9f8219ebb9a4b294d63b5e2fa8be12f27b51a46d
+MCPBASH_COMMIT=419639dcbad77d210c9c8c802fa97be538c1f6e1
