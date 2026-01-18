@@ -72,25 +72,51 @@ User: "yes"
 You: execute-write-command(command: "person delete", argv: ["123"], confirm: true)
 ```
 
+## Query vs CLI Commands: When to Use What
+
+**Use `query` tool for:**
+- Any operation needing **relationships** (persons at a company, companies for a person)
+- Any operation needing **computed data** (interaction dates, unreplied emails)
+- **Pipeline analysis** with aggregations or groupBy
+- **Complex filtering** with AND/OR conditions
+- **List entry operations** that need associated entities
+
+**Use individual CLI commands for:**
+- **Simple lookups**: `person get 123`, `company get 456`
+- **Quick searches**: `person ls --query "John"`, `company ls --query "Acme"`
+- **Metadata**: `list ls`, `field ls --list-id <id>`
+- **Write operations**: All creates, updates, deletes
+
+### Query Examples (Preferred for Complex Operations)
+
+```json
+// Pipeline with field values and unreplied email detection
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "select": ["entityName", "fields.Status", "fields.Owner"], "expand": ["unrepliedEmails"]}
+
+// Persons with their companies and interaction history summary
+{"from": "persons", "where": {"path": "email", "op": "contains", "value": "@acme.com"}, "include": ["companies"], "expand": ["interactionDates"]}
+
+// Pipeline summary by status (aggregation)
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}
+
+// List entries with associated persons and interactions (parameterized include)
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "include": [{"interactions": {"limit": 50, "days": 180}}, "persons"]}
+```
+
 ## Common CLI Commands
 
 Use `discover-commands` to find commands, then `execute-read-command` or `execute-write-command` to run them.
 
-### Search & Lookup
+### Search & Lookup (Simple Operations)
 
 | Command | Use Case |
 |---------|----------|
-| `person ls --query "..."` | Search persons by name/email |
-| `company ls --filter 'name =~ "..."'` | Search companies |
+| `person ls --query "..."` | Quick search persons by name/email |
+| `company ls --query "..."` | Quick search companies |
 | `list ls` | List all Affinity lists |
-| `list export "<listName>"` | Export list entries (supports --filter) |
-| `field ls --list-id <id>` | Get field definitions and dropdown options for a list |
+| `field ls --list-id <id>` | Get field definitions and dropdown options |
 
-**Tip:** For complex list queries with includes/expands, prefer `query` over `list export`:
-```json
-// Get list entries with associated persons, companies, and unreplied email detection
-{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "include": ["persons", "companies"], "expand": ["unrepliedEmails"]}
-```
+**Note:** For list exports needing relationships or computed data, use `query` instead of `list export`.
 
 ### Entity Details
 
@@ -157,7 +183,7 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 
 ### After a Call/Meeting
 1. Use `execute-write-command` with `interaction create` to log what happened
-2. Use `execute-read-command` with `list export` to find list entry (if updating pipeline)
+2. Use `query` to find list entry: `{"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "entityName", "op": "contains", "value": "Acme"}]}}`
 3. Use `execute-write-command` with `entry field` if deal stage changed
 4. **Or use**: `log-interaction-and-update-workflow` prompt
 
@@ -167,12 +193,12 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 3. **Or use**: `warm-intro` prompt for guided flow
 
 ### Pipeline Review
-1. Use `execute-read-command` with `field ls --list-id` to see fields/statuses
-2. Use `execute-read-command` with `list export` to see items
+1. Use `query` with aggregation: `{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}`
+2. Use `query` with expand for details: `{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates", "unrepliedEmails"]}`
 3. **Or use**: `pipeline-review` prompt
 
 ### Updating Deal Status
-1. Use `execute-read-command` with `list export` to find the entry
+1. Use `query` to find the entry: `{"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "entityName", "op": "contains", "value": "..."}]}}`
 2. Use `execute-read-command` with `field ls --list-id` to see available statuses
 3. Use `execute-write-command` with `entry field` to update
 4. **Or use**: `change-status` prompt
@@ -182,23 +208,16 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 - **Entity types**: `person`, `company`, `opportunity`
 - **Interaction types**: `call`, `meeting`, `email`, `chat_message`, `in_person`
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
-- **Use names directly**: Most commands accept names instead of IDs (e.g., `list export "Dealflow"`)
-- **Filter syntax**: `--filter 'field op "value"'` (ops: `=`, `!=`, `=~` contains, `=^` starts with, `=$` ends with, `>`, `<`, `>=`, `<=`)
-  - **Multi-word field names** MUST be quoted: `--filter '"Team Member"=~"LB"'`
-  - **Multi-word values** MUST be quoted: `--filter 'Status="Intro Meeting"'`
-  - **Both multi-word**: `--filter '"Referred By"="John Smith"'`
-  - Single-word field/value can be unquoted: `--filter 'Status=New'`
-  - Invalid (will fail): `--filter 'Team Member=LB'` (unquoted multi-word field name)
-- **Filter only works on list fields**: The `--filter` option for `list export` filters on **list-defined fields** (Status, Owner, etc.), NOT internal properties like `entityId`, `entityType`, or `listEntryId`. Use `field ls --list-id <id>` to see available filter fields.
-- **Finding a specific entity in a list**: To find a company/person in a list by their entity ID, either:
-  1. Use `company get <id> --expand list-entries` to see their list memberships directly
-  2. Or export the list and filter client-side (the tool will return `entityId` in results)
+- **Use names directly**: Most commands accept names instead of IDs (e.g., `person ls --query "John"`)
+- **Finding entities in a list**: Use `query` with filters:
+  ```json
+  {"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "entityName", "op": "contains", "value": "Acme"}]}}
+  ```
 - **Output formats**: The `format` parameter controls result format:
-  - `json` (default): Full structure with envelope, best for programmatic use
+  - `toon` (default for query): 40% fewer tokens, best for large results
   - `markdown`: Best for LLM comprehension when analyzing data
-  - `toon`: 30-60% fewer tokens, best for large datasets
+  - `json`: Full structure with envelope, best for programmatic use
   - `csv`: For spreadsheet export
-  - Use `markdown` when you need to analyze/summarize results, `toon` for large exports
 
 ## Troubleshooting
 
