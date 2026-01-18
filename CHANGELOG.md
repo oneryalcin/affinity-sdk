@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- CLI: Query TOON format now correctly flattens `fields.*` and `interactionDates` like markdown and CSV formats do. Previously, TOON was missing the `_apply_explicit_flattening()` call, causing nested fields to be truncated and interaction dates to be missing entirely.
+
 ## 0.9.12 - 2026-01-17
 
 ### Changed

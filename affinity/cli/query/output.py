@@ -1031,9 +1031,15 @@ def format_query_result(
 
     if format == "toon":
         # Full envelope in token-efficient format
-        fieldnames = list(result.data[0].keys()) if result.data else []
-        return format_toon_envelope(
+        # Apply flattening for explicitly-selected nested structures (fields.*, interactionDates)
+        display_data = _apply_explicit_flattening(
             result.data or [],
+            explicit_select=result.explicit_select,
+            explicit_expand=result.explicit_expand,
+        )
+        fieldnames = list(display_data[0].keys()) if display_data else []
+        return format_toon_envelope(
+            display_data,
             fieldnames,
             pagination=result.pagination,
             included=result.included,
