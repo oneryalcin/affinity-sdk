@@ -1055,8 +1055,8 @@ def list_export(
                     ):
                         next_cursor = page_next_cursor
 
-                        if not want_expand:
-                            # No expansion - yield row as-is
+                        if not want_expand and not check_unreplied_emails:
+                            # No expansion and no unreplied email check - yield row as-is
                             rows_written += 1
                             if progress is not None and task_id is not None:
                                 filter_desc = _format_filter_progress(csv_iter_state)
@@ -1469,7 +1469,8 @@ def list_export(
             ):
                 next_cursor = page_next_cursor
 
-                if not want_expand:
+                if not want_expand and not check_unreplied_emails:
+                    # No expansion and no unreplied email check - add row as-is
                     rows.append(row)
                     if progress is not None and task_id is not None:
                         filter_desc = _format_filter_progress(table_iter_state)

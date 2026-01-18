@@ -185,16 +185,112 @@ class TestFlattenInteractionDates:
         assert result["lastEmail"] == "2026-01-10"
 
     def test_flatten_interaction_dates_empty(self) -> None:
-        """Empty interactionDates produces no columns."""
+        """Empty interactionDates produces all canonical columns as null.
+
+        Schema consistency requires all 8 columns even when no data is present,
+        so TOON format can use consistent column headers across all records.
+        """
         record = {"id": 1, "interactionDates": {}}
         result = _flatten_interaction_dates(record)
-        assert result == {"id": 1}
+        assert result["id"] == 1
+        # All canonical columns present with null values
+        assert result["lastMeeting"] is None
+        assert result["lastMeetingDaysSince"] is None
+        assert result["nextMeeting"] is None
+        assert result["nextMeetingDaysUntil"] is None
+        assert result["lastEmail"] is None
+        assert result["lastEmailDaysSince"] is None
+        assert result["lastInteraction"] is None
+        assert result["lastInteractionDaysSince"] is None
+        assert "interactionDates" not in result
 
     def test_flatten_interaction_dates_null(self) -> None:
         """Null interaction date values are preserved."""
         record = {"id": 1, "interactionDates": {"lastEmail": None}}
         result = _flatten_interaction_dates(record)
         assert result["lastEmail"] is None
+        # Other canonical columns also present
+        assert result["lastMeeting"] is None
+        assert result["nextMeeting"] is None
+        assert result["lastInteraction"] is None
+
+
+class TestFlattenInteractionDatesSchemaConsistency:
+    """Tests for consistent schema across all interactionDates cases.
+
+    TOON format uses the first record's keys as column headers, so all records
+    must have identical keys to render correctly.
+    """
+
+    def test_null_produces_canonical_columns(self) -> None:
+        """Null interactionDates produces all 8 canonical columns as null."""
+        record = {"id": 1, "interactionDates": None}
+        result = _flatten_interaction_dates(record)
+
+        assert result["lastMeeting"] is None
+        assert result["lastMeetingDaysSince"] is None
+        assert result["nextMeeting"] is None
+        assert result["nextMeetingDaysUntil"] is None
+        assert result["lastEmail"] is None
+        assert result["lastEmailDaysSince"] is None
+        assert result["lastInteraction"] is None
+        assert result["lastInteractionDaysSince"] is None
+        assert "interactionDates" not in result
+
+    def test_partial_data_produces_all_canonical_columns(self) -> None:
+        """Partial interactionDates produces all 8 columns (data + nulls for missing)."""
+        record = {
+            "id": 1,
+            "interactionDates": {"lastEmail": {"date": "2026-01-10", "daysSince": 7}},
+        }
+        result = _flatten_interaction_dates(record)
+
+        # Has data
+        assert result["lastEmail"] == "2026-01-10"
+        assert result["lastEmailDaysSince"] == 7
+        # Missing types have null columns (critical for schema consistency!)
+        assert result["lastMeeting"] is None
+        assert result["lastMeetingDaysSince"] is None
+        assert result["nextMeeting"] is None
+        assert result["nextMeetingDaysUntil"] is None
+        assert result["lastInteraction"] is None
+        assert result["lastInteractionDaysSince"] is None
+
+    def test_mixed_records_have_identical_columns(self) -> None:
+        """All records produce identical column sets (the core TOON requirement)."""
+        data = [
+            {"id": 1, "interactionDates": None},
+            {"id": 2, "interactionDates": {}},
+            {"id": 3, "interactionDates": {"lastEmail": {"date": "2026-01-10", "daysSince": 7}}},
+            {
+                "id": 4,
+                "interactionDates": {
+                    "lastMeeting": {"date": "2026-01-05", "daysSince": 12},
+                    "nextMeeting": {"date": "2026-01-20", "daysUntil": 3},
+                },
+            },
+        ]
+        result = _apply_explicit_flattening(
+            data, explicit_select=None, explicit_expand=["interactionDates"]
+        )
+
+        # All records should have identical keys
+        keys = [set(r.keys()) for r in result]
+        assert keys[0] == keys[1] == keys[2] == keys[3]
+
+        # Verify expected columns present
+        expected_interaction_cols = {
+            "lastMeeting",
+            "lastMeetingDaysSince",
+            "nextMeeting",
+            "nextMeetingDaysUntil",
+            "lastEmail",
+            "lastEmailDaysSince",
+            "lastInteraction",
+            "lastInteractionDaysSince",
+        }
+        for record_keys in keys:
+            assert expected_interaction_cols.issubset(record_keys)
 
 
 class TestApplyExplicitFlattening:
@@ -370,12 +466,11 @@ class TestTableFormatWithFlattening:
 
         output = format_table(result)
 
-        # Should show flattened interaction date columns and values
-        # Note: column headers may be truncated (e.g., "lastMeeti…")
-        assert "lastEmail" in output
-        assert "2026-01-10" in output  # lastEmail date value
-        assert "2026-01-05" in output  # lastMeeting date value
-        assert "12" in output  # daysSince value
+        # With 8 canonical columns + id + name = 10 columns, table truncates some.
+        # Verify that interaction columns appear (headers may be truncated).
+        assert "lastMee" in output  # lastMeeting column (truncated header)
+        assert "2026-01" in output  # Date values present (may be truncated)
+        assert "12" in output  # lastMeetingDaysSince value (short, not truncated)
 
 
 class TestJsonFormatWithExplicitSelect:

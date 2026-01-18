@@ -268,24 +268,46 @@ def _flatten_fields(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _flatten_interaction_dates(record: dict[str, Any]) -> dict[str, Any]:
-    """Flatten interactionDates to top-level columns.
+    """Flatten interactionDates to top-level columns with consistent schema.
+
+    ALWAYS produces the canonical 8 columns when interactionDates key is present,
+    ensuring consistent schema across all records regardless of which interaction
+    types have data. This is critical for TOON format which uses the first record's
+    keys as column headers.
 
     Input:  {"id": 1, "interactionDates": {"lastMeeting": {"date": "2026-01-10", "daysSince": 7}}}
-    Output: {"id": 1, "lastMeeting": "2026-01-10", "lastMeetingDaysSince": 7}
+    Output: {"id": 1, "lastMeeting": "2026-01-10", "lastMeetingDaysSince": 7,
+             "nextMeeting": None, "nextMeetingDaysUntil": None, ...}
     """
-    result = {}
+    # Canonical columns - must match interaction_utils.py definitions
+    CANONICAL_COLUMNS: dict[str, str] = {
+        "lastMeeting": "DaysSince",
+        "nextMeeting": "DaysUntil",
+        "lastEmail": "DaysSince",
+        "lastInteraction": "DaysSince",
+    }
+
+    result: dict[str, Any] = {}
     for key, value in record.items():
-        if key == "interactionDates" and isinstance(value, dict):
-            for interaction_type, interaction_data in value.items():
-                if isinstance(interaction_data, dict):
-                    if "date" in interaction_data:
-                        result[interaction_type] = interaction_data["date"]
-                    if "daysSince" in interaction_data:
-                        result[f"{interaction_type}DaysSince"] = interaction_data["daysSince"]
-                    if "daysUntil" in interaction_data:
-                        result[f"{interaction_type}DaysUntil"] = interaction_data["daysUntil"]
-                else:
-                    result[interaction_type] = interaction_data
+        if key == "interactionDates":
+            # Initialize ALL canonical columns to None (guarantees schema consistency)
+            for col, suffix in CANONICAL_COLUMNS.items():
+                result[col] = None
+                result[f"{col}{suffix}"] = None
+
+            # Overwrite with actual data if present
+            if isinstance(value, dict) and value:
+                for interaction_type, interaction_data in value.items():
+                    if isinstance(interaction_data, dict):
+                        if "date" in interaction_data:
+                            result[interaction_type] = interaction_data["date"]
+                        if "daysSince" in interaction_data:
+                            result[f"{interaction_type}DaysSince"] = interaction_data["daysSince"]
+                        if "daysUntil" in interaction_data:
+                            result[f"{interaction_type}DaysUntil"] = interaction_data["daysUntil"]
+                    else:
+                        result[interaction_type] = interaction_data
+            # Note: interactionDates key is NOT copied to result (flattened away)
         else:
             result[key] = value
     return result
