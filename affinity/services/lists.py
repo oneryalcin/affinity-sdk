@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from ..compare import normalize_value
-from ..exceptions import AffinityError, FilterParseError, NotFoundError
+from ..exceptions import AffinityError, FilterParseError, NotFoundError, ValidationError
 from ..filters import FilterExpression
 from ..filters import parse as parse_filter
 from ..models.entities import (
@@ -964,16 +964,37 @@ class ListEntryService:
         entity_id: int,
         creator_id: int | None = None,
     ) -> ListEntry:
-        """Internal method to create a list entry."""
+        """Internal method to create a list entry.
+
+        Note: The entity type must match the list type:
+        - Person lists only accept person IDs via add_person()
+        - Company lists only accept company IDs via add_company()
+        - Opportunity lists only accept opportunity IDs via add_opportunity()
+        """
         payload: dict[str, Any] = {"entity_id": entity_id}
         if creator_id:
             payload["creator_id"] = creator_id
 
-        result = self._client.post(
-            f"/lists/{self._list_id}/list-entries",
-            json=payload,
-            v1=True,
-        )
+        try:
+            result = self._client.post(
+                f"/lists/{self._list_id}/list-entries",
+                json=payload,
+                v1=True,
+            )
+        except ValidationError as e:
+            # 422 + param=entity_id means entity type doesn't match list type
+            if e.status_code == 422 and e.param == "entity_id":
+                raise ValidationError(
+                    f"Cannot add entity {entity_id} to list {self._list_id}. "
+                    f"The entity type must match the list type "
+                    f"(person lists accept persons, company lists accept companies, "
+                    f"opportunity lists accept opportunities).",
+                    param=e.param,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                    diagnostics=e.diagnostics,
+                ) from e
+            raise
 
         return _safe_model_validate(ListEntry, result)
 
@@ -1845,16 +1866,37 @@ class AsyncListEntryService:
         entity_id: int,
         creator_id: int | None = None,
     ) -> ListEntry:
-        """Internal method to create a list entry."""
+        """Internal method to create a list entry.
+
+        Note: The entity type must match the list type:
+        - Person lists only accept person IDs via add_person()
+        - Company lists only accept company IDs via add_company()
+        - Opportunity lists only accept opportunity IDs via add_opportunity()
+        """
         payload: dict[str, Any] = {"entity_id": entity_id}
         if creator_id:
             payload["creator_id"] = creator_id
 
-        result = await self._client.post(
-            f"/lists/{self._list_id}/list-entries",
-            json=payload,
-            v1=True,
-        )
+        try:
+            result = await self._client.post(
+                f"/lists/{self._list_id}/list-entries",
+                json=payload,
+                v1=True,
+            )
+        except ValidationError as e:
+            # 422 + param=entity_id means entity type doesn't match list type
+            if e.status_code == 422 and e.param == "entity_id":
+                raise ValidationError(
+                    f"Cannot add entity {entity_id} to list {self._list_id}. "
+                    f"The entity type must match the list type "
+                    f"(person lists accept persons, company lists accept companies, "
+                    f"opportunity lists accept opportunities).",
+                    param=e.param,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                    diagnostics=e.diagnostics,
+                ) from e
+            raise
 
         return _safe_model_validate(ListEntry, result)
 

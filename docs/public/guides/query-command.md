@@ -299,8 +299,34 @@ Fetch related entities in a single query:
 | `persons` | `companies`, `opportunities`, `interactions`, `notes` |
 | `companies` | `persons`, `opportunities`, `interactions`, `notes` |
 | `opportunities` | `persons`, `companies`, `interactions`, `notes` |
+| `listEntries` | `persons`, `companies`, `opportunities`, `interactions` |
+
+**Note:** For `listEntries`, the include dynamically resolves based on the entry's entity type (person, company, or opportunity). For example, company entries can include `persons` (associated persons) and `interactions` (company interactions).
 
 **Note:** Includes fetch relationship IDs in parallel (N calls), then batch-fetch full records via V2 API. Use `--dry-run` to preview the cost.
+
+### Parameterized Includes
+
+For `listEntries`, you can customize includes with parameters:
+
+```json
+{
+  "from": "listEntries",
+  "where": { "path": "listName", "op": "eq", "value": "Dealflow" },
+  "include": [
+    { "interactions": { "limit": 50, "days": 180 } },
+    { "opportunities": { "list": "Pipeline" } },
+    { "persons": { "where": { "path": "firstName", "op": "contains", "value": "John" } } }
+  ]
+}
+```
+
+| Parameter | Description | Applicable To |
+|-----------|-------------|---------------|
+| `limit` | Maximum records to fetch | `interactions` |
+| `days` | Lookback period in days | `interactions` |
+| `list` | Scope to specific opportunity list | `opportunities` |
+| `where` | Filter included entities | `persons`, `companies`, `opportunities` |
 
 In **table output**, included data appears as separate tables (e.g., "Included: companies").
 In **JSON output**, included data appears in a separate `included` section with deduplicated records.
@@ -339,7 +365,37 @@ Output includes interaction summaries on each record:
 
 | Expansion | Description | Supported Entities |
 |-----------|-------------|-------------------|
-| `interactionDates` | Last/next meeting, email dates | `persons`, `companies`, `listEntries` |
+| `interactionDates` | Last/next meeting, email dates | `persons`, `companies`, `opportunities`, `listEntries` |
+| `unrepliedEmails` | Detect unreplied incoming emails | `persons`, `companies`, `opportunities`, `listEntries` |
+
+#### Unreplied Emails Expansion
+
+Add unreplied email detection to each record:
+
+```json
+{
+  "from": "listEntries",
+  "where": { "path": "listName", "op": "eq", "value": "Pipeline" },
+  "expand": ["unrepliedEmails"],
+  "limit": 50
+}
+```
+
+Output includes unreplied email info on each record:
+
+```json
+{
+  "id": 123,
+  "entity": { "id": 456, "type": "company", "name": "Acme Corp" },
+  "unrepliedEmails": {
+    "date": "2026-01-15T09:30:00Z",
+    "daysSince": 4,
+    "subject": "Re: Partnership opportunity"
+  }
+}
+```
+
+Records without unreplied emails have `"unrepliedEmails": null`.
 
 ### Expand vs Include
 

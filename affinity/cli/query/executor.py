@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ...exceptions import NotFoundError
 from ..interaction_utils import resolve_interaction_names_async, transform_interaction_data
 from .aggregates import apply_having, compute_aggregates, group_and_aggregate
 from .exceptions import (
@@ -831,14 +832,12 @@ class QueryExecutor:
 
             return ctx.build_result()
 
+        except NotFoundError:
+            # Record doesn't exist - return empty result
+            ctx.records = []
+            self.progress.on_step_complete(fetch_step, 0)
+            return ctx.build_result()
         except Exception as e:
-            # Check if it's a "not found" error (404)
-            error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                # Record doesn't exist - return empty result
-                ctx.records = []
-                self.progress.on_step_complete(fetch_step, 0)
-                return ctx.build_result()
             # Other error - fall through to normal execution
             logger.debug("Single-ID lookup failed, falling back to streaming: %s", e)
             return None
@@ -926,14 +925,12 @@ class QueryExecutor:
 
             return ctx.build_result()
 
+        except NotFoundError:
+            # Record doesn't exist - return empty result
+            ctx.records = []
+            self.progress.on_step_complete(fetch_step, 0)
+            return ctx.build_result()
         except Exception as e:
-            # Check if it's a "not found" error (404)
-            error_str = str(e).lower()
-            if "404" in error_str or "not found" in error_str:
-                # Record doesn't exist - return empty result
-                ctx.records = []
-                self.progress.on_step_complete(fetch_step, 0)
-                return ctx.build_result()
             # Other error - fall through to normal execution
             logger.debug("Single-ID lookup failed for %s, falling back: %s", query.from_, e)
             return None
@@ -1816,6 +1813,52 @@ class QueryExecutor:
                     parent_mapping[ent_id] = []
                     continue
 
+        elif rel.fetch_strategy == "list_entry_indirect":
+            # For listEntries: fetch related entities via entity associations
+            # The target entity type is stored in method_or_service
+            target_entity_type = rel.method_or_service
+
+            # Extract include config (limit, days, where, list)
+            include_config = None
+            if ctx.query.include:
+                for item in ctx.query.include:
+                    if isinstance(item, dict):
+                        for key, val in item.items():
+                            if key == step.relationship:
+                                from .models import IncludeConfig
+
+                                include_config = IncludeConfig.model_validate(val) if val else None
+                                break
+
+            # Fetch related entities using the specialized handler
+            parent_to_related = await self._fetch_list_entry_indirect(
+                ctx.records,
+                target_entity_type,
+                limit=include_config.limit if include_config else None,
+                days=include_config.days if include_config else None,
+                list_id=await self._resolve_list_id(include_config.list_)
+                if include_config and include_config.list_
+                else None,
+            )
+
+            # Apply where filter if specified
+            if include_config and include_config.where:
+                filter_fn = compile_filter(include_config.where)
+                for record_id in parent_to_related:
+                    parent_to_related[record_id] = [
+                        r for r in parent_to_related[record_id] if filter_fn(r)
+                    ]
+
+            # Build included_records and parent_mapping
+            seen_record_ids: set[int] = set()
+            for record_id, related in parent_to_related.items():
+                parent_mapping[record_id] = related
+                for rec in related:
+                    rec_id = rec.get("id")
+                    if isinstance(rec_id, int) and rec_id not in seen_record_ids:
+                        seen_record_ids.add(rec_id)
+                        included_records.append(rec)
+
         # Store flat list for backward compatibility (JSON/TOON output)
         ctx.included[step.relationship] = included_records
         # Store per-parent mapping for inline expansion (table output)
@@ -1989,6 +2032,25 @@ class QueryExecutor:
                 entity_type = record.get("type")
 
             if raw_id is None or entity_type is None:
+                return
+
+            # Handle unrepliedEmails expansion separately (doesn't require entity refetch)
+            if expansion_def.name == "unrepliedEmails":
+                from ..interaction_utils import async_check_unreplied_email
+
+                async with self.rate_limiter:
+                    try:
+                        result = await async_check_unreplied_email(self.client, entity_type, raw_id)
+                        record["unrepliedEmails"] = result
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to check unreplied emails for {entity_type} {raw_id}: {e}"
+                        )
+                        record["unrepliedEmails"] = None
+
+                # Report progress
+                completed += 1
+                self.progress.on_step_progress(step, completed, record_count)
                 return
 
             # Map list entry entity types to service names
@@ -2294,6 +2356,327 @@ class QueryExecutor:
             return list(results)
 
         return [{"id": id_} for id_ in ids]  # Fallback to ID-only
+
+    # =========================================================================
+    # List Entry Indirect Fetch Handlers
+    # =========================================================================
+
+    async def _resolve_list_id(self, selector: str | int) -> int | None:
+        """Resolve a list selector (name or ID) to a list ID."""
+        if isinstance(selector, int):
+            return selector
+        try:
+            from ..resolve import async_resolve_list_selector
+
+            resolved = await async_resolve_list_selector(
+                client=self.client,
+                selector=str(selector),
+            )
+            return int(resolved.list.id)
+        except Exception:
+            return None
+
+    async def _fetch_list_entry_indirect(
+        self,
+        entries: list[dict[str, Any]],
+        target_entity_type: str,
+        *,
+        limit: int | None = None,
+        days: int | None = None,
+        list_id: int | None = None,
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Fetch related entities for list entries based on entityType.
+
+        Args:
+            entries: List entry records with id, entityId, entityType fields
+            target_entity_type: What to fetch (persons/companies/opportunities/interactions)
+            limit: Max records per entity (for interactions)
+            days: Lookback window in days (for interactions)
+            list_id: Scope to specific opportunity list (for opportunities)
+
+        Returns:
+            Dict mapping listEntryId -> list of related entity records
+        """
+        results: dict[int, list[dict[str, Any]]] = {}
+        semaphore = asyncio.Semaphore(50)  # Limit concurrent connections
+
+        if target_entity_type == "persons":
+            await self._fetch_persons_for_list_entries(entries, results, semaphore)
+        elif target_entity_type == "companies":
+            await self._fetch_companies_for_list_entries(entries, results, semaphore)
+        elif target_entity_type == "opportunities":
+            await self._fetch_opportunities_for_list_entries(
+                entries, results, semaphore, list_id=list_id
+            )
+        elif target_entity_type == "interactions":
+            await self._fetch_interactions_for_list_entries(
+                entries, results, semaphore, limit=limit, days=days
+            )
+
+        return results
+
+    async def _fetch_persons_for_list_entries(
+        self,
+        entries: list[dict[str, Any]],
+        results: dict[int, list[dict[str, Any]]],
+        semaphore: asyncio.Semaphore,
+    ) -> None:
+        """Fetch associated persons for list entries."""
+        from affinity.types import CompanyId, OpportunityId
+
+        async def get_person_ids_for_entry(entry: dict[str, Any]) -> tuple[int, list[int]]:
+            entry_id = entry["id"]
+            entity_id = entry.get("entityId")
+            entity_type = entry.get("entityType")
+
+            if entity_id is None:
+                return (entry_id, [])
+
+            # Handle V1 (integer) and V2 (string) entityType formats
+            if entity_type in ("person", 0):
+                # Person entry: the entity IS the person
+                return (entry_id, [entity_id])
+
+            # Company/Opportunity entries: fetch associated person IDs
+            ids: list[int] = []
+            async with semaphore, self.rate_limiter:
+                try:
+                    if entity_type in ("company", 1, "organization"):
+                        ids = list(
+                            await self.client.companies.get_associated_person_ids(
+                                CompanyId(entity_id)
+                            )
+                        )
+                    elif entity_type == "opportunity":
+                        ids = list(
+                            await self.client.opportunities.get_associated_person_ids(
+                                OpportunityId(entity_id)
+                            )
+                        )
+                except Exception:
+                    pass  # Return empty list on error
+
+            return (entry_id, ids)
+
+        # Phase 1: Parallel fetch all association IDs
+        id_results = await asyncio.gather(*[get_person_ids_for_entry(e) for e in entries])
+        entry_to_person_ids = dict(id_results)
+
+        # Phase 2: Deduplicate and batch fetch full records
+        all_person_ids = list({pid for pids in entry_to_person_ids.values() for pid in pids})
+        if all_person_ids:
+            full_records = await self._batch_fetch_by_ids("persons", all_person_ids)
+            id_to_record = {r["id"]: r for r in full_records if "id" in r}
+
+            for entry_id, person_ids in entry_to_person_ids.items():
+                results[entry_id] = [id_to_record[pid] for pid in person_ids if pid in id_to_record]
+        else:
+            for entry_id in entry_to_person_ids:
+                results[entry_id] = []
+
+    async def _fetch_companies_for_list_entries(
+        self,
+        entries: list[dict[str, Any]],
+        results: dict[int, list[dict[str, Any]]],
+        semaphore: asyncio.Semaphore,
+    ) -> None:
+        """Fetch associated companies for list entries."""
+        from affinity.types import OpportunityId, PersonId
+
+        async def get_company_ids_for_entry(entry: dict[str, Any]) -> tuple[int, list[int]]:
+            entry_id = entry["id"]
+            entity_id = entry.get("entityId")
+            entity_type = entry.get("entityType")
+
+            if entity_id is None:
+                return (entry_id, [])
+
+            # Handle V1 (integer) and V2 (string) entityType formats
+            if entity_type in ("company", 1, "organization"):
+                # Company entry: the entity IS the company
+                return (entry_id, [entity_id])
+
+            ids: list[int] = []
+            async with semaphore, self.rate_limiter:
+                try:
+                    if entity_type in ("person", 0):
+                        ids = list(
+                            await self.client.persons.get_associated_company_ids(
+                                PersonId(entity_id)
+                            )
+                        )
+                    elif entity_type == "opportunity":
+                        ids = list(
+                            await self.client.opportunities.get_associated_company_ids(
+                                OpportunityId(entity_id)
+                            )
+                        )
+                except Exception:
+                    pass  # Return empty list on error
+
+            return (entry_id, ids)
+
+        # Same two-phase pattern as persons
+        id_results = await asyncio.gather(*[get_company_ids_for_entry(e) for e in entries])
+        entry_to_company_ids = dict(id_results)
+
+        all_company_ids = list({cid for cids in entry_to_company_ids.values() for cid in cids})
+        if all_company_ids:
+            full_records = await self._batch_fetch_by_ids("companies", all_company_ids)
+            id_to_record = {r["id"]: r for r in full_records if "id" in r}
+
+            for entry_id, company_ids in entry_to_company_ids.items():
+                results[entry_id] = [
+                    id_to_record[cid] for cid in company_ids if cid in id_to_record
+                ]
+        else:
+            for entry_id in entry_to_company_ids:
+                results[entry_id] = []
+
+    async def _fetch_opportunities_for_list_entries(
+        self,
+        entries: list[dict[str, Any]],
+        results: dict[int, list[dict[str, Any]]],
+        semaphore: asyncio.Semaphore,
+        *,
+        list_id: int | None = None,
+    ) -> None:
+        """Fetch associated opportunities for list entries.
+
+        Args:
+            list_id: If provided, only return opportunities from this specific list.
+        """
+        from affinity.types import CompanyId, PersonId
+
+        async def get_opportunity_ids_for_entry(entry: dict[str, Any]) -> tuple[int, list[int]]:
+            entry_id = entry["id"]
+            entity_id = entry.get("entityId")
+            entity_type = entry.get("entityType")
+
+            if entity_id is None:
+                return (entry_id, [])
+
+            # Handle V1 (integer) and V2 (string) entityType formats
+            if entity_type == "opportunity":
+                # Opportunity entry: the entity IS the opportunity
+                return (entry_id, [entity_id])
+
+            ids: list[int] = []
+            async with semaphore, self.rate_limiter:
+                try:
+                    if entity_type in ("person", 0):
+                        ids = list(
+                            await self.client.persons.get_associated_opportunity_ids(
+                                PersonId(entity_id)
+                            )
+                        )
+                    elif entity_type in ("company", 1, "organization"):
+                        ids = list(
+                            await self.client.companies.get_associated_opportunity_ids(
+                                CompanyId(entity_id)
+                            )
+                        )
+                except Exception:
+                    pass  # Return empty list on error
+
+            return (entry_id, ids)
+
+        # Same two-phase pattern
+        id_results = await asyncio.gather(*[get_opportunity_ids_for_entry(e) for e in entries])
+        entry_to_opp_ids = dict(id_results)
+
+        all_opp_ids = list({oid for oids in entry_to_opp_ids.values() for oid in oids})
+        if all_opp_ids:
+            full_records = await self._batch_fetch_by_ids("opportunities", all_opp_ids)
+
+            # Filter to specific list if scoped (--expand-opportunities-list parity)
+            if list_id is not None:
+                full_records = [r for r in full_records if r.get("listId") == list_id]
+
+            id_to_record = {r["id"]: r for r in full_records if "id" in r}
+
+            for entry_id, opp_ids in entry_to_opp_ids.items():
+                results[entry_id] = [id_to_record[oid] for oid in opp_ids if oid in id_to_record]
+        else:
+            for entry_id in entry_to_opp_ids:
+                results[entry_id] = []
+
+    async def _fetch_interactions_for_list_entries(
+        self,
+        entries: list[dict[str, Any]],
+        results: dict[int, list[dict[str, Any]]],
+        semaphore: asyncio.Semaphore,
+        *,
+        limit: int | None = None,
+        days: int | None = None,
+    ) -> None:
+        """Fetch interactions for list entries.
+
+        Args:
+            limit: Max interactions per entity (default 100)
+            days: Lookback window in days (default 90)
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from affinity.types import CompanyId, OpportunityId, PersonId
+
+        from ..date_utils import chunk_date_range
+
+        effective_limit = limit if limit is not None else 100
+        effective_days = days if days is not None else 90
+
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=effective_days)
+
+        async def get_interactions_for_entry(
+            entry: dict[str, Any],
+        ) -> tuple[int, list[dict[str, Any]]]:
+            entry_id = entry["id"]
+            entity_id = entry.get("entityId")
+            entity_type = entry.get("entityType")
+
+            if entity_id is None:
+                return (entry_id, [])
+
+            # Build entity-specific filter kwargs
+            base_kwargs: dict[str, Any] = {}
+            if entity_type in ("person", 0):
+                base_kwargs["person_id"] = PersonId(entity_id)
+            elif entity_type in ("company", 1, "organization"):
+                base_kwargs["company_id"] = CompanyId(entity_id)
+            elif entity_type == "opportunity":
+                base_kwargs["opportunity_id"] = OpportunityId(entity_id)
+            else:
+                return (entry_id, [])
+
+            interactions: list[dict[str, Any]] = []
+            count = 0
+
+            # Use chunk_date_range() to handle ranges > 365 days
+            for chunk_start, chunk_end in chunk_date_range(start_time, end_time):
+                if count >= effective_limit:
+                    break
+                async with semaphore, self.rate_limiter:
+                    try:
+                        async for i in self.client.interactions.iter(
+                            **base_kwargs,
+                            start_time=chunk_start,
+                            end_time=chunk_end,
+                        ):
+                            interactions.append(i.model_dump(mode="json", by_alias=True))
+                            count += 1
+                            if count >= effective_limit:
+                                break
+                    except Exception:
+                        break  # Stop on error
+
+            return (entry_id, interactions)
+
+        # Direct fetch (no ID→record indirection needed for interactions)
+        interaction_results = await asyncio.gather(
+            *[get_interactions_for_entry(e) for e in entries]
+        )
+        results.update(dict(interaction_results))
 
     def _execute_aggregate(self, _step: PlanStep, ctx: ExecutionContext) -> None:
         """Execute aggregation step."""

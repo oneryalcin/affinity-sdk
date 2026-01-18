@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from affinity import Affinity
+from affinity import Affinity, AsyncAffinity
 from affinity.exceptions import NotFoundError
 from affinity.models.entities import AffinityList, FieldMetadata, SavedView
 from affinity.types import ListId, SavedViewId
@@ -50,6 +50,60 @@ def resolve_list_selector(
             )
 
     matches = client.lists.resolve_all(name=selector)
+    if not matches:
+        raise CLIError(
+            f'List not found: "{selector}"',
+            exit_code=4,
+            error_type="not_found",
+            details={"selector": selector},
+        )
+    if len(matches) > 1:
+        raise CLIError(
+            f'Ambiguous list name: "{selector}" ({len(matches)} matches)',
+            exit_code=2,
+            error_type="ambiguous_resolution",
+            details={
+                "selector": selector,
+                "matches": [
+                    {"listId": int(m.id), "name": m.name, "type": m.type} for m in matches[:20]
+                ],
+            },
+        )
+
+    lst = matches[0]
+
+    if cache and cache.enabled:
+        cache.set(cache_key, lst)
+
+    return ResolvedList(list=lst, resolved={"list": {"input": selector, "listId": int(lst.id)}})
+
+
+async def async_resolve_list_selector(
+    *,
+    client: AsyncAffinity,
+    selector: str,
+    cache: SessionCache | None = None,
+) -> ResolvedList:
+    """Async version: Resolve list by name/ID with optional session cache support."""
+    selector = selector.strip()
+
+    # ID lookups don't benefit from name resolution cache
+    if _looks_int(selector):
+        list_id = ListId(int(selector))
+        lst = await client.lists.get(list_id)
+        return ResolvedList(list=lst, resolved={"list": {"input": selector, "listId": int(lst.id)}})
+
+    cache_key = f"list_resolve_{selector.lower()}_any"
+
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, AffinityList)
+        if cached is not None:
+            return ResolvedList(
+                list=cached,
+                resolved={"list": {"input": selector, "listId": int(cached.id), "cached": True}},
+            )
+
+    matches = await client.lists.resolve_all(name=selector)
     if not matches:
         raise CLIError(
             f'List not found: "{selector}"',

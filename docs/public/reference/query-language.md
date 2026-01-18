@@ -522,6 +522,13 @@ Both `include` and quantifiers fetch relationship data, but serve different purp
 - `interactions` - Interactions on opportunity
 - `notes` - Notes on opportunity
 
+**From `listEntries`:**
+- `entity` - Dynamically resolves to person/company/opportunity based on entityType
+- `persons` - Associated persons (for company/opportunity entries)
+- `companies` - Associated companies (for person/opportunity entries)
+- `opportunities` - Associated opportunities (for person/company entries)
+- `interactions` - Interactions for the list entry's entity
+
 ### Include Syntax
 
 ```json
@@ -555,6 +562,29 @@ In **table output**, included data renders as separate tables with headers like 
 
 In **JSON output**, the `included` section contains deduplicated records keyed by relationship name. Parent records reference included entities via ID fields (e.g., `organizationIds` for companies).
 
+### Parameterized Includes
+
+When including relationships for `listEntries`, you can customize the fetch with parameters:
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "include": [
+    {"interactions": {"limit": 50, "days": 180}},
+    {"opportunities": {"list": "Pipeline"}},
+    {"persons": {"where": {"path": "firstName", "op": "contains", "value": "John"}}}
+  ]
+}
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `limit` | Max records per entity | 100 |
+| `days` | Lookback window in days (for interactions) | 90 |
+| `list` | Scope opportunities to specific list name/ID | All |
+| `where` | Filter included entities | None |
+
 ## Expand (Computed Data)
 
 Unlike `include` (which fetches separate related entities), `expand` enriches records with computed data directly on each record.
@@ -564,6 +594,7 @@ Unlike `include` (which fetches separate related entities), `expand` enriches re
 | Expansion | Description | Supported Entities |
 |-----------|-------------|-------------------|
 | `interactionDates` | Last/next meeting, email dates, team members | `persons`, `companies`, `listEntries` |
+| `unrepliedEmails` | Detect unreplied incoming emails (date, daysSince, subject) | `persons`, `companies`, `opportunities`, `listEntries` |
 
 ### Expand Syntax
 

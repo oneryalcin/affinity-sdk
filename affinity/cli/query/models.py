@@ -218,18 +218,29 @@ class SubqueryDef(BaseModel):
 class IncludeConfig(BaseModel):
     """Configuration for an included relationship.
 
-    Supports extended syntax for customizing display fields:
+    Supports extended syntax for customizing display fields and parameters:
         {"companies": {"display": ["name", "domain"]}}
+        {"interactions": {"limit": 50, "days": 180}}
+        {"opportunities": {"list": "Pipeline"}}
+        {"persons": {"where": {"path": "name", "op": "contains", "value": "Smith"}}}
 
     Attributes:
         display: List of field names to use for display value.
             Fields are tried in order; first non-empty value is used.
             If None, uses default priority: name → firstName lastName → title → email → id
+        limit: Max records to fetch (default 100 for interactions)
+        days: Lookback window in days (default 90 for interactions)
+        where: Filter to apply to included entities (--expand-filter parity)
+        list: Scope to specific opportunity list name or ID (--expand-opportunities-list parity)
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     display: list[str] | None = None
+    limit: int | None = None
+    days: int | None = None
+    where: WhereClause | None = None
+    list_: str | int | None = Field(None, alias="list")
 
 
 class Query(BaseModel):

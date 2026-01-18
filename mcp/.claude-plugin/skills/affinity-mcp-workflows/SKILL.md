@@ -86,6 +86,12 @@ Use `discover-commands` to find commands, then `execute-read-command` or `execut
 | `list export "<listName>"` | Export list entries (supports --filter) |
 | `field ls --list-id <id>` | Get field definitions and dropdown options for a list |
 
+**Tip:** For complex list queries with includes/expands, prefer `query` over `list export`:
+```json
+// Get list entries with associated persons, companies, and unreplied email detection
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "include": ["persons", "companies"], "expand": ["unrepliedEmails"]}
+```
+
 ### Entity Details
 
 | Command | Use Case |

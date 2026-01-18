@@ -298,7 +298,11 @@ Fetch related entities in a single query:
 | `companies` | `persons`, `opportunities`, `interactions`, `notes`, `listEntries` |
 | `opportunities` | `persons`, `companies`, `interactions` |
 | `lists` | `entries` |
-| `listEntries` | `entity` (dynamically resolves to person/company/opportunity based on entityType) |
+| `listEntries` | `entity`, `persons`, `companies`, `opportunities`, `interactions` |
+
+**Note:** For `listEntries`:
+- `entity` dynamically resolves to person/company/opportunity based on entityType
+- `persons`, `companies`, `opportunities`, `interactions` fetch related entities for each list entry
 
 ### Include Output Format
 
@@ -334,6 +338,7 @@ Unlike `include` (which fetches related entities), `expand` adds computed data d
 | Expansion | Supported Entities | Description |
 |-----------|-------------------|-------------|
 | `interactionDates` | `persons`, `companies`, `listEntries` | Last/next meeting dates, email dates, team members |
+| `unrepliedEmails` | `persons`, `companies`, `opportunities`, `listEntries` | Detect unreplied incoming emails (date, daysSince, subject) |
 
 ### Interaction Dates Output
 
@@ -373,6 +378,28 @@ When using `expand: ["interactionDates"]`, each record includes:
 | Purpose | Fetch related entities | Add computed data to records |
 | Output | Separate `included` section | Merged into each record |
 | Example | `include: ["companies"]` → company records | `expand: ["interactionDates"]` → dates on each record |
+
+### Parameterized Includes for listEntries
+
+When including `interactions` for listEntries, you can customize the fetch with parameters:
+
+```json
+{
+  "from": "listEntries",
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "include": [
+    {"interactions": {"limit": 50, "days": 180}},
+    {"opportunities": {"list": "Pipeline"}}
+  ]
+}
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `limit` | Max interactions per entity | 100 |
+| `days` | Lookback window in days | 90 |
+| `list` | Scope opportunities to specific list name/ID | All |
+| `where` | Filter included entities | None |
 
 ### Example: Pipeline with Interaction Dates
 

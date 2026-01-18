@@ -59,3 +59,4 @@ tmp-scripts/set_primary_email_status.py
 test-output/
 CLAUDE.md
 .sandbox.env
+tests/integration/query_parity_test_data.json

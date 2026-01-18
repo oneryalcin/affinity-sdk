@@ -464,6 +464,98 @@ def check_unreplied_email(
         return None
 
 
+async def async_check_unreplied_email(
+    client: AsyncAffinity,
+    entity_type: str | int,
+    entity_id: int,
+    lookback_days: int = 30,
+) -> dict[str, Any] | None:
+    """Async version: Check for unreplied incoming emails for an entity.
+
+    Supports person, company, and opportunity entity types.
+    Also handles V1 integer entityType formats (0=person, 1=company).
+
+    Args:
+        client: AsyncAffinity client for API calls
+        entity_type: "company", "person", "opportunity" (or V1 integers 0, 1)
+        entity_id: The entity ID
+        lookback_days: Number of days to look back for emails (default 30)
+
+    Returns:
+        Dict with unreplied email info if found, None otherwise.
+        Example: {
+            "date": "2026-01-10T10:00:00Z",
+            "daysSince": 5,
+            "subject": "Following up on our conversation",
+        }
+    """
+    from affinity.models.types import InteractionDirection, InteractionType
+    from affinity.types import CompanyId, OpportunityId, PersonId
+
+    try:
+        now = datetime.now(timezone.utc)
+        start_time = now - timedelta(days=lookback_days)
+
+        # Build entity-specific filter kwargs
+        # Handle V1 (integer) and V2 (string) entityType formats
+        iter_kwargs: dict[str, Any] = {
+            "type": InteractionType.EMAIL,
+            "start_time": start_time,
+            "end_time": now,
+        }
+
+        if entity_type in ("company", 1, "organization"):
+            iter_kwargs["company_id"] = CompanyId(entity_id)
+        elif entity_type in ("person", 0):
+            iter_kwargs["person_id"] = PersonId(entity_id)
+        elif entity_type == "opportunity":
+            iter_kwargs["opportunity_id"] = OpportunityId(entity_id)
+        else:
+            logger.debug(f"Unsupported entity type for unreplied email check: {entity_type}")
+            return None
+
+        # Fetch email interactions for the entity
+        emails = []
+        async for email in client.interactions.iter(**iter_kwargs):
+            emails.append(email)
+
+        if not emails:
+            return None
+
+        # Sort by date descending (most recent first)
+        emails.sort(key=lambda e: e.date, reverse=True)
+
+        # Find the most recent incoming email
+        last_incoming = None
+        for email in emails:
+            if email.direction == InteractionDirection.INCOMING:
+                last_incoming = email
+                break
+
+        if not last_incoming:
+            return None
+
+        # Check if there's an outgoing email after the last incoming
+        has_reply = any(
+            e.direction == InteractionDirection.OUTGOING and e.date > last_incoming.date
+            for e in emails
+        )
+
+        if has_reply:
+            return None
+
+        # Return unreplied email info
+        return {
+            "date": _format_datetime(last_incoming.date),
+            "daysSince": _days_since(last_incoming.date, now),
+            "subject": last_incoming.subject,
+        }
+
+    except Exception as e:
+        logger.warning(f"Failed to check unreplied emails for {entity_type} {entity_id}: {e}")
+        return None
+
+
 def flatten_unreplied_email_for_csv(unreplied: dict[str, Any] | None) -> dict[str, str]:
     """Flatten unreplied email data for CSV columns.
 

@@ -66,6 +66,8 @@ python tests/integration/test_sdk_writes.py --cleanup-orphans
 | `test_sdk_writes.py` | SDK write tests (standalone script) | Creates/deletes test data |
 | `test_sdk_writes_runner.py` | Pytest wrapper for SDK write tests | Creates/deletes test data |
 | `test_cli_writes.py` | CLI write workflow tests | Creates/deletes test data |
+| `test_query_parity_integration.py` | Query-list export parity tests | None (read-only) |
+| `setup_query_parity_data.py` | Setup script for query parity tests | Creates test data once |
 | `conftest.py` | Shared fixtures (sandbox client, API key) | None |
 
 ## What's Tested
@@ -114,6 +116,35 @@ Targeted tests for CLI write workflows that combine multiple operations:
 | `TestCLIOutputFormats` | Verify JSON output structure for create/error |
 
 CLI tests use `CLI_INTEGRATION_TEST_` prefix for test data identification.
+
+### Query Parity Tests (`test_query_parity_integration.py`)
+
+Tests query-list export parity (related: `docs/internal/query-list-export-parity-plan.md`).
+
+**Setup required (one time):**
+```bash
+python tests/integration/setup_query_parity_data.py
+```
+
+**Run tests:**
+```bash
+pytest tests/integration/test_query_parity_integration.py -m integration -v
+```
+
+| Test Class | What's Tested |
+|------------|---------------|
+| `TestQueryListEntriesBasics` | Query by listName/listId, select fields |
+| `TestQueryListEntriesIncludes` | Include persons, companies, interactions |
+| `TestQueryListEntriesExpand` | Expand interactionDates, unrepliedEmails |
+| `TestQueryIncludeAndExpand` | Combining include and expand |
+| `TestQueryListExportParity` | Same counts, IDs, field values as list export |
+| `TestQueryOutputFormats` | JSON and markdown output |
+| `TestQueryDryRun` | Execution plan preview |
+| `TestQueryPersons` | Person queries with include/expand |
+| `TestQueryCompanies` | Company queries with include/expand |
+| `TestQueryEdgeCases` | Empty results, compound filters |
+
+Query parity tests use `QUERY_PARITY_TEST_` prefix for test data identification.
 
 ## Notes
 

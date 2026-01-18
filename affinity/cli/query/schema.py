@@ -33,7 +33,10 @@ class RelationshipDef:
         fetch_strategy: How to fetch the related entities:
             - "entity_method": Call method on entity service
             - "global_service": Call global service with filter
-        method_or_service: Method name for entity_method, service attr for global
+            - "list_entry_indirect": For listEntries - fetch via entity associations
+              (uses method_or_service as target entity type: "persons", "companies", etc.)
+        method_or_service: Method name for entity_method, service attr for global,
+            or target entity type for list_entry_indirect
         filter_field: For global_service: the filter param name
         cardinality: Whether the relationship is one-to-one or one-to-many
         requires_n_plus_1: Does fetching require per-record API calls?
@@ -42,7 +45,7 @@ class RelationshipDef:
     """
 
     target_entity: str
-    fetch_strategy: Literal["entity_method", "global_service"]
+    fetch_strategy: Literal["entity_method", "global_service", "list_entry_indirect"]
     method_or_service: str
     filter_field: str | None = None
     cardinality: Literal["one", "many"] = "many"
@@ -342,6 +345,38 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
                 cardinality="one",
                 requires_n_plus_1=True,
             ),
+            "persons": RelationshipDef(
+                target_entity="persons",
+                fetch_strategy="list_entry_indirect",
+                method_or_service="persons",  # Target entity type for handler
+                cardinality="many",
+                requires_n_plus_1=True,
+                display_fields=("firstName", "lastName", "primaryEmail"),
+            ),
+            "companies": RelationshipDef(
+                target_entity="companies",
+                fetch_strategy="list_entry_indirect",
+                method_or_service="companies",
+                cardinality="many",
+                requires_n_plus_1=True,
+                display_fields=("name", "domain"),
+            ),
+            "opportunities": RelationshipDef(
+                target_entity="opportunities",
+                fetch_strategy="list_entry_indirect",
+                method_or_service="opportunities",
+                cardinality="many",
+                requires_n_plus_1=True,
+                display_fields=("name",),
+            ),
+            "interactions": RelationshipDef(
+                target_entity="interactions",
+                fetch_strategy="list_entry_indirect",
+                method_or_service="interactions",
+                cardinality="many",
+                requires_n_plus_1=True,
+                display_fields=("type", "subject", "happenedAt"),
+            ),
         },
         api_version="v2",
         fetch_strategy=FetchStrategy.REQUIRES_PARENT,
@@ -350,7 +385,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         parent_id_type="ListId",
         parent_method_name="entries",
         # listEntries supports expansion by fetching the underlying entity
-        supported_expansions=frozenset(["interactionDates"]),
+        supported_expansions=frozenset(["interactionDates", "unrepliedEmails"]),
     ),
     "interactions": EntitySchema(
         name="interactions",
@@ -419,6 +454,13 @@ EXPANSION_REGISTRY: dict[str, ExpansionDef] = {
             "with_interaction_persons": True,
         },
         requires_refetch=True,
+    ),
+    "unrepliedEmails": ExpansionDef(
+        name="unrepliedEmails",
+        # NOT listEntries - handled via _expand_list_entries() pattern
+        supported_entities=frozenset(["persons", "companies", "opportunities"]),
+        fetch_params={"check_unreplied": True},
+        requires_refetch=False,  # Uses separate API call, not entity refetch
     ),
 }
 

@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI: Query `include` for `listEntries` now supports `persons`, `companies`, `opportunities`, and `interactions`. Fetches related entities based on list entry entity type (e.g., company entries get associated persons).
+- CLI: Query `expand: ["unrepliedEmails"]` now works with `listEntries`. Checks each list entry's underlying entity for unreplied incoming emails.
+- CLI: Query extended include syntax with parameters:
+  - `{include: {interactions: {limit: 50, days: 180}}}` - Limit and lookback control
+  - `{include: {opportunities: {list: "Pipeline"}}}` - Scope to specific opportunity list
+  - `{include: {persons: {where: {...}}}}` - Filter included entities
+
 ### Fixed
 - CLI: Query TOON format now correctly flattens `fields.*` and `interactionDates` like markdown and CSV formats do. Previously, TOON was missing the `_apply_explicit_flattening()` call, causing nested fields to be truncated and interaction dates to be missing entirely.
+- SDK: Improved error message when adding wrong entity type to a list (e.g., adding a company to a person list). Now provides clear guidance about list type requirements instead of exposing raw API validation error.
 
 ## 0.9.12 - 2026-01-17
 
