@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.10.0 - 2026-01-19
+
 ### Fixed
 - SDK: Removed unsafe `asyncio.create_task()` in `AsyncAffinity.__del__` that could cause tasks to be garbage collected before completion. Users must now use context managers or call `close()` explicitly.
 - SDK: Added thread-safe locking to `SimpleCache` for concurrent access.
