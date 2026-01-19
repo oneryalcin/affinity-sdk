@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+- CLI: Session cache now caches person resolution (by email/name) and company resolution (by domain/name), reducing API calls when running multiple commands in a session pipeline.
+- CLI: Person and company field resolution now uses session cache, avoiding redundant field definition fetches.
+
 ## 0.10.0 - 2026-01-19
 
 ### Fixed

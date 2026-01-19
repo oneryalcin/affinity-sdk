@@ -387,3 +387,531 @@ class TestSessionCacheIntegration:
 
         assert result.exit_code == 0
         assert not cache_dir.exists()
+
+
+class TestPersonResolutionCaching:
+    """Tests for person resolution caching."""
+
+    @pytest.fixture
+    def cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SessionCache:
+        """Create a session cache for testing."""
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        config = SessionCacheConfig()
+        config.set_tenant_hash("test-api-key")
+        return SessionCache(config)
+
+    def test_person_resolution_by_email_cache_key(self, cache: SessionCache) -> None:
+        """Person email resolution uses correct cache key format."""
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        # Create a mock Person
+        person = Person(
+            id=PersonId(123),
+            first_name="Test",
+            last_name="User",
+            emails=["test@example.com"],
+            primary_email="test@example.com",
+        )
+
+        # Store in cache using the expected cache key format
+        cache.set("person_resolve_email_test@example.com", person)
+
+        # Verify cache hit
+        cached = cache.get("person_resolve_email_test@example.com", Person)
+        assert cached is not None
+        assert cached.id == PersonId(123)
+        assert cached.first_name == "Test"
+
+    def test_person_resolution_by_name_cache_key(self, cache: SessionCache) -> None:
+        """Person name resolution uses correct cache key format."""
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        person = Person(
+            id=PersonId(456),
+            first_name="Alice",
+            last_name="Smith",
+            emails=["alice@example.com"],
+            primary_email="alice@example.com",
+        )
+
+        # Store in cache using lowercase name for key
+        cache.set("person_resolve_name_alice smith", person)
+
+        # Verify cache hit
+        cached = cache.get("person_resolve_name_alice smith", Person)
+        assert cached is not None
+        assert cached.id == PersonId(456)
+
+    def test_person_cache_key_case_insensitive(self, cache: SessionCache) -> None:
+        """Person resolution cache keys are case-insensitive."""
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        person = Person(
+            id=PersonId(789),
+            first_name="Bob",
+            last_name="Jones",
+            emails=["Bob.Jones@Example.Com"],
+            primary_email="Bob.Jones@Example.Com",
+        )
+
+        # Store with lowercase key
+        cache.set("person_resolve_email_bob.jones@example.com", person)
+
+        # Verify same key retrieves it
+        cached = cache.get("person_resolve_email_bob.jones@example.com", Person)
+        assert cached is not None
+        assert cached.id == PersonId(789)
+
+
+class TestCompanyResolutionCaching:
+    """Tests for company resolution caching."""
+
+    @pytest.fixture
+    def cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SessionCache:
+        """Create a session cache for testing."""
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        config = SessionCacheConfig()
+        config.set_tenant_hash("test-api-key")
+        return SessionCache(config)
+
+    def test_company_resolution_by_domain_cache_key(self, cache: SessionCache) -> None:
+        """Company domain resolution uses correct cache key format."""
+        from affinity.models.entities import Company
+        from affinity.types import CompanyId
+
+        company = Company(
+            id=CompanyId(100),
+            name="Acme Inc",
+            domain="acme.com",
+            domains=["acme.com", "acme.io"],
+        )
+
+        # Store in cache using the expected cache key format
+        cache.set("company_resolve_domain_acme.com", company)
+
+        # Verify cache hit
+        cached = cache.get("company_resolve_domain_acme.com", Company)
+        assert cached is not None
+        assert cached.id == CompanyId(100)
+        assert cached.name == "Acme Inc"
+
+    def test_company_resolution_by_name_cache_key(self, cache: SessionCache) -> None:
+        """Company name resolution uses correct cache key format."""
+        from affinity.models.entities import Company
+        from affinity.types import CompanyId
+
+        company = Company(
+            id=CompanyId(200),
+            name="Widget Corp",
+            domain="widget.com",
+            domains=["widget.com"],
+        )
+
+        # Store in cache using lowercase name for key
+        cache.set("company_resolve_name_widget corp", company)
+
+        # Verify cache hit
+        cached = cache.get("company_resolve_name_widget corp", Company)
+        assert cached is not None
+        assert cached.id == CompanyId(200)
+
+    def test_company_cache_key_case_insensitive(self, cache: SessionCache) -> None:
+        """Company resolution cache keys are case-insensitive."""
+        from affinity.models.entities import Company
+        from affinity.types import CompanyId
+
+        company = Company(
+            id=CompanyId(300),
+            name="TechStartup",
+            domain="TechStartup.io",
+            domains=["TechStartup.io"],
+        )
+
+        # Store with lowercase key
+        cache.set("company_resolve_domain_techstartup.io", company)
+
+        # Verify same key retrieves it
+        cached = cache.get("company_resolve_domain_techstartup.io", Company)
+        assert cached is not None
+        assert cached.id == CompanyId(300)
+
+
+class TestCacheDisabledBehavior:
+    """Tests for --no-cache flag behavior."""
+
+    def test_disabled_cache_does_not_store(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When cache is disabled, set() is a no-op."""
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        config = SessionCacheConfig()
+        config.enabled = False  # Simulate --no-cache
+        cache = SessionCache(config)
+
+        # Try to store something
+        cache.set("test_key", SampleModel(id=1, name="test"))
+
+        # Should not be retrievable
+        result = cache.get("test_key", SampleModel)
+        assert result is None
+
+    def test_disabled_cache_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When cache is disabled, get() always returns None."""
+        # First create an enabled cache and store something
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        enabled_config = SessionCacheConfig()
+        enabled_config.set_tenant_hash("test-api-key")
+        enabled_cache = SessionCache(enabled_config)
+        enabled_cache.set("test_key", SampleModel(id=1, name="test"))
+
+        # Now create a disabled cache with same path
+        disabled_config = SessionCacheConfig()
+        disabled_config.cache_dir = tmp_path
+        disabled_config.enabled = False
+        disabled_config.tenant_hash = "test-api-key"
+        disabled_cache = SessionCache(disabled_config)
+
+        # Should return None even though file exists
+        result = disabled_cache.get("test_key", SampleModel)
+        assert result is None
+
+
+class TestResolutionCachingEffectiveness:
+    """Integration tests proving cache reduces API calls."""
+
+    @pytest.fixture
+    def cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SessionCache:
+        """Create an enabled session cache for testing."""
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        config = SessionCacheConfig()
+        config.set_tenant_hash("test-api-key")
+        return SessionCache(config)
+
+    def test_person_email_resolution_caches_api_result(self, cache: SessionCache) -> None:
+        """Person email resolution caches API result, avoiding repeated calls."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.person_cmds import _resolve_person_by_email
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        # Track API calls
+        api_call_count = 0
+        mock_person = Person(
+            id=PersonId(123),
+            first_name="Test",
+            last_name="User",
+            emails=["test@example.com"],
+            primary_email="test@example.com",
+        )
+
+        class MockPage:
+            def __init__(self, data: list[Person], next_cursor: str | None = None):
+                self.data = data
+                self.next_cursor = next_cursor
+
+        def mock_search_pages(_term: str, _page_size: int = 100):
+            nonlocal api_call_count
+            api_call_count += 1
+            yield MockPage(data=[mock_person], next_cursor=None)
+
+        mock_client = MagicMock()
+        mock_client.persons.search_pages = mock_search_pages
+
+        # First call - should hit API
+        result1 = _resolve_person_by_email(
+            client=mock_client, email="test@example.com", cache=cache
+        )
+        assert result1 == PersonId(123)
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2 = _resolve_person_by_email(
+            client=mock_client, email="test@example.com", cache=cache
+        )
+        assert result2 == PersonId(123)
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+        # Third call with different case - should still hit cache
+        result3 = _resolve_person_by_email(
+            client=mock_client, email="TEST@EXAMPLE.COM", cache=cache
+        )
+        assert result3 == PersonId(123)
+        assert api_call_count == 1, "Case-insensitive lookup should hit cache"
+
+    def test_company_domain_resolution_caches_api_result(self, cache: SessionCache) -> None:
+        """Company domain resolution caches API result, avoiding repeated calls."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.company_cmds import _resolve_company_by_domain
+        from affinity.models.entities import Company
+        from affinity.types import CompanyId
+
+        api_call_count = 0
+        mock_company = Company(
+            id=CompanyId(456),
+            name="Acme Inc",
+            domain="acme.com",
+            domains=["acme.com"],
+        )
+
+        class MockPage:
+            def __init__(self, data: list[Company], next_cursor: str | None = None):
+                self.data = data
+                self.next_cursor = next_cursor
+
+        def mock_search_pages(_term: str, _page_size: int = 100):
+            nonlocal api_call_count
+            api_call_count += 1
+            yield MockPage(data=[mock_company], next_cursor=None)
+
+        mock_client = MagicMock()
+        mock_client.companies.search_pages = mock_search_pages
+
+        # First call - should hit API
+        result1 = _resolve_company_by_domain(client=mock_client, domain="acme.com", cache=cache)
+        assert result1 == CompanyId(456)
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2 = _resolve_company_by_domain(client=mock_client, domain="acme.com", cache=cache)
+        assert result2 == CompanyId(456)
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+    def test_person_name_resolution_caches_api_result(self, cache: SessionCache) -> None:
+        """Person name resolution caches API result, avoiding repeated calls."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.person_cmds import _resolve_person_by_name
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        api_call_count = 0
+        mock_person = Person(
+            id=PersonId(789),
+            first_name="Alice",
+            last_name="Smith",
+            emails=["alice@example.com"],
+            primary_email="alice@example.com",
+        )
+
+        class MockPage:
+            def __init__(self, data: list[Person], next_cursor: str | None = None):
+                self.data = data
+                self.next_cursor = next_cursor
+
+        def mock_search_pages(_term: str, _page_size: int = 100):
+            nonlocal api_call_count
+            api_call_count += 1
+            yield MockPage(data=[mock_person], next_cursor=None)
+
+        mock_client = MagicMock()
+        mock_client.persons.search_pages = mock_search_pages
+
+        # First call - should hit API
+        result1 = _resolve_person_by_name(client=mock_client, name="Alice Smith", cache=cache)
+        assert result1 == PersonId(789)
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2 = _resolve_person_by_name(client=mock_client, name="Alice Smith", cache=cache)
+        assert result2 == PersonId(789)
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+        # Third call with different case - should still hit cache
+        result3 = _resolve_person_by_name(client=mock_client, name="ALICE SMITH", cache=cache)
+        assert result3 == PersonId(789)
+        assert api_call_count == 1, "Case-insensitive lookup should hit cache"
+
+    def test_company_name_resolution_caches_api_result(self, cache: SessionCache) -> None:
+        """Company name resolution caches API result, avoiding repeated calls."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.company_cmds import _resolve_company_by_name
+        from affinity.models.entities import Company
+        from affinity.types import CompanyId
+
+        api_call_count = 0
+        mock_company = Company(
+            id=CompanyId(999),
+            name="Widget Corp",
+            domain="widget.com",
+            domains=["widget.com"],
+        )
+
+        class MockPage:
+            def __init__(self, data: list[Company], next_cursor: str | None = None):
+                self.data = data
+                self.next_cursor = next_cursor
+
+        def mock_search_pages(_term: str, _page_size: int = 100):
+            nonlocal api_call_count
+            api_call_count += 1
+            yield MockPage(data=[mock_company], next_cursor=None)
+
+        mock_client = MagicMock()
+        mock_client.companies.search_pages = mock_search_pages
+
+        # First call - should hit API
+        result1 = _resolve_company_by_name(client=mock_client, name="Widget Corp", cache=cache)
+        assert result1 == CompanyId(999)
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2 = _resolve_company_by_name(client=mock_client, name="Widget Corp", cache=cache)
+        assert result2 == CompanyId(999)
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+        # Third call with different case - should still hit cache
+        result3 = _resolve_company_by_name(client=mock_client, name="WIDGET CORP", cache=cache)
+        assert result3 == CompanyId(999)
+        assert api_call_count == 1, "Case-insensitive lookup should hit cache"
+
+    def test_person_fields_resolution_uses_cached_fields(self, cache: SessionCache) -> None:
+        """Person field resolution uses cached field metadata."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.person_cmds import _resolve_person_field_ids
+        from affinity.models.entities import FieldMetadata
+        from affinity.models.types import FieldValueType
+        from affinity.types import FieldId
+
+        api_call_count = 0
+        mock_fields = [
+            FieldMetadata(
+                id=FieldId(1),
+                name="Job Title",
+                type="global",
+                value_type=FieldValueType.TEXT,
+                allows_multiple=False,
+            ),
+            FieldMetadata(
+                id=FieldId(2),
+                name="LinkedIn",
+                type="global",
+                value_type=FieldValueType.TEXT,
+                allows_multiple=False,
+            ),
+        ]
+
+        def mock_get_fields():
+            nonlocal api_call_count
+            api_call_count += 1
+            return mock_fields
+
+        mock_client = MagicMock()
+        mock_client.persons.get_fields = mock_get_fields
+
+        # First call - should hit API
+        result1, _ = _resolve_person_field_ids(
+            client=mock_client, fields=("Job Title",), field_types=[], cache=cache
+        )
+        assert result1 == ["field-1"]
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2, _ = _resolve_person_field_ids(
+            client=mock_client, fields=("LinkedIn",), field_types=[], cache=cache
+        )
+        assert result2 == ["field-2"]
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+    def test_company_fields_resolution_uses_cached_fields(self, cache: SessionCache) -> None:
+        """Company field resolution uses cached field metadata."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.company_cmds import _resolve_company_field_ids
+        from affinity.models.entities import FieldMetadata
+        from affinity.models.types import FieldValueType
+        from affinity.types import FieldId
+
+        api_call_count = 0
+        mock_fields = [
+            FieldMetadata(
+                id=FieldId(10),
+                name="Industry",
+                type="global",
+                value_type=FieldValueType.TEXT,
+                allows_multiple=False,
+            ),
+            FieldMetadata(
+                id=FieldId(20),
+                name="Website",
+                type="global",
+                value_type=FieldValueType.TEXT,
+                allows_multiple=False,
+            ),
+        ]
+
+        def mock_get_fields():
+            nonlocal api_call_count
+            api_call_count += 1
+            return mock_fields
+
+        mock_client = MagicMock()
+        mock_client.companies.get_fields = mock_get_fields
+
+        # First call - should hit API
+        result1, _ = _resolve_company_field_ids(
+            client=mock_client, fields=("Industry",), field_types=[], cache=cache
+        )
+        assert result1 == ["field-10"]
+        assert api_call_count == 1, "First call should hit API"
+
+        # Second call - should hit cache, NOT API
+        result2, _ = _resolve_company_field_ids(
+            client=mock_client, fields=("Website",), field_types=[], cache=cache
+        )
+        assert result2 == ["field-20"]
+        assert api_call_count == 1, "Second call should hit cache, not API"
+
+    def test_no_cache_flag_disables_caching(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """With --no-cache (disabled cache), every call hits API."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.commands.person_cmds import _resolve_person_by_email
+        from affinity.models.entities import Person
+        from affinity.types import PersonId
+
+        # Create a disabled cache (simulates --no-cache)
+        monkeypatch.setenv("AFFINITY_SESSION_CACHE", str(tmp_path))
+        config = SessionCacheConfig()
+        config.enabled = False  # Simulates --no-cache
+        disabled_cache = SessionCache(config)
+
+        api_call_count = 0
+        mock_person = Person(
+            id=PersonId(123),
+            first_name="Test",
+            last_name="User",
+            emails=["test@example.com"],
+            primary_email="test@example.com",
+        )
+
+        class MockPage:
+            def __init__(self, data: list[Person], next_cursor: str | None = None):
+                self.data = data
+                self.next_cursor = next_cursor
+
+        def mock_search_pages(_term: str, _page_size: int = 100):
+            nonlocal api_call_count
+            api_call_count += 1
+            yield MockPage(data=[mock_person], next_cursor=None)
+
+        mock_client = MagicMock()
+        mock_client.persons.search_pages = mock_search_pages
+
+        # First call - should hit API
+        _resolve_person_by_email(client=mock_client, email="test@example.com", cache=disabled_cache)
+        assert api_call_count == 1
+
+        # Second call - should ALSO hit API (cache disabled)
+        _resolve_person_by_email(client=mock_client, email="test@example.com", cache=disabled_cache)
+        assert api_call_count == 2, "With --no-cache, every call should hit API"

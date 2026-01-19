@@ -5,7 +5,10 @@ import sys
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from ..session_cache import SessionCache
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
@@ -21,7 +24,7 @@ from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
-from ..resolve import resolve_list_selector
+from ..resolve import get_person_fields, resolve_list_selector
 from ..resolvers import ResolvedEntity
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
@@ -519,7 +522,9 @@ def _strip_wrapping_quotes(value: str) -> str:
     return value
 
 
-def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, dict[str, Any]]:
+def _resolve_person_selector(
+    *, client: Any, selector: str, cache: SessionCache | None = None
+) -> tuple[PersonId, dict[str, Any]]:
     raw = selector.strip()
     if raw.isdigit():
         person_id = PersonId(int(raw))
@@ -553,7 +558,7 @@ def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, d
     lowered = raw.lower()
     if lowered.startswith("email:"):
         email = _strip_wrapping_quotes(raw.split(":", 1)[1])
-        person_id = _resolve_person_by_email(client=client, email=email)
+        person_id = _resolve_person_by_email(client=client, email=email, cache=cache)
         resolved = ResolvedEntity(
             input=selector,
             entity_id=int(person_id),
@@ -564,7 +569,7 @@ def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, d
 
     if lowered.startswith("name:"):
         name = _strip_wrapping_quotes(raw.split(":", 1)[1])
-        person_id = _resolve_person_by_name(client=client, name=name)
+        person_id = _resolve_person_by_name(client=client, name=name, cache=cache)
         resolved = ResolvedEntity(
             input=selector,
             entity_id=int(person_id),
@@ -582,10 +587,20 @@ def _resolve_person_selector(*, client: Any, selector: str) -> tuple[PersonId, d
     )
 
 
-def _resolve_person_by_email(*, client: Any, email: str) -> PersonId:
+def _resolve_person_by_email(
+    *, client: Any, email: str, cache: SessionCache | None = None
+) -> PersonId:
     email = email.strip()
     if not email:
         raise CLIError("Email cannot be empty.", exit_code=2, error_type="usage_error")
+
+    cache_key = f"person_resolve_email_{email.lower()}"
+
+    # Check cache first
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, Person)
+        if cached is not None:
+            return PersonId(int(cached.id))
 
     matches: list[Person] = []
     email_lower = email.lower()
@@ -627,13 +642,28 @@ def _resolve_person_by_email(*, client: Any, email: str) -> PersonId:
                 ],
             },
         )
+
+    # Cache the result after successful resolution
+    if cache and cache.enabled:
+        cache.set(cache_key, matches[0])
+
     return PersonId(int(matches[0].id))
 
 
-def _resolve_person_by_name(*, client: Any, name: str) -> PersonId:
+def _resolve_person_by_name(
+    *, client: Any, name: str, cache: SessionCache | None = None
+) -> PersonId:
     name = name.strip()
     if not name:
         raise CLIError("Name cannot be empty.", exit_code=2, error_type="usage_error")
+
+    cache_key = f"person_resolve_name_{name.lower()}"
+
+    # Check cache first
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, Person)
+        if cached is not None:
+            return PersonId(int(cached.id))
 
     matches: list[Person] = []
     name_lower = name.lower()
@@ -667,6 +697,11 @@ def _resolve_person_by_name(*, client: Any, name: str) -> PersonId:
                 ],
             },
         )
+
+    # Cache the result after successful resolution
+    if cache and cache.enabled:
+        cache.set(cache_key, matches[0])
+
     return PersonId(int(matches[0].id))
 
 
@@ -675,8 +710,9 @@ def _resolve_person_field_ids(
     client: Any,
     fields: tuple[str, ...],
     field_types: list[str],
+    cache: SessionCache | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
-    meta = client.persons.get_fields()
+    meta = get_person_fields(client=client, cache=cache)
     field_by_id: dict[str, Any] = {str(f.id): f for f in meta}
     by_name: dict[str, list[str]] = {}
     for f in meta:
@@ -899,7 +935,9 @@ def person_get(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         cache = ctx.session_cache
-        person_id, resolved = _resolve_person_selector(client=client, selector=person_selector)
+        person_id, resolved = _resolve_person_selector(
+            client=client, selector=person_selector, cache=cache
+        )
 
         expand_set = {e.strip() for e in expand if e and e.strip()}
 
@@ -1023,6 +1061,7 @@ def person_get(
                     client=client,
                     fields=fields,
                     field_types=requested_types,
+                    cache=cache,
                 )
                 if selected_field_ids:
                     params["fieldIds"] = selected_field_ids

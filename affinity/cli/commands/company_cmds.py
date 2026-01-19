@@ -5,7 +5,10 @@ import sys
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from ..session_cache import SessionCache
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
@@ -21,7 +24,7 @@ from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
 from ..options import output_options
 from ..progress import ProgressManager, ProgressSettings
-from ..resolve import resolve_list_selector
+from ..resolve import get_company_fields, resolve_list_selector
 from ..resolvers import ResolvedEntity
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
@@ -637,7 +640,9 @@ def _strip_wrapping_quotes(value: str) -> str:
     return value
 
 
-def _resolve_company_selector(*, client: Any, selector: str) -> tuple[CompanyId, dict[str, Any]]:
+def _resolve_company_selector(
+    *, client: Any, selector: str, cache: SessionCache | None = None
+) -> tuple[CompanyId, dict[str, Any]]:
     raw = selector.strip()
     if raw.isdigit():
         company_id = CompanyId(int(raw))
@@ -671,7 +676,7 @@ def _resolve_company_selector(*, client: Any, selector: str) -> tuple[CompanyId,
     lowered = raw.lower()
     if lowered.startswith("domain:"):
         domain = _strip_wrapping_quotes(raw.split(":", 1)[1])
-        company_id = _resolve_company_by_domain(client=client, domain=domain)
+        company_id = _resolve_company_by_domain(client=client, domain=domain, cache=cache)
         resolved = ResolvedEntity(
             input=selector,
             entity_id=int(company_id),
@@ -682,7 +687,7 @@ def _resolve_company_selector(*, client: Any, selector: str) -> tuple[CompanyId,
 
     if lowered.startswith("name:"):
         name = _strip_wrapping_quotes(raw.split(":", 1)[1])
-        company_id = _resolve_company_by_name(client=client, name=name)
+        company_id = _resolve_company_by_name(client=client, name=name, cache=cache)
         resolved = ResolvedEntity(
             input=selector,
             entity_id=int(company_id),
@@ -700,10 +705,20 @@ def _resolve_company_selector(*, client: Any, selector: str) -> tuple[CompanyId,
     )
 
 
-def _resolve_company_by_domain(*, client: Any, domain: str) -> CompanyId:
+def _resolve_company_by_domain(
+    *, client: Any, domain: str, cache: SessionCache | None = None
+) -> CompanyId:
     domain = domain.strip()
     if not domain:
         raise CLIError("Domain cannot be empty.", exit_code=2, error_type="usage_error")
+
+    cache_key = f"company_resolve_domain_{domain.lower()}"
+
+    # Check cache first
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, Company)
+        if cached is not None:
+            return CompanyId(int(cached.id))
 
     matches: list[Company] = []
     domain_lower = domain.lower()
@@ -742,13 +757,28 @@ def _resolve_company_by_domain(*, client: Any, domain: str) -> CompanyId:
                 ],
             },
         )
+
+    # Cache the result after successful resolution
+    if cache and cache.enabled:
+        cache.set(cache_key, matches[0])
+
     return CompanyId(int(matches[0].id))
 
 
-def _resolve_company_by_name(*, client: Any, name: str) -> CompanyId:
+def _resolve_company_by_name(
+    *, client: Any, name: str, cache: SessionCache | None = None
+) -> CompanyId:
     name = name.strip()
     if not name:
         raise CLIError("Name cannot be empty.", exit_code=2, error_type="usage_error")
+
+    cache_key = f"company_resolve_name_{name.lower()}"
+
+    # Check cache first
+    if cache and cache.enabled:
+        cached = cache.get(cache_key, Company)
+        if cached is not None:
+            return CompanyId(int(cached.id))
 
     matches: list[Company] = []
     name_lower = name.lower()
@@ -783,6 +813,11 @@ def _resolve_company_by_name(*, client: Any, name: str) -> CompanyId:
                 ],
             },
         )
+
+    # Cache the result after successful resolution
+    if cache and cache.enabled:
+        cache.set(cache_key, matches[0])
+
     return CompanyId(int(matches[0].id))
 
 
@@ -791,8 +826,9 @@ def _resolve_company_field_ids(
     client: Any,
     fields: tuple[str, ...],
     field_types: list[str],
+    cache: SessionCache | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
-    meta = client.companies.get_fields()
+    meta = get_company_fields(client=client, cache=cache)
     field_by_id: dict[str, Any] = {str(f.id): f for f in meta}
     by_name: dict[str, list[str]] = {}
     for f in meta:
@@ -1186,7 +1222,9 @@ def company_get(
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
         cache = ctx.session_cache
-        company_id, resolved = _resolve_company_selector(client=client, selector=company_selector)
+        company_id, resolved = _resolve_company_selector(
+            client=client, selector=company_selector, cache=cache
+        )
 
         # Build CommandContext for company get
         ctx_modifiers: dict[str, object] = {}
@@ -1351,6 +1389,7 @@ def company_get(
                     client=client,
                     fields=fields,
                     field_types=requested_types,
+                    cache=cache,
                 )
             else:
                 selection_resolved = {"fieldTypes": requested_types}
