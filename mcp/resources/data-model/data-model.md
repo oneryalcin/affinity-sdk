@@ -282,6 +282,16 @@ from toon_format import decode
 data = decode(toon_string)  # Returns proper Python dict/list
 ```
 
+**For multi-step processing, save to file first** (don't embed TOON output inline in scripts):
+```python
+from toon_format import decode
+
+# Save MCP tool result to file, then process
+with open('/tmp/data.toon') as f:
+    data = decode(f.read())
+# Now iterate on analysis without re-querying
+```
+
 **Why this matters:**
 - TOON looks like tabular/CSV data but has specific parsing rules
 - Manual parsing with string splitting or regex is fragile and error-prone
