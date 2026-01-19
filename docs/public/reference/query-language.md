@@ -793,3 +793,11 @@ The dry-run output shows:
 - Estimated API calls (or "UNBOUNDED" for unbounded quantifier queries)
 - Whether `--max-records` is required
 - Lazy loading optimization status
+
+## Design Notes
+
+### Why a Custom Query Syntax?
+
+You might wonder why we didn't use SQL, Pandas, or JMESPath. Our query engine needs to optimize API calls—partitioning filters into local evaluations vs. those requiring relationship fetches, estimating costs before execution, and supporting entity-specific constraints (like `listEntries` requiring a list context). These capabilities don't map cleanly to general-purpose query languages.
+
+For post-processing, you can pipe JSON output to `jq` or load results into Pandas/DuckDB for further analysis.
