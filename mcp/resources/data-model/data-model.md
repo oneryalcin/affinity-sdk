@@ -156,10 +156,11 @@ The `--with-interaction-dates` flag returns:
 - `lastEmail.date`, `lastEmail.daysSince`
 - `lastInteraction.date`, `lastInteraction.daysSince`
 
-### Find unreplied emails
+### Find unreplied messages
 ```bash
-list export Dealflow --check-unreplied-emails              # Find unreplied incoming emails
-list export Dealflow --check-unreplied-emails --unreplied-lookback-days 60  # Custom lookback
+list export Dealflow --check-unreplied                     # Find unreplied incoming messages (email/chat)
+list export Dealflow --check-unreplied --unreplied-types email  # Email only
+list export Dealflow --check-unreplied --unreplied-lookback-days 60  # Custom lookback
 ```
 
 ### Search companies globally

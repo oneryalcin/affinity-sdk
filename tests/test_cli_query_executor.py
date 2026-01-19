@@ -373,7 +373,7 @@ class TestSelectProjection:
         query = Query(
             from_="listEntries",
             select=["id", "fields.Status"],
-            expand=["interactionDates", "unrepliedEmails"],
+            expand=["interactionDates", "unreplied"],
         )
         ctx = ExecutionContext(query=query)
         ctx.records = [
@@ -382,7 +382,7 @@ class TestSelectProjection:
                 "entityId": 100,
                 "fields": {"Status": "New", "Owner": "Jane"},
                 "interactionDates": {"lastEmail": {"date": "2026-01-15"}},
-                "unrepliedEmails": [{"subject": "Follow up"}],
+                "unreplied": [{"subject": "Follow up"}],
             }
         ]
 
@@ -394,7 +394,7 @@ class TestSelectProjection:
                 "id": 1,
                 "fields": {"Status": "New"},
                 "interactionDates": {"lastEmail": {"date": "2026-01-15"}},
-                "unrepliedEmails": [{"subject": "Follow up"}],
+                "unreplied": [{"subject": "Follow up"}],
             }
         ]
 

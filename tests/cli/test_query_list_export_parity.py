@@ -10,7 +10,7 @@ Parity features tested:
 - list export --expand companies → query with include: ["companies"]
 - list export --expand opportunities → query with include: ["opportunities"]
 - list export --expand interactions → query with include: ["interactions"]
-- list export --check-unreplied-emails → query with expand: ["unrepliedEmails"]
+- list export --check-unreplied → query with expand: ["unreplied"]
 """
 
 from __future__ import annotations
@@ -87,20 +87,20 @@ class TestQueryListExportParitySyntax:
         assert "interactions" in query.include
 
     @pytest.mark.req("QUERY-LIST-EXPORT-PARITY-001")
-    def test_unreplied_emails_mapping(self) -> None:
-        """list export --check-unreplied-emails maps to query expand: ['unrepliedEmails']."""
+    def test_unreplied_mapping(self) -> None:
+        """list export --check-unreplied maps to query expand: ['unreplied']."""
         from affinity.cli.query.models import Query
 
         query = Query.model_validate(
             {
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
-                "expand": ["unrepliedEmails"],
+                "expand": ["unreplied"],
             }
         )
 
         assert query.expand is not None
-        assert "unrepliedEmails" in query.expand
+        assert "unreplied" in query.expand
 
 
 class TestQueryListExportParityParameters:
@@ -206,12 +206,12 @@ class TestQueryListExportParitySchema:
         assert "interactions" in relationships
 
     @pytest.mark.req("QUERY-LIST-EXPORT-PARITY-003")
-    def test_list_entries_has_unreplied_emails_expansion(self) -> None:
-        """listEntries schema supports unrepliedEmails expansion."""
+    def test_list_entries_has_unreplied_expansion(self) -> None:
+        """listEntries schema supports unreplied expansion."""
         from affinity.cli.query.schema import SCHEMA_REGISTRY
 
         list_entries = SCHEMA_REGISTRY["listEntries"]
-        assert "unrepliedEmails" in list_entries.supported_expansions
+        assert "unreplied" in list_entries.supported_expansions
 
     @pytest.mark.req("QUERY-LIST-EXPORT-PARITY-003")
     def test_all_relationships_use_list_entry_indirect(self) -> None:
@@ -285,17 +285,17 @@ class TestMigrationGuide:
         assert query.include is not None
 
     @pytest.mark.req("QUERY-LIST-EXPORT-PARITY-005")
-    def test_migration_check_unreplied_emails(self) -> None:
-        """Document migration: list export --check-unreplied-emails."""
+    def test_migration_check_unreplied(self) -> None:
+        """Document migration: list export --check-unreplied."""
         from affinity.cli.query.models import Query
 
-        # OLD: list export Dealflow --check-unreplied-emails
+        # OLD: list export Dealflow --check-unreplied
         # NEW:
         query = Query.model_validate(
             {
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
-                "expand": ["unrepliedEmails"],
+                "expand": ["unreplied"],
             }
         )
         assert query.expand is not None
@@ -305,14 +305,14 @@ class TestMigrationGuide:
         """Document migration: list export with multiple expansions."""
         from affinity.cli.query.models import Query
 
-        # OLD: list export Dealflow --expand persons --expand companies --check-unreplied-emails
+        # OLD: list export Dealflow --expand persons --expand companies --check-unreplied
         # NEW:
         query = Query.model_validate(
             {
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
                 "include": ["persons", "companies"],
-                "expand": ["unrepliedEmails"],
+                "expand": ["unreplied"],
             }
         )
         assert query.include is not None

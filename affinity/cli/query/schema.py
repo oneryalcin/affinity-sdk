@@ -385,7 +385,7 @@ SCHEMA_REGISTRY: dict[str, EntitySchema] = {
         parent_id_type="ListId",
         parent_method_name="entries",
         # listEntries supports expansion by fetching the underlying entity
-        supported_expansions=frozenset(["interactionDates", "unrepliedEmails"]),
+        supported_expansions=frozenset(["interactionDates", "unreplied"]),
     ),
     "interactions": EntitySchema(
         name="interactions",
@@ -455,8 +455,8 @@ EXPANSION_REGISTRY: dict[str, ExpansionDef] = {
         },
         requires_refetch=True,
     ),
-    "unrepliedEmails": ExpansionDef(
-        name="unrepliedEmails",
+    "unreplied": ExpansionDef(
+        name="unreplied",
         # NOT listEntries - handled via _expand_list_entries() pattern
         supported_entities=frozenset(["persons", "companies", "opportunities"]),
         fetch_params={"check_unreplied": True},

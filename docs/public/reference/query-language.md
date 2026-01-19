@@ -594,7 +594,7 @@ Unlike `include` (which fetches separate related entities), `expand` enriches re
 | Expansion | Description | Supported Entities |
 |-----------|-------------|-------------------|
 | `interactionDates` | Last/next meeting, email dates, team members | `persons`, `companies`, `listEntries` |
-| `unrepliedEmails` | Detect unreplied incoming emails (date, daysSince, subject) | `persons`, `companies`, `opportunities`, `listEntries` |
+| `unreplied` | Detect unreplied incoming messages - email/chat (date, daysSince, type, subject) | `persons`, `companies`, `opportunities`, `listEntries` |
 
 ### Expand Syntax
 

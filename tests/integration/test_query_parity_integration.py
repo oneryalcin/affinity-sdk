@@ -3,7 +3,7 @@ Query-List Export Parity Integration Tests.
 
 These tests run against a live Affinity sandbox to verify:
 1. Query relationships (persons, companies, opportunities, interactions)
-2. Query expansions (interactionDates, unrepliedEmails)
+2. Query expansions (interactionDates, unreplied)
 3. Parity between query and list export outputs
 
 Tests are read-only and safe to run repeatedly.
@@ -401,14 +401,14 @@ class TestQueryListEntriesExpand:
         # These may be null if no interactions exist
 
     @pytest.mark.req("QUERY-PARITY-INTEGRATION-003")
-    def test_query_expand_unreplied_emails(
+    def test_query_expand_unreplied(
         self,
         _sandbox_client: Affinity,
         sandbox_api_key: str,
         cli_runner: CliRunner,
         test_data: dict[str, Any],
     ) -> None:
-        """Query listEntries with expand unrepliedEmails adds email status."""
+        """Query listEntries with expand unreplied adds email status."""
         list_name = test_data["list_name"]
 
         result = run_query(
@@ -417,13 +417,13 @@ class TestQueryListEntriesExpand:
             {
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": list_name},
-                "expand": ["unrepliedEmails"],
+                "expand": ["unreplied"],
                 "limit": 3,
             },
         )
 
         assert "data" in result
-        # unrepliedEmails field should be present (may be null)
+        # unreplied field should be present (may be null)
         # The expansion merges directly into records
 
     @pytest.mark.req("QUERY-PARITY-INTEGRATION-003")
@@ -443,7 +443,7 @@ class TestQueryListEntriesExpand:
             {
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": list_name},
-                "expand": ["interactionDates", "unrepliedEmails"],
+                "expand": ["interactionDates", "unreplied"],
                 "limit": 3,
             },
         )
@@ -504,7 +504,7 @@ class TestQueryIncludeAndExpand:
                 "from": "listEntries",
                 "where": {"path": "listName", "op": "eq", "value": list_name},
                 "include": ["persons", "companies", "opportunities", "interactions"],
-                "expand": ["interactionDates", "unrepliedEmails"],
+                "expand": ["interactionDates", "unreplied"],
                 "select": ["listEntryId", "entityId", "entityName", "entityType", "fields.*"],
                 "limit": 10,
             },

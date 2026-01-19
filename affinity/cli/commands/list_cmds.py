@@ -15,7 +15,7 @@ from affinity.filters import FilterExpression
 from affinity.filters import parse as parse_filter
 from affinity.models.entities import FieldMetadata, ListCreate, ListEntryWithEntity
 from affinity.models.pagination import FilterStats
-from affinity.models.types import ListType
+from affinity.models.types import InteractionType, ListType
 from affinity.types import (
     AnyFieldId,
     CompanyId,
@@ -62,6 +62,42 @@ def _parse_list_type(value: str | None) -> ListType | None:
     if value in {"opportunity", "opp"}:
         return ListType.OPPORTUNITY
     raise CLIError(f"Unknown list type: {value}", exit_code=2, error_type="usage_error")
+
+
+def _parse_unreplied_types(types_str: str) -> list[InteractionType]:
+    """Parse comma-separated unreplied type string into InteractionType list.
+
+    Args:
+        types_str: Comma-separated types (e.g., "email,chat" or "all")
+
+    Returns:
+        List of InteractionType values to check
+
+    Raises:
+        CLIError: If invalid types are specified
+    """
+    types_list = [t.strip().lower() for t in types_str.split(",") if t.strip()]
+
+    # Handle "all" shorthand
+    if "all" in types_list:
+        return [InteractionType.EMAIL, InteractionType.CHAT_MESSAGE]
+
+    valid_types = {"email", "chat"}
+    invalid = set(types_list) - valid_types
+    if invalid:
+        raise CLIError(
+            f"Invalid unreplied types: {invalid}. Supported: email, chat, all.",
+            exit_code=2,
+            error_type="usage_error",
+            hint="Meetings and calls don't have direction, so 'unreplied' doesn't apply.",
+        )
+
+    result: list[InteractionType] = []
+    if "email" in types_list:
+        result.append(InteractionType.EMAIL)
+    if "chat" in types_list:
+        result.append(InteractionType.CHAT_MESSAGE)
+    return result
 
 
 @category("read")
@@ -456,13 +492,20 @@ ExpandOnError = Literal["raise", "skip"]
     default=None,
     help="Scope --expand opportunities to a specific list (id or name).",
 )
-# Phase 2 enhancement: --check-unreplied-emails
+# Phase 2 enhancement: --check-unreplied (generalized from email-only)
 @click.option(
-    "--check-unreplied-emails",
-    "check_unreplied_emails",
+    "--check-unreplied",
+    "check_unreplied",
     is_flag=True,
-    help="Check for unreplied incoming emails (adds API call per entry). "
-    "Use with --expand interactions to include both.",
+    help="Check for unreplied incoming messages (email/chat). Adds API call per entry.",
+)
+@click.option(
+    "--unreplied-types",
+    "unreplied_types",
+    type=str,
+    default="email,chat",
+    show_default=True,
+    help="Comma-separated interaction types to check: email, chat, all (shorthand for both).",
 )
 @click.option(
     "--unreplied-lookback-days",
@@ -470,7 +513,7 @@ ExpandOnError = Literal["raise", "skip"]
     type=int,
     default=30,
     show_default=True,
-    help="Days to look back for unreplied email detection.",
+    help="Days to look back for unreplied message detection.",
 )
 @output_options
 @click.pass_obj
@@ -501,8 +544,9 @@ def list_export(
     # Phase 5 options
     expand_filter: str | None,
     expand_opps_list: str | None,
-    # Phase 2 enhancement: unreplied emails
-    check_unreplied_emails: bool,
+    # Phase 2 enhancement: unreplied messages (email/chat)
+    check_unreplied: bool,
+    unreplied_types: str,
     unreplied_lookback_days: int,
 ) -> None:
     """
@@ -569,6 +613,11 @@ def list_export(
                 error_type="usage_error",
                 hint="Use --expand persons/companies/opportunities to expand entity associations.",
             )
+
+        # Parse and validate --unreplied-types
+        parsed_unreplied_types: list[InteractionType] | None = None
+        if check_unreplied:
+            parsed_unreplied_types = _parse_unreplied_types(unreplied_types)
 
         # Validate --expand-opportunities-list requires --expand opportunities (Phase 5)
         if expand_opps_list and "opportunities" not in expand_set:
@@ -970,14 +1019,14 @@ def list_export(
                 ]
 
                 # Add expansion columns if needed
-                if want_expand or check_unreplied_emails:
+                if want_expand or check_unreplied:
                     header = _expand_csv_headers(
                         base_header,
                         expand_set,
                         csv_mode,
                         expand_fields=parsed_expand_fields,
                         header_mode=csv_header,
-                        check_unreplied_emails=check_unreplied_emails,
+                        check_unreplied=check_unreplied,
                     )
                 else:
                     header = base_header
@@ -1055,7 +1104,7 @@ def list_export(
                     ):
                         next_cursor = page_next_cursor
 
-                        if not want_expand and not check_unreplied_emails:
+                        if not want_expand and not check_unreplied:
                             # No expansion and no unreplied email check - yield row as-is
                             rows_written += 1
                             if progress is not None and task_id is not None:
@@ -1107,7 +1156,8 @@ def list_export(
                             field_id_to_display=field_id_to_display,
                             prefix_fields=(csv_mode == "flat"),
                             person_name_cache=person_name_cache,
-                            check_unreplied_emails=check_unreplied_emails,
+                            check_unreplied=check_unreplied,
+                            unreplied_types=parsed_unreplied_types,
                             unreplied_lookback_days=unreplied_lookback_days,
                         )
 
@@ -1121,7 +1171,7 @@ def list_export(
                             companies,
                             opportunities,
                             interactions_data,
-                            unreplied_email_data,
+                            unreplied_data,
                         ) = result
                         csv_entries_processed += 1
                         csv_associations_fetched["persons"] += len(persons)
@@ -1170,15 +1220,13 @@ def list_export(
 
                             # Prepare unreplied email columns (added to every row)
                             unreplied_cols: dict[str, str] = {}
-                            if check_unreplied_emails:
+                            if check_unreplied:
                                 from affinity.cli.interaction_utils import (
-                                    UNREPLIED_EMAIL_CSV_COLUMNS,
-                                    flatten_unreplied_email_for_csv,
+                                    UNREPLIED_CSV_COLUMNS,
+                                    flatten_unreplied_for_csv,
                                 )
 
-                                unreplied_cols = flatten_unreplied_email_for_csv(
-                                    unreplied_email_data
-                                )
+                                unreplied_cols = flatten_unreplied_for_csv(unreplied_data)
 
                             def _add_interaction_cols(
                                 row_dict: dict[str, Any],
@@ -1194,8 +1242,8 @@ def list_export(
                                 cols: dict[str, str] = unreplied_cols,
                             ) -> None:
                                 """Add unreplied email columns to an expanded row."""
-                                if check_unreplied_emails:
-                                    for col in UNREPLIED_EMAIL_CSV_COLUMNS:
+                                if check_unreplied:
+                                    for col in UNREPLIED_CSV_COLUMNS:
                                         row_dict[col] = cols.get(col, "")
 
                             # Emit person rows
@@ -1307,13 +1355,11 @@ def list_export(
                                     json.dumps(interactions_data) if interactions_data else "{}"
                                 )
                                 expanded_row["_expand_interactions"] = interactions_json
-                            if check_unreplied_emails:
+                            if check_unreplied:
                                 unreplied_json = (
-                                    json.dumps(unreplied_email_data)
-                                    if unreplied_email_data
-                                    else "null"
+                                    json.dumps(unreplied_data) if unreplied_data else "null"
                                 )
-                                expanded_row["_expand_unreplied_email"] = unreplied_json
+                                expanded_row["_expand_unreplied"] = unreplied_json
                             rows_written += 1
                             if progress is not None and task_id is not None:
                                 progress.update(task_id, completed=rows_written)
@@ -1469,7 +1515,7 @@ def list_export(
             ):
                 next_cursor = page_next_cursor
 
-                if not want_expand and not check_unreplied_emails:
+                if not want_expand and not check_unreplied:
                     # No expansion and no unreplied email check - add row as-is
                     rows.append(row)
                     if progress is not None and task_id is not None:
@@ -1514,7 +1560,8 @@ def list_export(
                     field_id_to_display=field_id_to_display,
                     prefix_fields=False,
                     person_name_cache=json_person_name_cache,
-                    check_unreplied_emails=check_unreplied_emails,
+                    check_unreplied=check_unreplied,
+                    unreplied_types=parsed_unreplied_types,
                     unreplied_lookback_days=unreplied_lookback_days,
                 )
 
@@ -1523,7 +1570,7 @@ def list_export(
                     json_skipped_entries.append(entity_id)
                     continue
 
-                persons, companies, opportunities, interactions_data, unreplied_email_data = result
+                persons, companies, opportunities, interactions_data, unreplied_data = result
 
                 # Check for truncation
                 if effective_expand_limit is not None and (
@@ -1565,8 +1612,8 @@ def list_export(
                     expanded_row["opportunities"] = opportunities
                 if "interactions" in expand_set:
                     expanded_row["interactions"] = interactions_data
-                if check_unreplied_emails:
-                    expanded_row["unrepliedEmail"] = unreplied_email_data
+                if check_unreplied:
+                    expanded_row["unreplied"] = unreplied_data
 
                 # Add associations summary for table mode
                 summary_parts = []
@@ -2309,7 +2356,8 @@ def _fetch_associations(
     field_id_to_display: dict[str, str] | None = None,
     prefix_fields: bool = True,
     person_name_cache: dict[int, str] | None = None,
-    check_unreplied_emails: bool = False,
+    check_unreplied: bool = False,
+    unreplied_types: list[InteractionType] | None = None,
     unreplied_lookback_days: int = 30,
 ) -> (
     tuple[
@@ -2333,19 +2381,20 @@ def _fetch_associations(
         field_id_to_display: Mapping from field ID to display name for --expand-fields
         prefix_fields: If True, prefix field keys with entity type (for flat CSV mode).
         person_name_cache: Optional cache for resolving person IDs to names (for interactions).
-        check_unreplied_emails: If True, check for unreplied incoming emails.
-        unreplied_lookback_days: Days to look back for unreplied email detection.
+        check_unreplied: If True, check for unreplied incoming messages.
+        unreplied_types: Interaction types to check (EMAIL, CHAT_MESSAGE). Default: both.
+        unreplied_lookback_days: Days to look back for unreplied message detection.
 
     Returns:
         Tuple of (persons_list, companies_list, opportunities_list,
-        interactions_dict, unreplied_email_dict).
+        interactions_dict, unreplied_dict).
         Returns None if error occurred and on_error='skip'.
     """
     persons: list[dict[str, Any]] = []
     companies: list[dict[str, Any]] = []
     opportunities: list[dict[str, Any]] = []
     interactions: dict[str, Any] | None = None
-    unreplied_email: dict[str, Any] | None = None
+    unreplied: dict[str, Any] | None = None
 
     try:
         if list_type == ListType.OPPORTUNITY:
@@ -2441,21 +2490,22 @@ def _fetch_associations(
                 person_name_cache=person_name_cache,
             )
 
-        # Check for unreplied emails if requested
-        if check_unreplied_emails:
-            from affinity.cli.interaction_utils import check_unreplied_email as _check_unreplied
+        # Check for unreplied messages if requested
+        if check_unreplied:
+            from affinity.cli.interaction_utils import check_unreplied as _check_unreplied
 
             entity_type_map = {
                 ListType.COMPANY: "company",
                 ListType.PERSON: "person",
-                ListType.OPPORTUNITY: "opportunity",  # Not supported but handled gracefully
+                ListType.OPPORTUNITY: "opportunity",
             }
             entity_type = entity_type_map.get(list_type, "")
-            if entity_type in ("company", "person"):
-                unreplied_email = _check_unreplied(
+            if entity_type in ("company", "person", "opportunity"):
+                unreplied = _check_unreplied(
                     client=client,
                     entity_type=entity_type,
                     entity_id=entity_id,
+                    interaction_types=unreplied_types,
                     lookback_days=unreplied_lookback_days,
                 )
 
@@ -2465,7 +2515,7 @@ def _fetch_associations(
             companies = [c for c in companies if expand_filters.matches(c)]
             opportunities = [o for o in opportunities if expand_filters.matches(o)]
 
-        return persons, companies, opportunities, interactions, unreplied_email
+        return persons, companies, opportunities, interactions, unreplied
 
     except Exception as e:
         if on_error == "skip":
@@ -2663,7 +2713,7 @@ def _expand_csv_headers(
     csv_mode: str = "flat",
     expand_fields: list[tuple[str, AnyFieldId]] | None = None,
     header_mode: CsvHeaderMode = "names",
-    check_unreplied_emails: bool = False,
+    check_unreplied: bool = False,
 ) -> list[str]:
     """
     Add expansion columns to CSV headers.
@@ -2675,7 +2725,7 @@ def _expand_csv_headers(
     Args:
         expand_fields: List of (original_spec, field_id) tuples
         header_mode: "names" uses original spec, "ids" uses field ID
-        check_unreplied_emails: If True, add unreplied email columns
+        check_unreplied: If True, add unreplied email columns
     """
     headers = list(base_headers)
     if csv_mode == "nested":
@@ -2688,8 +2738,8 @@ def _expand_csv_headers(
             headers.append("_expand_opportunities")
         if "interactions" in expand_set:
             headers.append("_expand_interactions")
-        if check_unreplied_emails:
-            headers.append("_expand_unreplied_email")
+        if check_unreplied:
+            headers.append("_expand_unreplied")
     else:
         # Flat mode: add row-per-association columns
         headers.append("expandedType")
@@ -2716,10 +2766,10 @@ def _expand_csv_headers(
 
             headers.extend(INTERACTION_CSV_COLUMNS)
         # Add unreplied email columns (Phase 2)
-        if check_unreplied_emails:
-            from affinity.cli.interaction_utils import UNREPLIED_EMAIL_CSV_COLUMNS
+        if check_unreplied:
+            from affinity.cli.interaction_utils import UNREPLIED_CSV_COLUMNS
 
-            headers.extend(UNREPLIED_EMAIL_CSV_COLUMNS)
+            headers.extend(UNREPLIED_CSV_COLUMNS)
     return headers
 
 

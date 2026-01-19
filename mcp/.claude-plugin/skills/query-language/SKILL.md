@@ -338,7 +338,7 @@ Unlike `include` (which fetches related entities), `expand` adds computed data d
 | Expansion | Supported Entities | Description |
 |-----------|-------------------|-------------|
 | `interactionDates` | `persons`, `companies`, `listEntries` | Last/next meeting dates, email dates, team members |
-| `unrepliedEmails` | `persons`, `companies`, `opportunities`, `listEntries` | Detect unreplied incoming emails (date, daysSince, subject) |
+| `unreplied` | `persons`, `companies`, `opportunities`, `listEntries` | Detect unreplied incoming messages - email/chat (date, daysSince, type, subject) |
 
 ### Interaction Dates Output
 

@@ -366,36 +366,37 @@ Output includes interaction summaries on each record:
 | Expansion | Description | Supported Entities |
 |-----------|-------------|-------------------|
 | `interactionDates` | Last/next meeting, email dates | `persons`, `companies`, `opportunities`, `listEntries` |
-| `unrepliedEmails` | Detect unreplied incoming emails | `persons`, `companies`, `opportunities`, `listEntries` |
+| `unreplied` | Detect unreplied incoming messages (email/chat) | `persons`, `companies`, `opportunities`, `listEntries` |
 
-#### Unreplied Emails Expansion
+#### Unreplied Messages Expansion
 
-Add unreplied email detection to each record:
+Add unreplied message detection to each record:
 
 ```json
 {
   "from": "listEntries",
   "where": { "path": "listName", "op": "eq", "value": "Pipeline" },
-  "expand": ["unrepliedEmails"],
+  "expand": ["unreplied"],
   "limit": 50
 }
 ```
 
-Output includes unreplied email info on each record:
+Output includes unreplied message info on each record:
 
 ```json
 {
   "id": 123,
   "entity": { "id": 456, "type": "company", "name": "Acme Corp" },
-  "unrepliedEmails": {
+  "unreplied": {
     "date": "2026-01-15T09:30:00Z",
     "daysSince": 4,
+    "type": "email",
     "subject": "Re: Partnership opportunity"
   }
 }
 ```
 
-Records without unreplied emails have `"unrepliedEmails": null`.
+Records without unreplied messages have `"unreplied": null`. For chat messages, `subject` is `null`.
 
 ### Expand vs Include
 

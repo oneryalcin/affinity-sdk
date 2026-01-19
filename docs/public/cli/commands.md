@@ -591,8 +591,9 @@ Options:
 - `--expand <type>` (repeatable): expand associated entities or interaction data
   - `persons`, `companies`, `opportunities`: Expand related entities
   - `interactions`: Add interaction date summaries (last/next meeting, email dates)
-- `--check-unreplied-emails`: Check for unreplied incoming emails for each list entry
-- `--unreplied-lookback-days <days>`: Lookback period for unreplied email detection (default: 30)
+- `--check-unreplied`: Check for unreplied incoming messages (email/chat) for each list entry
+- `--unreplied-types <types>`: Comma-separated types to check: email, chat, all (default: email,chat)
+- `--unreplied-lookback-days <days>`: Lookback period for unreplied message detection (default: 30)
 
 ```bash
 xaffinity list export 123 --csv > out.csv
@@ -604,9 +605,12 @@ xaffinity list export 123 --csv --csv-bom > out.csv
 xaffinity list export "Dealflow" --expand interactions --format json
 xaffinity list export "Dealflow" --expand interactions --csv > pipeline.csv
 
-# Check for unreplied incoming emails
-xaffinity list export "Pipeline" --check-unreplied-emails --json
-xaffinity list export "Pipeline" --check-unreplied-emails --unreplied-lookback-days 60 --csv > unreplied.csv
+# Check for unreplied incoming messages (email + chat)
+xaffinity list export "Pipeline" --check-unreplied --json
+xaffinity list export "Pipeline" --check-unreplied --unreplied-lookback-days 60 --csv > unreplied.csv
+
+# Check email-only unreplied messages
+xaffinity list export "Pipeline" --check-unreplied --unreplied-types email --json
 ```
 
 See the [CSV Export Guide](../guides/csv-export.md) for more details.

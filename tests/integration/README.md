@@ -135,7 +135,7 @@ pytest tests/integration/test_query_parity_integration.py -m integration -v
 |------------|---------------|
 | `TestQueryListEntriesBasics` | Query by listName/listId, select fields |
 | `TestQueryListEntriesIncludes` | Include persons, companies, interactions |
-| `TestQueryListEntriesExpand` | Expand interactionDates, unrepliedEmails |
+| `TestQueryListEntriesExpand` | Expand interactionDates, unreplied |
 | `TestQueryIncludeAndExpand` | Combining include and expand |
 | `TestQueryListExportParity` | Same counts, IDs, field values as list export |
 | `TestQueryOutputFormats` | JSON and markdown output |

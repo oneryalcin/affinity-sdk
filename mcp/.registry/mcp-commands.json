@@ -146,7 +146,7 @@
       "relatedCommands": ["list ls", "list get"]
     },
     "list export": {
-      "whenToUse": "ONLY for --saved-view (Affinity saved views). For ALL other list operations, use the 'query' tool instead - it supports filtering, includes (persons, companies, interactions), expands (interactionDates, unrepliedEmails), and aggregations.",
+      "whenToUse": "ONLY for --saved-view (Affinity saved views). For ALL other list operations, use the 'query' tool instead - it supports filtering, includes (persons, companies, interactions), expands (interactionDates, unreplied), and aggregations.",
       "examples": [
         "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
@@ -294,7 +294,7 @@
       },
       "expand": {
         "interactionDates": "Last/next meeting dates, email dates, team members (persons, companies, listEntries)",
-        "unrepliedEmails": "Detect unreplied incoming emails with date, daysSince, subject"
+        "unreplied": "Detect unreplied incoming messages (email/chat) with date, daysSince, type, subject"
       },
       "fieldPaths": {
         "customFields": "fields.<FieldName> for list entry custom fields",
@@ -311,7 +311,7 @@
         "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
         "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"], \"limit\": 50}'",
         "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"select\": [\"entityName\", \"fields.*\"], \"limit\": 100}'",
-        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\", \"unrepliedEmails\"], \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\", \"unreplied\"], \"limit\": 50}'",
         "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"include\": [{\"interactions\": {\"days\": 90, \"limit\": 20}}], \"limit\": 50}'",
         "query --query '{\"from\": \"opportunities\", \"groupBy\": \"fields.Status\", \"aggregate\": {\"count\": {\"count\": true}, \"totalValue\": {\"sum\": \"fields.Deal Value\"}}}'",
         "query --query '{\"from\": \"persons\", \"where\": {\"and\": [{\"path\": \"email\", \"op\": \"is_not_null\"}, {\"path\": \"companies._count\", \"op\": \"gte\", \"value\": 1}]}, \"include\": [\"companies\"], \"limit\": 100}' --dry-run",

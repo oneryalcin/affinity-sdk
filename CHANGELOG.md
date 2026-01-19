@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (Breaking)
+- CLI: `--check-unreplied-emails` renamed to `--check-unreplied` with support for both email and chat messages.
+  - New `--unreplied-types` flag: comma-separated list of types to check (`email`, `chat`, `all`). Default: `email,chat`
+  - Output now includes `type` field ("email" or "chat") in addition to date, daysSince, and subject
+  - Chat messages have `null` subject (no subject attribute)
+  - Cross-type reply detection: email replied via chat (or vice versa) counts as "replied"
+- CLI: Query `expand: ["unrepliedEmails"]` renamed to `expand: ["unreplied"]`
+  - Same cross-type reply detection and multi-type support as CLI flag
+- CSV columns renamed: `unrepliedEmailDate` → `unrepliedDate`, `unrepliedEmailDaysSince` → `unrepliedDaysSince`, `unrepliedEmailSubject` → `unrepliedSubject`, plus new `unrepliedType` column
+
 ## 0.9.14 - 2026-01-19
 
 ### Fixed
-- CLI: Query `select` clause now automatically includes `expand` fields. Previously, using `select` with `expand` would filter out the expansion data (e.g., `interactionDates`, `unrepliedEmails`), requiring users to explicitly list expansions in `select`.
+- CLI: Query `select` clause now automatically includes `expand` fields. Previously, using `select` with `expand` would filter out the expansion data (e.g., `interactionDates`, `unreplied`), requiring users to explicitly list expansions in `select`.
 
 ## 0.9.13 - 2026-01-19
 

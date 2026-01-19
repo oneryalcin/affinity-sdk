@@ -76,7 +76,7 @@ You: execute-write-command(command: "person delete", argv: ["123"], confirm: tru
 
 **Use `query` tool for:**
 - Any operation needing **relationships** (persons at a company, companies for a person)
-- Any operation needing **computed data** (interaction dates, unreplied emails)
+- Any operation needing **computed data** (interaction dates, unreplied messages)
 - **Pipeline analysis** with aggregations or groupBy
 - **Complex filtering** with AND/OR conditions
 - **List entry operations** that need associated entities
@@ -91,7 +91,7 @@ You: execute-write-command(command: "person delete", argv: ["123"], confirm: tru
 
 ```json
 // Pipeline with field values and unreplied email detection
-{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "select": ["entityName", "fields.Status", "fields.Owner"], "expand": ["unrepliedEmails"]}
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "select": ["entityName", "fields.Status", "fields.Owner"], "expand": ["unreplied"]}
 
 // Persons with their companies and interaction history summary
 {"from": "persons", "where": {"path": "email", "op": "contains", "value": "@acme.com"}, "include": ["companies"], "expand": ["interactionDates"]}
@@ -194,7 +194,7 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 
 ### Pipeline Review
 1. Use `query` with aggregation: `{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}`
-2. Use `query` with expand for details: `{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates", "unrepliedEmails"]}`
+2. Use `query` with expand for details: `{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates", "unreplied"]}`
 3. **Or use**: `pipeline-review` prompt
 
 ### Updating Deal Status

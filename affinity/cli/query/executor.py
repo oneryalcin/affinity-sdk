@@ -2042,19 +2042,17 @@ class QueryExecutor:
             if raw_id is None or entity_type is None:
                 return
 
-            # Handle unrepliedEmails expansion separately (doesn't require entity refetch)
-            if expansion_def.name == "unrepliedEmails":
-                from ..interaction_utils import async_check_unreplied_email
+            # Handle unreplied expansion separately (doesn't require entity refetch)
+            if expansion_def.name == "unreplied":
+                from ..interaction_utils import async_check_unreplied
 
                 async with self.rate_limiter:
                     try:
-                        result = await async_check_unreplied_email(self.client, entity_type, raw_id)
-                        record["unrepliedEmails"] = result
+                        result = await async_check_unreplied(self.client, entity_type, raw_id)
+                        record["unreplied"] = result
                     except Exception as e:
-                        logger.debug(
-                            f"Failed to check unreplied emails for {entity_type} {raw_id}: {e}"
-                        )
-                        record["unrepliedEmails"] = None
+                        logger.debug(f"Failed to check unreplied for {entity_type} {raw_id}: {e}")
+                        record["unreplied"] = None
 
                 # Report progress
                 completed += 1
