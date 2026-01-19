@@ -202,6 +202,24 @@ company ls --filter "Status=New"
 list export Dealflow --filter "Status=New"
 ```
 
+### Mistake 3: Using JSON format for bulk queries
+
+When using the `query` tool for bulk data retrieval, **always use TOON format** (the default):
+
+```json
+// ✗ WRONG - JSON format causes truncation on large result sets
+{"format": "json", "query": {"from": "listEntries", "where": {...}}}
+
+// ✓ RIGHT - Use TOON (or omit format to use default)
+{"query": {"from": "listEntries", "where": {...}}}
+{"format": "toon", "query": {"from": "listEntries", "where": {...}}}
+```
+
+**Why this matters:**
+- JSON format causes truncation on result sets >15-20 records (wastes API calls)
+- TOON is 40% more token-efficient and prevents truncation
+- Only use `format: "json"` when you need to programmatically parse nested structures outside of Claude
+
 ## Async Operations (Merges)
 
 Some operations run asynchronously and return a **task URL** instead of completing immediately.

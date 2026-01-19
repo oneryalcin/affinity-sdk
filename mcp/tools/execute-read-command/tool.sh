@@ -7,7 +7,9 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 source "${MCPBASH_PROJECT_ROOT}/lib/cli-gateway.sh"
 
 # Get the JSON array path for truncation based on command name
-# CLI output structure: {"ok":true, "data": {"<plural>": [...]}, ...}
+# CLI output structure varies:
+#   Most commands: {"ok":true, "data": {"<plural>": [...]}, ...}
+#   Some commands: {"ok":true, "data": [...], ...}  (direct array)
 # Returns empty string if command doesn't have a known array to truncate
 _get_array_path() {
     local cmd="$1"
@@ -15,6 +17,17 @@ _get_array_path() {
 
     # Parse command: "company ls", "list export", "list-entry ls", etc.
     read -r entity action <<< "$cmd"
+
+    # Commands that return .data as direct array (changed in SDK v0.9.2)
+    # See CHANGELOG.md and mcp/COMPATIBILITY for details
+    case "$entity" in
+        interaction|note)
+            if [[ "$action" == "ls" ]]; then
+                echo ".data"
+                return
+            fi
+            ;;
+    esac
 
     # Map entity to data key (plural form used in CLI JSON output)
     case "$entity" in
@@ -34,8 +47,6 @@ _get_array_path() {
         field)              data_key="fields" ;;
         field-value)        data_key="fieldValues" ;;
         field-value-changes) data_key="fieldValueChanges" ;;
-        interaction)        data_key="interactions" ;;
-        note)               data_key="notes" ;;
         reminder)           data_key="reminders" ;;
         webhook)            data_key="webhooks" ;;
         saved-view)         data_key="savedViews" ;;

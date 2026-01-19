@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-01-19
+
+### Fixed
+- **`interaction ls` and `note ls` truncation bug**: Fixed `_get_array_path()` to correctly return `.data` for these commands which output data as a direct array (changed in SDK v0.9.2), not `.data.interactions` or `.data.notes`. This was causing `invalid_path` errors when the MCP tool tried to truncate responses.
+
+### Changed
+- **Prescriptive TOON format guidance**: Added "Mistake 3: Using JSON format for bulk queries" to `data-model.md`. This makes the guidance prescriptive rather than just descriptive, reducing wasted API calls from truncation.
+- **Updated CSV export documentation**: Fixed outdated jq paths in `docs/public/guides/csv-export.md` for `note ls` and `interaction ls` commands.
+
 ## [1.9.4] - 2026-01-19
 
 ### Changed

@@ -124,14 +124,14 @@ xaffinity list export "My List" --json | \
 **Export notes:**
 ```bash
 xaffinity note ls --person-id 123 --json --all | \
-  jq -r '.data.notes[] | [.id, .content, .createdAt] | @csv'
+  jq -r '.data[] | [.id, .content, .createdAt] | @csv'
 ```
 
 **Export interactions:**
 ```bash
 # Use --days for relative date range (auto-chunks if > 1 year)
 xaffinity interaction ls --type meeting --person-id 123 --days 365 --json | \
-  jq -r '.data.interactions[] | [.id, .date, .type] | @csv'
+  jq -r '.data[] | [.id, .date, .type] | @csv'
 
 # Or use built-in --csv flag
 xaffinity interaction ls --type meeting --person-id 123 --days 365 --csv
@@ -158,7 +158,7 @@ xaffinity person get 123 --json | \
 
 ## JSON Data Structure Reference
 
-All CLI commands return data in a consistent structure:
+Most CLI commands return data in this structure:
 
 ```json
 {
@@ -168,14 +168,22 @@ All CLI commands return data in a consistent structure:
 }
 ```
 
+Some commands (`note ls`, `interaction ls`) return data as a direct array:
+
+```json
+{
+  "data": [ ... ]
+}
+```
+
 Entity paths for jq:
 - **persons**: `.data.persons[]`
 - **companies**: `.data.companies[]`
 - **opportunities**: `.data.opportunities[]`
 - **fieldValues**: `.data.fieldValues[]`
 - **fieldValueChanges**: `.data.fieldValueChanges[]`
-- **notes**: `.data.notes[]`
-- **interactions**: `.data.interactions[]`
+- **notes**: `.data[]` (direct array)
+- **interactions**: `.data[]` (direct array)
 - **tasks**: `.data.tasks[]`
 
 ## Troubleshooting
