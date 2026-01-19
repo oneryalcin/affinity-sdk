@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-01-19
+
+### Changed
+- **Smarter JSON truncation**: Upgraded mcp-bash framework from 0.10.0 to 0.11.0. Tools now use explicit `--array-path` for truncation instead of heuristics:
+  - `query` tool: truncates `.data` array directly
+  - `execute-read-command`: dynamically determines array path based on command (e.g., `.data.companies` for `company ls`)
+- **TOON format guidance**: Added documentation in `data-model.md` explaining TOON format parsing with the official `toon_format` Python library, including file-based processing patterns.
+
 ## [1.9.3] - 2026-01-19
 
 ### Fixed
