@@ -263,3 +263,28 @@ All commands use the same filter syntax:
 - `--query`:  free-text search (simple text matching)
 
 Use `--filter` for precise matching, `--query` for fuzzy text search.
+
+## Output Formats
+
+### TOON (Token-Oriented Object Notation)
+
+Some commands may output data in **TOON format** - a structured format specifically designed for LLM consumption with reduced token costs.
+
+**Do NOT manually parse TOON output.** Use the official Python library:
+
+```bash
+pip install git+https://github.com/toon-format/toon-python.git
+```
+
+```python
+from toon_format import decode
+
+data = decode(toon_string)  # Returns proper Python dict/list
+```
+
+**Why this matters:**
+- TOON looks like tabular/CSV data but has specific parsing rules
+- Manual parsing with string splitting or regex is fragile and error-prone
+- The `toon-format` library handles all edge cases correctly
+
+**Reference:** https://github.com/toon-format/toon-python
