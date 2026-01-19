@@ -31,7 +31,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -202,7 +201,6 @@ def generate_registry(config_path: Path, output_path: Path) -> None:
         "_generated": {
             "warning": "DO NOT EDIT - This file is auto-generated",
             "generator": "tools/generate_mcp_command_registry.py",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cliVersion": cli_version,
             "sourceConfig": str(config_path.relative_to(config_path.parent.parent.parent)),
         },
