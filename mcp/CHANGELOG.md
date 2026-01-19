@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Full scan protection**: MCP gateway now enforces pagination limits on all `ls` and `export` commands to prevent runaway API usage:
+  - Default limit: 1000 records (auto-injected if no `--max-results` specified)
+  - Maximum limit: 10000 records (higher values are capped with warning)
+  - `--all` flag is blocked with a clear error message suggesting `--max-results` or cursor pagination
+  - To fetch more than 10000 records, use cursor pagination with `--cursor`
+
 ### Fixed
 - **Session cache not being used by MCP tools**: The `execute-read-command`, `execute-write-command`, and `query` tools were not passing `--session-cache` to the CLI, missing out on cross-invocation caching of list name resolutions and field metadata. Now correctly passes the flag before the subcommand (required by CLI option parsing).
 

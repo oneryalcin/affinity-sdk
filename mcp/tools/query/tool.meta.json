@@ -75,7 +75,7 @@
       "maxRecords": {
         "type": "integer",
         "default": 1000,
-        "description": "Safety limit for maximum records to fetch (default 1000, max 10000)."
+        "description": "Safety limit for maximum records to fetch (default 1000, max 10000). Note: MCP gateway enforces the same limits on CLI pagination commands via the execute-read-command tool."
       },
       "timeout": {
         "type": "integer",

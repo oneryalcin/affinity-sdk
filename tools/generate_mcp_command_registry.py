@@ -112,6 +112,52 @@ def load_mcp_config(config_path: Path) -> dict[str, dict]:
     return commands
 
 
+def get_param_with_aliases(params: dict, flag_name: str) -> tuple[str, list[str]] | None:
+    """Get a parameter and all its aliases from CLI JSON parameters.
+
+    The JSON output has structure like:
+    {"--max-results": {"aliases": ["--limit", "-n"], ...}}
+
+    Returns (canonical_flag, [all_aliases]) or None if not found.
+    """
+    if flag_name in params:
+        param = params[flag_name]
+        aliases = param.get("aliases", [])
+        return flag_name, [flag_name, *aliases]
+    # Check if flag_name is an alias of another param
+    for canonical, param in params.items():
+        if flag_name in param.get("aliases", []):
+            return canonical, [canonical, *param.get("aliases", [])]
+    return None
+
+
+def add_limit_config(cmd: dict) -> None:
+    """Add limitConfig to command if it supports pagination."""
+    params = cmd.get("parameters", {})
+
+    # Check for limit parameter (--max-results preferred, fall back to --limit)
+    limit_info = get_param_with_aliases(params, "--max-results")
+    if limit_info is None:
+        limit_info = get_param_with_aliases(params, "--limit")
+    if limit_info is None:
+        return  # No pagination support
+
+    limit_flag, limit_aliases = limit_info
+    cmd["limitConfig"] = {
+        "flag": limit_flag,
+        "flagAliases": limit_aliases,
+        "default": 1000,
+        "max": 10000,
+    }
+
+    # Check for unbounded flag (--all)
+    all_info = get_param_with_aliases(params, "--all")
+    if all_info is not None:
+        all_flag, all_aliases = all_info
+        cmd["limitConfig"]["unboundedFlag"] = all_flag
+        cmd["limitConfig"]["unboundedFlagAliases"] = all_aliases
+
+
 def merge_command_with_config(cli_cmd: dict, config_meta: dict) -> dict:
     """Merge CLI command data with config metadata.
 
@@ -180,6 +226,7 @@ def generate_registry(config_path: Path, output_path: Path) -> None:
     for cmd_name, config_meta in mcp_config.items():
         if cmd_name in cli_commands:
             merged = merge_command_with_config(cli_commands[cmd_name], config_meta)
+            add_limit_config(merged)
             output_commands.append(merged)
         else:
             missing_commands.append(cmd_name)

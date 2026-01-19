@@ -16,6 +16,7 @@ from ..click_compat import RichCommand, RichGroup, click
 from ..context import CLIContext
 from ..decorators import category, destructive
 from ..errors import CLIError
+from ..mcp_limits import apply_mcp_limits
 from ..options import output_options
 from ..resolve import resolve_list_selector
 from ..results import CommandContext
@@ -335,6 +336,7 @@ def field_delete(ctx: CLIContext, field_id: str, yes: bool) -> None:
 )
 @output_options
 @click.pass_obj
+@apply_mcp_limits(all_pages_param=None)
 def field_history(
     ctx: CLIContext,
     *,

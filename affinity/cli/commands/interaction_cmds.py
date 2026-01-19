@@ -21,6 +21,7 @@ from ..csv_utils import write_csv_to_stdout
 from ..date_utils import ChunkedFetchResult, chunk_date_range
 from ..decorators import category, destructive
 from ..errors import CLIError
+from ..mcp_limits import apply_mcp_limits
 from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..results import CommandContext, DateRange, ResultSummary
 from ..runner import CommandOutput, run_command
@@ -415,6 +416,7 @@ def _fetch_interactions_multi_type(
 )
 @csv_output_options
 @click.pass_obj
+@apply_mcp_limits(all_pages_param=None)
 def interaction_ls(
     ctx: CLIContext,
     *,

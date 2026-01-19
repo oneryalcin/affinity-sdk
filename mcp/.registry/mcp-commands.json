@@ -17,7 +17,13 @@
         "person ls --query 'John Smith'",
         "person ls --query 'john@example.com'"
       ],
-      "relatedCommands": ["person get", "person field"]
+      "relatedCommands": ["person get", "person field"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "person create": {
       "whenToUse": "Create a new person in the CRM.",
@@ -64,7 +70,13 @@
     },
     "company ls": {
       "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status.",
-      "relatedCommands": ["company get", "company field"]
+      "relatedCommands": ["company get", "company field"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "company create": {
       "whenToUse": "Create a new company in the CRM.",
@@ -105,7 +117,13 @@
     },
     "opportunity ls": {
       "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline).",
-      "relatedCommands": ["opportunity get", "list ls"]
+      "relatedCommands": ["opportunity get", "list ls"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "opportunity create": {
       "whenToUse": "Create a new opportunity in a pipeline.",
@@ -135,7 +153,13 @@
     },
     "list ls": {
       "whenToUse": "Find list IDs by name. Use before list export or field ls.",
-      "relatedCommands": ["list get", "field ls"]
+      "relatedCommands": ["list get", "field ls"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "list get": {
       "whenToUse": "Get list details including type and field count.",
@@ -150,7 +174,13 @@
       "examples": [
         "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
-      "relatedCommands": ["query", "list get", "field ls"]
+      "relatedCommands": ["query", "list get", "field ls"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "entry get": {
       "whenToUse": "Get full details for a single list entry by ID.",
@@ -184,7 +214,12 @@
         "field history field-123456 --company-id 456",
         "field history field-123456 --list-entry-id 999 --max-results 50"
       ],
-      "relatedCommands": ["field ls", "person get", "company get", "opportunity get", "entry get"]
+      "relatedCommands": ["field ls", "person get", "company get", "opportunity get", "entry get"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "field create": {
       "whenToUse": "Create a new custom field on a list or globally.",
@@ -203,7 +238,12 @@
         "interaction ls --type meeting --person-id 123 --days 30",
         "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
       ],
-      "relatedCommands": ["interaction get", "interaction create", "note ls"]
+      "relatedCommands": ["interaction get", "interaction create", "note ls"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "interaction get": {
       "whenToUse": "Get details of a specific interaction by ID.",
@@ -223,7 +263,13 @@
     },
     "note ls": {
       "whenToUse": "List notes attached to an entity.",
-      "relatedCommands": ["note get", "note create"]
+      "relatedCommands": ["note get", "note create"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "note get": {
       "whenToUse": "Get details of a specific note by ID.",
@@ -243,7 +289,13 @@
     },
     "reminder ls": {
       "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before).",
-      "relatedCommands": ["reminder get", "reminder create"]
+      "relatedCommands": ["reminder get", "reminder create"],
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
     },
     "reminder get": {
       "whenToUse": "Get details of a specific reminder by ID.",

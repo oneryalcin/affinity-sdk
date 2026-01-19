@@ -651,7 +651,7 @@ Returns execution plan with:
 |-----------|------|---------|-------------|
 | `query` | object | required | The JSON query object |
 | `dryRun` | boolean | false | Preview execution plan without running |
-| `maxRecords` | integer | 1000 | Safety limit (max 10000) |
+| `maxRecords` | integer | 1000 | Safety limit (max 10000). Same limits enforced on CLI commands. |
 | `timeout` | integer | auto | Query timeout in seconds (auto-calculated from estimated API calls if not specified) |
 | `maxOutputBytes` | integer | 50000 | Truncation limit for results |
 | `format` | string | "toon" | Output format (see Output Formats below) |

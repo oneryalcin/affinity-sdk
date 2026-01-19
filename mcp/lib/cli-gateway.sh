@@ -406,11 +406,11 @@ is_destructive() {
 # Proactive Output Limiting
 # ==============================================================================
 
-# Default and maximum limits for --limit injection
-CLI_GATEWAY_DEFAULT_LIMIT="${CLI_GATEWAY_DEFAULT_LIMIT:-100}"
-CLI_GATEWAY_MAX_LIMIT="${CLI_GATEWAY_MAX_LIMIT:-500}"
+# Default and maximum limits for pagination (aligned with query tool)
+CLI_GATEWAY_DEFAULT_LIMIT="${CLI_GATEWAY_DEFAULT_LIMIT:-1000}"
+CLI_GATEWAY_MAX_LIMIT="${CLI_GATEWAY_MAX_LIMIT:-10000}"
 
-# Apply limit cap to argv - inject/cap --limit for commands that support it
+# Apply limit cap to argv - block unbounded flags and set env vars for Python enforcement
 # This prevents large outputs before they happen (more efficient than post-hoc truncation)
 # Args: command argv...
 # Outputs: Modified argv (NUL-delimited) to stdout
@@ -420,43 +420,39 @@ apply_limit_cap() {
     shift
     local argv=("$@")
 
-    # Check if command supports --limit (from registry)
-    local supports_limit
-    supports_limit=$(jq_tool -r --arg cmd "$cmd" \
-        '.commands[] | select(.name == $cmd) | .parameters["--limit"] // empty' \
+    # Get limit config from registry
+    local limit_config
+    limit_config=$(jq_tool -c --arg cmd "$cmd" \
+        '.commands[] | select(.name == $cmd) | .limitConfig // empty' \
         "$REGISTRY_FILE")
 
-    if [[ -n "$supports_limit" ]]; then
-        local has_limit=false
-        local i=0
-        while [[ $i -lt ${#argv[@]} ]]; do
-            if [[ "${argv[$i]}" == "--limit" ]]; then
-                has_limit=true
-                # Cap existing --limit value if too high (next argument is value)
-                if [[ $((i + 1)) -lt ${#argv[@]} ]]; then
-                    local val="${argv[$((i + 1))]}"
-                    if [[ "$val" =~ ^[0-9]+$ ]] && [[ $val -gt $CLI_GATEWAY_MAX_LIMIT ]]; then
-                        argv[$((i + 1))]=$CLI_GATEWAY_MAX_LIMIT
-                    fi
-                fi
-                break
-            elif [[ "${argv[$i]}" == --limit=* ]]; then
-                has_limit=true
-                # Cap --limit=N form if too high (extract value after =)
-                local val="${argv[$i]#--limit=}"
-                if [[ "$val" =~ ^[0-9]+$ ]] && [[ $val -gt $CLI_GATEWAY_MAX_LIMIT ]]; then
-                    argv[$i]="--limit=$CLI_GATEWAY_MAX_LIMIT"
-                fi
-                break
-            fi
-            ((i++))
-        done
-
-        # Inject default --limit if not present
-        if [[ "$has_limit" == "false" ]]; then
-            argv+=("--limit" "$CLI_GATEWAY_DEFAULT_LIMIT")
-        fi
+    # No limit config = no changes needed
+    if [[ -z "$limit_config" ]]; then
+        [[ ${#argv[@]} -gt 0 ]] && printf '%s\0' "${argv[@]}"
+        return 0
     fi
+
+    local unbounded_aliases
+    # Get all aliases for the unbounded flag (e.g., ["--all", "-A"])
+    unbounded_aliases=$(echo "$limit_config" | jq_tool -r '.unboundedFlagAliases // [] | .[]')
+
+    # Block unbounded flag (--all and aliases like -A) with clear error
+    if [[ -n "$unbounded_aliases" ]]; then
+        for arg in "${argv[@]}"; do
+            for alias in $unbounded_aliases; do
+                if [[ "$arg" == "$alias" ]]; then
+                    mcp_error "validation_error" \
+                        "$alias is not allowed via MCP (prevents unbounded scans)" \
+                        --hint "Use --max-results N (max: $CLI_GATEWAY_MAX_LIMIT), or use --cursor for paginated iteration"
+                    return 1
+                fi
+            done
+        done
+    fi
+
+    # Set env vars for Python-side enforcement
+    export AFFINITY_MCP_MAX_LIMIT="$CLI_GATEWAY_MAX_LIMIT"
+    export AFFINITY_MCP_DEFAULT_LIMIT="$CLI_GATEWAY_DEFAULT_LIMIT"
 
     # Output NUL-delimited for safe consumption with mapfile
     # Only output if array is non-empty (empty printf '%s\0' would create one empty element)

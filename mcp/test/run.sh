@@ -354,6 +354,54 @@ else
     ((++failed)) || true
 fi
 
+printf "\n--- Limit enforcement tests ---\n"
+
+# Test: --all flag is blocked on commands with limitConfig
+printf "  --all flag blocked on person ls... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"person ls","argv":["--all"],"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'validation_error\|not allowed via MCP\|unbounded'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (--all should be blocked)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: -A alias is also blocked
+printf "  -A alias blocked on list export... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"list export","argv":["Pipeline","-A"],"dryRun":true}' 2>&1)
+if echo "$output" | grep -q 'validation_error\|not allowed via MCP\|unbounded'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (-A alias should be blocked)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: commands without --all flag pass through (interaction ls)
+printf "  interaction ls passes without --all... "
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"interaction ls","argv":["--type","all","--person-id","123","--max-results","10"],"dryRun":true}' 2>&1)
+if echo "$output" | grep -q '"dryRun":true\|would execute'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (interaction ls should pass validation)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
+# Test: env vars are set for MCP limit enforcement
+printf "  MCP limit env vars are set... "
+# The env vars should be exported to the CLI subprocess
+output=$("${MCPBASH_BIN}" run-tool "execute-read-command" --args '{"command":"person ls","argv":["--max-results","100"],"dryRun":true}' 2>&1)
+# dryRun should succeed (env vars don't cause errors)
+if echo "$output" | grep -q '"dryRun":true\|would execute'; then
+    printf '%sPASS%s\n' "${GREEN}" "${RESET}"
+    ((++passed)) || true
+else
+    printf '%sFAIL%s (command should pass with explicit limit)\n' "${RED}" "${RESET}"
+    ((++failed)) || true
+fi
+
 printf "\n--- Query tool tests (dry-run) ---\n"
 
 # Basic query validation

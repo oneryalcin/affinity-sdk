@@ -27,6 +27,20 @@ Write operations include:
 
 Read-only operations (search, lookup, briefings) can be used proactively to help the user. But never create, update, or delete CRM records unless the user specifically requests it.
 
+## Full Scan Protection
+
+The MCP gateway enforces pagination limits to prevent unbounded data scans:
+
+| Limit | Value | Description |
+|-------|-------|-------------|
+| Default | 1000 records | Applied when no `--max-results` specified |
+| Maximum | 10000 records | Higher values are capped with a warning |
+| `--all` flag | **BLOCKED** | Use `--max-results` or cursor pagination instead |
+
+**Affected commands:** `list export`, `list ls`, `person ls`, `company ls`, `opportunity ls`, `note ls`, `reminder ls`, `interaction ls`, `field history`
+
+**To fetch more than 10000 records:** Use cursor pagination with `--cursor` flag.
+
 ## Available Tools
 
 ### CLI Gateway (Primary Interface)

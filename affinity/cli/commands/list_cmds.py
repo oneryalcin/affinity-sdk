@@ -33,6 +33,7 @@ from ..context import CLIContext
 from ..csv_utils import write_csv_to_stdout
 from ..decorators import category, destructive
 from ..errors import CLIError
+from ..mcp_limits import apply_mcp_limits
 from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..render import format_duration
 from ..resolve import (
@@ -113,6 +114,7 @@ def _parse_unreplied_types(types_str: str) -> list[InteractionType]:
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
 @output_options
 @click.pass_obj
+@apply_mcp_limits()
 def list_ls(
     ctx: CLIContext,
     *,
@@ -520,6 +522,7 @@ ExpandOnError = Literal["raise", "skip"]
 )
 @csv_output_options
 @click.pass_obj
+@apply_mcp_limits()
 def list_export(
     ctx: CLIContext,
     list_selector: str,

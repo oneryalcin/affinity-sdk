@@ -235,6 +235,33 @@ When using the `query` tool for bulk data retrieval, **always use TOON format** 
 - TOON is 40% more token-efficient and prevents truncation
 - Only use `format: "json"` when you need to programmatically parse nested structures outside of Claude
 
+## Full Scan Protection
+
+The MCP gateway protects against expensive unbounded scans:
+
+| Behavior | Details |
+|----------|---------|
+| Default limit | 1000 records (auto-injected) |
+| Maximum limit | 10000 records (higher values capped) |
+| `--all` flag | **Blocked** with error message |
+
+**To fetch more than 10000 records:**
+Use cursor pagination:
+```bash
+# First request
+list export Dealflow --max-results 10000
+# Returns: {"nextCursor": "abc123", ...}
+
+# Subsequent requests
+list export Dealflow --cursor abc123 --max-results 10000
+```
+
+**Why is `--all` blocked?**
+Unbounded scans can consume your entire API quota and take hours.
+Explicit limits force intentional decisions about data volume.
+
+---
+
 ## Async Operations (Merges)
 
 Some operations run asynchronously and return a **task URL** instead of completing immediately.
