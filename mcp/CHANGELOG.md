@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-01-20
+
 ### Added
 - **Full scan protection**: MCP gateway now enforces pagination limits on all `ls` and `export` commands to prevent runaway API usage:
   - Default limit: 1000 records (auto-injected if no `--max-results` specified)
@@ -18,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session cache not being used by MCP tools**: The `execute-read-command`, `execute-write-command`, and `query` tools were not passing `--session-cache` to the CLI, missing out on cross-invocation caching of list name resolutions and field metadata. Now correctly passes the flag before the subcommand (required by CLI option parsing).
 
 ### Changed
+- **CLI compatibility**: Updated `CLI_MIN_VERSION` from 0.10.0 to 0.11.0 to ensure users get Person entity detection fixes (`entityName` now correctly computed for Person list entries, formatters display person names instead of "object (N keys)").
 - **Improved `field history` discoverability**: LLMs were failing to discover the `field history` command. Updated guidance in multiple locations:
   - Added "history", "audit", "track changes" to `discover-commands` common queries
   - Updated `whenToUse` in mcp-commands.json with business context (audit who changed what, track status changes)

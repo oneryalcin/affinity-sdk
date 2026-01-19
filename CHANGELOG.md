@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.11.0 - 2026-01-20
+
 ### Added
 - CLI: Full scan protection when running via MCP gateway. Commands with pagination (`list export`, `person ls`, `company ls`, etc.) now enforce limits: default 1000 records, max 10000 records. The `--all` flag is blocked with a clear error message guiding users to use explicit `--max-results` or cursor pagination instead.
 

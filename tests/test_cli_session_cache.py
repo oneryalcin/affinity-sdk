@@ -615,7 +615,7 @@ class TestResolutionCachingEffectiveness:
                 self.data = data
                 self.next_cursor = next_cursor
 
-        def mock_search_pages(_term: str, _page_size: int = 100):
+        def mock_search_pages(_term: str, **_kwargs: object):
             nonlocal api_call_count
             api_call_count += 1
             yield MockPage(data=[mock_person], next_cursor=None)
@@ -665,7 +665,7 @@ class TestResolutionCachingEffectiveness:
                 self.data = data
                 self.next_cursor = next_cursor
 
-        def mock_search_pages(_term: str, _page_size: int = 100):
+        def mock_search_pages(_term: str, **_kwargs: object):
             nonlocal api_call_count
             api_call_count += 1
             yield MockPage(data=[mock_company], next_cursor=None)
@@ -705,7 +705,7 @@ class TestResolutionCachingEffectiveness:
                 self.data = data
                 self.next_cursor = next_cursor
 
-        def mock_search_pages(_term: str, _page_size: int = 100):
+        def mock_search_pages(_term: str, **_kwargs: object):
             nonlocal api_call_count
             api_call_count += 1
             yield MockPage(data=[mock_person], next_cursor=None)
@@ -749,7 +749,7 @@ class TestResolutionCachingEffectiveness:
                 self.data = data
                 self.next_cursor = next_cursor
 
-        def mock_search_pages(_term: str, _page_size: int = 100):
+        def mock_search_pages(_term: str, **_kwargs: object):
             nonlocal api_call_count
             api_call_count += 1
             yield MockPage(data=[mock_company], next_cursor=None)
@@ -900,7 +900,7 @@ class TestResolutionCachingEffectiveness:
                 self.data = data
                 self.next_cursor = next_cursor
 
-        def mock_search_pages(_term: str, _page_size: int = 100):
+        def mock_search_pages(_term: str, **_kwargs: object):
             nonlocal api_call_count
             api_call_count += 1
             yield MockPage(data=[mock_person], next_cursor=None)
