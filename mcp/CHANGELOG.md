@@ -5,6 +5,22 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-01-19
+
+### Changed
+- **MCP command registry architecture**: Refactored to explicit opt-in model. New CLI commands are no longer auto-exposed to MCP. Commands must be explicitly listed in `mcp-commands.json` to be discoverable.
+  - Source of truth: `mcp/.registry/mcp-commands.json` (62 commands whitelisted)
+  - Generated output: `mcp/.registry/commands.generated.json` (includes `_generated` metadata)
+  - Generator: `tools/generate_mcp_command_registry.py`
+  - Excluded: `completion`, `config init`, `session *`, `version`, `list entry *` (aliases)
+- **Query command rich metadata**: Enhanced `query` command guidance in registry with comprehensive self-contained documentation:
+  - Full syntax reference (structure, entities, operators, compound, quantifiers, relative dates)
+  - Critical notes (listEntries filter requirement, include vs expand, maxRecords for quantifiers, multi-select fields)
+  - Include/expand references with parameterized syntax
+  - Field path patterns (custom fields, wildcards, array access)
+  - Output format recommendations (toon for efficiency, markdown for LLM analysis)
+  - 9 diverse examples covering filtering, includes, expands, aggregations, quantifiers
+
 ## [1.9.1] - 2026-01-18
 
 ### Changed
@@ -15,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **"Command is required" intermittent error**: Upgraded mcp-bash framework from 0.9.13 to 0.10.0, which fixes a critical bug where complex filter arguments with escaped quotes (e.g., `--filter 'Status in ["New", "Intro Meeting"]'`) would intermittently fail with "Command is required" error despite arguments being received. The bug was caused by TSV double-escaping corrupting JSON payloads during argument extraction.
 - **Removed dead `format` parameter from `execute-read-command`**: The `format` parameter was documented in tool.meta.json but never implemented - the tool always outputs JSON. Removed the parameter to avoid confusion. (The `query` tool's `format` parameter works correctly.)
+- **`execute-read-command` timeout too short**: Increased default timeout from 30 to 120 seconds. Complex queries and large exports were timing out before completion.
 
 ### Added
 - **User-configurable settings (MCPB)**: Added `user-config.json` schema for implementing apps (Claude Desktop, etc.) to collect and pass configuration:
@@ -42,16 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Query tool: Format parameter**: The `format` parameter now works correctly. Supports `toon`, `markdown`, `json`, `jsonl`, `csv`.
 - **Query tool: Include inline expansion**: Included relationships now display inline by default with display names (e.g., company names instead of IDs).
 - **Query tool: Interaction dates expansion**: Support for `expand: ["interactionDates"]` to enrich records with last/next meeting, email dates.
-- **Query tool: Advanced relationship filtering**: The `query` tool now supports filtering based on related entities:
-  - `all_` quantifier: Filter where all related items match a condition (e.g., all companies have ".com" domain)
-  - `none_` quantifier: Filter where no related items match a condition (e.g., no spam interactions)
-  - `exists_` subquery: Filter where at least one related item exists (e.g., has any interactions)
-  - `_count` pseudo-field: Filter by count of related items (e.g., persons with 2+ companies)
-  - Available relationship paths: persons→companies/opportunities/interactions/notes/listEntries, companies→persons/opportunities/interactions/notes/listEntries, opportunities→persons/companies/interactions
-  - Note: These features cause N+1 API calls to fetch relationship data; use `dryRun` to preview
 
 ### Changed
-- **Gateway tools diagnostic errors**: `execute-read-command` and `execute-write-command` now return diagnostic info when "Command is required" error occurs, including `argsLength` and `argsPreview` to help debug intermittent argument passing issues
 - **CLI minimum version**: Now requires CLI 0.9.11+ (was 0.9.9)
 
 ### Changed (Breaking)
@@ -59,6 +68,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Query tool format parameter**: Now correctly honors the `format` parameter instead of always using JSON.
+
+## [1.8.7] - 2026-01-14
+
+### Added
+- **Query tool: Advanced relationship filtering**: Support for `all`, `none`, `exists` quantifiers and `_count` pseudo-field for filtering based on related entities. (CLI feature from 0.9.9)
+
+## [1.8.6] - 2026-01-14
+
+### Changed
+- **Gateway tools diagnostic errors**: `execute-read-command` and `execute-write-command` now return diagnostic info when "Command is required" error occurs, including `argsLength` and `argsPreview` to help debug intermittent argument passing issues
+
+### Fixed
 - **Query tool always returned execution plan**: Fixed bash boolean handling bug where `${dry_run:+--dry-run}` always expanded because the string `"false"` is non-empty. Query tool now correctly executes queries instead of always returning dry-run plans. (Bug introduced in 1.8.4)
 
 ## [1.8.5] - 2026-01-13

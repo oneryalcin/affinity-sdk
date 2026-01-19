@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.9.13 - 2026-01-19
+
 ### Added
 - CLI: Query `include` for `listEntries` now supports `persons`, `companies`, `opportunities`, and `interactions`. Fetches related entities based on list entry entity type (e.g., company entries get associated persons).
 - CLI: Query `expand: ["unrepliedEmails"]` now works with `listEntries`. Checks each list entry's underlying entity for unreplied incoming emails.
@@ -17,7 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - CLI: Query TOON format now correctly flattens `fields.*` and `interactionDates` like markdown and CSV formats do. Previously, TOON was missing the `_apply_explicit_flattening()` call, causing nested fields to be truncated and interaction dates to be missing entirely.
+- CLI: `list export --check-unreplied-emails` now works standalone without requiring `--expand`.
+- CLI: `expand: ["interactionDates"]` now always produces 8 canonical columns regardless of data presence, ensuring consistent schema across all records.
 - SDK: Improved error message when adding wrong entity type to a list (e.g., adding a company to a person list). Now provides clear guidance about list type requirements instead of exposing raw API validation error.
+
+### Performance
+- CLI: Query `expand: ["interactionDates"]` is significantly faster with parallel person resolution, bounded concurrent fetches (semaphore=10), and parallelized section resolution. Default concurrency increased from 5 to 15 (tunable via `XAFFINITY_QUERY_CONCURRENCY`).
 
 ## 0.9.12 - 2026-01-17
 
@@ -229,7 +236,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI: `--limit` alias for `--max-results` on all `ls` commands (LLM-friendly).
 - CLI: Option aliases now included in `--help --json` output.
 
-## 0.8.0 - Unreleased
+## 0.8.2 - 2026-01-10
+
+_No user-facing changes. Version bump for PyPI release._
+
+## 0.8.1 - 2026-01-10
+
+_No user-facing changes. Version bump for PyPI release._
+
+## 0.8.0 - 2026-01-10
 
 ### Changed
 - CLI: Renamed `--json` to `--set-json` on `person field`, `company field`, `opportunity field` commands to avoid conflict with global `--json` output flag.
