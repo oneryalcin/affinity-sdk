@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **Breaking**: CLI: `--pretty` flag removed from `query` command (use `| jq .` for pretty JSON output)
 
+### Fixed
+- CLI: Query engine now correctly computes `entityName` for Person list entries. Previously, `entityName` was `null` for persons because the API returns `firstName`/`lastName` instead of `name`. Now uses the same display name logic as `list export`.
+- CLI: Table/CSV formatters now correctly detect Person entities with real API types (`external`/`internal`) or no type field. Previously, formatters only checked for `type="person"` which the API never actually returns, causing Person data to display as "object (N keys)" instead of "John Smith (id=123)".
+
 ### Performance
 - CLI: Session cache now caches person resolution (by email/name) and company resolution (by domain/name), reducing API calls when running multiple commands in a session pipeline.
 - CLI: Person and company field resolution now uses session cache, avoiding redundant field definition fetches.

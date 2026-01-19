@@ -102,6 +102,21 @@ class TestToCell:
         data = {"id": 789, "type": "person"}
         assert to_cell(data) == "person (id=789)"
 
+    def test_to_cell_person_entity_external_type(self) -> None:
+        """Person entity with type='external' (real API type)."""
+        data = {"id": 123, "type": "external", "firstName": "John", "lastName": "Smith"}
+        assert to_cell(data) == "John Smith (id=123)"
+
+    def test_to_cell_person_entity_internal_type(self) -> None:
+        """Person entity with type='internal' (real API type)."""
+        data = {"id": 456, "type": "internal", "firstName": "Jane", "lastName": "Doe"}
+        assert to_cell(data) == "Jane Doe (id=456)"
+
+    def test_to_cell_person_reference_no_type(self) -> None:
+        """Person reference without type field (field value format)."""
+        data = {"id": 789, "firstName": "Bob", "lastName": "Johnson"}
+        assert to_cell(data) == "Bob Johnson (id=789)"
+
     def test_to_cell_company_entity(self) -> None:
         """Company entity extracts name and id."""
         data = {"id": 100, "type": "company", "name": "Acme Corp", "domain": "acme.com"}

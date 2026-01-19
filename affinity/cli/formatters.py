@@ -58,10 +58,17 @@ def to_cell(value: Any) -> str:
             return str(value["text"])
 
         # Check for typed entities (person/company)
-        entity_type = value.get("type")
+        # Person entities have firstName/lastName (type can be "external", "internal", or absent)
         entity_id = value.get("id")
+        entity_type = value.get("type")
 
-        if entity_type == "person":
+        # Detect person by firstName/lastName keys OR by person-related type
+        is_person = ("firstName" in value or "lastName" in value) or entity_type in (
+            "person",
+            "external",
+            "internal",
+        )
+        if is_person:
             name = _extract_person_name(value)
             if name and entity_id is not None:
                 return f"{name} (id={entity_id})"

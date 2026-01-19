@@ -177,7 +177,11 @@ def _normalize_list_entry_fields(record: dict[str, Any]) -> dict[str, Any]:
     record["listEntryId"] = record.get("id")
     if entity and isinstance(entity, dict):
         record["entityId"] = entity.get("id")
-        record["entityName"] = entity.get("name")
+        # Person entities have firstName/lastName instead of name
+        if "firstName" in entity or "lastName" in entity:
+            record["entityName"] = _extract_person_display_name(entity)
+        else:
+            record["entityName"] = entity.get("name")
     # Copy V2 "type" to "entityType" for consistency, but don't overwrite V1 "entityType"
     if "type" in record:
         record["entityType"] = record["type"]

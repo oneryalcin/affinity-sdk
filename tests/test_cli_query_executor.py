@@ -724,6 +724,49 @@ class TestNormalizeListEntryFields:
         assert result["entityType"] == "company"
         assert result["fields"] == {}
 
+    def test_adds_entity_aliases_for_person(self) -> None:
+        """Adds entityName computed from firstName/lastName for Person entities."""
+        record = {
+            "id": 1,
+            "type": "person",
+            "entity": {"id": 100, "firstName": "Jane", "lastName": "Doe"},
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["listEntryId"] == 1
+        assert result["entityId"] == 100
+        assert result["entityName"] == "Jane Doe"
+        assert result["entityType"] == "person"
+
+    def test_adds_entity_aliases_for_person_first_name_only(self) -> None:
+        """Handles Person with only firstName."""
+        record = {"id": 1, "type": "person", "entity": {"id": 100, "firstName": "Jane"}}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["entityName"] == "Jane"
+
+    def test_adds_entity_aliases_for_person_last_name_only(self) -> None:
+        """Handles Person with only lastName."""
+        record = {"id": 1, "type": "person", "entity": {"id": 100, "lastName": "Doe"}}
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["entityName"] == "Doe"
+
+    def test_adds_entity_aliases_for_person_empty_names(self) -> None:
+        """Returns None when Person has empty firstName and lastName."""
+        record = {
+            "id": 1,
+            "type": "person",
+            "entity": {"id": 100, "firstName": "", "lastName": ""},
+        }
+
+        result = _normalize_list_entry_fields(record)
+
+        assert result["entityName"] is None
+
     def test_adds_aliases_without_fields_data(self) -> None:
         """Adds aliases even when entity.fields.data doesn't exist."""
         record = {"id": 1, "entity": {"id": 100, "name": "Test", "fields": {"requested": False}}}

@@ -679,6 +679,27 @@ def _table_from_rows(
             if typed is not None:
                 return typed
 
+            # Person entity (has firstName/lastName, or type is person/external/internal)
+            obj_type = obj.get("type")
+            is_person = ("firstName" in obj or "lastName" in obj) or obj_type in (
+                "person",
+                "external",
+                "internal",
+            )
+            if is_person:
+                first = obj.get("firstName")
+                last = obj.get("lastName")
+                person_id = obj.get("id")
+                name = " ".join(
+                    p.strip() for p in [first, last] if isinstance(p, str) and p.strip()
+                ).strip()
+                if name and person_id is not None:
+                    return truncate(f"{name} (id={person_id})")
+                elif name:
+                    return truncate(name)
+                elif person_id is not None:
+                    return f"person (id={person_id})"
+
             # Common compact shape: {"id": ..., "text": ...}
             if set(obj.keys()) >= {"id", "text"}:
                 text = obj.get("text")
