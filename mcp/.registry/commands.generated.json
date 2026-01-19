@@ -869,7 +869,9 @@
       "relatedCommands": [
         "field ls",
         "person get",
-        "company get"
+        "company get",
+        "opportunity get",
+        "entry get"
       ]
     },
     {
@@ -1038,7 +1040,8 @@
       ],
       "whenToUse": "Get details of a specific interaction by ID.",
       "relatedCommands": [
-        "interaction ls"
+        "interaction ls",
+        "interaction update"
       ]
     },
     {
@@ -1413,7 +1416,9 @@
       ],
       "whenToUse": "ONLY for --saved-view (Affinity saved views). For ALL other list operations, use the 'query' tool instead - it supports filtering, includes (persons, companies, interactions), expands (interactionDates, unrepliedEmails), and aggregations.",
       "relatedCommands": [
-        "query"
+        "query",
+        "list get",
+        "field ls"
       ]
     },
     {
@@ -1608,7 +1613,8 @@
       ],
       "whenToUse": "Get details of a specific note by ID.",
       "relatedCommands": [
-        "note ls"
+        "note ls",
+        "note update"
       ]
     },
     {
@@ -1958,7 +1964,8 @@
       ],
       "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
       "relatedCommands": [
-        "opportunity ls"
+        "opportunity ls",
+        "opportunity field"
       ]
     },
     {
@@ -2913,7 +2920,8 @@
       ],
       "whenToUse": "Get details of a specific reminder by ID.",
       "relatedCommands": [
-        "reminder ls"
+        "reminder ls",
+        "reminder update"
       ]
     },
     {
@@ -3121,7 +3129,9 @@
       "relatedCommands": [
         "person get",
         "company get",
-        "opportunity get"
+        "opportunity get",
+        "list get",
+        "entry get"
       ]
     },
     {

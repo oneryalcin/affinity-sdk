@@ -101,7 +101,7 @@
     },
     "opportunity get": {
       "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
-      "relatedCommands": ["opportunity ls"]
+      "relatedCommands": ["opportunity ls", "opportunity field"]
     },
     "opportunity ls": {
       "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline).",
@@ -150,7 +150,7 @@
       "examples": [
         "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
-      "relatedCommands": ["query"]
+      "relatedCommands": ["query", "list get", "field ls"]
     },
     "entry get": {
       "whenToUse": "Get full details for a single list entry by ID.",
@@ -184,7 +184,7 @@
         "field history field-123456 --company-id 456",
         "field history field-123456 --list-entry-id 999 --max-results 50"
       ],
-      "relatedCommands": ["field ls", "person get", "company get"]
+      "relatedCommands": ["field ls", "person get", "company get", "opportunity get", "entry get"]
     },
     "field create": {
       "whenToUse": "Create a new custom field on a list or globally.",
@@ -207,7 +207,7 @@
     },
     "interaction get": {
       "whenToUse": "Get details of a specific interaction by ID.",
-      "relatedCommands": ["interaction ls"]
+      "relatedCommands": ["interaction ls", "interaction update"]
     },
     "interaction create": {
       "whenToUse": "Log a meeting, call, or email. Requires --type and --participants.",
@@ -227,7 +227,7 @@
     },
     "note get": {
       "whenToUse": "Get details of a specific note by ID.",
-      "relatedCommands": ["note ls"]
+      "relatedCommands": ["note ls", "note update"]
     },
     "note create": {
       "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes.",
@@ -247,7 +247,7 @@
     },
     "reminder get": {
       "whenToUse": "Get details of a specific reminder by ID.",
-      "relatedCommands": ["reminder ls"]
+      "relatedCommands": ["reminder ls", "reminder update"]
     },
     "reminder create": {
       "whenToUse": "Create a reminder for follow-up on an entity.",
@@ -325,7 +325,7 @@
       "examples": [
         "resolve-url 'https://app.affinity.co/persons/123'"
       ],
-      "relatedCommands": ["person get", "company get", "opportunity get"]
+      "relatedCommands": ["person get", "company get", "opportunity get", "list get", "entry get"]
     },
     "task get": {
       "whenToUse": "Get current status of an async task (pending/in_progress/success/failed). Operations like 'company merge' and 'person merge' return taskUrls that complete in the background.",
