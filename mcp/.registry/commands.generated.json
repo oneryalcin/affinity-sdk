@@ -335,7 +335,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV (to stdout)."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -398,7 +398,7 @@
         "company ls --filter 'Industry = \"Software\"'",
         "company ls --query \"Acme\" --all",
         "company ls --all --csv > companies.csv",
-        "company ls --all --csv --csv-bom > companies.csv"
+        "company ls --all --output csv --csv-bom > companies.csv"
       ],
       "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status.",
       "relatedCommands": [
@@ -1069,7 +1069,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV to stdout."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -1272,7 +1272,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV (to stdout)."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -1991,7 +1991,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV (to stdout)."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -2036,7 +2036,7 @@
         "opportunity ls --query \"Series A\" --all",
         "opportunity ls --cursor <cursor>",
         "opportunity ls --all --csv > opportunities.csv",
-        "opportunity ls --all --csv --csv-bom > opportunities.csv"
+        "opportunity ls --all --output csv --csv-bom > opportunities.csv"
       ],
       "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline).",
       "relatedCommands": [
@@ -2423,7 +2423,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV (to stdout)."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -2575,7 +2575,7 @@
         "--csv": {
           "type": "flag",
           "required": false,
-          "help": "Output as CSV."
+          "help": "Alias for --output csv."
         },
         "--csv-bom": {
           "type": "flag",
@@ -2624,11 +2624,6 @@
           "type": "int",
           "required": false,
           "help": "Safety limit on total records fetched."
-        },
-        "--pretty": {
-          "type": "flag",
-          "required": false,
-          "help": "Pretty-print JSON output."
         },
         "--query": {
           "type": "string",

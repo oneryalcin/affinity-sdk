@@ -56,8 +56,11 @@ def _emit_warnings(*, ctx: CLIContext, warnings: list[str]) -> None:
 
 
 def emit_result(ctx: CLIContext, result: CommandResult) -> None:
+    # Resolve None to table (default format when no output specified)
+    output = ctx.output or "table"
+
     # JSON always uses full envelope (backwards compatible)
-    if ctx.output == "json":
+    if output == "json":
         _emit_json(result)
         if ctx.verbosity >= 1 and not ctx.quiet and result.meta.rate_limit is not None:
             stderr = Console(file=sys.stderr, force_terminal=False)
@@ -77,7 +80,7 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
         return
 
     # Table uses existing sophisticated render.py
-    if ctx.output == "table":
+    if output == "table":
         render_result(
             result,
             settings=RenderSettings(
@@ -112,7 +115,7 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
 
     # New formats: JSONL, Markdown, TOON, CSV
     # These output DATA ONLY (no envelope) for token efficiency
-    if ctx.output in ("jsonl", "markdown", "toon", "csv"):
+    if output in ("jsonl", "markdown", "toon", "csv"):
         if not result.ok:
             # Errors fall back to JSON envelope for structure
             # Warn user about format change
@@ -124,7 +127,7 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
 
         data = result.data
         if data is None:
-            sys.stdout.write(_empty_output(ctx.output) + "\n")
+            sys.stdout.write(_empty_output(output) + "\n")
             return
 
         # Normalize to list of dicts
@@ -148,8 +151,8 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
         if not fieldnames and data and len(data) > 0 and isinstance(data[0], dict):
             fieldnames = list(data[0].keys())
 
-        output = format_data(data, ctx.output, fieldnames=fieldnames)
-        sys.stdout.write(output + "\n")
+        formatted = format_data(data, output, fieldnames=fieldnames)
+        sys.stdout.write(formatted + "\n")
 
         # Warnings still go to stderr (consistent with table mode)
         _emit_warnings(ctx=ctx, warnings=result.warnings)

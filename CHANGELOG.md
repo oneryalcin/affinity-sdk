@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CLI: `--csv` is now an alias for `--output csv` (consistent with `--json` being an alias for `--output json`)
+- CLI: CSV sub-options (`--csv-bom`, `--csv-header`, `--csv-mode`) auto-enable CSV output when no format is specified
+- CLI: Error messages for output flag conflicts no longer have trailing periods (e.g., `--csv and --json are mutually exclusive` instead of ending with `.`)
+
+### Removed
+- **Breaking**: CLI: `--pretty` flag removed from `query` command (use `| jq .` for pretty JSON output)
+
 ### Performance
 - CLI: Session cache now caches person resolution (by email/name) and company resolution (by domain/name), reducing API calls when running multiple commands in a session pipeline.
 - CLI: Person and company field resolution now uses session cache, avoiding redundant field definition fetches.

@@ -3,12 +3,12 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import affinity
 
 from .click_compat import RichGroup, click
-from .context import CLIContext
+from .context import CLIContext, OutputFormat
 from .logging import configure_logging, restore_logging
 from .paths import get_paths
 
@@ -58,7 +58,7 @@ RootGroup: type[click.Group] = type("RootGroup", (_RootGroupMixin, RichGroup), {
 @click.option(
     "--output",
     type=click.Choice(["table", "json"]),
-    default="table",
+    default=None,
     help="Output format (table or json).",
 )
 @click.option("--json", "json_flag", is_flag=True, help="Alias for --output json.")
@@ -135,7 +135,7 @@ RootGroup: type[click.Group] = type("RootGroup", (_RootGroupMixin, RichGroup), {
 def cli(
     click_ctx: click.Context,
     *,
-    output: str,
+    output: str | None,
     json_flag: bool,
     quiet: bool,
     verbose: int,
@@ -172,7 +172,21 @@ def cli(
         click.echo(click_ctx.get_help())
         raise click.exceptions.Exit(0)
 
-    out = "json" if json_flag else output
+    # Detect global-level conflict: --json and --output are mutually exclusive
+    if json_flag and output is not None:
+        raise click.UsageError("--json and --output are mutually exclusive")
+
+    # Resolve output format and track source
+    out: OutputFormat | None = None
+    output_source: str | None = None
+    if json_flag:
+        out = "json"
+        output_source = "--json"
+    elif output is not None:
+        # output comes from Click's Choice validator, so it's a valid OutputFormat
+        out = cast(OutputFormat, output)
+        output_source = f"--output {output}"
+
     progress_mode: Literal["auto", "always", "never"] = "auto"
     if progress is True:
         progress_mode = "always"
@@ -191,7 +205,7 @@ def cli(
         os.environ["AFFINITY_SESSION_CACHE"] = session_cache
 
     click_ctx.obj = CLIContext(
-        output=out,  # type: ignore[arg-type]
+        output=out,
         quiet=quiet,
         verbosity=verbose,
         pager=pager,
@@ -211,6 +225,7 @@ def cli(
         all_columns=all_columns,
         max_columns=max_columns,
         _paths=paths,
+        _output_source=output_source,
     )
 
     # Set no_cache flag on context

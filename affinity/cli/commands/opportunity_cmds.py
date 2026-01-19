@@ -27,7 +27,7 @@ from ..context import CLIContext
 from ..csv_utils import write_csv_to_stdout
 from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
-from ..options import output_options
+from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import resolve_list_selector
 from ..resolvers import ResolvedEntity
@@ -103,13 +103,14 @@ def _resolve_opportunity_selector(
     default=None,
     help="Fuzzy text search (simple matching).",
 )
-@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV (to stdout).")
 @click.option(
     "--csv-bom",
     is_flag=True,
     help="Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv).",
+    callback=csv_suboption_callback,
+    expose_value=True,
 )
-@output_options
+@csv_output_options
 @click.pass_obj
 def opportunity_ls(
     ctx: CLIContext,
@@ -119,7 +120,6 @@ def opportunity_ls(
     max_results: int | None,
     all_pages: bool,
     query: str | None,
-    csv_flag: bool,
     csv_bom: bool,
 ) -> None:
     """
@@ -133,18 +133,10 @@ def opportunity_ls(
     - `xaffinity opportunity ls --query "Series A" --all`
     - `xaffinity opportunity ls --cursor <cursor>`
     - `xaffinity opportunity ls --all --csv > opportunities.csv`
-    - `xaffinity opportunity ls --all --csv --csv-bom > opportunities.csv`
+    - `xaffinity opportunity ls --all --output csv --csv-bom > opportunities.csv`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Check mutual exclusivity: --csv and --json
-        if csv_flag and ctx.output == "json":
-            raise CLIError(
-                "--csv and --json are mutually exclusive.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
         client = ctx.get_client(warnings=warnings)
 
         if cursor is not None and page_size is not None:
@@ -166,7 +158,7 @@ def opportunity_ls(
             ctx_modifiers["allPages"] = True
         if query:
             ctx_modifiers["query"] = query
-        if csv_flag:
+        if ctx.output == "csv":
             ctx_modifiers["csv"] = True
         if csv_bom:
             ctx_modifiers["csvBom"] = True
@@ -264,7 +256,7 @@ def opportunity_ls(
                 first_page = False
 
         # CSV output to stdout
-        if csv_flag:
+        if ctx.output == "csv":
             fieldnames = list(rows[0].keys()) if rows else []
             write_csv_to_stdout(
                 rows=rows,

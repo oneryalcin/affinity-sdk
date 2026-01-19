@@ -106,6 +106,9 @@ class TestQueryExpandDryRun:
         ctx.output = "json"
         ctx.quiet = False
         ctx.verbosity = 0
+        # Required for output option validation
+        ctx._output_source = None
+        ctx._output_format_conflict = None
         return ctx
 
     @pytest.fixture

@@ -33,7 +33,7 @@ from ..context import CLIContext
 from ..csv_utils import write_csv_to_stdout
 from ..decorators import category, destructive
 from ..errors import CLIError
-from ..options import output_options
+from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..render import format_duration
 from ..resolve import (
     list_all_saved_views,
@@ -413,18 +413,20 @@ ExpandOnError = Literal["raise", "skip"]
     "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N rows total."
 )
 @click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all rows.")
-@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV (to stdout).")
 @click.option(
     "--csv-header",
     type=click.Choice(["names", "ids"]),
     default="names",
     show_default=True,
     help="Use field names or IDs for CSV headers.",
+    callback=csv_suboption_callback,
 )
 @click.option(
     "--csv-bom",
     is_flag=True,
     help="Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv).",
+    callback=csv_suboption_callback,
+    expose_value=True,
 )
 @click.option("--dry-run", is_flag=True, help="Validate selectors and print export plan.")
 # Expand options (Phase 1)
@@ -461,6 +463,7 @@ ExpandOnError = Literal["raise", "skip"]
     default="flat",
     show_default=True,
     help="CSV expansion format: flat (one row per association) or nested (JSON arrays).",
+    callback=csv_suboption_callback,
 )
 # Phase 4: --expand-fields and --expand-field-type for expanded entity fields
 @click.option(
@@ -515,7 +518,7 @@ ExpandOnError = Literal["raise", "skip"]
     show_default=True,
     help="Days to look back for unreplied message detection.",
 )
-@output_options
+@csv_output_options
 @click.pass_obj
 def list_export(
     ctx: CLIContext,
@@ -528,7 +531,6 @@ def list_export(
     cursor: str | None,
     max_results: int | None,
     all_pages: bool,
-    csv_flag: bool,
     csv_header: CsvHeaderMode,
     csv_bom: bool,
     dry_run: bool,
@@ -558,21 +560,13 @@ def list_export(
 
     - `xaffinity list export "Pipeline" --all`
     - `xaffinity list export 12345 --csv --all > pipeline.csv`
-    - `xaffinity list export "Pipeline" --saved-view "Active Deals" --csv > deals.csv`
+    - `xaffinity list export "Pipeline" --saved-view "Active Deals" --output csv > deals.csv`
     - `xaffinity list export "Pipeline" --field Status --field "Deal Size" --all`
     - `xaffinity list export "Pipeline" --expand persons --all --csv > opps-with-persons.csv`
     - `xaffinity list export "Pipeline" --expand persons --expand companies --all`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Check mutual exclusivity: --csv and --json
-        if csv_flag and ctx.output == "json":
-            raise CLIError(
-                "--csv and --json are mutually exclusive.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
         # Track start time for summary line
         export_start_time = time.time()
 
@@ -721,7 +715,7 @@ def list_export(
             ctx_modifiers["maxResults"] = max_results
         if all_pages:
             ctx_modifiers["all"] = True
-        if csv_flag:
+        if ctx.output == "csv":
             ctx_modifiers["csv"] = True
         if expand:
             ctx_modifiers["expand"] = list(expand)
@@ -827,13 +821,14 @@ def list_export(
         columns = _columns_meta(selected_field_ids, field_by_id=field_by_id)
 
         if dry_run:
+            want_csv = ctx.output == "csv"
             if want_expand:
                 # Cleaner output for --expand mode (omit irrelevant fields like cursor)
                 data: dict[str, Any] = {
                     "listId": int(list_id),
                     "listName": resolved_list.list.name,
                     "listType": list_type.name.lower(),
-                    "csv": csv_flag,
+                    "csv": want_csv,
                 }
                 if filter_expr:
                     data["filter"] = filter_expr
@@ -848,7 +843,7 @@ def list_export(
                     "filter": filter_expr,
                     "pageSize": page_size,
                     "cursor": cursor,
-                    "csv": csv_flag,
+                    "csv": want_csv,
                 }
             if want_expand:
                 # Estimate API calls for expansion
@@ -856,7 +851,7 @@ def list_export(
                 expand_calls = entry_count  # 1 call per entry (optimized for dual)
                 data["expand"] = sorted(expand_set)
                 data["expandMaxResults"] = effective_expand_limit
-                data["csvMode"] = csv_mode if csv_flag else None
+                data["csvMode"] = csv_mode if want_csv else None
                 # Add dry run warnings
                 dry_run_warnings: list[str] = []
                 # Handle unreliable listSize from API (often returns 0 for non-empty lists)
@@ -924,7 +919,7 @@ def list_export(
             }
 
         # Prepare CSV writing.
-        want_csv = csv_flag
+        want_csv = ctx.output == "csv"
         rows_written = 0
         next_cursor: str | None = None
 

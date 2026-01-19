@@ -90,7 +90,7 @@ class ClientSettings:
 
 @dataclass
 class CLIContext:
-    output: OutputFormat
+    output: OutputFormat | None
     quiet: bool
     verbosity: int
     pager: bool | None
@@ -111,6 +111,12 @@ class CLIContext:
     max_columns: int | None = None  # Override auto-calculated max columns
 
     _paths: CliPaths = field(default_factory=get_paths)
+    _output_source: str | None = field(
+        default=None
+    )  # Which flag set output (e.g., "--json", "--output csv")
+    _output_format_conflict: tuple[str, str] | None = field(
+        default=None
+    )  # (requested_desc, existing_desc)
     _loaded_config: LoadedConfig | None = None
     _client: Affinity | None = None
     _session_cache_config: SessionCacheConfig = field(default_factory=SessionCacheConfig)

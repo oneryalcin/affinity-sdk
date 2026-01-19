@@ -15,7 +15,7 @@ from ..click_compat import RichCommand, click
 from ..context import CLIContext
 from ..decorators import category, progress_capable
 from ..errors import CLIError
-from ..options import output_options
+from ..options import csv_output_options, csv_suboption_callback
 
 # =============================================================================
 # CLI Command
@@ -73,20 +73,11 @@ from ..options import output_options
     help="Overall timeout in seconds.",
 )
 @click.option(
-    "--csv",
-    "csv_flag",
-    is_flag=True,
-    help="Output as CSV.",
-)
-@click.option(
     "--csv-bom",
     is_flag=True,
     help="Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv).",
-)
-@click.option(
-    "--pretty",
-    is_flag=True,
-    help="Pretty-print JSON output.",
+    callback=csv_suboption_callback,
+    expose_value=True,
 )
 @click.option(
     "--include-meta",
@@ -117,7 +108,7 @@ from ..options import output_options
     default="inline",
     help="How to display included data: inline (default), separate tables, or raw IDs.",
 )
-@output_options
+@csv_output_options
 @click.pass_obj
 def query_cmd(
     ctx: CLIContext,
@@ -129,9 +120,7 @@ def query_cmd(
     confirm: bool,
     max_records: int,
     timeout: float,
-    csv_flag: bool,
     csv_bom: bool,
-    pretty: bool,
     include_meta: bool,
     quiet: bool,
     verbose: bool,
@@ -153,8 +142,9 @@ def query_cmd(
       # Dry-run to preview execution plan
       xaffinity query --file query.json --dry-run
 
-      # CSV output
+      # CSV output (--csv is alias for --output csv)
       xaffinity query --file query.json --csv
+      xaffinity query --file query.json --output csv
 
       # JSON output
       xaffinity query --file query.json --json
@@ -191,9 +181,8 @@ def query_cmd(
             max_records=max_records,
             max_records_explicit=max_records_explicit,
             timeout=timeout,
-            csv_flag=csv_flag,
+            csv_flag=ctx.output == "csv",
             csv_bom=csv_bom,
-            pretty=pretty,
             include_meta=include_meta,
             quiet=quiet,
             verbose=verbose,
@@ -222,7 +211,6 @@ def _query_cmd_impl(
     timeout: float,
     csv_flag: bool,
     csv_bom: bool,
-    pretty: bool,
     include_meta: bool,
     quiet: bool,
     verbose: bool,
@@ -254,12 +242,6 @@ def _query_cmd_impl(
         truncate_toon_output,
     )
     from affinity.cli.query.progress import RichQueryProgress, create_progress_callback
-
-    # Check mutual exclusivity: --csv and --json
-    if csv_flag and ctx.output == "json":
-        raise CLIError(
-            "--csv and --json are mutually exclusive.",
-        )
 
     # Get query input
     query_dict = _get_query_input(file_path, query_str)
@@ -428,11 +410,11 @@ def _query_cmd_impl(
         write_csv_to_stdout(rows=result.data, fieldnames=fieldnames, bom=csv_bom)
         sys.exit(0)
     elif ctx.output == "json":
-        output = format_json(result, pretty=pretty, include_meta=include_meta)
+        output = format_json(result, pretty=False, include_meta=include_meta)
         # JSON truncation handled by MCP bash layer (mcp_json_truncate)
     elif ctx.output in ("toon", "markdown"):
         # TOON and markdown support full envelope (pagination, included)
-        output = format_query_result(result, ctx.output, pretty=pretty, include_meta=include_meta)
+        output = format_query_result(result, ctx.output, pretty=False, include_meta=include_meta)
 
         # Apply truncation if requested
         if max_output_bytes and len(output.encode()) > max_output_bytes:
@@ -445,7 +427,7 @@ def _query_cmd_impl(
                 )
     elif ctx.output in ("jsonl", "csv"):
         # Data-only export formats
-        output = format_query_result(result, ctx.output, pretty=pretty, include_meta=include_meta)
+        output = format_query_result(result, ctx.output, pretty=False, include_meta=include_meta)
 
         # Apply truncation if requested
         if max_output_bytes and len(output.encode()) > max_output_bytes:

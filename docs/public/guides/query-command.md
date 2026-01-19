@@ -514,8 +514,8 @@ xaffinity query --file query.json --json
 # CSV output
 xaffinity query --file query.json --csv
 
-# Pretty JSON with metadata
-xaffinity query --file query.json --json --pretty --include-meta
+# JSON with metadata
+xaffinity query --file query.json --json --include-meta
 ```
 
 ## Command Options
@@ -530,10 +530,9 @@ xaffinity query --file query.json --json --pretty --include-meta
 | `--confirm` | Require confirmation before expensive operations |
 | `--max-records` | Safety limit on total records (default: 10000) |
 | `--timeout` | Overall timeout in seconds (default: 300) |
-| `--json` | Output as JSON |
-| `--csv` | Output as CSV |
-| `--output` | Output format: table, json |
-| `--pretty` | Pretty-print JSON output |
+| `--json` | Output as JSON (alias for `--output json`) |
+| `--csv` | Output as CSV (alias for `--output csv`) |
+| `--output` | Output format: table, json, csv |
 | `--include-meta` | Include execution metadata in output |
 | `--quiet`, `-q` | Suppress progress output |
 | `--verbose`, `-v` | Show detailed progress |

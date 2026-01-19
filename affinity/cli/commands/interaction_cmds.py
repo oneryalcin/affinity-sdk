@@ -21,7 +21,7 @@ from ..csv_utils import write_csv_to_stdout
 from ..date_utils import ChunkedFetchResult, chunk_date_range
 from ..decorators import category, destructive
 from ..errors import CLIError
-from ..options import output_options
+from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..results import CommandContext, DateRange, ResultSummary
 from ..runner import CommandOutput, run_command
 from ._v1_parsing import parse_choice, parse_iso_datetime
@@ -406,9 +406,14 @@ def _fetch_interactions_multi_type(
 @click.option(
     "--max-results", "--limit", "-n", type=int, default=None, help="Stop after N results total."
 )
-@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV to stdout.")
-@click.option("--csv-bom", is_flag=True, help="Add UTF-8 BOM for Excel compatibility.")
-@output_options
+@click.option(
+    "--csv-bom",
+    is_flag=True,
+    help="Add UTF-8 BOM for Excel compatibility.",
+    callback=csv_suboption_callback,
+    expose_value=True,
+)
+@csv_output_options
 @click.pass_obj
 def interaction_ls(
     ctx: CLIContext,
@@ -422,7 +427,6 @@ def interaction_ls(
     opportunity_id: int | None,
     page_size: int | None,
     max_results: int | None,
-    csv_flag: bool,
     csv_bom: bool,
 ) -> None:
     """List interactions with automatic date range handling.
@@ -471,14 +475,6 @@ def interaction_ls(
 
         # Resolve dates (validates mutual exclusion, defaults to all-time)
         start, end = _resolve_date_range(after, before, days)
-
-        # CSV mutual exclusion
-        if csv_flag and ctx.output == "json":
-            raise CLIError(
-                "--csv and --json are mutually exclusive.",
-                exit_code=2,
-                error_type="usage_error",
-            )
 
         client = ctx.get_client(warnings=warnings)
 
@@ -554,7 +550,7 @@ def interaction_ls(
         results = [_interaction_payload(i) for i in sorted_interactions]
 
         # CSV output
-        if csv_flag:
+        if ctx.output == "csv":
             fieldnames = list(results[0].keys()) if results else []
             write_csv_to_stdout(rows=results, fieldnames=fieldnames, bom=csv_bom)
             sys.exit(0)

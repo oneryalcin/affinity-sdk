@@ -22,7 +22,7 @@ from ..context import CLIContext
 from ..csv_utils import write_csv_to_stdout
 from ..decorators import category, destructive, progress_capable
 from ..errors import CLIError
-from ..options import output_options
+from ..options import csv_output_options, csv_suboption_callback, output_options
 from ..progress import ProgressManager, ProgressSettings
 from ..resolve import get_person_fields, resolve_list_selector
 from ..resolvers import ResolvedEntity
@@ -206,13 +206,14 @@ def _parse_field_types(values: tuple[str, ...]) -> list[FieldType] | None:
     default=None,
     help="Fuzzy text search (simple matching). Use --filter for structured queries.",
 )
-@click.option("--csv", "csv_flag", is_flag=True, help="Output as CSV (to stdout).")
 @click.option(
     "--csv-bom",
     is_flag=True,
     help="Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv).",
+    callback=csv_suboption_callback,
+    expose_value=True,
 )
-@output_options
+@csv_output_options
 @click.pass_obj
 def person_ls(
     ctx: CLIContext,
@@ -225,7 +226,6 @@ def person_ls(
     field_types: tuple[str, ...],
     filter_expr: str | None,
     query: str | None,
-    csv_flag: bool,
     csv_bom: bool,
 ) -> None:
     """
@@ -242,18 +242,10 @@ def person_ls(
     - `xaffinity person ls --filter 'Email =~ "@acme.com"'`
     - `xaffinity person ls --query "alice@example.com" --all`
     - `xaffinity person ls --all --csv > people.csv`
-    - `xaffinity person ls --all --csv --csv-bom > people.csv`
+    - `xaffinity person ls --all --output csv --csv-bom > people.csv`
     """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Check mutual exclusivity: --csv and --json
-        if csv_flag and ctx.output == "json":
-            raise CLIError(
-                "--csv and --json are mutually exclusive.",
-                exit_code=2,
-                error_type="usage_error",
-            )
-
         client = ctx.get_client(warnings=warnings)
 
         if cursor is not None and page_size is not None:
@@ -479,7 +471,7 @@ def person_ls(
                     first_page = False
 
         # CSV output to stdout
-        if csv_flag:
+        if ctx.output == "csv":
             fieldnames = list(rows[0].keys()) if rows else []
             write_csv_to_stdout(
                 rows=rows,

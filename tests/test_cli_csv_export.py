@@ -1029,3 +1029,118 @@ def test_list_export_expand_opportunities_invalid_on_opportunity_list(
     assert "not valid for opportunity lists" in payload["error"]["message"]
     # Valid values should be persons, companies (not opportunities)
     assert "opportunities" not in payload["error"]["details"]["validExpand"]
+
+
+# ==============================================================================
+# Output Flag Conflict Tests (Additional scenarios)
+# ==============================================================================
+
+
+def test_csv_bom_auto_enables_csv(respx_mock: respx.MockRouter) -> None:
+    """Test that --csv-bom auto-enables CSV output when no format is specified."""
+    respx_mock.get("https://api.affinity.co/v2/persons").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": 1,
+                        "firstName": "Alice",
+                        "lastName": "Smith",
+                        "primaryEmailAddress": "alice@example.com",
+                    }
+                ],
+                "pagination": {"nextUrl": None, "prevUrl": None},
+            },
+        )
+    )
+
+    runner = CliRunner()
+    # Only --csv-bom, no --csv or --output csv
+    result = runner.invoke(
+        cli,
+        ["person", "ls", "--all", "--csv-bom"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0
+    # Should output CSV with BOM
+    assert result.output.startswith("\ufeff")
+    assert "id,name,primaryEmail" in result.output
+
+
+def test_csv_bom_conflicts_with_json() -> None:
+    """Test that --csv-bom conflicts with --output json."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["person", "ls", "--output", "json", "--csv-bom"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    assert "--csv-bom and --output json are mutually exclusive" in result.output
+
+
+def test_csv_bom_conflicts_with_json_flag() -> None:
+    """Test that --csv-bom conflicts with --json flag."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["person", "ls", "--json", "--csv-bom"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert "--csv-bom and --json are mutually exclusive" in payload["error"]["message"]
+
+
+def test_global_output_csv_conflicts_with_command_output_json() -> None:
+    """Test that global --output csv conflicts with command --output json."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--output", "json", "person", "ls", "--csv"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output.strip())
+    assert "--csv and --output json are mutually exclusive" in payload["error"]["message"]
+
+
+def test_csv_header_conflicts_with_json() -> None:
+    """Test that --csv-header conflicts with --json for list export.
+
+    Note: When --csv-header is processed first, it sets ctx.output="csv",
+    so the error is emitted as text (not JSON).
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["list", "export", "12345", "--csv-header", "ids", "--json"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    # Error is text because --csv-header set ctx.output="csv" before --json
+    assert "--json and --csv-header are mutually exclusive" in result.output
+
+
+def test_csv_mode_conflicts_with_json() -> None:
+    """Test that --csv-mode conflicts with --json for list export.
+
+    Note: When --csv-mode is processed first, it sets ctx.output="csv",
+    so the error is emitted as text (not JSON).
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["list", "export", "12345", "--csv-mode", "nested", "--json"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 2
+    # Error is text because --csv-mode set ctx.output="csv" before --json
+    assert "--json and --csv-mode are mutually exclusive" in result.output
