@@ -69,6 +69,8 @@ Optional: install the CLI:
 pipx install "affinity-sdk[cli]"
 ```
 
+The CLI includes a powerful `query` command for structured data extraction with filtering, aggregations, and relationship includes. Output formats include JSON, CSV, markdown, and TOON (token-optimized for LLMs).
+
 CLI docs: https://yaniv-golan.github.io/affinity-sdk/latest/cli/
 
 ### MCP Server
