@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-01-19
+
 ### Fixed
 - **`--json` flag handling**: Gateway tools (`execute-read-command`, `execute-write-command`) now silently filter out `--json` if passed in `argv`. Previously, passing `--json` returned an error requiring a retry. The tools always append `--json` automatically, so filtering is idempotent.
 
 ### Changed
 - **LLM guidance updates**: Added notes to `data-model.md`, `execute-read-command`, and `query` tool descriptions clarifying that JSON output is automatic (do not pass `--json`) and that `expand` fields are automatically included in `select` output.
 - **`discover-commands` text format**: Now shows "one-of" required parameter groups with grouped notation, e.g., `(--person-id|--company-id|--opportunity-id):i!` for commands like `field history` and `interaction ls` that require exactly one entity selector. Parameters in these groups are excluded from the regular parameter list to avoid duplication.
+- **`relatedCommands` improvements**: Fixed and expanded related command references in `mcp-commands.json` for better command discovery. Fixed `execute-read-command` description referencing nonexistent `saved-view ls` (saved views are shown by `list get`).
 
 ## [1.9.2] - 2026-01-19
 
