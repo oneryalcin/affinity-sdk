@@ -147,7 +147,7 @@ if [[ $exit_code -eq 0 ]]; then
     if [[ "$format" == "json" ]]; then
         # JSON format: validate and apply semantic truncation via mcp_json_truncate
         if mcp_is_valid_json "$stdout_content"; then
-            if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes"); then
+            if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes" --array-path ".data"); then
                 mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
             else
                 # Truncation failed (output too large, can't truncate safely)

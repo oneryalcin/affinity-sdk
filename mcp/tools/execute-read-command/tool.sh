@@ -6,6 +6,50 @@ source "${MCP_SDK:?}/tool-sdk.sh"
 source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 source "${MCPBASH_PROJECT_ROOT}/lib/cli-gateway.sh"
 
+# Get the JSON array path for truncation based on command name
+# CLI output structure: {"ok":true, "data": {"<plural>": [...]}, ...}
+# Returns empty string if command doesn't have a known array to truncate
+_get_array_path() {
+    local cmd="$1"
+    local entity action data_key
+
+    # Parse command: "company ls", "list export", "list-entry ls", etc.
+    read -r entity action <<< "$cmd"
+
+    # Map entity to data key (plural form used in CLI JSON output)
+    case "$entity" in
+        company)            data_key="companies" ;;
+        person)             data_key="persons" ;;
+        opportunity)        data_key="opportunities" ;;
+        list)
+            # "list ls" vs "list export" vs "list entry ls"
+            case "$action" in
+                ls)         data_key="lists" ;;
+                export)     data_key="listEntries" ;;
+                entry)      data_key="listEntries" ;;
+                *)          data_key="" ;;
+            esac
+            ;;
+        list-entry)         data_key="listEntries" ;;
+        field)              data_key="fields" ;;
+        field-value)        data_key="fieldValues" ;;
+        field-value-changes) data_key="fieldValueChanges" ;;
+        interaction)        data_key="interactions" ;;
+        note)               data_key="notes" ;;
+        reminder)           data_key="reminders" ;;
+        webhook)            data_key="webhooks" ;;
+        saved-view)         data_key="savedViews" ;;
+        entity-file)        data_key="entityFiles" ;;
+        relationship-strength) data_key="relationshipStrengths" ;;
+        *)                  data_key="" ;;
+    esac
+
+    # Only return path for ls/export commands (which return arrays)
+    if [[ -n "$data_key" && ("$action" == "ls" || "$action" == "export" || "$entity" == "list-entry") ]]; then
+        echo ".data.$data_key"
+    fi
+}
+
 # Validate registry (required for CLI Gateway tools)
 if ! validate_registry; then
     # validate_registry already emitted mcp_result_error with details
@@ -153,8 +197,11 @@ fi
 if [[ $exit_code -eq 0 ]]; then
     # Validate stdout is valid JSON before using --argjson
     if mcp_is_valid_json "$stdout_content"; then
-        # Apply semantic truncation
-        if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes"); then
+        # Apply semantic truncation with command-specific array path
+        array_path=$(_get_array_path "$command")
+        truncate_args=("$stdout_content" "$max_output_bytes")
+        [[ -n "$array_path" ]] && truncate_args+=(--array-path "$array_path")
+        if truncated_result=$(mcp_json_truncate "${truncate_args[@]}"); then
             mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
         else
             # Truncation failed (output too large, can't truncate safely)
