@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- SDK: Removed unsafe `asyncio.create_task()` in `AsyncAffinity.__del__` that could cause tasks to be garbage collected before completion. Users must now use context managers or call `close()` explicitly.
+- SDK: Added thread-safe locking to `SimpleCache` for concurrent access.
+- SDK: Fixed async client initialization race condition with asyncio lock.
+- SDK: Fixed stream context manager cleanup on errors in HTTP client.
+- SDK: Fixed empty/whitespace content handling in JSON response parsing.
+- SDK: Added error handling for partial file cleanup on download failures.
+- SDK: Improved filename sanitization for server-provided filenames (null bytes, control chars).
+- CLI: Added validation for `--timeout`, `--max-columns`, `--max-records`, `--max-output-bytes` to reject non-positive values.
+- CLI: Added validation for `--env-file` to check file exists when `--dotenv` is enabled.
+- CLI: Added file size limit (1MB) for config files to prevent memory exhaustion.
+- CLI: Added file permission warnings for API key files (same as config files).
+- CLI: Fixed TOML escaping to handle newlines, tabs, and carriage returns in API keys.
+- CLI: Fixed JSON/TOML parse error handling with helpful error messages.
+- CLI: Fixed type validation for list access in CSV/table output (verify first element is dict).
+- CLI: Fixed exponential backoff calculation to cap exponent before computing power.
+- CLI: Let `AuthenticationError`/`AuthorizationError` propagate in query executor instead of silent catch.
+- CLI: Added logging to silent exception handlers in entity validation.
+
 ### Changed (Breaking)
 - CLI: `--check-unreplied-emails` renamed to `--check-unreplied` with support for both email and chat messages.
   - New `--unreplied-types` flag: comma-separated list of types to check (`email`, `chat`, `all`). Default: `email,chat`

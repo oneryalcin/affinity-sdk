@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ...exceptions import NotFoundError
+from ...exceptions import AuthenticationError, AuthorizationError, NotFoundError
 from ..interaction_utils import resolve_interaction_names_async, transform_interaction_data
 from .aggregates import apply_having, compute_aggregates, group_and_aggregate
 from .exceptions import (
@@ -532,7 +532,9 @@ class RateLimitedExecutor:
         if status_code == 429:
             self._consecutive_429s += 1
             # Exponential backoff: 1s, 2s, 4s... capped at 30s
-            delay = min(30, 2**self._consecutive_429s)
+            # Cap exponent first to avoid computing large powers (Bug #26)
+            capped_exponent = min(5, self._consecutive_429s)  # 2**5 = 32 > 30
+            delay = min(30, 2**capped_exponent)
             self._delay_until = time.monotonic() + delay
             logger.debug("Rate limited, backing off for %ds", delay)
         else:
@@ -2224,7 +2226,8 @@ class QueryExecutor:
                     try:
                         result = await method(record_id)
                         # Result might be list of IDs or list of records
-                        if result and isinstance(result[0], int):
+                        # Check all elements are ints to avoid type errors in comprehension
+                        if result and all(isinstance(item, int) for item in result):
                             related = [{"id": id_} for id_ in result]  # IDs only
                         else:
                             related = [
@@ -2233,12 +2236,11 @@ class QueryExecutor:
                                 else r
                                 for r in result
                             ]
+                    except (AuthenticationError, AuthorizationError):
+                        # Let auth errors propagate - these indicate real problems
+                        raise
                     except Exception as e:
-                        # NOTE: Broad exception catch for graceful degradation.
-                        # Alternative: catch specific (APIError, NotFoundError) and let
-                        # AuthenticationError propagate. Current approach treats failed
-                        # fetch as "no relationships" which could give incorrect filter results
-                        # in edge cases. See Finding #46 in implementation plan for discussion.
+                        # Graceful degradation: treat failed fetch as "no relationships"
                         logger.debug(f"Failed to fetch {rel_name} for record {record_id}: {e}")
                         return []
 
@@ -2254,8 +2256,11 @@ class QueryExecutor:
                         related = [
                             item.model_dump(mode="json", by_alias=True) for item in response.data
                         ]
+                    except (AuthenticationError, AuthorizationError):
+                        # Let auth errors propagate - these indicate real problems
+                        raise
                     except Exception as e:
-                        # See note above about broad exception handling (Finding #46)
+                        # Graceful degradation: treat failed fetch as "no relationships"
                         logger.debug(f"Failed to fetch {rel_name} for record {record_id}: {e}")
                         return []
 

@@ -145,7 +145,7 @@ def emit_result(ctx: CLIContext, result: CommandResult) -> None:
                 c.get("name") or c.get("key") or f"col{i}"
                 for i, c in enumerate(result.meta.columns)
             ]
-        if not fieldnames and data:
+        if not fieldnames and data and len(data) > 0 and isinstance(data[0], dict):
             fieldnames = list(data[0].keys())
 
         output = format_data(data, ctx.output, fieldnames=fieldnames)

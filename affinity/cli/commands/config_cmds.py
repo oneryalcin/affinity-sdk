@@ -278,9 +278,15 @@ def _store_in_config(ctx: CLIContext, api_key: str) -> CommandOutput:
     config_path = ctx.paths.config_path
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Escape special characters for TOML string
-    # TOML basic strings use backslash escapes: \" for quote, \\ for backslash
-    escaped_key = api_key.replace("\\", "\\\\").replace('"', '\\"')
+    # Escape special characters for TOML string (Bug #21)
+    # TOML basic strings use backslash escapes for: \\ \" \n \r \t
+    escaped_key = (
+        api_key.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
     # Read or create config
     if config_path.exists():

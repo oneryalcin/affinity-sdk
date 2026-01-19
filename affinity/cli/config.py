@@ -40,14 +40,48 @@ def _profile_from_mapping(data: dict[str, Any]) -> ProfileConfig:
     )
 
 
+MAX_CONFIG_FILE_SIZE = 1024 * 1024  # 1 MB limit for config files (Bug #22)
+
+
 def load_config(path: Path) -> LoadedConfig:
     if not path.exists():
         return LoadedConfig(default=ProfileConfig(), profiles={})
 
-    if path.suffix.lower() == ".json":
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    else:
-        raw = _tomllib.loads(path.read_text(encoding="utf-8"))
+    # Check file size before reading (Bug #22)
+    try:
+        file_size = path.stat().st_size
+        if file_size > MAX_CONFIG_FILE_SIZE:
+            raise CLIError(
+                f"Config file too large ({file_size} bytes > {MAX_CONFIG_FILE_SIZE}): {path}",
+                exit_code=2,
+                error_type="file_error",
+            )
+    except OSError:
+        pass  # If we can't stat, we'll fail on read anyway
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise CLIError(
+            f"Failed to read config file {path}: {e}",
+            exit_code=2,
+            error_type="file_error",
+        ) from e
+
+    try:
+        raw = json.loads(content) if path.suffix.lower() == ".json" else _tomllib.loads(content)
+    except json.JSONDecodeError as e:
+        raise CLIError(
+            f"Invalid JSON in config file {path}: {e}",
+            exit_code=2,
+            error_type="parse_error",
+        ) from e
+    except _tomllib.TOMLDecodeError as e:
+        raise CLIError(
+            f"Invalid TOML in config file {path}: {e}",
+            exit_code=2,
+            error_type="parse_error",
+        ) from e
 
     if not isinstance(raw, dict):
         raise CLIError(

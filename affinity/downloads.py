@@ -86,9 +86,17 @@ def _filename_from_content_disposition(value: str | None) -> str | None:
     if not filename:
         return None
 
+    # Remove null bytes and control characters that could cause issues
+    filename = filename.replace("\x00", "").replace("\n", "_").replace("\r", "_")
+
     # Avoid returning path-like values.
     safe = Path(filename).name
-    return safe or None
+
+    # Final validation: ensure result is non-empty and doesn't start with a dot (hidden files)
+    if not safe or safe.startswith("."):
+        return None
+
+    return safe
 
 
 def _download_info_from_headers(

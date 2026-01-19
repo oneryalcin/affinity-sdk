@@ -6,7 +6,6 @@ Provides a unified interface to all Affinity API functionality.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import importlib
 import importlib.util
@@ -742,7 +741,13 @@ class AsyncAffinity:
             self._closed = True
 
     def __del__(self) -> None:
-        """Warn if client was not properly closed."""
+        """Warn if client was not properly closed.
+
+        NOTE: We intentionally do NOT attempt async cleanup here.
+        asyncio.create_task() in __del__ is unsafe - the task may be garbage
+        collected before completion, leading to resource leaks or errors.
+        Users must use context managers or call close() explicitly.
+        """
         # Use getattr to handle case where __init__ failed before setting _closed
         if not getattr(self, "_closed", True) and not getattr(self, "_entered_context", True):
             warnings.warn(
@@ -752,14 +757,6 @@ class AsyncAffinity:
                 ResourceWarning,
                 stacklevel=2,
             )
-            # Schedule close if loop is running; otherwise silently skip
-            # (can't await in __del__, and sync close would block)
-            # Use call_soon_threadsafe for thread-safety in multi-threaded loops
-            try:
-                loop = asyncio.get_running_loop()
-                loop.call_soon_threadsafe(lambda: asyncio.create_task(self._http.close()))
-            except RuntimeError:
-                pass  # No running loop - skip async cleanup
 
     def clear_cache(self) -> None:
         """Clear the response cache."""

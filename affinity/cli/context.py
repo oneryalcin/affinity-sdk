@@ -172,6 +172,8 @@ class CLIContext:
                     )
                 return key
             path = Path(self.api_key_file)
+            # Check file permissions (Bug #17)
+            warnings.extend(config_file_permission_warnings(path))
             key = path.read_text(encoding="utf-8").strip()
             if not key:
                 raise CLIError(f"Empty API key file: {path}", exit_code=2, error_type="usage_error")

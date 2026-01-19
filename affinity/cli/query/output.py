@@ -1059,7 +1059,8 @@ def format_query_result(
             explicit_select=result.explicit_select,
             explicit_expand=result.explicit_expand,
         )
-        fieldnames = list(display_data[0].keys()) if display_data else []
+        first_row = display_data[0] if display_data else None
+        fieldnames = list(first_row.keys()) if isinstance(first_row, dict) else []
         return format_toon_envelope(
             display_data,
             fieldnames,
@@ -1075,7 +1076,8 @@ def format_query_result(
             explicit_select=result.explicit_select,
             explicit_expand=result.explicit_expand,
         )
-        fieldnames = list(display_data[0].keys()) if display_data else []
+        first_row = display_data[0] if display_data else None
+        fieldnames = list(first_row.keys()) if isinstance(first_row, dict) else []
         output = format_markdown(display_data, fieldnames)
         footer = _format_markdown_footer(len(result.data or []), result.pagination)
         if footer:

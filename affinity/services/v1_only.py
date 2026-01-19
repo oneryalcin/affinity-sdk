@@ -1289,15 +1289,21 @@ class EntityFileService:
         if target.exists() and not overwrite:
             raise FileExistsError(str(target))
 
-        with target.open("wb") as f:
-            for chunk in self.download_stream(
-                file_id,
-                chunk_size=chunk_size,
-                on_progress=on_progress,
-                timeout=timeout,
-                deadline_seconds=deadline_seconds,
-            ):
-                f.write(chunk)
+        try:
+            with target.open("wb") as f:
+                for chunk in self.download_stream(
+                    file_id,
+                    chunk_size=chunk_size,
+                    on_progress=on_progress,
+                    timeout=timeout,
+                    deadline_seconds=deadline_seconds,
+                ):
+                    f.write(chunk)
+        except Exception:
+            # Clean up partial file on error
+            if target.exists():
+                target.unlink()
+            raise
 
         return target
 

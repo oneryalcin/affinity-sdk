@@ -159,6 +159,14 @@ def query_cmd(
       # JSON output
       xaffinity query --file query.json --json
     """
+    # Validate numeric options (Bug #35)
+    if max_records <= 0:
+        raise click.BadParameter("must be positive", param_hint="'--max-records'")
+    if timeout <= 0:
+        raise click.BadParameter("must be positive", param_hint="'--timeout'")
+    if max_output_bytes is not None and max_output_bytes <= 0:
+        raise click.BadParameter("must be positive", param_hint="'--max-output-bytes'")
+
     # Detect if --max-records was explicitly provided using Click's ParameterSource
     # (see person_cmds.py:908-914 for similar pattern in the codebase)
     max_records_explicit = False

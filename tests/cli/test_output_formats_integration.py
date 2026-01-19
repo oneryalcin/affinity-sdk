@@ -339,15 +339,15 @@ class TestOutputFlagErrorFallback:
             env={"AFFINITY_API_KEY": "test-key"},
         )
 
-        # Should have JSON error structure (ok: false)
+        # Should have non-zero exit code on error
         assert result.exit_code != 0
-        # Error output should be JSON
-        try:
+        # Error output should be JSON with ok: false, OR contain error text
+        if result.output.strip().startswith("{"):
             parsed = json.loads(result.output)
-            assert parsed.get("ok") is False
-        except json.JSONDecodeError:
-            # Some errors might not produce JSON output
-            pass
+            assert parsed.get("ok") is False, f"Expected ok=False, got {parsed}"
+        else:
+            # Non-JSON error output (e.g., connection error message)
+            assert "error" in result.output.lower() or result.exit_code != 0
 
 
 class TestOutputFlagShortForm:

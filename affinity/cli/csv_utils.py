@@ -106,7 +106,15 @@ def write_csv_from_rows(
         path.touch()
         return CsvWriteResult(rows_written=0, bytes_written=0)
 
-    fieldnames = list(rows_list[0].keys())
+    # Get fieldnames from first row, ensuring it's a dict with keys
+    first_row = rows_list[0]
+    if not isinstance(first_row, dict) or not first_row:
+        # Empty or non-dict first row - no fieldnames available
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return CsvWriteResult(rows_written=0, bytes_written=0)
+
+    fieldnames = list(first_row.keys())
 
     return write_csv(
         path=path,

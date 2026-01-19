@@ -158,6 +158,15 @@ def cli(
     session_cache: str | None,
     no_cache: bool,
 ) -> None:
+    # Validate numeric options (Bug #33, #34)
+    if timeout is not None and timeout <= 0:
+        raise click.BadParameter("must be positive", param_hint="'--timeout'")
+    if max_columns is not None and max_columns <= 0:
+        raise click.BadParameter("must be positive", param_hint="'--max-columns'")
+    # Validate env file exists when dotenv is enabled (Bug #40)
+    if dotenv and not Path(env_file).exists():
+        raise click.BadParameter(f"file not found: {env_file}", param_hint="'--env-file'")
+
     if click_ctx.invoked_subcommand is None:
         # No args: show help; no network calls.
         click.echo(click_ctx.get_help())

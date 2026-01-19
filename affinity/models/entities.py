@@ -568,23 +568,27 @@ class ListEntry(AffinityModel):
 
         try:
             entity_type = EntityType(raw_entity_type)
-        except Exception:
+        except ValueError as e:
+            _logger.debug("Unknown entity type %r, returning raw data: %s", raw_entity_type, e)
             return data
 
         if entity_type == EntityType.PERSON:
             try:
                 data["entity"] = PersonSummary.model_validate(entity)
-            except Exception:
+            except Exception as e:
+                _logger.debug("Failed to validate PersonSummary, returning raw data: %s", e)
                 return data
         elif entity_type == EntityType.ORGANIZATION:
             try:
                 data["entity"] = CompanySummary.model_validate(entity)
-            except Exception:
+            except Exception as e:
+                _logger.debug("Failed to validate CompanySummary, returning raw data: %s", e)
                 return data
         elif entity_type == EntityType.OPPORTUNITY:
             try:
                 data["entity"] = OpportunitySummary.model_validate(entity)
-            except Exception:
+            except Exception as e:
+                _logger.debug("Failed to validate OpportunitySummary, returning raw data: %s", e)
                 return data
 
         return data

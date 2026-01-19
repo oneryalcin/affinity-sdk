@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import re
+import sys
 import threading
 import time
 import uuid
@@ -933,40 +934,47 @@ class SimpleCache:
     Simple in-memory cache with TTL.
 
     Used for caching field metadata and other rarely-changing data.
+    Thread-safe via an internal lock.
     """
 
     def __init__(self, default_ttl: float = 300.0):
         self._cache: dict[str, CacheEntry] = {}
         self._default_ttl = default_ttl
+        self._lock = threading.Lock()
 
     def get(self, key: str) -> dict[str, Any] | None:
         """Get value if not expired."""
-        entry = self._cache.get(key)
-        if entry is None:
-            return None
-        if time.time() > entry.expires_at:
-            del self._cache[key]
-            return None
-        return entry.value
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            if time.time() > entry.expires_at:
+                del self._cache[key]
+                return None
+            return entry.value
 
     def set(self, key: str, value: dict[str, Any], ttl: float | None = None) -> None:
         """Set value with TTL."""
         expires_at = time.time() + (ttl or self._default_ttl)
-        self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
+        with self._lock:
+            self._cache[key] = CacheEntry(value=value, expires_at=expires_at)
 
     def delete(self, key: str) -> None:
         """Delete a cache entry."""
-        self._cache.pop(key, None)
+        with self._lock:
+            self._cache.pop(key, None)
 
     def clear(self) -> None:
         """Clear all cache entries."""
-        self._cache.clear()
+        with self._lock:
+            self._cache.clear()
 
     def invalidate_prefix(self, prefix: str) -> None:
         """Invalidate all entries with the given prefix."""
-        keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
-        for key in keys_to_delete:
-            del self._cache[key]
+        with self._lock:
+            keys_to_delete = [k for k in self._cache if k.startswith(prefix)]
+            for key in keys_to_delete:
+                del self._cache[key]
 
 
 # =============================================================================
@@ -1415,12 +1423,14 @@ class HTTPClient:
                     diagnostics=diagnostics,
                 )
 
-            if resp.status_code == 204 or not resp.content:
+            # Check for empty or whitespace-only content
+            content_stripped = resp.content.strip() if resp.content else b""
+            if resp.status_code == 204 or not content_stripped:
                 resp.json = {}
                 return resp
 
             try:
-                payload = json.loads(resp.content)
+                payload = json.loads(content_stripped)
             except Exception as e:
                 raise AffinityError("Expected JSON object/array response") from e
 
@@ -1685,8 +1695,13 @@ class HTTPClient:
                 request_kwargs["timeout"] = timeout
 
             cm = self._client.stream(req.method, req.url, **request_kwargs)
-            response = cm.__enter__()
-            headers = list(response.headers.multi_items())
+            try:
+                response = cm.__enter__()
+                headers = list(response.headers.multi_items())
+            except Exception:
+                # Ensure context manager is closed on any error during setup
+                cm.__exit__(*sys.exc_info())
+                raise
 
             if response.status_code >= 400:
                 try:
@@ -2249,7 +2264,11 @@ class HTTPClient:
             return iter(())
 
         def _iter() -> Iterator[bytes]:
-            yield from resp.stream.iter_bytes(chunk_size=chunk_size)
+            try:
+                yield from resp.stream.iter_bytes(chunk_size=chunk_size)
+            finally:
+                # Ensure stream is closed even if iterator collected without full consumption
+                resp.stream.close()
 
         return _iter()
 
@@ -2372,6 +2391,7 @@ class AsyncHTTPClient:
             self._config.api_key,
         )
         self._client: httpx.AsyncClient | None = None
+        self._client_lock: asyncio.Lock | None = None  # Lazy init to avoid event loop issues
         self._pipeline = self._build_pipeline()
         self._raw_buffered_pipeline = self._build_raw_buffered_pipeline()
         self._raw_stream_pipeline = self._build_raw_stream_pipeline()
@@ -2740,12 +2760,14 @@ class AsyncHTTPClient:
                     diagnostics=diagnostics,
                 )
 
-            if resp.status_code == 204 or not resp.content:
+            # Check for empty or whitespace-only content
+            content_stripped = resp.content.strip() if resp.content else b""
+            if resp.status_code == 204 or not content_stripped:
                 resp.json = {}
                 return resp
 
             try:
-                payload = json.loads(resp.content)
+                payload = json.loads(content_stripped)
             except Exception as e:
                 raise AffinityError("Expected JSON object/array response") from e
 
@@ -3013,8 +3035,13 @@ class AsyncHTTPClient:
 
             client = await self._get_client()
             cm = client.stream(req.method, req.url, **request_kwargs)
-            response = await cm.__aenter__()
-            headers = list(response.headers.multi_items())
+            try:
+                response = await cm.__aenter__()
+                headers = list(response.headers.multi_items())
+            except Exception:
+                # Ensure context manager is closed on any error during setup
+                await cm.__aexit__(*sys.exc_info())
+                raise
 
             if response.status_code >= 400:
                 try:
@@ -3213,16 +3240,26 @@ class AsyncHTTPClient:
         return compose_async(middlewares, terminal)
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Lazy initialization of async client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                http2=self._config.http2,
-                timeout=self._config.timeout,
-                limits=self._config.limits,
-                transport=self._config.async_transport,
-                headers=dict(_DEFAULT_HEADERS),
-            )
-        return self._client
+        """Lazy initialization of async client with lock to prevent race conditions."""
+        # Quick check without lock - if already initialized, return immediately
+        if self._client is not None:
+            return self._client
+
+        # Lazy-init lock to avoid event loop issues during __init__
+        if self._client_lock is None:
+            self._client_lock = asyncio.Lock()
+
+        async with self._client_lock:
+            # Double-check after acquiring lock
+            if self._client is None:
+                self._client = httpx.AsyncClient(
+                    http2=self._config.http2,
+                    timeout=self._config.timeout,
+                    limits=self._config.limits,
+                    transport=self._config.async_transport,
+                    headers=dict(_DEFAULT_HEADERS),
+                )
+            return self._client
 
     async def close(self) -> None:
         """Close the HTTP client."""
