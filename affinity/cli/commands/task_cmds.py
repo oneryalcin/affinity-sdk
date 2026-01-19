@@ -13,7 +13,19 @@ from ..serialization import serialize_model_for_cli
 
 @click.group(name="task", cls=RichGroup)
 def task_group() -> None:
-    """Task commands."""
+    """Poll async tasks (e.g., merges).
+
+    Some operations like 'company merge' and 'person merge' run asynchronously
+    and return a task URL. Use these commands to check status or wait for completion.
+
+    Example workflow:
+
+        xaffinity company merge 123 456 --json
+
+        # Returns {"taskUrl": "https://api.affinity.co/v2/tasks/..."}
+
+        xaffinity task wait "https://api.affinity.co/v2/tasks/..."
+    """
 
 
 def _task_payload(task: MergeTask) -> dict[str, object]:
@@ -26,7 +38,10 @@ def _task_payload(task: MergeTask) -> dict[str, object]:
 @output_options
 @click.pass_obj
 def task_get(ctx: CLIContext, task_url: str) -> None:
-    """Get task status."""
+    """Get current status of an async task.
+
+    Returns task status (pending, in_progress, success, failed) without waiting.
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
@@ -78,7 +93,11 @@ def task_wait(
     poll_interval: float,
     max_poll_interval: float,
 ) -> None:
-    """Wait for a task to complete."""
+    """Wait for an async task to complete.
+
+    Polls the task URL with exponential backoff until it reaches 'success' or 'failed'.
+    Returns the final task status. Raises an error if the task fails or times out.
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)

@@ -202,6 +202,31 @@ company ls --filter "Status=New"
 list export Dealflow --filter "Status=New"
 ```
 
+## Async Operations (Merges)
+
+Some operations run asynchronously and return a **task URL** instead of completing immediately.
+
+### Merge Operations (Beta)
+Merge duplicate companies or persons into a primary record:
+```bash
+company merge 123 456    # Merge company 456 into company 123
+person merge 789 101     # Merge person 101 into person 789
+```
+
+These return a `taskUrl` that you can poll for completion:
+```json
+{"survivingId": 123, "mergedId": 456, "taskUrl": "https://api.affinity.co/v2/tasks/..."}
+```
+
+### Waiting for Task Completion
+```bash
+task wait "https://api.affinity.co/v2/tasks/abc123"              # Wait up to 5 min (default)
+task wait "https://api.affinity.co/v2/tasks/abc123" --timeout 60 # Wait up to 60 seconds
+task get "https://api.affinity.co/v2/tasks/abc123"               # Check status without waiting
+```
+
+Task statuses: `pending`, `in_progress`, `success`, `failed`
+
 ## Filter Syntax (V2 API)
 
 All commands use the same filter syntax:

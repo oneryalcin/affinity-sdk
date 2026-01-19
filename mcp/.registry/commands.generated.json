@@ -408,7 +408,7 @@
     },
     {
       "name": "company merge",
-      "description": "Merge a duplicate company into a primary company (beta).",
+      "description": "Merge a duplicate company into a primary (beta).",
       "category": "write",
       "destructive": false,
       "progressCapable": false,
@@ -425,10 +425,14 @@
           "required": true
         }
       ],
-      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records.",
+      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records. Returns a taskUrl - use 'task wait' to poll for completion.",
+      "examples": [
+        "company merge 123 456"
+      ],
       "relatedCommands": [
         "company get",
-        "company ls"
+        "company ls",
+        "task wait"
       ]
     },
     {
@@ -2475,7 +2479,7 @@
     },
     {
       "name": "person merge",
-      "description": "Merge a duplicate person into a primary person (beta).",
+      "description": "Merge a duplicate person into a primary (beta).",
       "category": "write",
       "destructive": false,
       "progressCapable": false,
@@ -2492,10 +2496,14 @@
           "required": true
         }
       ],
-      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records.",
+      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records. Returns a taskUrl - use 'task wait' to poll for completion.",
+      "examples": [
+        "person merge 123 456"
+      ],
       "relatedCommands": [
         "person get",
-        "person ls"
+        "person ls",
+        "task wait"
       ]
     },
     {
@@ -3118,7 +3126,7 @@
     },
     {
       "name": "task get",
-      "description": "Get task status.",
+      "description": "Get current status of an async task.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
@@ -3130,14 +3138,19 @@
           "required": true
         }
       ],
-      "whenToUse": "Get status of an async task. Some operations return task URLs that complete in the background.",
+      "whenToUse": "Get current status of an async task (pending/in_progress/success/failed). Operations like 'company merge' and 'person merge' return taskUrls that complete in the background.",
+      "examples": [
+        "task get 'https://api.affinity.co/v2/tasks/abc123'"
+      ],
       "relatedCommands": [
-        "task wait"
+        "task wait",
+        "company merge",
+        "person merge"
       ]
     },
     {
       "name": "task wait",
-      "description": "Wait for a task to complete.",
+      "description": "Wait for an async task to complete.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
@@ -3165,9 +3178,15 @@
           "required": true
         }
       ],
-      "whenToUse": "Wait for an async task to complete and return its result.",
+      "whenToUse": "Wait for an async task to complete. Polls with exponential backoff until success/failure. Use after 'company merge' or 'person merge'.",
+      "examples": [
+        "task wait 'https://api.affinity.co/v2/tasks/abc123'",
+        "task wait 'https://api.affinity.co/v2/tasks/abc123' --timeout 60"
+      ],
       "relatedCommands": [
-        "task get"
+        "task get",
+        "company merge",
+        "person merge"
       ]
     },
     {

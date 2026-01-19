@@ -36,8 +36,11 @@
       "relatedCommands": ["person get", "field ls"]
     },
     "person merge": {
-      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records.",
-      "relatedCommands": ["person get", "person ls"]
+      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records. Returns a taskUrl - use 'task wait' to poll for completion.",
+      "examples": [
+        "person merge 123 456"
+      ],
+      "relatedCommands": ["person get", "person ls", "task wait"]
     },
     "person files upload": {
       "whenToUse": "Upload files/documents to a person.",
@@ -80,8 +83,11 @@
       "relatedCommands": ["company get", "field ls"]
     },
     "company merge": {
-      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records.",
-      "relatedCommands": ["company get", "company ls"]
+      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records. Returns a taskUrl - use 'task wait' to poll for completion.",
+      "examples": [
+        "company merge 123 456"
+      ],
+      "relatedCommands": ["company get", "company ls", "task wait"]
     },
     "company files upload": {
       "whenToUse": "Upload files/documents to a company.",
@@ -322,12 +328,19 @@
       "relatedCommands": ["person get", "company get", "opportunity get"]
     },
     "task get": {
-      "whenToUse": "Get status of an async task. Some operations return task URLs that complete in the background.",
-      "relatedCommands": ["task wait"]
+      "whenToUse": "Get current status of an async task (pending/in_progress/success/failed). Operations like 'company merge' and 'person merge' return taskUrls that complete in the background.",
+      "examples": [
+        "task get 'https://api.affinity.co/v2/tasks/abc123'"
+      ],
+      "relatedCommands": ["task wait", "company merge", "person merge"]
     },
     "task wait": {
-      "whenToUse": "Wait for an async task to complete and return its result.",
-      "relatedCommands": ["task get"]
+      "whenToUse": "Wait for an async task to complete. Polls with exponential backoff until success/failure. Use after 'company merge' or 'person merge'.",
+      "examples": [
+        "task wait 'https://api.affinity.co/v2/tasks/abc123'",
+        "task wait 'https://api.affinity.co/v2/tasks/abc123' --timeout 60"
+      ],
+      "relatedCommands": ["task get", "company merge", "person merge"]
     },
     "whoami": {
       "whenToUse": "Show current authenticated user and tenant information.",

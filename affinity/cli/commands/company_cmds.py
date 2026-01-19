@@ -1904,7 +1904,10 @@ def company_merge(
     primary_id: int,
     duplicate_id: int,
 ) -> None:
-    """Merge a duplicate company into a primary company (beta)."""
+    """Merge a duplicate company into a primary (beta).
+
+    Returns a taskUrl for tracking progress. Use 'task wait <url>' to wait for completion.
+    """
 
     def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
         client = ctx.get_client(warnings=warnings)
