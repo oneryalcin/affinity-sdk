@@ -159,8 +159,8 @@ jobs:
 
       - name: Verify registry is up to date
         run: |
-          python tools/generate_cli_commands_registry.py
-          git diff --exit-code mcp/.registry/commands.json
+          python tools/generate_mcp_command_registry.py
+          git diff --exit-code mcp/.registry/commands.generated.json
 
   build:
     runs-on: ubuntu-latest

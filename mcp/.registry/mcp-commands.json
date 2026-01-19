@@ -1,0 +1,347 @@
+{
+  "_comment": "MCP Command Registry Config. Only commands listed here are exposed via discover-commands. Edit this file to control what CLI commands LLMs can discover.",
+  "commands": {
+    "person get": {
+      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "examples": [
+        "person get 12345",
+        "person get email:john@example.com",
+        "person get 12345 --expand list-entries",
+        "person get 12345 --with-interaction-dates"
+      ],
+      "relatedCommands": ["person ls", "person field"]
+    },
+    "person ls": {
+      "whenToUse": "Search persons by name/email. ALWAYS use --query for text search (simpler, more reliable). Avoid --filter with complex expressions containing quotes.",
+      "examples": [
+        "person ls --query 'John Smith'",
+        "person ls --query 'john@example.com'"
+      ],
+      "relatedCommands": ["person get", "person field"]
+    },
+    "person create": {
+      "whenToUse": "Create a new person in the CRM.",
+      "relatedCommands": ["person get", "person update"]
+    },
+    "person update": {
+      "whenToUse": "Update an existing person's details.",
+      "relatedCommands": ["person get"]
+    },
+    "person delete": {
+      "whenToUse": "Delete a person from the CRM. Use with caution.",
+      "relatedCommands": ["person get"]
+    },
+    "person field": {
+      "whenToUse": "Manage global field values on a person.",
+      "relatedCommands": ["person get", "field ls"]
+    },
+    "person merge": {
+      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records.",
+      "relatedCommands": ["person get", "person ls"]
+    },
+    "person files upload": {
+      "whenToUse": "Upload files/documents to a person.",
+      "examples": ["person files upload 123 --file doc.pdf"],
+      "relatedCommands": ["person get", "person files dump"]
+    },
+    "person files dump": {
+      "whenToUse": "Download all files attached to a person.",
+      "examples": ["person files dump 123 --out ./downloads"],
+      "relatedCommands": ["person get", "person files upload"]
+    },
+    "company get": {
+      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "examples": [
+        "company get 12345",
+        "company get domain:wellybox.com",
+        "company get domain:wellybox.com --expand list-entries",
+        "company get 12345 --with-interaction-dates"
+      ],
+      "relatedCommands": ["company ls", "company field"]
+    },
+    "company ls": {
+      "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status.",
+      "relatedCommands": ["company get", "company field"]
+    },
+    "company create": {
+      "whenToUse": "Create a new company in the CRM.",
+      "relatedCommands": ["company get", "company update"]
+    },
+    "company update": {
+      "whenToUse": "Update an existing company's details.",
+      "relatedCommands": ["company get"]
+    },
+    "company delete": {
+      "whenToUse": "Delete a company from the CRM. Use with caution.",
+      "relatedCommands": ["company get"]
+    },
+    "company field": {
+      "whenToUse": "Manage global field values on a company.",
+      "relatedCommands": ["company get", "field ls"]
+    },
+    "company merge": {
+      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records.",
+      "relatedCommands": ["company get", "company ls"]
+    },
+    "company files upload": {
+      "whenToUse": "Upload files/documents to a company.",
+      "examples": ["company files upload 123 --file doc.pdf"],
+      "relatedCommands": ["company get", "company files dump"]
+    },
+    "company files dump": {
+      "whenToUse": "Download all files attached to a company.",
+      "examples": ["company files dump 123 --out ./downloads"],
+      "relatedCommands": ["company get", "company files upload"]
+    },
+    "opportunity get": {
+      "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
+      "relatedCommands": ["opportunity ls"]
+    },
+    "opportunity ls": {
+      "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline).",
+      "relatedCommands": ["opportunity get", "list ls"]
+    },
+    "opportunity create": {
+      "whenToUse": "Create a new opportunity in a pipeline.",
+      "relatedCommands": ["opportunity get", "opportunity update"]
+    },
+    "opportunity update": {
+      "whenToUse": "Update an existing opportunity.",
+      "relatedCommands": ["opportunity get"]
+    },
+    "opportunity delete": {
+      "whenToUse": "Delete an opportunity. Use with caution.",
+      "relatedCommands": ["opportunity get"]
+    },
+    "opportunity field": {
+      "whenToUse": "Manage field values on an opportunity.",
+      "relatedCommands": ["opportunity get", "field ls"]
+    },
+    "opportunity files upload": {
+      "whenToUse": "Upload files/documents to an opportunity.",
+      "examples": ["opportunity files upload 123 --file doc.pdf"],
+      "relatedCommands": ["opportunity get", "opportunity files dump"]
+    },
+    "opportunity files dump": {
+      "whenToUse": "Download all files attached to an opportunity.",
+      "examples": ["opportunity files dump 123 --out ./downloads"],
+      "relatedCommands": ["opportunity get", "opportunity files upload"]
+    },
+    "list ls": {
+      "whenToUse": "Find list IDs by name. Use before list export or field ls.",
+      "relatedCommands": ["list get", "field ls"]
+    },
+    "list get": {
+      "whenToUse": "Get list details including type and field count.",
+      "relatedCommands": ["list ls", "field ls"]
+    },
+    "list create": {
+      "whenToUse": "Create a new list (person, company, or opportunity type).",
+      "relatedCommands": ["list ls", "list get"]
+    },
+    "list export": {
+      "whenToUse": "ONLY for --saved-view (Affinity saved views). For ALL other list operations, use the 'query' tool instead - it supports filtering, includes (persons, companies, interactions), expands (interactionDates, unrepliedEmails), and aggregations.",
+      "examples": [
+        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
+      ],
+      "relatedCommands": ["query"]
+    },
+    "entry get": {
+      "whenToUse": "Get full details for a single list entry by ID.",
+      "relatedCommands": ["entry field", "query"]
+    },
+    "entry add": {
+      "whenToUse": "Add a person or company to a list.",
+      "relatedCommands": ["entry get", "entry delete"]
+    },
+    "entry field": {
+      "whenToUse": "Update field values on a list entry.",
+      "examples": [
+        "entry field \"Pipeline\" 12345 --set Status \"Active\"",
+        "entry field \"Pipeline\" 12345 --set \"Deal Size\" 50000"
+      ],
+      "relatedCommands": ["entry get", "field ls"]
+    },
+    "entry delete": {
+      "whenToUse": "Remove an entry from a list. Use with caution.",
+      "relatedCommands": ["entry get"]
+    },
+    "field ls": {
+      "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields and dropdown options.",
+      "relatedCommands": ["list ls", "entry field"]
+    },
+    "field history": {
+      "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector.",
+      "examples": [
+        "field history field-123456 --person-id 789",
+        "field history field-123456 --company-id 456",
+        "field history field-123456 --list-entry-id 999 --max-results 50"
+      ],
+      "relatedCommands": ["field ls", "person get", "company get"]
+    },
+    "field create": {
+      "whenToUse": "Create a new custom field on a list or globally.",
+      "relatedCommands": ["field ls", "field delete"]
+    },
+    "field delete": {
+      "whenToUse": "Delete a custom field. Use with caution - this removes all data in that field.",
+      "relatedCommands": ["field ls"]
+    },
+    "interaction ls": {
+      "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year.",
+      "examples": [
+        "interaction ls --type all --company-id 456",
+        "interaction ls --type email --type meeting --person-id 123 --days 30",
+        "interaction ls --type meeting --person-id 123 --days 30",
+        "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
+      ],
+      "relatedCommands": ["interaction get", "interaction create", "note ls"]
+    },
+    "interaction get": {
+      "whenToUse": "Get details of a specific interaction by ID.",
+      "relatedCommands": ["interaction ls"]
+    },
+    "interaction create": {
+      "whenToUse": "Log a meeting, call, or email. Requires --type and --participants.",
+      "relatedCommands": ["interaction ls", "note create"]
+    },
+    "interaction update": {
+      "whenToUse": "Update an existing interaction.",
+      "relatedCommands": ["interaction get"]
+    },
+    "interaction delete": {
+      "whenToUse": "Delete an interaction. Use with caution.",
+      "relatedCommands": ["interaction get"]
+    },
+    "note ls": {
+      "whenToUse": "List notes attached to an entity.",
+      "relatedCommands": ["note get", "note create"]
+    },
+    "note get": {
+      "whenToUse": "Get details of a specific note by ID.",
+      "relatedCommands": ["note ls"]
+    },
+    "note create": {
+      "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes.",
+      "relatedCommands": ["note ls", "interaction create"]
+    },
+    "note update": {
+      "whenToUse": "Update an existing note.",
+      "relatedCommands": ["note get"]
+    },
+    "note delete": {
+      "whenToUse": "Delete a note. Use with caution.",
+      "relatedCommands": ["note get"]
+    },
+    "reminder ls": {
+      "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before).",
+      "relatedCommands": ["reminder get", "reminder create"]
+    },
+    "reminder get": {
+      "whenToUse": "Get details of a specific reminder by ID.",
+      "relatedCommands": ["reminder ls"]
+    },
+    "reminder create": {
+      "whenToUse": "Create a reminder for follow-up on an entity.",
+      "relatedCommands": ["reminder ls", "reminder update"]
+    },
+    "reminder update": {
+      "whenToUse": "Update an existing reminder.",
+      "relatedCommands": ["reminder get"]
+    },
+    "reminder delete": {
+      "whenToUse": "Delete a reminder.",
+      "relatedCommands": ["reminder get"]
+    },
+    "relationship-strength ls": {
+      "whenToUse": "List relationship strengths for a person or external ID. Shows connection quality and team members who know them.",
+      "relatedCommands": ["person get"]
+    },
+    "query": {
+      "whenToUse": "For complex data queries. PREFERRED over list export for all list operations except --saved-view. Always use --dry-run first to preview API call count.",
+      "syntax": {
+        "structure": "{\"from\": \"<entity>\", \"where\": {...}, \"include\": [...], \"expand\": [...], \"select\": [...], \"orderBy\": [...], \"groupBy\": \"<field>\", \"aggregate\": {...}, \"limit\": N}",
+        "entities": ["persons", "companies", "opportunities", "listEntries", "interactions", "notes"],
+        "operators": {
+          "comparison": ["eq", "neq", "gt", "gte", "lt", "lte"],
+          "string": ["contains", "starts_with", "ends_with"],
+          "collection": ["in", "between", "has_any", "has_all", "contains_any", "contains_all"],
+          "null": ["is_null", "is_not_null", "is_empty"]
+        },
+        "compound": ["and", "or", "not"],
+        "quantifiers": ["all", "none", "exists", "_count (e.g. companies._count)"],
+        "relativeDates": ["-30d", "+7d", "today", "now", "yesterday", "tomorrow"]
+      },
+      "critical": {
+        "listEntriesRequiresFilter": "listEntries MUST have where clause with listId or listName - e.g. {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Pipeline\"}",
+        "includeVsExpand": "include fetches related entities (separate section), expand adds computed data to each record",
+        "quantifiersNeedMaxRecords": "all/none/exists/_count on persons/companies/opportunities cause N+1 calls - always add maxRecords",
+        "multiSelectFields": "Use has_any/has_all for multi-select dropdown fields, not eq/in"
+      },
+      "include": {
+        "persons": ["companies", "opportunities", "interactions", "notes", "listEntries"],
+        "companies": ["persons", "opportunities", "interactions", "notes", "listEntries"],
+        "listEntries": ["entity", "persons", "companies", "opportunities", "interactions"],
+        "withParams": "{\"interactions\": {\"limit\": 50, \"days\": 180}}"
+      },
+      "expand": {
+        "interactionDates": "Last/next meeting dates, email dates, team members (persons, companies, listEntries)",
+        "unrepliedEmails": "Detect unreplied incoming emails with date, daysSince, subject"
+      },
+      "fieldPaths": {
+        "customFields": "fields.<FieldName> for list entry custom fields",
+        "wildcard": "fields.* selects all custom fields",
+        "array": "emails[0] for array access"
+      },
+      "outputFormats": {
+        "toon": "Default, token-efficient (~40% fewer tokens)",
+        "markdown": "Best for LLM analysis - tables are easy to comprehend",
+        "json": "Full structure for programmatic use",
+        "csv": "For spreadsheets"
+      },
+      "examples": [
+        "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
+        "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"], \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"select\": [\"entityName\", \"fields.*\"], \"limit\": 100}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\", \"unrepliedEmails\"], \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"include\": [{\"interactions\": {\"days\": 90, \"limit\": 20}}], \"limit\": 50}'",
+        "query --query '{\"from\": \"opportunities\", \"groupBy\": \"fields.Status\", \"aggregate\": {\"count\": {\"count\": true}, \"totalValue\": {\"sum\": \"fields.Deal Value\"}}}'",
+        "query --query '{\"from\": \"persons\", \"where\": {\"and\": [{\"path\": \"email\", \"op\": \"is_not_null\"}, {\"path\": \"companies._count\", \"op\": \"gte\", \"value\": 1}]}, \"include\": [\"companies\"], \"limit\": 100}' --dry-run",
+        "query --query '{\"from\": \"companies\", \"where\": {\"path\": \"createdAt\", \"op\": \"gte\", \"value\": \"-30d\"}, \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"and\": [{\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Pipeline\"}, {\"path\": \"fields.Team Member\", \"op\": \"has_any\", \"value\": [\"Alice\", \"Bob\"]}]}, \"limit\": 100}'"
+      ],
+      "relatedCommands": ["person ls", "company ls", "list export"]
+    },
+    "resolve-url": {
+      "whenToUse": "Parse an Affinity UI URL to extract entity type and IDs. Useful when user pastes an Affinity link.",
+      "examples": [
+        "resolve-url 'https://app.affinity.co/persons/123'"
+      ],
+      "relatedCommands": ["person get", "company get", "opportunity get"]
+    },
+    "task get": {
+      "whenToUse": "Get status of an async task. Some operations return task URLs that complete in the background.",
+      "relatedCommands": ["task wait"]
+    },
+    "task wait": {
+      "whenToUse": "Wait for an async task to complete and return its result.",
+      "relatedCommands": ["task get"]
+    },
+    "whoami": {
+      "whenToUse": "Show current authenticated user and tenant information.",
+      "relatedCommands": ["config check-key"]
+    },
+    "config setup-key": {
+      "whenToUse": "Securely configure the Affinity API key. Use when key is not set up.",
+      "relatedCommands": ["config check-key", "whoami"]
+    },
+    "config check-key": {
+      "whenToUse": "Check if an API key is configured. Useful for troubleshooting authentication issues.",
+      "relatedCommands": ["config setup-key", "whoami"]
+    },
+    "config path": {
+      "whenToUse": "Show the path to the configuration file. Useful for debugging.",
+      "relatedCommands": ["config check-key"]
+    }
+  }
+}

@@ -1,10 +1,13 @@
 {
   "_generated": {
-    "by": "tools/generate_cli_commands_registry.py",
-    "cliVersion": "0.9.12"
+    "warning": "DO NOT EDIT - This file is auto-generated",
+    "generator": "tools/generate_mcp_command_registry.py",
+    "timestamp": "2026-01-19T07:17:47.743041+00:00",
+    "cliVersion": "0.9.13",
+    "sourceConfig": "mcp/.registry/mcp-commands.json"
   },
   "version": 1,
-  "cliVersion": "0.9.12",
+  "cliVersion": "0.9.13",
   "commands": [
     {
       "name": "company create",
@@ -30,7 +33,12 @@
           "multiple": true
         }
       },
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Create a new company in the CRM.",
+      "relatedCommands": [
+        "company get",
+        "company update"
+      ]
     },
     {
       "name": "company delete",
@@ -54,6 +62,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete a company from the CRM. Use with caution.",
+      "relatedCommands": [
+        "company get"
       ]
     },
     {
@@ -100,6 +112,11 @@
         "company field 123 --unset Industry",
         "company field 123 --set-json '{\"Industry\": \"Tech\", \"Size\": \"Large\"}'",
         "company field 123 --get Industry --get Size"
+      ],
+      "whenToUse": "Manage global field values on a company.",
+      "relatedCommands": [
+        "company get",
+        "field ls"
       ]
     },
     {
@@ -141,6 +158,14 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Download all files attached to a company.",
+      "examples": [
+        "company files dump 123 --out ./downloads"
+      ],
+      "relatedCommands": [
+        "company get",
+        "company files upload"
       ]
     },
     {
@@ -165,8 +190,12 @@
         }
       ],
       "examples": [
-        "company files upload 123 --file doc.pdf",
-        "company files upload 123 --file a.pdf --file b.pdf"
+        "company files upload 123 --file doc.pdf"
+      ],
+      "whenToUse": "Upload files/documents to a company.",
+      "relatedCommands": [
+        "company get",
+        "company files dump"
       ]
     },
     {
@@ -281,14 +310,13 @@
         "company get 12345",
         "company get domain:wellybox.com",
         "company get domain:wellybox.com --expand list-entries",
-        "company get domain:wellybox.com --expand list-entries --show-list-entry-fields --max-results 3",
         "company get 12345 --with-interaction-dates"
       ],
+      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
       "relatedCommands": [
         "company ls",
         "company field"
-      ],
-      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity."
+      ]
     },
     {
       "name": "company ls",
@@ -373,11 +401,11 @@
         "company ls --all --csv > companies.csv",
         "company ls --all --csv --csv-bom > companies.csv"
       ],
+      "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status.",
       "relatedCommands": [
         "company get",
         "company field"
-      ],
-      "whenToUse": "List or search ALL companies in CRM. Use --query for text search (name, domain). NOT for list-specific fields like Status."
+      ]
     },
     {
       "name": "company merge",
@@ -397,6 +425,11 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Merge a duplicate company into a primary company (beta). Combines data from both records.",
+      "relatedCommands": [
+        "company get",
+        "company ls"
       ]
     },
     {
@@ -429,21 +462,10 @@
           "type": "int",
           "required": true
         }
-      ]
-    },
-    {
-      "name": "completion",
-      "description": "Output shell completion script for bash, zsh, or fish.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": [
-        {
-          "name": "SHELL",
-          "type": "string",
-          "required": true
-        }
+      ],
+      "whenToUse": "Update an existing company's details.",
+      "relatedCommands": [
+        "company get"
       ]
     },
     {
@@ -453,22 +475,12 @@
       "destructive": false,
       "progressCapable": false,
       "parameters": {},
-      "positionals": []
-    },
-    {
-      "name": "config init",
-      "description": "Create a new configuration file with template.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--force": {
-          "type": "flag",
-          "required": false,
-          "help": "Overwrite existing config file."
-        }
-      },
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Check if an API key is configured. Useful for troubleshooting authentication issues.",
+      "relatedCommands": [
+        "config setup-key",
+        "whoami"
+      ]
     },
     {
       "name": "config path",
@@ -477,7 +489,11 @@
       "destructive": false,
       "progressCapable": false,
       "parameters": {},
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Show the path to the configuration file. Useful for debugging.",
+      "relatedCommands": [
+        "config check-key"
+      ]
     },
     {
       "name": "config setup-key",
@@ -506,7 +522,12 @@
           "help": "Test the key against the API after storing (default: validate)."
         }
       },
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Securely configure the Affinity API key. Use when key is not set up.",
+      "relatedCommands": [
+        "config check-key",
+        "whoami"
+      ]
     },
     {
       "name": "entry add",
@@ -537,6 +558,11 @@
           "type": "string",
           "required": true
         }
+      ],
+      "whenToUse": "Add a person or company to a list.",
+      "relatedCommands": [
+        "entry get",
+        "entry delete"
       ]
     },
     {
@@ -566,6 +592,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Remove an entry from a list. Use with caution.",
+      "relatedCommands": [
+        "entry get"
       ]
     },
     {
@@ -624,13 +654,13 @@
         }
       ],
       "examples": [
-        "entry field \"Portfolio\" 123 --set Status \"Active\"",
-        "entry field \"Portfolio\" 123 --set Status \"Active\" --set Priority \"High\"",
-        "entry field \"Portfolio\" 123 --append Tags \"Priority\"",
-        "entry field \"Portfolio\" 123 --unset Status",
-        "entry field \"Portfolio\" 123 --unset-value Tags \"OldTag\"",
-        "entry field \"Portfolio\" 123 --set-json '{\"Status\": \"Active\"}'",
-        "entry field \"Portfolio\" 123 --get Status --get Priority"
+        "entry field \"Pipeline\" 12345 --set Status \"Active\"",
+        "entry field \"Pipeline\" 12345 --set \"Deal Size\" 50000"
+      ],
+      "whenToUse": "Update field values on a list entry.",
+      "relatedCommands": [
+        "entry get",
+        "field ls"
       ]
     },
     {
@@ -655,6 +685,11 @@
       "examples": [
         "list entry get \"Portfolio\" 12345",
         "list entry get 67890 12345"
+      ],
+      "whenToUse": "Get full details for a single list entry by ID.",
+      "relatedCommands": [
+        "entry field",
+        "query"
       ]
     },
     {
@@ -725,7 +760,12 @@
           ]
         }
       },
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Create a new custom field on a list or globally.",
+      "relatedCommands": [
+        "field ls",
+        "field delete"
+      ]
     },
     {
       "name": "field delete",
@@ -749,6 +789,10 @@
           "type": "string",
           "required": true
         }
+      ],
+      "whenToUse": "Delete a custom field. Use with caution - this removes all data in that field.",
+      "relatedCommands": [
+        "field ls"
       ]
     },
     {
@@ -810,13 +854,12 @@
         "field history field-123456 --company-id 456",
         "field history field-123456 --list-entry-id 999 --max-results 50"
       ],
+      "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector.",
       "relatedCommands": [
         "field ls",
-        "list-entry get",
         "person get",
         "company get"
-      ],
-      "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector."
+      ]
     },
     {
       "name": "field ls",
@@ -844,12 +887,11 @@
         }
       },
       "positionals": [],
+      "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields and dropdown options.",
       "relatedCommands": [
         "list ls",
-        "list export",
         "entry field"
-      ],
-      "whenToUse": "See what custom fields exist on a list. Helps understand available filter fields."
+      ]
     },
     {
       "name": "interaction create",
@@ -900,11 +942,11 @@
         }
       },
       "positionals": [],
+      "whenToUse": "Log a meeting, call, or email. Requires --type and --participants.",
       "relatedCommands": [
         "interaction ls",
         "note create"
-      ],
-      "whenToUse": "Log a meeting, call, or email. Requires --type and --participants."
+      ]
     },
     {
       "name": "interaction delete",
@@ -943,6 +985,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete an interaction. Use with caution.",
+      "relatedCommands": [
+        "interaction get"
       ]
     },
     {
@@ -978,6 +1024,10 @@
       "examples": [
         "interaction get 123 --type meeting",
         "interaction get 456 -t email"
+      ],
+      "whenToUse": "Get details of a specific interaction by ID.",
+      "relatedCommands": [
+        "interaction ls"
       ]
     },
     {
@@ -1066,17 +1116,17 @@
         }
       },
       "positionals": [],
-      "relatedCommands": [
-        "interaction get",
-        "interaction create",
-        "note ls"
-      ],
       "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year.",
       "examples": [
         "interaction ls --type all --company-id 456",
         "interaction ls --type email --type meeting --person-id 123 --days 30",
         "interaction ls --type meeting --person-id 123 --days 30",
         "interaction ls --type call --person-id 789 --after 2024-01-01 --before 2024-06-30"
+      ],
+      "relatedCommands": [
+        "interaction get",
+        "interaction create",
+        "note ls"
       ]
     },
     {
@@ -1133,6 +1183,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Update an existing interaction.",
+      "relatedCommands": [
+        "interaction get"
       ]
     },
     {
@@ -1167,155 +1221,11 @@
       "examples": [
         "list create --name \"Prospects\" --type company",
         "list create --name \"Candidates\" --type person --public"
-      ]
-    },
-    {
-      "name": "list entry add",
-      "description": "Add a person or company to a list.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--company-id": {
-          "type": "int",
-          "required": false,
-          "help": "Company id to add."
-        },
-        "--creator-id": {
-          "type": "int",
-          "required": false,
-          "help": "Creator id override."
-        },
-        "--person-id": {
-          "type": "int",
-          "required": false,
-          "help": "Person id to add."
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        }
-      ]
-    },
-    {
-      "name": "list entry delete",
-      "description": "Delete a list entry.",
-      "category": "write",
-      "destructive": true,
-      "progressCapable": false,
-      "parameters": {
-        "--yes": {
-          "type": "flag",
-          "required": false,
-          "help": "Skip confirmation prompt.",
-          "aliases": [
-            "-y"
-          ]
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ]
-    },
-    {
-      "name": "list entry field",
-      "description": "Manage list entry field values.",
-      "category": "write",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {
-        "--append": {
-          "type": "string",
-          "required": false,
-          "help": "Append to multi-value field (repeatable). Adds without replacing.",
-          "multiple": true
-        },
-        "--get": {
-          "type": "string",
-          "required": false,
-          "help": "Get specific field values (repeatable).",
-          "multiple": true
-        },
-        "--set": {
-          "type": "string",
-          "required": false,
-          "help": "Set field value (repeatable). Replaces existing value(s).",
-          "multiple": true
-        },
-        "--set-json": {
-          "type": "string",
-          "required": false,
-          "help": "JSON object of field:value pairs to set."
-        },
-        "--unset": {
-          "type": "string",
-          "required": false,
-          "help": "Unset all values for field (repeatable).",
-          "multiple": true
-        },
-        "--unset-value": {
-          "type": "string",
-          "required": false,
-          "help": "Unset specific value from multi-value field (repeatable).",
-          "multiple": true
-        }
-      },
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
       ],
-      "examples": [
-        "entry field \"Portfolio\" 123 --set Status \"Active\"",
-        "entry field \"Portfolio\" 123 --set Status \"Active\" --set Priority \"High\"",
-        "entry field \"Portfolio\" 123 --append Tags \"Priority\"",
-        "entry field \"Portfolio\" 123 --unset Status",
-        "entry field \"Portfolio\" 123 --unset-value Tags \"OldTag\"",
-        "entry field \"Portfolio\" 123 --set-json '{\"Status\": \"Active\"}'",
-        "entry field \"Portfolio\" 123 --get Status --get Priority"
-      ]
-    },
-    {
-      "name": "list entry get",
-      "description": "Get a single list entry by ID.",
-      "category": "read",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": [
-        {
-          "name": "LIST_SELECTOR",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "ENTRY_ID",
-          "type": "int",
-          "required": true
-        }
-      ],
-      "examples": [
-        "list entry get \"Portfolio\" 12345",
-        "list entry get 67890 12345"
+      "whenToUse": "Create a new list (person, company, or opportunity type).",
+      "relatedCommands": [
+        "list ls",
+        "list get"
       ]
     },
     {
@@ -1481,20 +1391,12 @@
         }
       ],
       "examples": [
-        "list export \"Pipeline\" --all",
-        "list export \"Pipeline\" --filter 'Status=New' --all",
-        "list export \"Pipeline\" --filter 'Status=\"Intro Meeting\"' --all",
-        "list export \"Pipeline\" --filter '\"Team Member\"=~\"LB\"' --all",
-        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv",
-        "list export \"Pipeline\" --expand interactions --json",
-        "list export \"Pipeline\" --check-unreplied-emails --json"
+        "list export \"Pipeline\" --saved-view \"Active Deals\" --csv > deals.csv"
       ],
+      "whenToUse": "ONLY for --saved-view (Affinity saved views). For ALL other list operations, use the 'query' tool instead - it supports filtering, includes (persons, companies, interactions), expands (interactionDates, unrepliedEmails), and aggregations.",
       "relatedCommands": [
-        "list ls",
-        "field ls",
-        "list-entry get"
-      ],
-      "whenToUse": "Get entries from a list. Use --filter for field-based filtering on LIST FIELDS ONLY (Status, Owner, etc.) - NOT internal properties like entityId/entityType/listEntryId. Use 'field ls --list-id' to see filterable fields. IMPORTANT: Multi-word field names AND values MUST be quoted (e.g., --filter '\"Team Member\"=\"John Smith\"'). To find a specific entity in a list, use 'company get <id> --expand list-entries' instead. Use --expand interactions for meeting/email dates. Use --check-unreplied-emails to find unreplied incoming emails."
+        "query"
+      ]
     },
     {
       "name": "list get",
@@ -1514,12 +1416,11 @@
         "list get 12345",
         "list get \"Pipeline\""
       ],
+      "whenToUse": "Get list details including type and field count.",
       "relatedCommands": [
         "list ls",
-        "list export",
         "field ls"
-      ],
-      "whenToUse": "Get list details including type and field count."
+      ]
     },
     {
       "name": "list ls",
@@ -1570,12 +1471,11 @@
         "list ls --type person",
         "list ls --type company --all"
       ],
+      "whenToUse": "Find list IDs by name. Use before list export or field ls.",
       "relatedCommands": [
         "list get",
-        "list export",
         "field ls"
-      ],
-      "whenToUse": "Find list IDs by name. Use before list export or field ls."
+      ]
     },
     {
       "name": "note create",
@@ -1640,11 +1540,11 @@
         "note create --content \"Meeting notes\" --person-id 12345",
         "note create --content \"<b>Summary</b>\" --type html --company-id 67890"
       ],
+      "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes.",
       "relatedCommands": [
         "note ls",
         "interaction create"
-      ],
-      "whenToUse": "Add a note to an entity. Simpler than interactions for quick notes."
+      ]
     },
     {
       "name": "note delete",
@@ -1668,6 +1568,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete a note. Use with caution.",
+      "relatedCommands": [
+        "note get"
       ]
     },
     {
@@ -1683,6 +1587,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Get details of a specific note by ID.",
+      "relatedCommands": [
+        "note ls"
       ]
     },
     {
@@ -1748,6 +1656,11 @@
         "note ls --person-id 12345",
         "note ls --company-id 67890 --all",
         "note ls --creator-id 111 --max-results 50"
+      ],
+      "whenToUse": "List notes attached to an entity.",
+      "relatedCommands": [
+        "note get",
+        "note create"
       ]
     },
     {
@@ -1769,6 +1682,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Update an existing note.",
+      "relatedCommands": [
+        "note get"
       ]
     },
     {
@@ -1805,6 +1722,11 @@
       "examples": [
         "opportunity create --name \"Series A\" --list \"Dealflow\"",
         "opportunity create --name \"Series A\" --list 123 --person-id 1 --company-id 2"
+      ],
+      "whenToUse": "Create a new opportunity in a pipeline.",
+      "relatedCommands": [
+        "opportunity get",
+        "opportunity update"
       ]
     },
     {
@@ -1829,6 +1751,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete an opportunity. Use with caution.",
+      "relatedCommands": [
+        "opportunity get"
       ]
     },
     {
@@ -1875,6 +1801,11 @@
         "opportunity field 123 --unset Status",
         "opportunity field 123 --set-json '{\"Status\": \"Active\", \"Stage\": \"Negotiation\"}'",
         "opportunity field 123 --get Status --get Stage"
+      ],
+      "whenToUse": "Manage field values on an opportunity.",
+      "relatedCommands": [
+        "opportunity get",
+        "field ls"
       ]
     },
     {
@@ -1916,6 +1847,14 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Download all files attached to an opportunity.",
+      "examples": [
+        "opportunity files dump 123 --out ./downloads"
+      ],
+      "relatedCommands": [
+        "opportunity get",
+        "opportunity files upload"
       ]
     },
     {
@@ -1940,8 +1879,12 @@
         }
       ],
       "examples": [
-        "opportunity files upload 123 --file doc.pdf",
-        "opportunity files upload 123 --file a.pdf --file b.pdf"
+        "opportunity files upload 123 --file doc.pdf"
+      ],
+      "whenToUse": "Upload files/documents to an opportunity.",
+      "relatedCommands": [
+        "opportunity get",
+        "opportunity files dump"
       ]
     },
     {
@@ -1995,10 +1938,10 @@
         "opportunity get 123 --expand persons",
         "opportunity get 123 --expand persons --expand companies"
       ],
+      "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
       "relatedCommands": [
         "opportunity ls"
-      ],
-      "whenToUse": "Get opportunity details. Use --expand people/companies for associations."
+      ]
     },
     {
       "name": "opportunity ls",
@@ -2065,11 +2008,11 @@
         "opportunity ls --all --csv > opportunities.csv",
         "opportunity ls --all --csv --csv-bom > opportunities.csv"
       ],
+      "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline).",
       "relatedCommands": [
         "opportunity get",
         "list ls"
-      ],
-      "whenToUse": "List opportunities. Note: opportunities exist only within a specific list (pipeline)."
+      ]
     },
     {
       "name": "opportunity update",
@@ -2106,6 +2049,10 @@
       "examples": [
         "opportunity update 123 --name \"Series A (Closed)\"",
         "opportunity update 123 --person-id 1 --person-id 2"
+      ],
+      "whenToUse": "Update an existing opportunity.",
+      "relatedCommands": [
+        "opportunity get"
       ]
     },
     {
@@ -2144,6 +2091,11 @@
         "person create --first-name \"Bob\" --last-name \"Jones\" --email bob@example.com",
         "person create --first-name \"Carol\" --last-name \"Lee\" --email a@x.com",
         "person create --first-name \"Dan\" --last-name \"Park\" --company-id 12345"
+      ],
+      "whenToUse": "Create a new person in the CRM.",
+      "relatedCommands": [
+        "person get",
+        "person update"
       ]
     },
     {
@@ -2168,6 +2120,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete a person from the CRM. Use with caution.",
+      "relatedCommands": [
+        "person get"
       ]
     },
     {
@@ -2214,6 +2170,11 @@
         "person field 123 --unset Phone",
         "person field 123 --set-json '{\"Phone\": \"+1...\", \"Title\": \"CEO\"}'",
         "person field 123 --get Phone --get Email"
+      ],
+      "whenToUse": "Manage global field values on a person.",
+      "relatedCommands": [
+        "person get",
+        "field ls"
       ]
     },
     {
@@ -2255,6 +2216,14 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Download all files attached to a person.",
+      "examples": [
+        "person files dump 123 --out ./downloads"
+      ],
+      "relatedCommands": [
+        "person get",
+        "person files upload"
       ]
     },
     {
@@ -2279,8 +2248,12 @@
         }
       ],
       "examples": [
-        "person files upload 123 --file doc.pdf",
-        "person files upload 123 --file a.pdf --file b.pdf"
+        "person files upload 123 --file doc.pdf"
+      ],
+      "whenToUse": "Upload files/documents to a person.",
+      "relatedCommands": [
+        "person get",
+        "person files dump"
       ]
     },
     {
@@ -2396,11 +2369,11 @@
         "person get 12345 --expand list-entries",
         "person get 12345 --with-interaction-dates"
       ],
+      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
       "relatedCommands": [
         "person ls",
         "person field"
-      ],
-      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity."
+      ]
     },
     {
       "name": "person ls",
@@ -2480,11 +2453,11 @@
         "person ls --query 'John Smith'",
         "person ls --query 'john@example.com'"
       ],
+      "whenToUse": "Search persons by name/email. ALWAYS use --query for text search (simpler, more reliable). Avoid --filter with complex expressions containing quotes.",
       "relatedCommands": [
         "person get",
         "person field"
-      ],
-      "whenToUse": "Search persons by name/email. ALWAYS use --query for text search (simpler, more reliable). Avoid --filter with complex expressions containing quotes."
+      ]
     },
     {
       "name": "person merge",
@@ -2504,6 +2477,11 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Merge a duplicate person into a primary person (beta). Combines data from both records.",
+      "relatedCommands": [
+        "person get",
+        "person ls"
       ]
     },
     {
@@ -2542,6 +2520,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Update an existing person's details.",
+      "relatedCommands": [
+        "person get"
       ]
     },
     {
@@ -2647,18 +2629,125 @@
         }
       },
       "positionals": [],
+      "whenToUse": "For complex data queries. PREFERRED over list export for all list operations except --saved-view. Always use --dry-run first to preview API call count.",
+      "syntax": {
+        "structure": "{\"from\": \"<entity>\", \"where\": {...}, \"include\": [...], \"expand\": [...], \"select\": [...], \"orderBy\": [...], \"groupBy\": \"<field>\", \"aggregate\": {...}, \"limit\": N}",
+        "entities": [
+          "persons",
+          "companies",
+          "opportunities",
+          "listEntries",
+          "interactions",
+          "notes"
+        ],
+        "operators": {
+          "comparison": [
+            "eq",
+            "neq",
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+          ],
+          "string": [
+            "contains",
+            "starts_with",
+            "ends_with"
+          ],
+          "collection": [
+            "in",
+            "between",
+            "has_any",
+            "has_all",
+            "contains_any",
+            "contains_all"
+          ],
+          "null": [
+            "is_null",
+            "is_not_null",
+            "is_empty"
+          ]
+        },
+        "compound": [
+          "and",
+          "or",
+          "not"
+        ],
+        "quantifiers": [
+          "all",
+          "none",
+          "exists",
+          "_count (e.g. companies._count)"
+        ],
+        "relativeDates": [
+          "-30d",
+          "+7d",
+          "today",
+          "now",
+          "yesterday",
+          "tomorrow"
+        ]
+      },
+      "critical": {
+        "listEntriesRequiresFilter": "listEntries MUST have where clause with listId or listName - e.g. {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Pipeline\"}",
+        "includeVsExpand": "include fetches related entities (separate section), expand adds computed data to each record",
+        "quantifiersNeedMaxRecords": "all/none/exists/_count on persons/companies/opportunities cause N+1 calls - always add maxRecords",
+        "multiSelectFields": "Use has_any/has_all for multi-select dropdown fields, not eq/in"
+      },
+      "include": {
+        "persons": [
+          "companies",
+          "opportunities",
+          "interactions",
+          "notes",
+          "listEntries"
+        ],
+        "companies": [
+          "persons",
+          "opportunities",
+          "interactions",
+          "notes",
+          "listEntries"
+        ],
+        "listEntries": [
+          "entity",
+          "persons",
+          "companies",
+          "opportunities",
+          "interactions"
+        ],
+        "withParams": "{\"interactions\": {\"limit\": 50, \"days\": 180}}"
+      },
+      "expand": {
+        "interactionDates": "Last/next meeting dates, email dates, team members (persons, companies, listEntries)",
+        "unrepliedEmails": "Detect unreplied incoming emails with date, daysSince, subject"
+      },
+      "fieldPaths": {
+        "customFields": "fields.<FieldName> for list entry custom fields",
+        "wildcard": "fields.* selects all custom fields",
+        "array": "emails[0] for array access"
+      },
+      "outputFormats": {
+        "toon": "Default, token-efficient (~40% fewer tokens)",
+        "markdown": "Best for LLM analysis - tables are easy to comprehend",
+        "json": "Full structure for programmatic use",
+        "csv": "For spreadsheets"
+      },
+      "examples": [
+        "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
+        "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"], \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"select\": [\"entityName\", \"fields.*\"], \"limit\": 100}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\", \"unrepliedEmails\"], \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"include\": [{\"interactions\": {\"days\": 90, \"limit\": 20}}], \"limit\": 50}'",
+        "query --query '{\"from\": \"opportunities\", \"groupBy\": \"fields.Status\", \"aggregate\": {\"count\": {\"count\": true}, \"totalValue\": {\"sum\": \"fields.Deal Value\"}}}'",
+        "query --query '{\"from\": \"persons\", \"where\": {\"and\": [{\"path\": \"email\", \"op\": \"is_not_null\"}, {\"path\": \"companies._count\", \"op\": \"gte\", \"value\": 1}]}, \"include\": [\"companies\"], \"limit\": 100}' --dry-run",
+        "query --query '{\"from\": \"companies\", \"where\": {\"path\": \"createdAt\", \"op\": \"gte\", \"value\": \"-30d\"}, \"limit\": 50}'",
+        "query --query '{\"from\": \"listEntries\", \"where\": {\"and\": [{\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Pipeline\"}, {\"path\": \"fields.Team Member\", \"op\": \"has_any\", \"value\": [\"Alice\", \"Bob\"]}]}, \"limit\": 100}'"
+      ],
       "relatedCommands": [
         "person ls",
         "company ls",
-        "opportunity ls",
         "list export"
-      ],
-      "whenToUse": "For complex data queries requiring: multi-condition AND/OR filtering, related entity includes (persons with companies), expand (interactionDates for meeting/email dates), aggregations (count/sum/avg), groupBy analysis, or multi-field sorting. Use individual commands (person get, list export) for simple lookups.",
-      "examples": [
-        "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
-        "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"]}' --dry-run",
-        "query --query '{\"from\": \"opportunities\", \"groupBy\": \"status\", \"aggregate\": {\"count\": {\"count\": true}, \"total\": {\"sum\": \"amount\"}}}' --dry-run",
-        "query --query '{\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Dealflow\"}, \"expand\": [\"interactionDates\"], \"limit\": 50}' --dry-run"
       ]
     },
     {
@@ -2679,7 +2768,11 @@
           "help": "Internal user id."
         }
       },
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "List relationship strengths for a person or external ID. Shows connection quality and team members who know them.",
+      "relatedCommands": [
+        "person get"
+      ]
     },
     {
       "name": "reminder create",
@@ -2747,6 +2840,11 @@
       "examples": [
         "reminder create --type one-time --due-date +7d --owner-id 123 --person-id 456",
         "reminder create --type one-time --due-date tomorrow --owner-id 123 --person-id 456"
+      ],
+      "whenToUse": "Create a reminder for follow-up on an entity.",
+      "relatedCommands": [
+        "reminder ls",
+        "reminder update"
       ]
     },
     {
@@ -2771,6 +2869,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Delete a reminder.",
+      "relatedCommands": [
+        "reminder get"
       ]
     },
     {
@@ -2786,6 +2888,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Get details of a specific reminder by ID.",
+      "relatedCommands": [
+        "reminder ls"
       ]
     },
     {
@@ -2902,12 +3008,11 @@
         "reminder ls --due-before +7d",
         "reminder ls --owner-id 456 --type recurring"
       ],
+      "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before).",
       "relatedCommands": [
         "reminder get",
-        "reminder create",
-        "note ls"
-      ],
-      "whenToUse": "List reminders. Filter by entity (--person-id, --company-id, --opportunity-id), user (--owner-id, --creator-id), type, status, or due date range (--due-after/--due-before)."
+        "reminder create"
+      ]
     },
     {
       "name": "reminder update",
@@ -2967,6 +3072,10 @@
           "type": "int",
           "required": true
         }
+      ],
+      "whenToUse": "Update an existing reminder.",
+      "relatedCommands": [
+        "reminder get"
       ]
     },
     {
@@ -2982,34 +3091,16 @@
           "type": "string",
           "required": true
         }
+      ],
+      "whenToUse": "Parse an Affinity UI URL to extract entity type and IDs. Useful when user pastes an Affinity link.",
+      "examples": [
+        "resolve-url 'https://app.affinity.co/persons/123'"
+      ],
+      "relatedCommands": [
+        "person get",
+        "company get",
+        "opportunity get"
       ]
-    },
-    {
-      "name": "session end",
-      "description": "Clean up the current session cache.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": []
-    },
-    {
-      "name": "session start",
-      "description": "Create a new session cache directory.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": []
-    },
-    {
-      "name": "session status",
-      "description": "Show current session cache status.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": []
     },
     {
       "name": "task get",
@@ -3024,6 +3115,10 @@
           "type": "string",
           "required": true
         }
+      ],
+      "whenToUse": "Get status of an async task. Some operations return task URLs that complete in the background.",
+      "relatedCommands": [
+        "task wait"
       ]
     },
     {
@@ -3055,16 +3150,11 @@
           "type": "string",
           "required": true
         }
+      ],
+      "whenToUse": "Wait for an async task to complete and return its result.",
+      "relatedCommands": [
+        "task get"
       ]
-    },
-    {
-      "name": "version",
-      "description": "Show version, Python, and platform information.",
-      "category": "local",
-      "destructive": false,
-      "progressCapable": false,
-      "parameters": {},
-      "positionals": []
     },
     {
       "name": "whoami",
@@ -3073,8 +3163,12 @@
       "destructive": false,
       "progressCapable": false,
       "parameters": {},
-      "positionals": []
+      "positionals": [],
+      "whenToUse": "Show current authenticated user and tenant information.",
+      "relatedCommands": [
+        "config check-key"
+      ]
     }
   ],
-  "total": 72
+  "total": 62
 }

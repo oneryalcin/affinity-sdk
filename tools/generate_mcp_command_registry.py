@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+"""
+Generate MCP command registry from explicit whitelist.
+
+Only commands listed in mcp-commands.json are included in the output.
+This ensures MCP exposure is explicit opt-in, not default.
+
+Reads:
+    mcp/.registry/mcp-commands.json (source of truth for what to expose)
+
+Writes:
+    mcp/.registry/commands.generated.json (auto-generated, don't edit)
+
+Usage:
+    python tools/generate_mcp_command_registry.py
+
+Requirements:
+    - xaffinity CLI must be installed and in PATH
+    - CLI must support `--help --json` for machine-readable help output
+
+CI Integration:
+    Add to .github/workflows/ci.yml:
+        - name: Verify MCP command registry is up to date
+          run: |
+            python tools/generate_mcp_command_registry.py
+            git diff --exit-code mcp/.registry/commands.generated.json
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
+
+
+def get_pyproject_version() -> str:
+    """Get version from pyproject.toml (source of truth)."""
+    repo_root = Path(__file__).parent.parent
+    pyproject_path = repo_root / "pyproject.toml"
+    with pyproject_path.open("rb") as f:
+        data = tomllib.load(f)
+    return data["project"]["version"]
+
+
+def get_cli_version() -> str:
+    """Get xaffinity CLI version string."""
+    result = subprocess.run(
+        ["xaffinity", "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    # Output format: "xaffinity, version 0.7.0"
+    return result.stdout.strip().split()[-1]
+
+
+def validate_cli_version(cli_version: str) -> None:
+    """Warn if installed CLI version doesn't match pyproject.toml."""
+    try:
+        pyproject_version = get_pyproject_version()
+        if cli_version != pyproject_version:
+            print(
+                f"WARNING: Installed CLI version ({cli_version}) doesn't match "
+                f"pyproject.toml ({pyproject_version}).",
+                file=sys.stderr,
+            )
+            print(
+                "Run 'pip install -e .[cli]' to update the CLI before committing.",
+                file=sys.stderr,
+            )
+    except (FileNotFoundError, KeyError):
+        pass  # Skip validation if pyproject.toml not found
+
+
+def get_cli_commands() -> dict[str, dict]:
+    """Get all CLI commands as a dict keyed by command name.
+
+    Uses `xaffinity --help --json` to get JSON output.
+    """
+    result = subprocess.run(
+        ["xaffinity", "--help", "--json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data = json.loads(result.stdout)
+    commands = data.get("commands", [])
+    # Convert to dict keyed by name for easy lookup
+    return {cmd["name"]: cmd for cmd in commands}
+
+
+def load_mcp_config(config_path: Path) -> dict[str, dict]:
+    """Load MCP commands config (whitelist + metadata).
+
+    Returns a dict mapping command name to metadata dict.
+    Raises FileNotFoundError if config doesn't exist.
+    """
+    if not config_path.exists():
+        raise FileNotFoundError(f"MCP config not found: {config_path}")
+
+    data = json.loads(config_path.read_text())
+    # Extract commands dict, ignore _comment
+    commands = data.get("commands", {})
+    if not commands:
+        print("Warning: No commands in mcp-commands.json", file=sys.stderr)
+    return commands
+
+
+def merge_command_with_config(cli_cmd: dict, config_meta: dict) -> dict:
+    """Merge CLI command data with config metadata.
+
+    CLI command provides: name, description, category, parameters, positionals, etc.
+    Config provides: whenToUse, examples, relatedCommands, and any additional metadata.
+
+    All config metadata is merged into the output, allowing rich command-specific
+    documentation (e.g., syntax references, critical notes, usage patterns).
+    """
+    # Start with CLI data
+    merged = cli_cmd.copy()
+
+    # Merge all config metadata (config overrides CLI if same key exists)
+    for key, value in config_meta.items():
+        merged[key] = value
+
+    return merged
+
+
+def sort_registry(commands: list[dict]) -> list[dict]:
+    """Sort commands and their parameters for deterministic output."""
+    sorted_commands = sorted(commands, key=lambda c: c["name"])
+    for cmd in sorted_commands:
+        if cmd.get("parameters"):
+            cmd["parameters"] = dict(sorted(cmd["parameters"].items()))
+    return sorted_commands
+
+
+def generate_registry(config_path: Path, output_path: Path) -> None:
+    """Generate the MCP command registry file."""
+    # Get CLI version
+    try:
+        cli_version = get_cli_version()
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Error: Cannot get CLI version: {e}", file=sys.stderr)
+        print("Make sure xaffinity CLI is installed and in PATH", file=sys.stderr)
+        sys.exit(1)
+
+    # Warn if installed CLI doesn't match pyproject.toml
+    validate_cli_version(cli_version)
+
+    # Load MCP config (whitelist)
+    try:
+        mcp_config = load_mcp_config(config_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in {config_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Get all CLI commands
+    try:
+        cli_commands = get_cli_commands()
+    except subprocess.CalledProcessError as e:
+        print(f"Error: CLI returned error: {e.stderr}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"Error: CLI did not return valid JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Filter and merge: only include commands from whitelist
+    output_commands = []
+    missing_commands = []
+
+    for cmd_name, config_meta in mcp_config.items():
+        if cmd_name in cli_commands:
+            merged = merge_command_with_config(cli_commands[cmd_name], config_meta)
+            output_commands.append(merged)
+        else:
+            missing_commands.append(cmd_name)
+
+    # Report missing commands (in config but not in CLI)
+    if missing_commands:
+        print(
+            f"Warning: {len(missing_commands)} commands in config not found in CLI:",
+            file=sys.stderr,
+        )
+        for name in missing_commands:
+            print(f"  - {name}", file=sys.stderr)
+
+    # Sort for deterministic output
+    sorted_commands = sort_registry(output_commands)
+
+    # Build registry with generation metadata
+    registry = {
+        "_generated": {
+            "warning": "DO NOT EDIT - This file is auto-generated",
+            "generator": "tools/generate_mcp_command_registry.py",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "cliVersion": cli_version,
+            "sourceConfig": str(config_path.relative_to(config_path.parent.parent.parent)),
+        },
+        "version": 1,
+        "cliVersion": cli_version,
+        "commands": sorted_commands,
+        "total": len(sorted_commands),
+    }
+
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write with consistent formatting
+    output_path.write_text(
+        json.dumps(registry, indent=2, sort_keys=False, ensure_ascii=False) + "\n"
+    )
+
+    total_cli = len(cli_commands)
+    included = len(sorted_commands)
+    excluded = total_cli - included
+    print(
+        f"Generated {output_path.name} with {included} commands "
+        f"({excluded} excluded, CLI v{cli_version})"
+    )
+
+
+def main() -> None:
+    """Main entry point."""
+    repo_root = Path(__file__).parent.parent
+    config_path = repo_root / "mcp" / ".registry" / "mcp-commands.json"
+    output_path = repo_root / "mcp" / ".registry" / "commands.generated.json"
+    generate_registry(config_path, output_path)
+
+
+if __name__ == "__main__":
+    main()

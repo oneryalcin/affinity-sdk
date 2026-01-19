@@ -84,14 +84,19 @@ jobs:
             echo "Skipping traceability mapping (docs/internal not present in repo checkout)."
           fi
 
-      - name: CLI commands registry is valid
+      - name: MCP commands registry is valid
         run: |
           # Verify registry file exists and is valid JSON with expected structure
           python -c "
           import json
           import sys
-          with open('mcp/.registry/commands.json') as f:
+          with open('mcp/.registry/commands.generated.json') as f:
               data = json.load(f)
+          # Check _generated metadata (auto-generated indicator)
+          assert '_generated' in data, 'Missing _generated metadata'
+          assert 'generator' in data['_generated'], 'Missing generator in _generated'
+          assert 'cliVersion' in data['_generated'], 'Missing cliVersion in _generated'
+          # Check commands structure
           assert 'commands' in data, 'Missing commands key'
           assert isinstance(data['commands'], list), 'commands must be a list'
           assert len(data['commands']) > 0, 'commands list is empty'
@@ -99,11 +104,11 @@ jobs:
               assert 'name' in cmd, f'Command missing name: {cmd}'
               assert 'category' in cmd, f'Command {cmd[\"name\"]} missing category'
               assert cmd['category'] in ('read', 'write', 'local'), f'Invalid category for {cmd[\"name\"]}'
-          print(f'Registry valid: {len(data[\"commands\"])} commands')
+          print(f'Registry valid: {len(data[\"commands\"])} commands (v{data[\"_generated\"][\"cliVersion\"]})')
           "
           # Regenerate registry and verify it matches committed version
-          python tools/generate_cli_commands_registry.py
-          git diff --exit-code mcp/.registry/commands.json
+          python tools/generate_mcp_command_registry.py
+          git diff --exit-code mcp/.registry/commands.generated.json
 
   test-timezone:
     runs-on: ubuntu-latest

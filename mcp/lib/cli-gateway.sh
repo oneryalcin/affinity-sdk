@@ -17,13 +17,13 @@
 validate_registry() {
     if [[ ! -f "$REGISTRY_FILE" ]]; then
         mcp_error "configuration_error" "Command registry not found" \
-            --hint "Run: python tools/generate_cli_commands_registry.py"
+            --hint "Run: python tools/generate_mcp_command_registry.py"
         return 1
     fi
 
     if ! jq_tool -e '.commands | type == "array"' "$REGISTRY_FILE" >/dev/null 2>&1; then
         mcp_error "configuration_error" "Command registry is invalid or corrupted" \
-            --hint "Regenerate registry: python tools/generate_cli_commands_registry.py"
+            --hint "Regenerate registry: python tools/generate_mcp_command_registry.py"
         return 1
     fi
 
@@ -48,7 +48,7 @@ validate_registry() {
 
     if [[ -n "$validation_result" ]]; then
         mcp_error "configuration_error" "Registry validation failed: $validation_result" \
-            --hint "Regenerate registry: python tools/generate_cli_commands_registry.py"
+            --hint "Regenerate registry: python tools/generate_mcp_command_registry.py"
         return 1
     fi
 
@@ -211,7 +211,7 @@ validate_argv() {
 
     if [[ -z "$cmd_schema" ]]; then
         mcp_error "internal_error" "Command schema not found" \
-            --hint "Registry may be out of sync; regenerate with: python tools/generate_cli_commands_registry.py"
+            --hint "Registry may be out of sync; regenerate with: python tools/generate_mcp_command_registry.py"
         return 1
     fi
 

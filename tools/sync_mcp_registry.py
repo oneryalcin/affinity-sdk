@@ -83,7 +83,7 @@ def regenerate_registry() -> bool:
     Returns True if successful, False otherwise.
     """
     repo_root = Path(__file__).parent.parent
-    generator = repo_root / "tools" / "generate_cli_commands_registry.py"
+    generator = repo_root / "tools" / "generate_mcp_command_registry.py"
 
     try:
         subprocess.run(
@@ -101,7 +101,7 @@ def regenerate_registry() -> bool:
 def registry_changed() -> bool:
     """Check if registry file has uncommitted changes."""
     repo_root = Path(__file__).parent.parent
-    registry_path = repo_root / "mcp" / ".registry" / "commands.json"
+    registry_path = repo_root / "mcp" / ".registry" / "commands.generated.json"
 
     try:
         result = subprocess.run(
