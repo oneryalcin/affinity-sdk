@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Improved `field history` discoverability**: LLMs were failing to discover the `field history` command. Updated guidance in multiple locations:
+  - Added "history", "audit", "track changes" to `discover-commands` common queries
+  - Updated `whenToUse` in mcp-commands.json with business context (audit who changed what, track status changes)
+  - Added `field history` example to `execute-read-command` tool description
+  - Added "Audit field changes" section to `data-model.md` with use cases
+  - Improved SKILL.md description to emphasize audit/tracking use cases
+
 ## [1.9.6] - 2026-01-19
 
 ### Changed

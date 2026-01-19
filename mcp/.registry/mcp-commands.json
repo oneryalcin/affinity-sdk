@@ -177,7 +177,7 @@
       "relatedCommands": ["list ls", "entry field"]
     },
     "field history": {
-      "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector.",
+      "whenToUse": "Audit who changed a field value and when. Use to track status changes, see modification timestamps, or investigate field value history. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id.",
       "requiredOneOf": [["--person-id", "--company-id", "--opportunity-id", "--list-entry-id"]],
       "examples": [
         "field history field-123456 --person-id 789",

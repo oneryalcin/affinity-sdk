@@ -127,7 +127,7 @@ Use `discover-commands` to find commands, then `execute-read-command` or `execut
 | `opportunity get <id>` | Get opportunity details |
 | `relationship-strength ls --external-id <id>` | Get relationship strength for a person |
 | `interaction ls --person-id <id> --type all` | Get all interactions (or use specific type: email, meeting, call, chat-message) |
-| `field history <field-id> --person-id <id>` | View field value change history. **Requires exactly one entity selector**: `--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id` |
+| `field history <field-id> --person-id <id>` | Audit who changed a field and when. Use to track status changes or investigate field modifications. **Requires exactly one entity selector**: `--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id` |
 
 ### Write Operations
 

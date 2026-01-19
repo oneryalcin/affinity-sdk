@@ -1,6 +1,6 @@
 {
   "name": "discover-commands",
-  "description": "Search CLI commands by keyword or capability. Use this first when unsure which command to use.\n\nCommon queries:\n- 'list' or 'export entries' → list export (for list-specific data)\n- 'company' or 'search companies' → company ls (for global search)\n- 'person' → person ls, person get\n- 'create' or 'add' → write commands (use category='write')\n- 'interaction' or 'meeting' → interaction commands\n\nTip: Start with category='read' or category='write' to narrow results.",
+  "description": "Search CLI commands by keyword or capability. Use this first when unsure which command to use.\n\nCommon queries:\n- 'list' or 'export entries' → list export (for list-specific data)\n- 'company' or 'search companies' → company ls (for global search)\n- 'person' → person ls, person get\n- 'create' or 'add' → write commands (use category='write')\n- 'interaction' or 'meeting' → interaction commands\n- 'history' or 'audit' or 'track changes' → field history (see who changed field values and when)\n\nTip: Start with category='read' or category='write' to narrow results.",
   "inputSchema": {
     "type": "object",
     "required": ["query"],

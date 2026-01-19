@@ -182,6 +182,20 @@ The response includes `dropdownOptions` array for dropdown/ranked-dropdown field
 
 Or use the resource: `xaffinity://field-catalogs/{listId}` for field schema with descriptions.
 
+### Audit field changes (who changed what, when)
+```bash
+field history field-123456 --person-id 789           # See change history for a field on a person
+field history field-123456 --company-id 456          # Field history on a company
+field history field-123456 --list-entry-id 999       # Field history on a list entry
+```
+
+Use `field history` to:
+- Track who changed a deal's status and when
+- Audit field value modifications over time
+- Investigate when a field was last updated
+
+**Note**: Requires the field ID (from `field ls`) and exactly one entity selector (`--person-id`, `--company-id`, `--opportunity-id`, or `--list-entry-id`).
+
 ## Common Mistakes
 
 ### Mistake 1: Looking up IDs unnecessarily
