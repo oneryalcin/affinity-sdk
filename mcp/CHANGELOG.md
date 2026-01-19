@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-01-19
+
+### Changed
+- **CLI compatibility**: Updated `CLI_MIN_VERSION` from 0.9.13 to 0.10.0 to ensure users get 40 bug fixes from the SDK audit (thread safety, stream cleanup, validation improvements).
+
 ## [1.9.5] - 2026-01-19
 
 ### Fixed
