@@ -155,10 +155,12 @@ The MCP server depends on the mcp-bash-framework. Version and commit hash are pi
 ### When to Update
 
 ```bash
-# 1. Get the new version's commit hash
-git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git vX.Y.Z
+# 1. Get the new version's commit hash (use ^{} for dereferenced commit, not tag object)
+git ls-remote https://github.com/yaniv-golan/mcp-bash-framework.git 'vX.Y.Z^{}'
 
-# 2. Update mcp/mcp-bash.lock with both values
+# 2. Update BOTH files:
+#    - mcp/mcp-bash.lock (exact version + commit for bundling)
+#    - mcp/server.d/requirements.json (minVersion for runtime validation)
 
 # 3. Update mcp/CHANGELOG.md
 ```
