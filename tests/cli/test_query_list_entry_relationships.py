@@ -397,7 +397,7 @@ class TestFetchInteractionsForListEntries:
             def __init__(self, data: dict[str, Any]):
                 self._data = data
 
-            def model_dump(self, _mode: str = "python", _by_alias: bool = False) -> dict[str, Any]:
+            def model_dump(self, mode: str = "python", by_alias: bool = False) -> dict[str, Any]:  # noqa: ARG002
                 return self._data
 
         mock_interactions = [
@@ -444,7 +444,7 @@ class TestFetchInteractionsForListEntries:
             def __init__(self, data: dict[str, Any]):
                 self._data = data
 
-            def model_dump(self, _mode: str = "python", _by_alias: bool = False) -> dict[str, Any]:
+            def model_dump(self, mode: str = "python", by_alias: bool = False) -> dict[str, Any]:  # noqa: ARG002
                 return self._data
 
         # Create 10 mock interactions
@@ -489,7 +489,7 @@ class TestFetchInteractionsForListEntries:
             def __init__(self, data: dict[str, Any]):
                 self._data = data
 
-            def model_dump(self, _mode: str = "python", _by_alias: bool = False) -> dict[str, Any]:
+            def model_dump(self, mode: str = "python", by_alias: bool = False) -> dict[str, Any]:  # noqa: ARG002
                 return self._data
 
         # Create 150 mock interactions
