@@ -123,7 +123,9 @@ if is_destructive "$command"; then
 fi
 
 # Build command array safely
+# Note: --session-cache is a global option that must come BEFORE the subcommand
 declare -a cmd_args=("xaffinity")
+[[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cmd_args+=("--session-cache" "${AFFINITY_SESSION_CACHE}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")
 cmd_args+=("${argv[@]}")

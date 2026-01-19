@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Session cache not being used by MCP tools**: The `execute-read-command`, `execute-write-command`, and `query` tools were not passing `--session-cache` to the CLI, missing out on cross-invocation caching of list name resolutions and field metadata. Now correctly passes the flag before the subcommand (required by CLI option parsing).
+
 ### Changed
 - **Improved `field history` discoverability**: LLMs were failing to discover the `field history` command. Updated guidance in multiple locations:
   - Added "history", "audit", "track changes" to `discover-commands` common queries

@@ -130,7 +130,9 @@ validate_argv "$command" "${argv[@]}" || exit 0
 mapfile -d '' argv < <(apply_limit_cap "$command" "${argv[@]}")
 
 # Build command array safely
+# Note: --session-cache is a global option that must come BEFORE the subcommand
 declare -a cmd_args=("xaffinity")
+[[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cmd_args+=("--session-cache" "${AFFINITY_SESSION_CACHE}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")
 cmd_args+=("${argv[@]}")

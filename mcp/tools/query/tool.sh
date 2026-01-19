@@ -47,7 +47,9 @@ calc_dynamic_timeout() {
 
     # Quick dry-run to get estimate (suppress warnings, stderr)
     local dry_output
-    dry_output=$(printf '%s' "$query_json" | xaffinity query --dry-run --max-records "$max_records" --output json 2>/dev/null) || return 1
+    local session_cache_opt=""
+    [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && session_cache_opt="--session-cache ${AFFINITY_SESSION_CACHE}"
+    dry_output=$(printf '%s' "$query_json" | xaffinity query --dry-run --max-records "$max_records" --output json $session_cache_opt 2>/dev/null) || return 1
 
     # Parse estimatedApiCalls from dry-run output
     local estimated_calls
@@ -104,8 +106,10 @@ fi
 # - --stdin pipes query JSON to the command
 # - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
 # - --max-output-bytes for non-JSON formats (CLI handles truncation, returns exit code 100 if truncated)
+# - --session-cache enables cross-invocation reuse of list/field metadata (must come before subcommand)
 set +e
 printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
+    $([[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && echo "--session-cache" "${AFFINITY_SESSION_CACHE}") \
     query --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
     $([[ "$dry_run" == "true" ]] && echo "--dry-run") \
     $([[ "$format" != "json" ]] && echo "--max-output-bytes" "$max_output_bytes") >"$stdout_file"
