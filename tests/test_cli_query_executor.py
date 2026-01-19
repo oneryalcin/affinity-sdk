@@ -368,6 +368,36 @@ class TestSelectProjection:
             {"id": 1, "entityName": "Acme", "listId": 5, "fields": {"Status": None}}
         ]
 
+    def test_expand_preserved_when_select_specified(self) -> None:
+        """Expansions are automatically included in output even when select filters other fields."""
+        query = Query(
+            from_="listEntries",
+            select=["id", "fields.Status"],
+            expand=["interactionDates", "unrepliedEmails"],
+        )
+        ctx = ExecutionContext(query=query)
+        ctx.records = [
+            {
+                "id": 1,
+                "entityId": 100,
+                "fields": {"Status": "New", "Owner": "Jane"},
+                "interactionDates": {"lastEmail": {"date": "2026-01-15"}},
+                "unrepliedEmails": [{"subject": "Follow up"}],
+            }
+        ]
+
+        result = ctx.build_result()
+
+        # Select filters entityId and fields.Owner, but expansions are preserved
+        assert result.data == [
+            {
+                "id": 1,
+                "fields": {"Status": "New"},
+                "interactionDates": {"lastEmail": {"date": "2026-01-15"}},
+                "unrepliedEmails": [{"subject": "Follow up"}],
+            }
+        ]
+
 
 class TestNormalizeListEntryFields:
     """Tests for _normalize_list_entry_fields function.

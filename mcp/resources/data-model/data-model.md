@@ -1,5 +1,7 @@
 # Affinity Data Model
 
+> **MCP Note**: When using commands via MCP tools, output format (JSON) is handled automatically. Do not include `--json` in arguments.
+
 ## Core Concepts
 
 ### Companies and Persons (Global Entities)
@@ -145,7 +147,7 @@ For quick overview of last/next meetings and email activity without fetching ful
 ```bash
 company get 12345 --with-interaction-dates                 # Last/next meeting dates, email dates
 person get 67890 --with-interaction-dates                  # Same for persons
-list export Dealflow --expand interactions --json          # Interaction dates for all list entries
+list export Dealflow --expand interactions                  # Interaction dates for all list entries
 ```
 
 The `--with-interaction-dates` flag returns:
@@ -156,7 +158,7 @@ The `--with-interaction-dates` flag returns:
 
 ### Find unreplied emails
 ```bash
-list export Dealflow --check-unreplied-emails --json       # Find unreplied incoming emails
+list export Dealflow --check-unreplied-emails              # Find unreplied incoming emails
 list export Dealflow --check-unreplied-emails --unreplied-lookback-days 60  # Custom lookback
 ```
 

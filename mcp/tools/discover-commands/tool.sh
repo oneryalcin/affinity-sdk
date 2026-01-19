@@ -119,7 +119,29 @@ if [[ "$format" == "text" ]]; then
     # Compact pipe-delimited format
     # Legend: r=read, l=local, w=write, d=destructive (so "wd" = write+destructive)
     # Params: s=str i=int b=bool f=flag !=req *=multi, UPPERCASE=positional
-    text_lines=$(jq_tool -r '.[] | [.name, (if .destructive then "wd" elif .category == "write" then "w" elif .category == "local" then "l" else "r" end), (([.positionals // [] | .[] | (.name | ascii_upcase) + ":" + ((.type // "string") | .[0:1]) + (if .required then "!" else "" end)] + [(.parameters // {}) | to_entries | sort_by(.key) | .[] | .key + ":" + ((.value.type // "string") | .[0:1]) + (if .value.required then "!" else "" end) + (if .value.multiple then "*" else "" end)]) | join(" "))] | join("|")' "$matches_file")
+    # One-of required groups shown as: (--opt1|--opt2):type!
+    text_lines=$(jq_tool -r '.[] |
+        . as $cmd |
+        # Flatten all params in requiredOneOf groups for exclusion
+        (($cmd.requiredOneOf // []) | flatten) as $one_of_params |
+        # Build one-of group strings: (--opt1|--opt2|...):type!
+        (($cmd.requiredOneOf // []) | map(
+            "(" + (. | join("|")) + "):" +
+            (.[0] as $first | $cmd.parameters[$first].type // "string" | .[0:1]) + "!"
+        )) as $one_of_groups |
+        # Build params array: positionals + one-of groups + regular params
+        (
+            ([$cmd.positionals // [] | .[] | (.name | ascii_upcase) + ":" + ((.type // "string") | .[0:1]) + (if .required then "!" else "" end)])
+            +
+            $one_of_groups
+            +
+            [($cmd.parameters // {}) | to_entries | sort_by(.key) | .[] | select(.key as $k | $one_of_params | index($k) | not) | .key + ":" + ((.value.type // "string") | .[0:1]) + (if .value.required then "!" else "" end) + (if .value.multiple then "*" else "" end)]
+        ) as $params |
+        [
+            $cmd.name,
+            (if $cmd.destructive then "wd" elif $cmd.category == "write" then "w" elif $cmd.category == "local" then "l" else "r" end),
+            ($params | join(" "))
+        ] | join("|")' "$matches_file")
     text_output="# cmd|cat|params (r=read l=local w=write wd=destructive)"$'\n'"${text_lines}"
 
     # In text mode, include minimal structuredContent (names only) for programmatic access

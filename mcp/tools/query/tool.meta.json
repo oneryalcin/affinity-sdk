@@ -35,7 +35,7 @@
           "select": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Fields to return (default: all)"
+            "description": "Fields to return (default: all). Note: Expansions (from 'expand') are automatically included in output even when select is specified."
           },
           "orderBy": {
             "type": "array",

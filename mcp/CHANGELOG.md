@@ -5,6 +5,15 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`--json` flag handling**: Gateway tools (`execute-read-command`, `execute-write-command`) now silently filter out `--json` if passed in `argv`. Previously, passing `--json` returned an error requiring a retry. The tools always append `--json` automatically, so filtering is idempotent.
+
+### Changed
+- **LLM guidance updates**: Added notes to `data-model.md`, `execute-read-command`, and `query` tool descriptions clarifying that JSON output is automatic (do not pass `--json`) and that `expand` fields are automatically included in `select` output.
+- **`discover-commands` text format**: Now shows "one-of" required parameter groups with grouped notation, e.g., `(--person-id|--company-id|--opportunity-id):i!` for commands like `field history` and `interaction ls` that require exactly one entity selector. Parameters in these groups are excluded from the regular parameter list to avoid duplication.
+
 ## [1.9.2] - 2026-01-19
 
 ### Changed

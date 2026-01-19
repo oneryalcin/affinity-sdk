@@ -854,6 +854,14 @@
         "field history field-123456 --list-entry-id 999 --max-results 50"
       ],
       "whenToUse": "View change history for a specific field. REQUIRES exactly one entity selector: --person-id, --company-id, --opportunity-id, or --list-entry-id. Cannot be called without an entity selector.",
+      "requiredOneOf": [
+        [
+          "--person-id",
+          "--company-id",
+          "--opportunity-id",
+          "--list-entry-id"
+        ]
+      ],
       "relatedCommands": [
         "field ls",
         "person get",
@@ -1116,6 +1124,13 @@
       },
       "positionals": [],
       "whenToUse": "List interactions for an entity. Requires --type (repeatable, or 'all') and one entity selector (--person-id, --company-id, or --opportunity-id). Date range defaults to all-time; use --days or --after to limit. Auto-chunks ranges > 1 year.",
+      "requiredOneOf": [
+        [
+          "--person-id",
+          "--company-id",
+          "--opportunity-id"
+        ]
+      ],
       "examples": [
         "interaction ls --type all --company-id 456",
         "interaction ls --type email --type meeting --person-id 123 --days 30",

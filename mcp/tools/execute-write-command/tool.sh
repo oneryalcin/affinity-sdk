@@ -61,14 +61,12 @@ fi
 # Use NUL-delimited extraction to preserve newlines inside argument strings
 mapfile -d '' argv < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 
-# Reject reserved flags that the tool appends automatically
+# Silently filter out --json if passed (tool appends it automatically anyway)
+filtered_argv=()
 for arg in "${argv[@]}"; do
-    if [[ "$arg" == "--json" ]]; then
-        mcp_error "validation_error" "--json is reserved; do not pass it in argv (tools append it automatically)" \
-            --hint "Remove --json from argv; JSON output is enabled by default"
-        exit 0
-    fi
+    [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
 done
+argv=("${filtered_argv[@]+"${filtered_argv[@]}"}")
 
 # Validate argv against per-command schema
 validate_argv "$command" "${argv[@]}" || exit 0

@@ -327,13 +327,21 @@ class ExecutionContext:
         """Build final query result.
 
         Applies select clause projection if specified in the query.
+        Expansions are automatically included in the effective select list.
         """
         from ..results import ResultSummary
 
         # Apply select projection if specified
         data = self.records
         if self.query.select:
-            data = _apply_select_projection(self.records, self.query.select)
+            # Auto-include expansions in select - if user requested expand,
+            # they clearly want that data in output
+            effective_select = list(self.query.select)
+            if self.query.expand:
+                for exp in self.query.expand:
+                    if exp not in effective_select:
+                        effective_select.append(exp)
+            data = _apply_select_projection(self.records, effective_select)
 
         # Build included counts for summary
         included_counts: dict[str, int] | None = None
