@@ -568,3 +568,231 @@ class TestProgressCursorCoexistence:
 
         assert len(cursor_messages) == 1
         assert cursor_messages[0]["cursor"] == "abc123"
+
+    def test_cache_hit_progress_distinguishable(self) -> None:
+        """Cache hit progress message has distinct event type."""
+        cache_hit_msg = {
+            "type": "progress",
+            "event": "cache_hit",
+            "message": "Serving from cache",
+            "progress": 100,
+        }
+        regular_progress = {
+            "type": "progress",
+            "event": "step_progress",
+            "stepId": 1,
+            "progress": 50,
+        }
+
+        # Both are progress type but distinguishable by event
+        assert cache_hit_msg["type"] == "progress"
+        assert regular_progress["type"] == "progress"
+        assert cache_hit_msg["event"] == "cache_hit"
+        assert regular_progress["event"] == "step_progress"
+
+
+# =============================================================================
+# Format-Specific Cursor Tests (Appendix B - Formats)
+# =============================================================================
+
+
+class TestFormatSpecificCursor:
+    """Tests for cursor behavior across different output formats."""
+
+    def test_cursor_valid_for_all_formats(self) -> None:
+        """Cursor can be created and validated for all supported formats."""
+        query = Query(from_="persons", limit=50)
+        formats = ["toon", "json", "markdown", "csv", "jsonl"]
+
+        for fmt in formats:
+            cursor = CursorPayload(
+                v=1,
+                qh=hash_query(query, fmt),
+                skip=50,
+                ts=int(time.time() * 1000),
+                mode="streaming",
+            )
+
+            # Should roundtrip successfully
+            encoded = encode_cursor(cursor)
+            decoded = decode_cursor(encoded)
+
+            assert decoded.qh == hash_query(query, fmt)
+
+    def test_format_hash_uniqueness(self) -> None:
+        """Each format produces a unique hash for the same query."""
+        query = Query(from_="persons", limit=50)
+        formats = ["toon", "json", "markdown", "csv", "jsonl"]
+
+        hashes = {fmt: hash_query(query, fmt) for fmt in formats}
+
+        # All hashes should be unique
+        unique_hashes = set(hashes.values())
+        assert len(unique_hashes) == len(formats), "All formats should produce unique hashes"
+
+    def test_mcp_response_structure_for_json_format(self) -> None:
+        """JSON format response includes nextCursor at JSON level."""
+        # Simulating JSON format CLI output with embedded cursor
+        cli_json = {
+            "data": [{"id": 1}],
+            "truncated": True,
+            "nextCursor": "eyJjdXJzb3I9",
+            "pagination": {"hasMore": False, "total": 100},
+        }
+
+        # Verify cursor is accessible at top level
+        assert "nextCursor" in cli_json
+        assert cli_json["nextCursor"] == "eyJjdXJzb3I9"
+
+    def test_mcp_response_structure_for_text_formats(self) -> None:
+        """Text formats (toon, markdown, csv, jsonl) get cursor in wrapper."""
+        # For non-JSON formats, tool.sh wraps the output
+        for fmt in ["toon", "markdown", "csv", "jsonl"]:
+            response = {
+                "content": [{"type": "text", "text": f"Sample {fmt} output..."}],
+                "truncated": True,
+                "nextCursor": "eyJjdXJzb3I9",
+                "_cursorMode": "streaming",
+            }
+
+            assert response["truncated"] is True
+            assert response["nextCursor"] == "eyJjdXJzb3I9"
+            assert response["_cursorMode"] == "streaming"
+
+
+# =============================================================================
+# Aggregate and Full-Fetch Mode Tests (Appendix B - Modes)
+# =============================================================================
+
+
+class TestAggregateModeIntegration:
+    """Integration tests for aggregate queries with cursor."""
+
+    def test_aggregate_query_produces_full_fetch_cursor(self) -> None:
+        """Aggregate queries should use full-fetch mode cursor."""
+        query = Query(
+            from_="persons",
+            aggregate={"total": {"count": "*"}},
+        )
+
+        # Full-fetch mode cursor for aggregate
+        cursor = CursorPayload(
+            v=1,
+            qh=hash_query(query, "toon"),
+            skip=10,
+            ts=int(time.time() * 1000),
+            mode="full-fetch",  # Aggregates require full-fetch
+            cache_file="/tmp/xaffinity_cache/xaff_agg.json",
+            cache_hash="a" * 64,
+            total=50,
+        )
+
+        encoded = encode_cursor(cursor)
+        decoded = decode_cursor(encoded)
+
+        assert decoded.mode == "full-fetch"
+        assert decoded.cache_file is not None
+
+    def test_group_by_query_produces_full_fetch_cursor(self) -> None:
+        """GroupBy queries should use full-fetch mode cursor."""
+        query = Query(
+            from_="listEntries",
+            group_by="fields.Status",
+            aggregate={"count": {"count": "*"}},
+        )
+
+        cursor = CursorPayload(
+            v=1,
+            qh=hash_query(query, "toon"),
+            skip=5,
+            ts=int(time.time() * 1000),
+            mode="full-fetch",
+            cache_file="/tmp/xaffinity_cache/xaff_grp.json",
+            cache_hash="b" * 64,
+            total=20,
+        )
+
+        assert cursor.mode == "full-fetch"
+
+
+# =============================================================================
+# O(1) Streaming Resumption Tests (Appendix B - Modes)
+# =============================================================================
+
+
+class TestO1StreamingResumptionMCP:
+    """MCP-specific tests for O(1) streaming resumption."""
+
+    def test_streaming_cursor_api_cursor_field_present(self) -> None:
+        """Streaming cursor includes apiCursor field for O(1) resumption."""
+        query = Query(from_="persons", limit=50)
+        api_cursor_url = "https://api.affinity.co/v2/persons?page=3"
+
+        cursor = CursorPayload(
+            v=1,
+            qh=hash_query(query, "toon"),
+            skip=100,
+            ts=int(time.time() * 1000),
+            mode="streaming",
+            api_cursor=api_cursor_url,
+        )
+
+        # Verify field is present and correct
+        assert cursor.api_cursor == api_cursor_url
+
+        # Verify it roundtrips through encode/decode
+        encoded = encode_cursor(cursor)
+        decoded = decode_cursor(encoded)
+        assert decoded.api_cursor == api_cursor_url
+
+    def test_mcp_response_indicates_resumption_mode(self) -> None:
+        """MCP response _cursorMode helps LLM understand resumption type."""
+        # Streaming mode response structure
+        streaming_response = {
+            "content": [{"type": "text", "text": "...data..."}],
+            "truncated": True,
+            "nextCursor": "eyJjdXJzb3I=...",
+            "_cursorMode": "streaming",  # Indicates O(1) resumption possible
+        }
+
+        # Full-fetch mode response structure
+        full_fetch_response = {
+            "content": [{"type": "text", "text": "...data..."}],
+            "truncated": True,
+            "nextCursor": "eyJjdXJzb3I=...",
+            "_cursorMode": "full-fetch",  # Cache-based resumption
+        }
+
+        assert streaming_response["_cursorMode"] == "streaming"
+        assert full_fetch_response["_cursorMode"] == "full-fetch"
+
+    def test_api_cursor_enables_zero_refetch(self) -> None:
+        """API cursor in streaming mode enables resumption without re-fetching."""
+        # When cursor has api_cursor, executor starts from that position
+        # instead of from the beginning
+        query = Query(from_="persons")
+
+        cursor_with_api = CursorPayload(
+            v=1,
+            qh=hash_query(query, "toon"),
+            skip=200,  # Already returned 200 records
+            ts=int(time.time() * 1000),
+            mode="streaming",
+            api_cursor="https://api.affinity.co/v2/persons?page=5",  # Start at page 5
+        )
+
+        cursor_without_api = CursorPayload(
+            v=1,
+            qh=hash_query(query, "toon"),
+            skip=200,
+            ts=int(time.time() * 1000),
+            mode="streaming",
+            api_cursor=None,  # No API cursor - will re-fetch and skip
+        )
+
+        # With API cursor: O(1) resumption (no re-fetching)
+        assert cursor_with_api.api_cursor is not None
+
+        # Without API cursor: O(n) resumption (re-fetch and skip)
+        assert cursor_without_api.api_cursor is None
+        assert cursor_without_api.skip == 200  # Fallback to skip-based

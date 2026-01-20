@@ -239,6 +239,40 @@ class NDJSONQueryProgress(QueryProgressCallback):
 
 
 # =============================================================================
+# Cache Progress Helper
+# =============================================================================
+
+
+def emit_cache_progress(
+    message: str,
+    *,
+    progress: int = 100,
+    output: TextIO | None = None,
+) -> None:
+    """Emit cache-related progress as NDJSON for MCP clients.
+
+    Used when serving responses from cache to provide progress feedback.
+    Per design doc: "The executor should emit a distinct message like
+    'Serving page N from cache' to help LLMs understand why the response
+    was so fast."
+
+    Args:
+        message: Progress message (e.g., "Serving from cache...")
+        progress: Progress percentage (default 100 for instant completion)
+        output: Output stream (defaults to stderr)
+    """
+    out = output or sys.stderr
+    data = {
+        "type": "progress",
+        "event": "cache_hit",
+        "message": message,
+        "progress": progress,
+    }
+    out.write(json.dumps(data) + "\n")
+    out.flush()
+
+
+# =============================================================================
 # Factory Function
 # =============================================================================
 

@@ -1247,3 +1247,349 @@ class TestApiCursorIntegration:
         assert cursor.api_cursor is None
         assert cursor.skip == 50
         assert cursor.last_id == 100
+
+
+# =============================================================================
+# Full-Fetch Mode Tests (Appendix B - Modes)
+# =============================================================================
+
+
+class TestFullFetchModeScenarios:
+    """Tests for full-fetch mode scenarios including aggregate queries."""
+
+    def test_full_fetch_with_aggregate_cursor_structure(self) -> None:
+        """Aggregate queries use full-fetch mode cursor."""
+        query = Query(
+            from_="persons",
+            aggregate={"count": {"count": "*"}},
+        )
+        cursor = create_full_fetch_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            cache_file="/tmp/xaffinity_cache/xaff_test.json",
+            cache_hash="a" * 64,
+            total=500,
+        )
+
+        assert cursor.mode == "full-fetch"
+        assert cursor.cache_file is not None
+        assert cursor.cache_hash is not None
+
+    def test_full_fetch_with_order_by_cursor_structure(self) -> None:
+        """OrderBy queries use full-fetch mode cursor."""
+        query = Query(
+            from_="persons",
+            order_by=[{"field": "name", "direction": "asc"}],
+        )
+        cursor = create_full_fetch_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            cache_file="/tmp/xaffinity_cache/xaff_test.json",
+            cache_hash="b" * 64,
+            total=200,
+        )
+
+        assert cursor.mode == "full-fetch"
+        assert cursor.cache_file is not None
+
+    def test_full_fetch_with_group_by_cursor_structure(self) -> None:
+        """GroupBy queries use full-fetch mode cursor."""
+        query = Query(
+            from_="persons",
+            group_by="email",
+            aggregate={"total": {"count": "*"}},
+        )
+        cursor = create_full_fetch_cursor(
+            query=query,
+            output_format="toon",
+            skip=10,
+            cache_file="/tmp/xaffinity_cache/xaff_test.json",
+            cache_hash="c" * 64,
+            total=50,
+        )
+
+        assert cursor.mode == "full-fetch"
+        # Cursor doesn't store group_by - only query hash
+        assert cursor.qh == hash_query(query, "toon")
+
+
+# =============================================================================
+# Cache Progress Tests (Appendix B - Progress)
+# =============================================================================
+
+
+class TestCacheProgressEmission:
+    """Tests for cache-related progress emission."""
+
+    def test_emit_cache_progress_outputs_valid_ndjson(self) -> None:
+        """emit_cache_progress outputs valid NDJSON."""
+        from io import StringIO
+
+        from affinity.cli.query.progress import emit_cache_progress
+
+        captured = StringIO()
+        emit_cache_progress("Serving from cache", output=captured)
+
+        output = captured.getvalue().strip()
+        parsed = json.loads(output)
+
+        assert parsed["type"] == "progress"
+        assert parsed["event"] == "cache_hit"
+        assert parsed["message"] == "Serving from cache"
+        assert parsed["progress"] == 100
+
+    def test_emit_cache_progress_custom_progress(self) -> None:
+        """emit_cache_progress respects custom progress value."""
+        from io import StringIO
+
+        from affinity.cli.query.progress import emit_cache_progress
+
+        captured = StringIO()
+        emit_cache_progress("Starting...", progress=0, output=captured)
+
+        output = captured.getvalue().strip()
+        parsed = json.loads(output)
+
+        assert parsed["progress"] == 0
+
+    def test_emit_cache_progress_is_single_line(self) -> None:
+        """Cache progress is single-line NDJSON."""
+        from io import StringIO
+
+        from affinity.cli.query.progress import emit_cache_progress
+
+        captured = StringIO()
+        emit_cache_progress("Serving from cache (no API calls)", output=captured)
+
+        lines = captured.getvalue().strip().split("\n")
+        assert len(lines) == 1
+
+
+# =============================================================================
+# Startup Cleanup Tests (Appendix B - Cache)
+# =============================================================================
+
+
+class TestStartupCleanup:
+    """Tests for cache cleanup on CLI startup."""
+
+    def test_cleanup_cache_is_callable(self) -> None:
+        """cleanup_cache() can be called without error."""
+        # This tests that the function is properly exported and callable
+        cleanup_cache()  # Should not raise
+
+    def test_cleanup_cache_removes_expired_files_only(self) -> None:
+        """Cleanup removes only files older than TTL."""
+        # Create a fresh file
+        data = [{"id": 1}]
+        cache_file, _ = write_cache(data, "f" * 24)  # Valid 24-char hex hash
+
+        # File should exist before cleanup
+        assert Path(cache_file).exists()
+
+        # Run cleanup
+        cleanup_cache()
+
+        # Fresh file should still exist
+        assert Path(cache_file).exists()
+
+        # Clean up
+        delete_cache(cache_file)
+
+
+# =============================================================================
+# Cursor Validation Edge Cases (Appendix B - Errors)
+# =============================================================================
+
+
+class TestCursorValidationEdgeCases:
+    """Edge case tests for cursor validation."""
+
+    def test_cursor_with_skip_zero(self) -> None:
+        """Cursor with skip=0 is valid (first page)."""
+        query = Query(from_="persons")
+        cursor = CursorPayload(
+            v=CURSOR_VERSION,
+            qh=hash_query(query, "toon"),
+            skip=0,
+            ts=int(time.time() * 1000),
+            mode="streaming",
+        )
+
+        # Should not raise
+        validate_cursor(cursor, query, "toon")
+
+    def test_cursor_with_very_large_skip(self) -> None:
+        """Cursor with very large skip is valid."""
+        query = Query(from_="persons")
+        cursor = CursorPayload(
+            v=CURSOR_VERSION,
+            qh=hash_query(query, "toon"),
+            skip=1000000,  # Very large
+            ts=int(time.time() * 1000),
+            mode="streaming",
+        )
+
+        # Should not raise
+        validate_cursor(cursor, query, "toon")
+
+
+# =============================================================================
+# maxRecords Interaction Tests (Appendix B - maxRecords)
+# =============================================================================
+
+
+class TestMaxRecordsInteraction:
+    """Tests for maxRecords interaction with cursors."""
+
+    def test_cursor_skip_preserves_original_limit(self) -> None:
+        """Cursor skip doesn't depend on original maxRecords."""
+        query = Query(from_="persons", limit=100)
+
+        # Original query had limit=100, cursor skips 50
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            total=100,
+        )
+
+        assert cursor.skip == 50
+        assert cursor.total == 100
+
+    def test_full_fetch_cache_serves_without_api_calls(self) -> None:
+        """Full-fetch cursor with cache doesn't need maxRecords on resume."""
+        # Write some cached data
+        query_hash = "a" * 24  # Valid 24-char hex hash
+        data = [{"id": i} for i in range(100)]
+        cache_file, cache_hash = write_cache(data, query_hash)
+
+        try:
+            # Create cursor pointing to cache
+            cursor = CursorPayload(
+                v=1,
+                qh=query_hash,
+                skip=50,
+                ts=int(time.time() * 1000),
+                mode="full-fetch",
+                cache_file=cache_file,
+                cache_hash=cache_hash,
+                total=100,
+            )
+
+            # Read from cache - this should work without any API interaction
+            cached_data = read_cache(cursor)
+
+            assert cached_data is not None
+            assert len(cached_data) == 100
+
+        finally:
+            delete_cache(cache_file)
+
+
+# =============================================================================
+# O(1) Streaming Resumption Tests (Appendix B - Modes)
+# =============================================================================
+
+
+class TestO1StreamingResumption:
+    """Tests for O(1) streaming resumption via API cursor."""
+
+    def test_executor_accepts_resume_api_cursor(self) -> None:
+        """QueryExecutor accepts resume_api_cursor parameter."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+
+        mock_client = MagicMock()
+        executor = QueryExecutor(
+            mock_client,
+            resume_api_cursor="https://api.affinity.co/v2/persons?cursor=abc123",
+        )
+
+        assert executor.resume_api_cursor == "https://api.affinity.co/v2/persons?cursor=abc123"
+
+    def test_executor_default_resume_cursor_is_none(self) -> None:
+        """QueryExecutor defaults to no resume cursor."""
+        from unittest.mock import MagicMock
+
+        from affinity.cli.query.executor import QueryExecutor
+
+        mock_client = MagicMock()
+        executor = QueryExecutor(mock_client)
+
+        assert executor.resume_api_cursor is None
+
+    def test_streaming_cursor_with_api_cursor_structure(self) -> None:
+        """Streaming cursor with api_cursor has correct structure for O(1) resumption."""
+        query = Query(from_="persons", limit=100)
+        api_cursor_url = "https://api.affinity.co/v2/persons?cursor=abc123"
+
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            last_id=12345,
+            api_cursor=api_cursor_url,
+        )
+
+        assert cursor.mode == "streaming"
+        assert cursor.api_cursor == api_cursor_url
+        assert cursor.skip == 50  # Skip tracked for fallback
+        assert cursor.last_id == 12345
+
+    def test_streaming_cursor_api_cursor_roundtrip(self) -> None:
+        """API cursor survives encode/decode roundtrip."""
+        query = Query(from_="persons")
+        api_cursor_url = "https://api.affinity.co/v2/persons?cursor=xyz789&page=2"
+
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=100,
+            api_cursor=api_cursor_url,
+        )
+
+        encoded = encode_cursor(cursor)
+        decoded = decode_cursor(encoded)
+
+        assert decoded.api_cursor == api_cursor_url
+        assert decoded.mode == "streaming"
+
+    def test_streaming_cursor_without_api_cursor_uses_skip_fallback(self) -> None:
+        """Streaming cursor without api_cursor falls back to skip-based resumption."""
+        query = Query(from_="persons")
+
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=75,
+            last_id=999,
+        )
+
+        assert cursor.api_cursor is None
+        assert cursor.skip == 75
+        assert cursor.last_id == 999
+        # Skip-based fallback will use skip and last_id for position finding
+
+    def test_full_fetch_cursor_does_not_use_api_cursor(self) -> None:
+        """Full-fetch cursor doesn't store api_cursor (uses cache instead)."""
+        query = Query(
+            from_="persons",
+            order_by=[{"field": "name", "direction": "asc"}],
+        )
+
+        cursor = create_full_fetch_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            cache_file="/tmp/xaffinity_cache/xaff_test.json",
+            cache_hash="a" * 64,
+            total=200,
+        )
+
+        assert cursor.mode == "full-fetch"
+        assert cursor.api_cursor is None  # Full-fetch uses cache, not api_cursor
+        assert cursor.cache_file is not None

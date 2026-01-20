@@ -318,7 +318,7 @@
       "relatedCommands": ["person get"]
     },
     "query": {
-      "whenToUse": "For complex data queries. PREFERRED over list export for all list operations except --saved-view. Always use --dry-run first to preview API call count.",
+      "whenToUse": "For complex data queries. PREFERRED over list export for all list operations except --saved-view. Always use --dry-run first to preview API call count. Supports cursor-based pagination for truncated responses - pass nextCursor value to resume.",
       "syntax": {
         "structure": "{\"from\": \"<entity>\", \"where\": {...}, \"include\": [...], \"expand\": [...], \"select\": [...], \"orderBy\": [...], \"groupBy\": \"<field>\", \"aggregate\": {...}, \"limit\": N}",
         "entities": ["persons", "companies", "opportunities", "listEntries", "interactions", "notes"],

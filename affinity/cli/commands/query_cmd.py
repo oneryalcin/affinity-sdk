@@ -244,6 +244,7 @@ def _query_cmd_impl(
         CursorPayload,
         CursorQueryMismatch,
         InvalidCursor,
+        cleanup_cache,
         create_full_fetch_cursor,
         create_streaming_cursor,
         decode_cursor,
@@ -254,6 +255,9 @@ def _query_cmd_impl(
         validate_cursor,
         write_cache,
     )
+
+    # Clean up expired cache files on startup (per design doc)
+    cleanup_cache()
     from affinity.cli.query.executor import QueryExecutor
     from affinity.cli.query.output import (
         emit_cursor_to_stderr,
@@ -268,7 +272,11 @@ def _query_cmd_impl(
         truncate_markdown_output,
         truncate_toon_output,
     )
-    from affinity.cli.query.progress import RichQueryProgress, create_progress_callback
+    from affinity.cli.query.progress import (
+        RichQueryProgress,
+        create_progress_callback,
+        emit_cache_progress,
+    )
 
     # Get query input
     query_dict = _get_query_input(file_path, query_str)
@@ -325,6 +333,9 @@ def _query_cmd_impl(
         if cached_data is not None:
             if not quiet:
                 click.echo("[info] Resuming from cache (no API calls)", err=True)
+                # Emit NDJSON progress for MCP clients (per design doc)
+                if not sys.stderr.isatty():
+                    emit_cache_progress("Serving from cache (no API calls)")
             # Store cache info for potential re-use if still truncated
             cache_file_path = cursor.cache_file
             cache_content_hash = cursor.cache_hash
@@ -419,6 +430,12 @@ def _query_cmd_impl(
                         force_ndjson=ctx.output == "json",
                     )
 
+                # O(1) streaming resumption: use stored API cursor if available
+                # This avoids re-fetching pages that were already returned
+                resume_api_cursor: str | None = None
+                if cursor and cursor.mode == "streaming" and cursor.api_cursor:
+                    resume_api_cursor = cursor.api_cursor
+
                 # Use context manager for Rich progress
                 if isinstance(progress, RichQueryProgress):
                     with progress:
@@ -430,6 +447,7 @@ def _query_cmd_impl(
                             timeout=timeout,
                             allow_partial=True,
                             rate_limiter=rate_limiter,
+                            resume_api_cursor=resume_api_cursor,
                         )
                         exec_result = await executor.execute(plan)
                 else:
@@ -441,6 +459,7 @@ def _query_cmd_impl(
                         timeout=timeout,
                         allow_partial=True,
                         rate_limiter=rate_limiter,
+                        resume_api_cursor=resume_api_cursor,
                     )
                     exec_result = await executor.execute(plan)
 
@@ -473,9 +492,17 @@ def _query_cmd_impl(
 
     # Apply cursor skip position if resuming
     # This must happen BEFORE formatting so we only format remaining records
+    # NOTE: Skip this for O(1) api_cursor resumption - we already started at the right position
     resume_position = 0
     all_data_for_cache = result.data  # Keep original for cache writing
-    if cursor is not None and result.data:
+    used_api_cursor_resumption = (
+        cursor is not None
+        and cursor.mode == "streaming"
+        and cursor.api_cursor is not None
+        and cached_data is None  # Not from cache
+    )
+    if cursor is not None and result.data and not used_api_cursor_resumption:
+        # Skip-based resumption (fallback when api_cursor not available)
         resume_position, resume_warnings = find_resume_position(result.data, cursor)
         for warning in resume_warnings:
             if not quiet:
@@ -484,6 +511,8 @@ def _query_cmd_impl(
         result.data = result.data[resume_position:]
         if not quiet and resume_position > 0:
             click.echo(f"[info] Resuming from position {resume_position}", err=True)
+    elif used_api_cursor_resumption and not quiet:
+        click.echo("[info] Resumed via API cursor (O(1) resumption)", err=True)
 
     # Format and output results
     was_truncated = False

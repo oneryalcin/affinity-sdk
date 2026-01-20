@@ -637,6 +637,7 @@ class QueryExecutor:
         timeout: float = 300.0,
         allow_partial: bool = False,
         rate_limiter: RateLimitedExecutor | None = None,
+        resume_api_cursor: str | None = None,
     ) -> None:
         """Initialize the executor.
 
@@ -651,6 +652,9 @@ class QueryExecutor:
             allow_partial: If True, return partial results on interruption
             rate_limiter: Optional rate limiter for adaptive throttling.
                           If provided, should be wired to client's on_response for feedback.
+            resume_api_cursor: API cursor for O(1) streaming resumption. When provided,
+                               pagination starts from this cursor instead of from the beginning,
+                               avoiding re-fetching records that were already returned.
         """
         self.client = client
         self.progress = progress or NullProgressCallback()
@@ -663,6 +667,7 @@ class QueryExecutor:
         self.timeout = timeout
         self.allow_partial = allow_partial
         self.rate_limiter = rate_limiter or RateLimitedExecutor(self.concurrency)
+        self.resume_api_cursor = resume_api_cursor
 
     async def execute(self, plan: ExecutionPlan) -> QueryResult:
         """Execute a query plan.
@@ -1009,12 +1014,43 @@ class QueryExecutor:
         ctx: ExecutionContext,
         schema: Any,
     ) -> None:
-        """Fetch entities that support global iteration (service.all())."""
+        """Fetch entities that support global iteration (service.all()).
+
+        Supports O(1) resumption via resume_api_cursor - when set, pagination
+        starts from the cursor instead of from the beginning.
+        """
         service = getattr(self.client, schema.service_attr)
 
         def on_progress(p: PaginationProgress) -> None:
             self.progress.on_step_progress(step, p.items_so_far, None)
 
+        # O(1) streaming resumption: start from stored API cursor instead of beginning
+        if self.resume_api_cursor:
+            # Resume from cursor - no need to re-fetch earlier pages
+            current_cursor: str | None = self.resume_api_cursor
+            items_so_far = 0
+
+            while current_cursor:
+                # Fetch page starting from cursor
+                page = await service.list(cursor=current_cursor)
+                for record in page.data:
+                    record_dict = record.model_dump(mode="json", by_alias=True)
+                    ctx.records.append(record_dict)
+                    items_so_far += 1
+
+                    if self._should_stop(ctx):
+                        # Capture API cursor for potential next resumption
+                        ctx.last_api_cursor = page.next_cursor
+                        return
+
+                # Progress update after each page
+                self.progress.on_step_progress(step, items_so_far, None)
+
+                # Move to next page
+                current_cursor = page.next_cursor
+            return
+
+        # Standard path: iterate from beginning
         async for page in service.all().pages(on_progress=on_progress):
             for record in page.data:
                 record_dict = record.model_dump(mode="json", by_alias=True)
@@ -1151,6 +1187,9 @@ class QueryExecutor:
     ) -> None:
         """Fetch from a single parent with progress reporting.
 
+        Supports O(1) resumption via resume_api_cursor - when set, pagination
+        starts from the cursor instead of from the beginning.
+
         Args:
             step: The plan step being executed
             ctx: Execution context
@@ -1165,6 +1204,42 @@ class QueryExecutor:
             nonlocal items_fetched
             items_fetched = p.items_so_far
             self.progress.on_step_progress(step, items_fetched, None)
+
+        # O(1) streaming resumption: start from stored API cursor instead of beginning
+        if (
+            self.resume_api_cursor
+            and hasattr(nested_service, "list")
+            and callable(nested_service.list)
+        ):
+            # Resume from cursor - no need to re-fetch earlier pages
+            current_cursor: str | None = self.resume_api_cursor
+
+            while current_cursor:
+                # Build list() kwargs
+                list_kwargs: dict[str, Any] = {"cursor": current_cursor}
+                if field_ids is not None:
+                    list_kwargs["field_ids"] = field_ids
+
+                # Fetch page starting from cursor
+                page = await nested_service.list(**list_kwargs)
+                for record in page.data:
+                    record_dict = record.model_dump(mode="json", by_alias=True)
+                    # Normalize list entry fields for query-friendly access
+                    record_dict = _normalize_list_entry_fields(record_dict)
+                    ctx.records.append(record_dict)
+                    items_fetched += 1
+
+                    if self._should_stop(ctx):
+                        # Capture API cursor for potential next resumption
+                        ctx.last_api_cursor = page.next_cursor
+                        return
+
+                # Progress update after each page
+                self.progress.on_step_progress(step, items_fetched, None)
+
+                # Move to next page
+                current_cursor = page.next_cursor
+            return
 
         # Check if service has a direct pages() method (e.g., AsyncListEntryService)
         # This is preferred over all().pages() because it supports field_ids
@@ -2836,6 +2911,69 @@ class QueryExecutor:
 
         pages_processed = 0
         try:
+            # O(1) streaming resumption: use cursor-based pagination if resuming
+            if self.resume_api_cursor:
+                # Manual cursor-based iteration for resumption
+                current_cursor: str | None = self.resume_api_cursor
+                while current_cursor:
+                    page = await service.list(cursor=current_cursor)
+                    pages_processed += 1
+                    page_records = [r.model_dump(mode="json", by_alias=True) for r in page.data]
+
+                    # Phase 1: Apply cheap filter (no API calls)
+                    if cheap_fn is not None:
+                        page_records = [r for r in page_records if cheap_fn(r)]
+
+                    # Phase 2: Handle expensive filter
+                    if expensive_filter_clause is not None and page_records:
+                        if required_rels:
+                            page_ctx = ExecutionContext(
+                                query=query,
+                                records=page_records,
+                                max_records=self.max_records,
+                            )
+                            await self._execute_pre_include(page_ctx, required_rels, schema)
+                            id_field = schema.id_field or "id"
+                            filter_ctx = FilterContext(
+                                relationship_data=page_ctx.relationship_data,
+                                relationship_counts=page_ctx.relationship_counts,
+                                schema=schema,
+                                id_field=id_field,
+                            )
+                            expensive_fn_ctx = compile_filter_with_context(
+                                expensive_filter_clause, filter_ctx
+                            )
+                            page_records = [r for r in page_records if expensive_fn_ctx(r)]
+                        elif expensive_fn is not None:
+                            page_records = [r for r in page_records if expensive_fn(r)]
+
+                    # Accumulate matches
+                    accumulated.extend(page_records)
+                    self.progress.on_step_progress(fetch_step, len(accumulated), None)
+
+                    # Early termination check
+                    if len(accumulated) >= limit:
+                        ctx.records = accumulated[:limit]
+                        ctx.early_terminated = True
+                        ctx.last_api_cursor = page.next_cursor
+                        self.progress.on_step_complete(fetch_step, len(ctx.records))
+                        return
+
+                    # Safety check
+                    if len(accumulated) >= ctx.max_records:
+                        ctx.records = accumulated[: ctx.max_records]
+                        ctx.last_api_cursor = page.next_cursor
+                        self.progress.on_step_complete(fetch_step, len(ctx.records))
+                        return
+
+                    current_cursor = page.next_cursor
+
+                # Exhausted all pages via cursor resumption
+                ctx.records = accumulated
+                self.progress.on_step_complete(fetch_step, len(ctx.records))
+                return
+
+            # Standard path: iterate from beginning
             async for page in service.all().pages():
                 pages_processed += 1
                 page_records = [r.model_dump(mode="json", by_alias=True) for r in page.data]
@@ -2883,6 +3021,8 @@ class QueryExecutor:
                 if len(accumulated) >= limit:
                     ctx.records = accumulated[:limit]
                     ctx.early_terminated = True
+                    # Capture API cursor for O(1) streaming resumption
+                    ctx.last_api_cursor = page.next_cursor
                     logger.debug(
                         "Streaming early termination: found %d matches in %d pages",
                         limit,
@@ -2894,6 +3034,8 @@ class QueryExecutor:
                 # Safety check - don't exceed max_records even before limit
                 if len(accumulated) >= ctx.max_records:
                     ctx.records = accumulated[: ctx.max_records]
+                    # Capture API cursor for O(1) streaming resumption
+                    ctx.last_api_cursor = page.next_cursor
                     self.progress.on_step_complete(fetch_step, len(ctx.records))
                     return
 
