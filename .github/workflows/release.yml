@@ -276,6 +276,12 @@ jobs:
           # Write to file to preserve formatting
           echo "$CHANGELOG" > release_notes.md
 
+          # Add install instructions footer with dynamic MCPB link
+          MCP_VERSION=$(cat mcp/VERSION)
+          SDK_TAG="${{ needs.validate.outputs.tag_name }}"
+          MCPB_URL="https://github.com/yaniv-golan/affinity-sdk/releases/download/${SDK_TAG}/xaffinity-mcp-${MCP_VERSION}.mcpb"
+          sed "s|{{MCPB_URL}}|${MCPB_URL}|g" .github/release-install-footer.md >> release_notes.md
+
       - name: Download dist artifacts
         uses: actions/download-artifact@v7
         with:

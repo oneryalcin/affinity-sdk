@@ -19,7 +19,9 @@ See [Commands Reference](commands.md) for complete command documentation.
 
 ### MCP Server
 
-Connect desktop AI tools (Claude Desktop, Cursor, Windsurf, VS Code + Copilot) to Affinity. See [MCP Server](../mcp/index.md).
+Connect desktop AI tools (Claude Desktop, Cursor, Windsurf, VS Code + Copilot) to Affinity.
+
+**Important**: The CLI is a prerequisite for the MCP server. Install and configure the CLI first (see [Install](#install) and [Authentication](#authentication) below), then follow the [MCP Server](../mcp/index.md) setup guide.
 
 ### Claude Code
 

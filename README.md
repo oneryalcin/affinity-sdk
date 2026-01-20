@@ -75,11 +75,19 @@ CLI docs: https://yaniv-golan.github.io/affinity-sdk/latest/cli/
 
 ### MCP Server
 
-Connect desktop AI tools to Affinity CRM:
+Connect desktop AI tools to Affinity CRM.
 
-- Claude Desktop, ChatGPT Desktop, Cursor, Windsurf, VS Code + Copilot, Zed, and more
+**Claude Desktop** (easiest - MCPB bundle):
 
-Features: entity search, relationship intelligence, workflow management, interaction logging, meeting prep.
+1. Install CLI: `pipx install "affinity-sdk[cli]"`
+2. *(Optional)* Pre-configure API key: `xaffinity config setup-key`
+   - If skipped, Claude Desktop will prompt for your API key during MCPB install
+3. Download the `.mcpb` bundle from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases)
+4. Double-click to install (or drag to Claude Desktop)
+
+**Other clients** (Cursor, Windsurf, VS Code + Copilot, Zed, etc.):
+
+These require manual configuration. See the [MCP Server docs](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/) for step-by-step instructions.
 
 MCP docs: https://yaniv-golan.github.io/affinity-sdk/latest/mcp/
 

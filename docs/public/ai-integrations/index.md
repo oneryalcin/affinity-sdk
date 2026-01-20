@@ -34,14 +34,16 @@ The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server conn
 
 ### MCP Server
 
-**One-click install (recommended):**
+**Claude Desktop** (easiest - MCPB bundle):
 
-Download the `.mcpb` bundle from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases), then double-click or drag to Claude Desktop.
+1. Install CLI: `pipx install "affinity-sdk[cli]"`
+2. *(Optional)* Pre-configure API key: `xaffinity config setup-key` (Claude Desktop will prompt if skipped)
+3. Download `.mcpb` from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases) and double-click
 
-**Manual install:**
+**Other clients** (Cursor, Windsurf, VS Code, etc.):
 
 ```bash
-pip install "affinity-sdk[cli]"
+pipx install "affinity-sdk[cli]"
 xaffinity config setup-key
 ```
 

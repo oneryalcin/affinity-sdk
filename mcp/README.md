@@ -14,13 +14,14 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 
 ```bash
 # 1. Install the xaffinity CLI
-pip install affinity-sdk
+pipx install "affinity-sdk[cli]"
 
-# 2. Configure your API key
+# 2. (Optional) Configure your API key - Claude Desktop will prompt if skipped
 xaffinity config setup-key
 
 # 3. Install the MCP server (choose one)
 #    - Claude Desktop: Download and double-click xaffinity-mcp-*.mcpb
+#    - Other clients: See "Manual Installation" below
 #    - Claude Code: /plugin marketplace add yaniv-golan/affinity-sdk
 ```
 
@@ -33,8 +34,8 @@ The `.mcpb` bundle is self-contained — it includes the MCP Bash Framework and 
 | Requirement | How to Install | Verify |
 |-------------|----------------|--------|
 | Python 3.9+ | [python.org](https://python.org) or your package manager | `python --version` |
-| xaffinity CLI | `pip install affinity-sdk` | `xaffinity --version` |
-| Affinity API key | `xaffinity config setup-key` | `xaffinity config check-key` |
+| xaffinity CLI | `pipx install "affinity-sdk[cli]"` | `xaffinity --version` |
+| Affinity API key | `xaffinity config setup-key` (or let Claude Desktop prompt) | `xaffinity config check-key` |
 
 ### For Manual Installation
 
@@ -45,7 +46,7 @@ Manual installation requires additional dependencies:
 | Bash 3.2+ | Included on macOS/Linux; Windows: use WSL or Git Bash | `bash --version` |
 | Python 3.9+ | [python.org](https://python.org) or your package manager | `python --version` |
 | jq or gojq | See [Installing jq/gojq](#installing-jqgojq) below | `jq --version` or `gojq --version` |
-| xaffinity CLI | `pip install affinity-sdk` | `xaffinity --version` |
+| xaffinity CLI | `pipx install "affinity-sdk[cli]"` | `xaffinity --version` |
 | Affinity API key | `xaffinity config setup-key` | `xaffinity config check-key` |
 
 #### Installing jq/gojq
@@ -80,10 +81,13 @@ Either [jq](https://jqlang.org/) or [gojq](https://github.com/itchyny/gojq) work
 
 The `.mcpb` bundle is fully self-contained — it includes the MCP framework and JSON processor.
 
-1. Install the xaffinity CLI: `pip install affinity-sdk`
-2. Configure your API key: `xaffinity config setup-key`
+1. Install the xaffinity CLI: `pipx install "affinity-sdk[cli]"`
+2. *(Optional)* Configure your API key: `xaffinity config setup-key`
+   - If skipped, Claude Desktop will prompt for your API key during MCPB installation
 3. Download `xaffinity-mcp-*.mcpb` from the [latest release](https://github.com/yaniv-golan/affinity-sdk/releases/latest)
 4. Double-click the file or drag it into Claude Desktop
+
+> **Note:** MCPB bundles currently only work with Claude Desktop. Other clients require [manual installation](#option-3-manual-installation).
 
 ### Option 2: Claude Code
 

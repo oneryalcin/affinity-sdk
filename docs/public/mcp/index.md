@@ -29,19 +29,33 @@ MCP (Model Context Protocol) is an open standard. This server works with:
 
 ## Installation Options
 
-### Option 1: MCPB Bundle (Recommended)
+### Option 1: MCPB Bundle for Claude Desktop (Recommended)
 
-Download the `.mcpb` bundle for one-click installation:
+The easiest installation method - download and double-click:
 
-1. Download `xaffinity-mcp-X.Y.Z.mcpb` from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases)
-2. Double-click the file or drag it to Claude Desktop
-3. Configure your API key when prompted
+1. **Install the CLI first:**
+   ```bash
+   pipx install "affinity-sdk[cli]"
+   ```
 
-MCPB bundles work with Claude Desktop and other MCPB-compatible clients.
+2. *(Optional)* **Pre-configure your API key:**
+   ```bash
+   xaffinity config setup-key
+   ```
+   If you skip this step, Claude Desktop will prompt for your API key during MCPB installation.
+
+3. **Download** `xaffinity-mcp-X.Y.Z.mcpb` from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases)
+
+4. **Double-click** the file or drag it to Claude Desktop
+
+The MCPB bundle is self-contained (includes MCP framework and JSON processor) but requires the CLI to be installed separately.
+
+!!! note "MCPB support"
+    MCPB bundles currently only work with **Claude Desktop**. Other clients require manual configuration (see below).
 
 ### Option 2: Manual Configuration
 
-For clients that don't support MCPB, configure manually:
+For **Cursor, Windsurf, VS Code + Copilot, Zed**, and other MCP clients:
 
 **Prerequisites:**
 
