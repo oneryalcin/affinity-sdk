@@ -305,6 +305,7 @@ class ExecutionContext:
     warnings: list[str] = field(default_factory=list)  # Warnings collected during execution
     needs_full_fetch: bool = False  # True if filter/aggregate/sort exists (need all records first)
     early_terminated: bool = False  # True if stopped early due to limit (streaming mode)
+    last_api_cursor: str | None = None  # API cursor at pagination stop (for streaming resumption)
 
     def check_timeout(self, timeout: float) -> None:
         """Check if execution has exceeded timeout."""
@@ -375,6 +376,7 @@ class ExecutionContext:
             warnings=self.warnings,
             explicit_select=self.query.select,
             explicit_expand=self.query.expand,
+            api_cursor=self.last_api_cursor,
         )
 
 
@@ -1019,6 +1021,8 @@ class QueryExecutor:
                 ctx.records.append(record_dict)
 
                 if self._should_stop(ctx):
+                    # Capture API cursor for potential streaming resumption
+                    ctx.last_api_cursor = page.next_cursor
                     return
 
     async def _fetch_with_parent(
@@ -1178,6 +1182,8 @@ class QueryExecutor:
                     ctx.records.append(record_dict)
                     items_fetched += 1
                     if self._should_stop(ctx):
+                        # Capture API cursor for potential streaming resumption
+                        ctx.last_api_cursor = page.next_cursor
                         return
                 # Report progress after each page
                 self.progress.on_step_progress(step, items_fetched, None)
@@ -1195,6 +1201,8 @@ class QueryExecutor:
                     record_dict = _normalize_list_entry_fields(record_dict)
                     ctx.records.append(record_dict)
                     if self._should_stop(ctx):
+                        # Capture API cursor for potential streaming resumption
+                        ctx.last_api_cursor = page.next_cursor
                         return
         else:
             # Fall back to async iteration for services without pages()

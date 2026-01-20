@@ -598,15 +598,17 @@ def _query_cmd_impl(
                         skip=new_skip,
                         last_id=last_id,
                         total=total_records,
+                        api_cursor=result.api_cursor,
                     )
             else:
-                # Streaming mode: create streaming cursor
+                # Streaming mode: create streaming cursor with API cursor for O(1) resumption
                 new_cursor = create_streaming_cursor(
                     query=query,
                     output_format=output_format,
                     skip=new_skip,
                     last_id=last_id,
                     total=total_records,
+                    api_cursor=result.api_cursor,
                 )
 
             cursor_encoded = encode_cursor(new_cursor)

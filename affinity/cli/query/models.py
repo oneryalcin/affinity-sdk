@@ -440,6 +440,8 @@ class QueryResult:
     # Track explicit selections for display formatting (field flattening)
     explicit_select: list[str] | None = None  # e.g., ["id", "fields.*", "fields.Status"]
     explicit_expand: list[str] | None = None  # e.g., ["interactionDates"]
+    # API cursor for streaming mode resumption (captured when pagination stops)
+    api_cursor: str | None = None
 
 
 # Enable forward references

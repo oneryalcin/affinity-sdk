@@ -1179,3 +1179,71 @@ class TestCacheLruEviction:
             assert Path(cache_file).exists()
         finally:
             delete_cache(cache_file)
+
+
+# =============================================================================
+# API Cursor Integration Tests (Appendix B)
+# =============================================================================
+
+
+class TestApiCursorIntegration:
+    """Tests for API cursor capture and storage in streaming mode."""
+
+    def test_query_result_has_api_cursor_field(self) -> None:
+        """QueryResult model includes api_cursor field."""
+        from affinity.cli.query.models import QueryResult
+
+        result = QueryResult(data=[{"id": 1}])
+        assert hasattr(result, "api_cursor")
+        assert result.api_cursor is None
+
+    def test_query_result_with_api_cursor(self) -> None:
+        """QueryResult can store api_cursor value."""
+        from affinity.cli.query.models import QueryResult
+
+        result = QueryResult(
+            data=[{"id": 1}],
+            api_cursor="https://api.affinity.co/v2/persons?page=2",
+        )
+        assert result.api_cursor == "https://api.affinity.co/v2/persons?page=2"
+
+    def test_execution_context_has_last_api_cursor(self) -> None:
+        """ExecutionContext tracks last_api_cursor."""
+        from affinity.cli.query.executor import ExecutionContext
+
+        ctx = ExecutionContext(query=Query(from_="persons"))
+        assert hasattr(ctx, "last_api_cursor")
+        assert ctx.last_api_cursor is None
+
+    def test_streaming_cursor_preserves_api_cursor(self) -> None:
+        """Streaming cursor roundtrip preserves api_cursor."""
+        query = Query(from_="persons")
+        api_cursor_value = "https://api.affinity.co/v2/persons?cursor=abc123"
+
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            api_cursor=api_cursor_value,
+        )
+
+        encoded = encode_cursor(cursor)
+        decoded = decode_cursor(encoded)
+
+        assert decoded.api_cursor == api_cursor_value
+        assert decoded.mode == "streaming"
+
+    def test_streaming_cursor_without_api_cursor(self) -> None:
+        """Streaming cursor works without api_cursor (fallback mode)."""
+        query = Query(from_="persons")
+
+        cursor = create_streaming_cursor(
+            query=query,
+            output_format="toon",
+            skip=50,
+            last_id=100,
+        )
+
+        assert cursor.api_cursor is None
+        assert cursor.skip == 50
+        assert cursor.last_id == 100
