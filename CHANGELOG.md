@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.12.0 - 2026-01-20
+
 ### Added
-- CLI: `query --cursor` option for resuming truncated responses. When a query response is truncated (exceeds `--max-output-bytes`), a cursor is emitted to stderr that can be used to fetch the next chunk of results.
+- CLI: `query --cursor` option for resumable pagination when responses are truncated (exceed `--max-output-bytes`):
+  - **Streaming mode** (simple queries): O(1) resumption via stored Affinity API cursor - no re-fetching of previous pages
+  - **Full-fetch mode** (queries with orderBy/aggregate): Results cached to disk, zero API calls on resume
+  - Cursor emitted to stderr as NDJSON `{"type": "cursor", "cursor": "...", "mode": "..."}` for MCP extraction
+  - CLI exits with code 100 when truncated (cursor available)
+  - Cache auto-cleanup on startup: LRU eviction (500MB limit), 1-hour TTL
+  - Validation: query hash, format mismatch, cache tampering all detected with clear errors
 
 ## 0.11.0 - 2026-01-20
 
