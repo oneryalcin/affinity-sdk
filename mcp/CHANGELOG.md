@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Resumable query responses**: The `query` tool now supports cursor-based pagination for truncated responses:
+  - New `cursor` input parameter: Pass the `nextCursor` from a truncated response to get the next chunk
+  - `nextCursor` field in response: When output is truncated, includes an opaque cursor for resumption
+  - `_cursorMode` hint: Indicates cursor mode ("streaming" or "full-fetch") for debugging
+  - Cursors expire after 1 hour and require identical query + format for validation
+
 ## [1.10.0] - 2026-01-20
 
 ### Added

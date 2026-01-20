@@ -12,6 +12,7 @@ max_records="$(mcp_args_int '.maxRecords' --default 1000)"
 user_timeout_secs="$(mcp_args_int '.timeout' --default 0)"  # 0 = auto-calculate
 max_output_bytes="$(mcp_args_int '.maxOutputBytes' --default 50000)"
 format="$(mcp_args_get '.format // "toon"')"
+cursor="$(mcp_args_get '.cursor // ""')"
 
 # Validate format parameter
 case "$format" in
@@ -93,6 +94,8 @@ declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--ti
 [[ "$dry_run" == "true" ]] && cmd_display+=("--dry-run")
 # For non-JSON formats, CLI handles truncation via --max-output-bytes
 [[ "$format" != "json" ]] && cmd_display+=("--max-output-bytes" "$max_output_bytes")
+# Pass cursor to CLI if provided
+[[ -n "$cursor" ]] && cmd_display+=("--cursor" "$cursor")
 
 # Check for cancellation before execution
 if mcp_is_cancelled; then
@@ -103,6 +106,7 @@ fi
 # Execute CLI with progress forwarding
 # - Uses run_xaffinity_with_progress to forward NDJSON progress to MCP clients
 # - CLI emits step-by-step progress (fetch, filter, aggregate) when stderr is not a TTY
+# - CLI emits cursor to stderr as NDJSON {"type": "cursor", ...} when truncated
 # - --stdin pipes query JSON to the command
 # - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
 # - --max-output-bytes for non-JSON formats (CLI handles truncation, returns exit code 100 if truncated)
@@ -112,7 +116,8 @@ printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$
     $([[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && echo "--session-cache" "${AFFINITY_SESSION_CACHE}") \
     query --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
     $([[ "$dry_run" == "true" ]] && echo "--dry-run") \
-    $([[ "$format" != "json" ]] && echo "--max-output-bytes" "$max_output_bytes") >"$stdout_file"
+    $([[ "$format" != "json" ]] && echo "--max-output-bytes" "$max_output_bytes") \
+    $([[ -n "$cursor" ]] && echo "--cursor" "$cursor") >"$stdout_file"
 exit_code=$?
 set -e
 
@@ -125,6 +130,16 @@ fi
 
 stdout_content=$(cat "$stdout_file")
 stderr_content=$(cat "$stderr_file")
+
+# Extract cursor from stderr using type field (consistent with progress pattern)
+# CLI emits: {"type": "cursor", "cursor": "eyJ...", "mode": "streaming"}
+next_cursor=""
+cursor_mode=""
+cursor_line=$(jq_tool -c 'select(.type == "cursor")' "$stderr_file" 2>/dev/null | head -1 || true)
+if [[ -n "$cursor_line" ]]; then
+    next_cursor=$(echo "$cursor_line" | jq_tool -r '.cursor // empty')
+    cursor_mode=$(echo "$cursor_line" | jq_tool -r '.mode // empty')
+fi
 
 # Build executed command for transparency (without the actual query for brevity)
 cmd_json=$(jq_tool -n --args '$ARGS.positional' -- "${cmd_display[@]}")
@@ -152,7 +167,16 @@ if [[ $exit_code -eq 0 ]]; then
         # JSON format: validate and apply semantic truncation via mcp_json_truncate
         if mcp_is_valid_json "$stdout_content"; then
             if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes" --array-path ".data"); then
-                mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
+                # Add nextCursor if present
+                if [[ -n "$next_cursor" ]]; then
+                    mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool \
+                        --argjson cmd "$cmd_json" \
+                        --arg cursor "$next_cursor" \
+                        --arg mode "$cursor_mode" \
+                        '. + {executed: $cmd, nextCursor: $cursor, _cursorMode: $mode}')"
+                else
+                    mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
+                fi
             else
                 # Truncation failed (output too large, can't truncate safely)
                 mcp_result_error "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '.error + {executed: $cmd}')"
@@ -170,8 +194,15 @@ if [[ $exit_code -eq 0 ]]; then
         printf '%s' "$stdout_content" > "$stdout_file"
 
         if [[ "$was_truncated" == "true" ]]; then
-            mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
-                '{content: [{type: "text", text: $text}], truncated: true, executed: $cmd}')"
+            # Add nextCursor if present (for resumable truncated responses)
+            if [[ -n "$next_cursor" ]]; then
+                mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
+                    --arg cursor "$next_cursor" --arg mode "$cursor_mode" \
+                    '{content: [{type: "text", text: $text}], truncated: true, nextCursor: $cursor, _cursorMode: $mode, executed: $cmd}')"
+            else
+                mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
+                    '{content: [{type: "text", text: $text}], truncated: true, executed: $cmd}')"
+            fi
         else
             mcp_result_success "$(jq_tool -n --rawfile text "$stdout_file" --argjson cmd "$cmd_json" \
                 '{content: [{type: "text", text: $text}], truncated: false, executed: $cmd}')"

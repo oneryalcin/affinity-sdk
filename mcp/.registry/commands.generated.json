@@ -2780,6 +2780,11 @@
           "required": false,
           "help": "Add UTF-8 BOM for Excel (use with redirection: --csv --csv-bom > file.csv)."
         },
+        "--cursor": {
+          "type": "string",
+          "required": false,
+          "help": "Resume from cursor (from previous truncated response)."
+        },
         "--dry-run": {
           "type": "flag",
           "required": false,
@@ -2959,6 +2964,15 @@
         "markdown": "Best for LLM analysis - tables are easy to comprehend",
         "json": "Full structure for programmatic use",
         "csv": "For spreadsheets"
+      },
+      "truncationResumption": {
+        "description": "When output is truncated (truncated: true), use the nextCursor value to resume",
+        "usage": "Pass the nextCursor value as the cursor parameter with the IDENTICAL query",
+        "important": "Query and format MUST match exactly - any change invalidates the cursor",
+        "modes": {
+          "streaming": "Simple queries without orderBy/aggregate",
+          "full-fetch": "Complex queries with orderBy/aggregate - results are cached for efficient resumption"
+        }
       },
       "examples": [
         "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",

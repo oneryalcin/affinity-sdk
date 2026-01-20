@@ -358,3 +358,52 @@ with open('/tmp/data.toon') as f:
 - The `toon-format` library handles all edge cases correctly
 
 **Reference:** https://github.com/toon-format/toon-python
+
+---
+
+## Handling Truncated Responses
+
+Large query results may be truncated to fit within output limits (~50KB default). When this happens, the response includes a `nextCursor` field that allows you to fetch the remaining data.
+
+### Detecting Truncation
+
+Truncated responses include:
+- `truncated: true` in the MCP response
+- `nextCursor`: Opaque string to fetch the next chunk
+
+### Resuming with Cursor
+
+To get the next chunk of results, call the query tool again with:
+1. The **exact same `query` object** (unchanged)
+2. The **exact same `format` parameter** (unchanged)
+3. The `cursor` parameter set to the `nextCursor` value
+
+**Important**: Changing any query field or format invalidates the cursor.
+
+### Example
+
+```python
+# First request
+result1 = await query(
+    query={"from": "persons", "limit": 1000},
+    format="toon",
+    maxOutputBytes=50000
+)
+
+# If truncated, get next chunk
+if result1.get("truncated") and result1.get("nextCursor"):
+    result2 = await query(
+        query={"from": "persons", "limit": 1000},  # IDENTICAL query
+        format="toon",  # IDENTICAL format
+        cursor=result1["nextCursor"]  # Pass the cursor
+    )
+```
+
+### Cursor Behavior
+
+- Cursors are typically 150-500 bytes (base64-encoded)
+- Cursors expire after 1 hour
+- Cursors are mode-specific:
+  - **Streaming mode** (simple queries): Fast resumption via API cursor
+  - **Full-fetch mode** (queries with orderBy/aggregate): Cached results served from disk
+- Pass the cursor back unchanged - it's opaque and should not be modified

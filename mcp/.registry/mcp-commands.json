@@ -359,6 +359,15 @@
         "json": "Full structure for programmatic use",
         "csv": "For spreadsheets"
       },
+      "truncationResumption": {
+        "description": "When output is truncated (truncated: true), use the nextCursor value to resume",
+        "usage": "Pass the nextCursor value as the cursor parameter with the IDENTICAL query",
+        "important": "Query and format MUST match exactly - any change invalidates the cursor",
+        "modes": {
+          "streaming": "Simple queries without orderBy/aggregate",
+          "full-fetch": "Complex queries with orderBy/aggregate - results are cached for efficient resumption"
+        }
+      },
       "examples": [
         "query --query '{\"from\": \"persons\", \"limit\": 10}' --dry-run",
         "query --query '{\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"include\": [\"companies\"], \"limit\": 50}'",

@@ -108,6 +108,13 @@ from ..options import csv_output_options, csv_suboption_callback
     default="inline",
     help="How to display included data: inline (default), separate tables, or raw IDs.",
 )
+@click.option(
+    "--cursor",
+    "cursor_str",
+    type=str,
+    default=None,
+    help="Resume from cursor (from previous truncated response).",
+)
 @csv_output_options
 @click.pass_obj
 def query_cmd(
@@ -126,6 +133,7 @@ def query_cmd(
     verbose: bool,
     max_output_bytes: int | None,
     include_style: str,
+    cursor_str: str | None,
 ) -> None:
     """Execute a structured query against Affinity data.
 
@@ -188,6 +196,7 @@ def query_cmd(
             verbose=verbose,
             max_output_bytes=max_output_bytes,
             include_style=include_style,
+            cursor_str=cursor_str,
         )
     except CLIError as e:
         # Display error cleanly without traceback
@@ -216,6 +225,7 @@ def _query_cmd_impl(
     verbose: bool,
     max_output_bytes: int | None,
     include_style: str,
+    cursor_str: str | None,
 ) -> None:
     """Internal implementation of query command."""
     from affinity.cli.constants import EXIT_TRUNCATED
@@ -229,13 +239,30 @@ def _query_cmd_impl(
         create_planner,
         parse_query,
     )
+    from affinity.cli.query.cursor import (
+        CursorExpired,
+        CursorPayload,
+        CursorQueryMismatch,
+        InvalidCursor,
+        create_full_fetch_cursor,
+        create_streaming_cursor,
+        decode_cursor,
+        encode_cursor,
+        find_resume_position,
+        hash_query,
+        read_cache,
+        validate_cursor,
+        write_cache,
+    )
     from affinity.cli.query.executor import QueryExecutor
     from affinity.cli.query.output import (
+        emit_cursor_to_stderr,
         format_dry_run,
         format_dry_run_json,
         format_json,
         format_query_result,
         format_table,
+        insert_cursor_in_toon_truncation,
         truncate_csv_output,
         truncate_jsonl_output,
         truncate_markdown_output,
@@ -254,6 +281,22 @@ def _query_cmd_impl(
 
     query = parse_result.query
 
+    # Decode and validate cursor if provided
+    cursor: CursorPayload | None = None
+    output_format = ctx.output or "table"  # Default to table if not specified
+    if cursor_str:
+        try:
+            cursor = decode_cursor(cursor_str)
+            validate_cursor(cursor, query, output_format)
+        except CursorExpired as e:
+            raise CLIError(
+                str(e), hint="Re-run the original query to get a fresh cursor."
+            ) from None
+        except CursorQueryMismatch as e:
+            raise CLIError(str(e)) from None
+        except InvalidCursor as e:
+            raise CLIError(f"Invalid cursor: {e}") from None
+
     # Show parsing warnings
     if parse_result.warnings and not quiet:
         for warning in parse_result.warnings:
@@ -265,6 +308,28 @@ def _query_cmd_impl(
         plan = planner.plan(query)
     except QueryValidationError as e:
         raise CLIError(f"Query planning failed: {e}") from None
+
+    # Determine execution mode: full-fetch if orderBy/aggregate/groupBy
+    is_full_fetch_mode = (
+        query.order_by is not None or query.aggregate is not None or query.group_by is not None
+    )
+
+    # Try cache resumption for full-fetch mode cursors
+    cached_data: list[dict[str, Any]] | None = None
+    cache_file_path: str | None = None
+    cache_content_hash: str | None = None
+
+    if cursor and cursor.mode == "full-fetch" and cursor.cache_file:
+        # Try to read from cache (no API calls needed)
+        cached_data = read_cache(cursor)
+        if cached_data is not None:
+            if not quiet:
+                click.echo("[info] Resuming from cache (no API calls)", err=True)
+            # Store cache info for potential re-use if still truncated
+            cache_file_path = cursor.cache_file
+            cache_content_hash = cursor.cache_hash
+        elif not quiet:
+            click.echo("[warning] Cache expired or missing, re-executing query", err=True)
 
     # Dry-run mode
     if dry_run or dry_run_verbose:
@@ -295,53 +360,79 @@ def _query_cmd_impl(
     for warning in warnings_list:
         click.echo(f"[warning] {warning}", err=True)
 
-    # Execute query
-    async def run_query() -> Any:
-        from affinity import AsyncAffinity
-        from affinity.hooks import ResponseInfo
+    # Execute query (or use cached data)
+    result: Any = None  # Will hold QueryResult
 
-        from ..query.executor import RateLimitedExecutor
+    if cached_data is not None:
+        # Use cached data - no execution needed
+        from affinity.cli.query.models import QueryResult
 
-        # Create rate limiter for adaptive throttling
-        rate_limiter = RateLimitedExecutor()
+        result = QueryResult(
+            data=cached_data,
+            meta={"fromCache": True},
+            pagination={"total": len(cached_data)},
+        )
+    else:
+        # Normal execution path
+        async def run_query() -> Any:
+            from affinity import AsyncAffinity
+            from affinity.hooks import ResponseInfo
 
-        # Combine on_response to feed rate limiter with response data
-        original_on_response = settings.on_response
+            from ..query.executor import RateLimitedExecutor
 
-        def combined_on_response(res: ResponseInfo) -> None:
-            # Call original callback if it exists
-            if original_on_response is not None:
-                original_on_response(res)
-            # Feed rate limiter with status and remaining quota
-            remaining_str = res.headers.get("X-RateLimit-Remaining")
-            remaining = int(remaining_str) if remaining_str and remaining_str.isdigit() else None
-            rate_limiter.on_response(res.status_code, remaining)
+            # Create rate limiter for adaptive throttling
+            rate_limiter = RateLimitedExecutor()
 
-        async with AsyncAffinity(
-            api_key=settings.api_key,
-            v1_base_url=settings.v1_base_url,
-            v2_base_url=settings.v2_base_url,
-            timeout=settings.timeout,
-            log_requests=settings.log_requests,
-            max_retries=settings.max_retries,
-            on_request=settings.on_request,
-            on_response=combined_on_response,
-            on_error=settings.on_error,
-            policies=settings.policies,
-        ) as client:
-            # Create progress callback
-            if quiet:
-                progress = None
-            else:
-                progress = create_progress_callback(
-                    total_steps=len(plan.steps),
-                    quiet=quiet,
-                    force_ndjson=ctx.output == "json",
+            # Combine on_response to feed rate limiter with response data
+            original_on_response = settings.on_response
+
+            def combined_on_response(res: ResponseInfo) -> None:
+                # Call original callback if it exists
+                if original_on_response is not None:
+                    original_on_response(res)
+                # Feed rate limiter with status and remaining quota
+                remaining_str = res.headers.get("X-RateLimit-Remaining")
+                remaining = (
+                    int(remaining_str) if remaining_str and remaining_str.isdigit() else None
                 )
+                rate_limiter.on_response(res.status_code, remaining)
 
-            # Use context manager for Rich progress
-            if isinstance(progress, RichQueryProgress):
-                with progress:
+            async with AsyncAffinity(
+                api_key=settings.api_key,
+                v1_base_url=settings.v1_base_url,
+                v2_base_url=settings.v2_base_url,
+                timeout=settings.timeout,
+                log_requests=settings.log_requests,
+                max_retries=settings.max_retries,
+                on_request=settings.on_request,
+                on_response=combined_on_response,
+                on_error=settings.on_error,
+                policies=settings.policies,
+            ) as client:
+                # Create progress callback
+                if quiet:
+                    progress = None
+                else:
+                    progress = create_progress_callback(
+                        total_steps=len(plan.steps),
+                        quiet=quiet,
+                        force_ndjson=ctx.output == "json",
+                    )
+
+                # Use context manager for Rich progress
+                if isinstance(progress, RichQueryProgress):
+                    with progress:
+                        executor = QueryExecutor(
+                            client,
+                            progress=progress,
+                            max_records=max_records,
+                            max_records_explicit=max_records_explicit,
+                            timeout=timeout,
+                            allow_partial=True,
+                            rate_limiter=rate_limiter,
+                        )
+                        exec_result = await executor.execute(plan)
+                else:
                     executor = QueryExecutor(
                         client,
                         progress=progress,
@@ -351,45 +442,48 @@ def _query_cmd_impl(
                         allow_partial=True,
                         rate_limiter=rate_limiter,
                     )
-                    result = await executor.execute(plan)
-            else:
-                executor = QueryExecutor(
-                    client,
-                    progress=progress,
-                    max_records=max_records,
-                    max_records_explicit=max_records_explicit,
-                    timeout=timeout,
-                    allow_partial=True,
-                    rate_limiter=rate_limiter,
+                    exec_result = await executor.execute(plan)
+
+                # Capture rate limit before client closes
+                exec_result.rate_limit = client.rate_limits.snapshot()
+                return exec_result
+
+        try:
+            result = asyncio.run(run_query())
+        except QueryValidationError as e:
+            # Unbounded quantifier query without explicit --max-records
+            raise CLIError(str(e)) from None
+        except QueryTimeoutError as e:
+            raise CLIError(f"Query timed out after {e.elapsed_seconds:.1f}s: {e}") from None
+        except QuerySafetyLimitError as e:
+            raise CLIError(f"Query exceeded safety limit: {e}") from None
+        except QueryInterruptedError as e:
+            if e.partial_results:
+                click.echo(
+                    f"[interrupted] Returning {len(e.partial_results)} partial results",
+                    err=True,
                 )
-                result = await executor.execute(plan)
+                from affinity.cli.query.models import QueryResult
 
-            # Capture rate limit before client closes
-            result.rate_limit = client.rate_limits.snapshot()
-            return result
+                result = QueryResult(data=e.partial_results, meta={"interrupted": True})
+            else:
+                raise CLIError(f"Query interrupted: {e}") from None
+        except QueryExecutionError as e:
+            raise CLIError(f"Query execution failed: {e}") from None
 
-    try:
-        result = asyncio.run(run_query())
-    except QueryValidationError as e:
-        # Unbounded quantifier query without explicit --max-records
-        raise CLIError(str(e)) from None
-    except QueryTimeoutError as e:
-        raise CLIError(f"Query timed out after {e.elapsed_seconds:.1f}s: {e}") from None
-    except QuerySafetyLimitError as e:
-        raise CLIError(f"Query exceeded safety limit: {e}") from None
-    except QueryInterruptedError as e:
-        if e.partial_results:
-            click.echo(
-                f"[interrupted] Returning {len(e.partial_results)} partial results",
-                err=True,
-            )
-            from affinity.cli.query.models import QueryResult
-
-            result = QueryResult(data=e.partial_results, meta={"interrupted": True})
-        else:
-            raise CLIError(f"Query interrupted: {e}") from None
-    except QueryExecutionError as e:
-        raise CLIError(f"Query execution failed: {e}") from None
+    # Apply cursor skip position if resuming
+    # This must happen BEFORE formatting so we only format remaining records
+    resume_position = 0
+    all_data_for_cache = result.data  # Keep original for cache writing
+    if cursor is not None and result.data:
+        resume_position, resume_warnings = find_resume_position(result.data, cursor)
+        for warning in resume_warnings:
+            if not quiet:
+                click.echo(f"[warning] {warning}", err=True)
+        # Slice data to only include remaining records
+        result.data = result.data[resume_position:]
+        if not quiet and resume_position > 0:
+            click.echo(f"[info] Resuming from position {resume_position}", err=True)
 
     # Format and output results
     was_truncated = False
@@ -443,10 +537,92 @@ def _query_cmd_impl(
         style: IncludeStyle = include_style  # type: ignore[assignment]
         output = format_table(result, include_style=style)
 
+    # Handle truncation cursor creation BEFORE output
+    # This allows us to insert cursor into TOON truncation section for human readability
+    cursor_encoded: str | None = None
+    cursor_mode: str | None = None
+
+    if was_truncated:
+        rows_shown = _count_rows_in_output(output, output_format)
+        total_records = len(all_data_for_cache) if all_data_for_cache else 0
+        remaining_records = len(result.data) if result.data else 0
+
+        if rows_shown < remaining_records:
+            # Calculate new skip position (cumulative from original position)
+            new_skip = resume_position + rows_shown
+            last_shown_record = (
+                result.data[rows_shown - 1] if rows_shown > 0 and result.data else None
+            )
+            last_id = (
+                last_shown_record.get("id") or last_shown_record.get("listEntryId")
+                if last_shown_record
+                else None
+            )
+
+            if is_full_fetch_mode:
+                # Full-fetch mode: write/reuse cache and create full-fetch cursor
+                if cache_file_path is None or cache_content_hash is None:
+                    # First truncation - write cache
+                    try:
+                        query_hash = hash_query(query, output_format)
+                        cache_file_path, cache_content_hash = write_cache(
+                            all_data_for_cache, query_hash
+                        )
+                        if not quiet:
+                            click.echo(
+                                f"[info] Cached {len(all_data_for_cache)} records for resumption",
+                                err=True,
+                            )
+                    except Exception as e:
+                        # Cache write failed - fall back to streaming cursor
+                        if not quiet:
+                            click.echo(f"[warning] Cache write failed: {e}", err=True)
+                        cache_file_path = None
+                        cache_content_hash = None
+
+                if cache_file_path and cache_content_hash:
+                    new_cursor = create_full_fetch_cursor(
+                        query=query,
+                        output_format=output_format,
+                        skip=new_skip,
+                        cache_file=cache_file_path,
+                        cache_hash=cache_content_hash,
+                        last_id=last_id,
+                        total=total_records,
+                    )
+                else:
+                    # Fall back to streaming cursor if cache failed
+                    new_cursor = create_streaming_cursor(
+                        query=query,
+                        output_format=output_format,
+                        skip=new_skip,
+                        last_id=last_id,
+                        total=total_records,
+                    )
+            else:
+                # Streaming mode: create streaming cursor
+                new_cursor = create_streaming_cursor(
+                    query=query,
+                    output_format=output_format,
+                    skip=new_skip,
+                    last_id=last_id,
+                    total=total_records,
+                )
+
+            cursor_encoded = encode_cursor(new_cursor)
+            cursor_mode = new_cursor.mode
+
+            # Insert cursor into TOON truncation section for human readability
+            if output_format == "toon":
+                output = insert_cursor_in_toon_truncation(output, cursor_encoded)
+
+    # Output the formatted result
     click.echo(output)
 
-    # Signal truncation via exit code (MCP bash layer reads this)
+    # Signal truncation via exit code and emit cursor to stderr for MCP extraction
     if was_truncated:
+        if cursor_encoded and cursor_mode:
+            emit_cursor_to_stderr(cursor_encoded, cursor_mode)
         sys.exit(EXIT_TRUNCATED)
 
     # Show summary if not quiet
@@ -464,6 +640,59 @@ def _query_cmd_impl(
             parts.append(f"org {rl.org_monthly.remaining}/{rl.org_monthly.limit}")
         if parts:
             click.echo(f"rate-limit[{rl.source}]: " + " | ".join(parts), err=True)
+
+
+def _count_rows_in_output(output: str, format: str) -> int:
+    """Count rows in truncated output for cursor skip calculation.
+
+    Args:
+        output: Truncated output string
+        format: Output format (toon, markdown, json, jsonl, csv)
+
+    Returns:
+        Number of data rows in output
+    """
+    import re
+
+    if format == "toon":
+        # TOON format: look for "data[N]{...}:" header or truncation section
+        # Pattern: "data[count]{fields}:"
+        match = re.search(r"^data\[(\d+)\]", output, re.MULTILINE)
+        if match:
+            return int(match.group(1))
+        # Fallback: count indented lines (data rows are indented with 2 spaces)
+        return sum(
+            1
+            for line in output.split("\n")
+            if line.startswith("  ") and not line.startswith("  rows")
+        )
+
+    elif format == "markdown":
+        # Markdown table: count rows (lines starting with |, excluding header/separator)
+        lines = [line for line in output.split("\n") if line.startswith("|")]
+        return max(0, len(lines) - 2)  # Subtract header and separator rows
+
+    elif format == "jsonl":
+        # JSONL: count non-empty lines (excluding truncation marker)
+        lines = [line for line in output.strip().split("\n") if line and '"truncated"' not in line]
+        return len(lines)
+
+    elif format == "csv":
+        # CSV: count lines minus header
+        lines = [line for line in output.strip().split("\n") if line]
+        return max(0, len(lines) - 1)
+
+    elif format == "json":
+        # JSON: count items in data array
+        try:
+            data = json.loads(output)
+            if isinstance(data, dict) and "data" in data:
+                return len(data["data"])
+        except json.JSONDecodeError:
+            pass
+        return 0
+
+    return 0
 
 
 def _get_query_input(file_path: Path | None, query_str: str | None) -> dict[str, Any]:

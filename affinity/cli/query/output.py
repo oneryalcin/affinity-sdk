@@ -1104,3 +1104,57 @@ def format_query_result(
         return format_table(result)
 
     raise ValueError(f"Unknown format: {format}")
+
+
+# =============================================================================
+# Cursor Output (stderr NDJSON)
+# =============================================================================
+
+
+def emit_cursor_to_stderr(cursor: str, mode: str) -> None:
+    """Emit cursor to stderr as NDJSON for MCP extraction.
+
+    The cursor is output to stderr (not stdout) to keep it separate from
+    the query results. MCP tool.sh extracts it via:
+        jq 'select(.type == "cursor")'
+
+    Args:
+        cursor: Base64-encoded cursor string
+        mode: Cursor mode ("streaming" or "full-fetch")
+    """
+    import sys
+
+    cursor_obj = {
+        "type": "cursor",
+        "cursor": cursor,
+        "mode": mode,
+    }
+    # Flush to ensure immediate delivery (Python buffers stderr when not a TTY)
+    print(json.dumps(cursor_obj), file=sys.stderr, flush=True)
+
+
+def insert_cursor_in_toon_truncation(output: str, cursor: str) -> str:
+    """Insert cursor into TOON truncation section for human readability.
+
+    The cursor is a debugging reference - the authoritative cursor is
+    emitted to stderr as NDJSON. This adds it to the truncation section
+    so humans can copy-paste it for manual CLI resumption.
+
+    Args:
+        output: TOON formatted output with truncation section
+        cursor: Base64-encoded cursor string
+
+    Returns:
+        Output with cursor added to truncation section
+    """
+    import re
+
+    # Find the truncation section and insert cursor after rowsOmitted
+    # Pattern: truncation:\n  rowsShown: N\n  rowsOmitted: N
+    pattern = r"(truncation:\n  rowsShown: \d+\n  rowsOmitted: \d+)"
+    replacement = rf"\1\n  cursor: {cursor}"
+
+    # Only replace if truncation section exists
+    if "truncation:" in output:
+        return re.sub(pattern, replacement, output)
+    return output

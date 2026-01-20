@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI: `query --cursor` option for resuming truncated responses. When a query response is truncated (exceeds `--max-output-bytes`), a cursor is emitted to stderr that can be used to fetch the next chunk of results.
+
 ## 0.11.0 - 2026-01-20
 
 ### Added
