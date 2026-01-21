@@ -114,10 +114,12 @@ When using the `query` tool with listEntries, custom field values are **auto-fet
 {"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}
 ```
 
-To select all custom fields explicitly, use `fields.*` wildcard:
+**Best practice: Select only the fields you need:**
 ```json
-{"from": "listEntries", "where": {"path": "listId", "op": "eq", "value": 12345}, "select": ["listEntryId", "entityName", "fields.*"]}
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "select": ["entityName", "fields.Status", "fields.Owner"]}
 ```
+
+⚠️ **Avoid `fields.*` for lists with many custom fields** - it fetches ALL field values which can be slow (60+ seconds for lists with 50+ fields). Only use `fields.*` when you genuinely need every field.
 
 ### Query tool expand (interaction dates)
 Use `expand: ["interactionDates"]` to add last/next meeting dates and email activity to each record:

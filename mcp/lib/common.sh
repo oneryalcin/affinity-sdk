@@ -257,8 +257,14 @@ run_xaffinity_readonly() {
     xaffinity_log_debug "cli" "executing: xaffinity --readonly $subcommand ..."
 
     # Execute with retry for transient failures (3 attempts, 0.5s base delay)
+    # Note: mcp_with_retry is only available in tool contexts (tool-sdk.sh sourced).
+    # Resources don't source tool-sdk.sh, so fall back to direct execution.
     local output exit_code=0
-    output=$(mcp_with_retry 3 0.5 -- "${cmd[@]}") || exit_code=$?
+    if type mcp_with_retry &>/dev/null; then
+        output=$(mcp_with_retry 3 0.5 -- "${cmd[@]}") || exit_code=$?
+    else
+        output=$("${cmd[@]}") || exit_code=$?
+    fi
 
     # Log result in debug mode
     local output_bytes=${#output}
@@ -402,15 +408,31 @@ get_or_fetch_workflow_config() {
     local cli_base_args=(--output json --quiet)
     [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_base_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
 
-    # Fetch list metadata
-    local list_data
-    list_data=$(run_xaffinity_readonly list get "$list_id" "${cli_base_args[@]}" 2>/dev/null | jq_tool -c '.data // {}')
+    # Fetch list metadata (capture stderr for error reporting)
+    local list_data list_stderr
+    list_stderr=$(mktemp)
+    if ! list_data=$(run_xaffinity_readonly list get "$list_id" "${cli_base_args[@]}" 2>"$list_stderr"); then
+        local cli_error
+        cli_error=$(cat "$list_stderr" 2>/dev/null | head -c 200 || echo "unknown error")
+        xaffinity_log_warn "workflow-config" "list get $list_id failed: $cli_error"
+        list_data='{}'
+    fi
+    rm -f "$list_stderr"
+    list_data=$(echo "$list_data" | jq_tool -c '.data // {}')
     local list_name=$(echo "$list_data" | jq_tool -r '.list.name // "Unknown"')
     local list_type=$(echo "$list_data" | jq_tool -r '.list.type // "unknown"')
 
     # Fetch fields for this list
-    local fields_data
-    fields_data=$(run_xaffinity_readonly field ls --list-id "$list_id" "${cli_base_args[@]}" 2>/dev/null | jq_tool -c '.data.fields // []')
+    local fields_data fields_stderr
+    fields_stderr=$(mktemp)
+    if ! fields_data=$(run_xaffinity_readonly field ls --list-id "$list_id" "${cli_base_args[@]}" 2>"$fields_stderr"); then
+        local cli_error
+        cli_error=$(cat "$fields_stderr" 2>/dev/null | head -c 200 || echo "unknown error")
+        xaffinity_log_warn "workflow-config" "field ls for list $list_id failed: $cli_error"
+        fields_data='{"data":{"fields":[]}}'
+    fi
+    rm -f "$fields_stderr"
+    fields_data=$(echo "$fields_data" | jq_tool -c '.data.fields // []')
 
     # Find Status field (ranked dropdown with name containing "status")
     local status_field
@@ -477,10 +499,18 @@ resolve_list() {
         return 0
     fi
 
-    # Search by name
-    local result
-    result=$(run_xaffinity_readonly list ls --output json --quiet \
-        ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>/dev/null)
+    # Search by name (capture stderr for error logging)
+    local result stderr_file
+    stderr_file=$(mktemp)
+    if ! result=$(run_xaffinity_readonly list ls --output json --quiet \
+        ${AFFINITY_SESSION_CACHE:+--session-cache "$AFFINITY_SESSION_CACHE"} 2>"$stderr_file"); then
+        local cli_error
+        cli_error=$(cat "$stderr_file" 2>/dev/null | head -c 200 || echo "unknown error")
+        xaffinity_log_warn "resolve-list" "list ls failed: $cli_error"
+        rm -f "$stderr_file"
+        return 1
+    fi
+    rm -f "$stderr_file"
 
     local list_id
     list_id=$(echo "$result" | jq_tool -r --arg name "$name_or_id" \

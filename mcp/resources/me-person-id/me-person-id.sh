@@ -16,7 +16,16 @@ cli_args=(--json)
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cli_args+=(--session-cache "$AFFINITY_SESSION_CACHE")
 
 # Get current user from whoami - user.id IS the person ID
-result=$(run_xaffinity_readonly whoami "${cli_args[@]}" 2>/dev/null)
+# Capture stderr to include actual CLI error in failure message
+stderr_file=$(mktemp)
+trap 'rm -f "$stderr_file"' EXIT
+
+if ! result=$(run_xaffinity_readonly whoami "${cli_args[@]}" 2>"$stderr_file"); then
+    cli_error=$(cat "$stderr_file" 2>/dev/null | head -c 500 || echo "unknown error")
+    echo "Error: Failed to get current user: $cli_error" >&2
+    exit 1
+fi
+
 person_id=$(echo "$result" | jq_tool -r '.data.user.id // empty')
 
 if [[ -n "$person_id" ]]; then
@@ -24,6 +33,6 @@ if [[ -n "$person_id" ]]; then
     set_me_person_id_cached "$person_id"
     echo "{\"personId\": $person_id}"
 else
-    echo '{"error": "Could not get current user ID"}'
+    echo '{"error": "Could not get current user ID - user.id missing from response"}'
     exit 1
 fi

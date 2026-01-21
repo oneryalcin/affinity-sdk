@@ -189,6 +189,7 @@ class NDJSONQueryProgress(QueryProgressCallback):
             {
                 "type": "progress",
                 "event": "step_start",
+                "progress": 0,  # mcp-bash <0.13 needs .progress for timeout extension
                 "stepId": step.step_id,
                 "operation": step.operation,
                 "description": step.description,

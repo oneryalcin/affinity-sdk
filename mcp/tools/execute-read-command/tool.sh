@@ -38,7 +38,7 @@ _get_array_path() {
             # "list ls" vs "list export" vs "list entry ls"
             case "$action" in
                 ls)         data_key="lists" ;;
-                export)     data_key="listEntries" ;;
+                export)     data_key="rows" ;;  # CLI uses .data.rows, not .data.listEntries
                 entry)      data_key="listEntries" ;;
                 *)          data_key="" ;;
             esac

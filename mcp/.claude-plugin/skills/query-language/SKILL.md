@@ -489,16 +489,18 @@ When querying listEntries with `groupBy`, `aggregate`, or `where` on `fields.*` 
 }
 ```
 
-To select all custom fields, use `fields.*` wildcard in `select`:
+**Best practice: Select only the fields you need:**
 
 ```json
 {
   "from": "listEntries",
-  "where": {"path": "listId", "op": "eq", "value": 12345},
-  "select": ["listEntryId", "entityName", "fields.*"],
-  "limit": 50
+  "where": {"path": "listName", "op": "eq", "value": "Dealflow"},
+  "select": ["entityName", "fields.Status", "fields.Owner"],
+  "limit": 100
 }
 ```
+
+⚠️ **Performance warning:** The `fields.*` wildcard fetches ALL custom field values. For lists with many fields (50+), this can take 60+ seconds per API page. Only use `fields.*` when you genuinely need every field - otherwise select specific fields like `fields.Status`, `fields.Owner`.
 
 ### Available Select Fields
 
@@ -510,8 +512,8 @@ To select all custom fields, use `fields.*` wildcard in `select`:
 | `entityType` | "company", "person", or "opportunity" |
 | `listId` | Parent list ID |
 | `createdAt` | Entry creation timestamp |
-| `fields.<Name>` | Custom field value by name |
-| `fields.*` | All custom fields (wildcard) |
+| `fields.<Name>` | Custom field value by name (preferred) |
+| `fields.*` | All custom fields (⚠️ slow for lists with 50+ fields) |
 
 ### Field Value Normalization
 
@@ -538,8 +540,8 @@ Access nested fields using dot notation:
 ```
 
 Common paths:
-- `fields.<FieldName>` - Custom list fields on listEntries
-- `fields.*` - All custom fields (wildcard, use in `select`)
+- `fields.<FieldName>` - Custom list fields on listEntries (preferred - select specific fields)
+- `fields.*` - All custom fields (⚠️ avoid for lists with 50+ fields - very slow)
 - `emails[0]` - First email in array
 - `company.name` - Nested object field (on included relationships)
 
