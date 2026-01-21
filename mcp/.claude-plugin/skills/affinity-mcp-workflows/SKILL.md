@@ -17,6 +17,32 @@ pip install "affinity-sdk[cli]"
 
 The CLI must be configured with an API key before the MCP server will work.
 
+## ⚠️ REQUIRED WORKFLOW - Do Not Skip Steps
+
+**You MUST complete steps 1-2 before running ANY queries or commands.**
+
+Skipping these steps leads to incorrect or inefficient queries because:
+- Command syntax may have changed since this skill was written
+- New flags (like `--with-interaction-dates`) may exist that you don't know about
+- You may use deprecated syntax that returns incomplete data
+- The data model has nuances (e.g., `list export` vs `company ls`) that you'll miss
+
+### Mandatory Pre-Flight Checklist
+
+**Before proceeding to execute any commands:**
+
+1. ✅ Read `xaffinity://data-model` using `read-xaffinity-resource`
+2. ✅ Run `discover-commands` for your specific task
+3. ✅ State what you learned from each step before continuing
+
+**Example:**
+```
+"I read the data-model resource and learned that list entries have custom fields
+accessed via fields.<Name>. I ran discover-commands for 'interaction' and found
+that interaction ls supports --type all to fetch all types in one call, and
+--days to limit the time range. Now I'll proceed with..."
+```
+
 ## IMPORTANT: Write Operations Only After Explicit User Request
 
 **Only use tools or prompts that modify CRM data when the user explicitly asks to do so.**
@@ -103,7 +129,9 @@ You: execute-write-command(command: "person delete", argv: ["123"], confirm: tru
 
 ### Query Examples (Preferred for Complex Operations)
 
-⚠️ **IMPORTANT: For queries with `expand` or `include`, ALWAYS use `dryRun: true` first** to see estimated API calls. These cause N+1 API calls (one per record) and can be slow or timeout.
+⚠️ **STOP: Did you complete the pre-flight checklist?** The syntax below may be outdated. Run `discover-commands` first to verify current syntax and available flags.
+
+⚠️ **For queries with `expand` or `include`, ALWAYS use `dryRun: true` first** to see estimated API calls. These cause N+1 API calls (one per record) and can be slow or timeout.
 
 ```json
 // STEP 1: Preview any expand/include query with dryRun first
@@ -126,6 +154,8 @@ You: execute-write-command(command: "person delete", argv: ["123"], confirm: tru
 ```
 
 ## Common CLI Commands
+
+⚠️ **Reminder:** Run `discover-commands` first. The commands below are examples - actual syntax and flags may differ.
 
 Use `discover-commands` to find commands, then `execute-read-command` or `execute-write-command` to run them.
 
@@ -198,6 +228,8 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 | `xaffinity://workflow-config/{listId}` | Workflow configuration for a list |
 
 ## Common Workflow Patterns
+
+⚠️ **Before using any pattern below:** Complete the pre-flight checklist (read data-model, run discover-commands, state what you learned).
 
 ### Before a Meeting
 1. Use `get-entity-dossier` for full context (relationship strength, recent interactions, notes)

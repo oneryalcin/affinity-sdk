@@ -7,6 +7,8 @@ description: Use when user needs complex data queries, multi-entity joins, aggre
 
 This skill covers the structured query language for querying Affinity CRM data via the `query` MCP tool.
 
+> ⚠️ **Before running queries:** Complete the pre-flight checklist from `affinity-mcp-workflows` skill (read data-model, run discover-commands, state what you learned). This ensures you use current syntax and don't miss useful flags.
+
 ## When to Use This Tool
 
 Use the `query` tool instead of individual CLI commands when you need:
