@@ -103,14 +103,22 @@ You: execute-write-command(command: "person delete", argv: ["123"], confirm: tru
 
 ### Query Examples (Preferred for Complex Operations)
 
+⚠️ **IMPORTANT: For queries with `expand` or `include`, ALWAYS use `dryRun: true` first** to see estimated API calls. These cause N+1 API calls (one per record) and can be slow or timeout.
+
 ```json
+// STEP 1: Preview any expand/include query with dryRun first
+{"query": {"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates"], "limit": 100}, "dryRun": true}
+
+// STEP 2: If API calls look reasonable (<200), run without dryRun
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates"], "limit": 100}
+
 // Pipeline with field values and unreplied email detection
 {"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "select": ["entityName", "fields.Status", "fields.Owner"], "expand": ["unreplied"]}
 
 // Persons with their companies and interaction history summary
 {"from": "persons", "where": {"path": "email", "op": "contains", "value": "@acme.com"}, "include": ["companies"], "expand": ["interactionDates"]}
 
-// Pipeline summary by status (aggregation)
+// Pipeline summary by status (aggregation) - no expand, no dryRun needed
 {"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "groupBy": "fields.Status", "aggregate": {"count": {"count": true}}}
 
 // List entries with associated persons and interactions (parameterized include)

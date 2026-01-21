@@ -323,14 +323,16 @@ In **markdown** format, included data appears as separate tables with headers li
 
 ## Expand Computed Data
 
-Unlike `include` (which fetches related entities), `expand` adds computed data directly to each record:
+Unlike `include` (which fetches related entities), `expand` adds computed data directly to each record.
+
+⚠️ **ALWAYS use `dryRun: true` first** before running expand queries to see estimated API calls:
 
 ```json
-{
-  "from": "companies",
-  "expand": ["interactionDates"],
-  "limit": 50
-}
+// STEP 1: Preview with dryRun
+{"query": {"from": "companies", "expand": ["interactionDates"], "limit": 50}, "dryRun": true}
+
+// STEP 2: If API calls look reasonable (<200 calls), run without dryRun
+{"from": "companies", "expand": ["interactionDates"], "limit": 50}
 ```
 
 ### Available Expansions
@@ -562,7 +564,13 @@ Supported formats:
 
 ## Dry-Run Mode
 
-**Always use dry-run first** to preview expensive queries:
+⚠️ **MANDATORY for expand/include queries**: Always use `dryRun: true` first to preview API cost.
+
+**When to use dryRun:**
+- ✅ ALWAYS before any query with `expand` or `include`
+- ✅ ALWAYS before quantifier queries (`all`, `none`, `exists`, `_count`)
+- ✅ Before large result sets (100+ records)
+- Optional for simple filters without relationships
 
 ```json
 {
@@ -575,10 +583,18 @@ Supported formats:
 ```
 
 Returns execution plan with:
-- Estimated API calls
+- Estimated API calls (**key metric** - if >200, consider reducing limit)
 - Estimated records
 - Step breakdown
 - Warnings about expensive operations
+
+**Decision guide based on dryRun results:**
+| API Calls | Action |
+|-----------|--------|
+| <100 | ✅ Safe to run |
+| 100-200 | ⚠️ Will take 2-5 minutes |
+| 200-400 | ⚠️ May take 5-10 minutes, near ceiling |
+| 400+ | ❌ Reduce limit or batch the query |
 
 ## Examples
 

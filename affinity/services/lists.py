@@ -57,6 +57,8 @@ if TYPE_CHECKING:
 
 _LIST_SAVED_VIEWS_CURSOR_RE = re.compile(r"/lists/(?P<list_id>\d+)/saved-views(?:/|$)")
 
+_SIZE_CACHE_TTL = 300  # 5 minutes
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -114,6 +116,7 @@ class ListService:
     def __init__(self, client: HTTPClient):
         self._client = client
         self._resolve_cache: dict[tuple[str, ListType | None], AffinityList | None] = {}
+        self._size_cache: dict[ListId, tuple[float, int]] = {}  # (timestamp, size)
 
     def entries(self, list_id: ListId) -> ListEntryService:
         """
@@ -230,6 +233,27 @@ class ListService:
         """
         data = self._client.get(f"/lists/{list_id}", v1=True)
         return _safe_model_validate(AffinityList, data)
+
+    def get_size(self, list_id: ListId, *, force: bool = False) -> int:
+        """
+        Get accurate list size. Uses V1 API, cached for 5 minutes.
+
+        Args:
+            list_id: The list ID.
+            force: If True, bypass cache and fetch fresh value from API.
+
+        Note: The V2 API's listSize field is unreliable (often returns 0 for
+        non-empty lists). This method uses the V1 API which returns accurate values.
+        """
+        if not force and list_id in self._size_cache:
+            cached_at, size = self._size_cache[list_id]
+            if time.monotonic() - cached_at < _SIZE_CACHE_TTL:
+                return size
+
+        lst = self.get(list_id)
+        size = lst._list_size_hint
+        self._size_cache[list_id] = (time.monotonic(), size)
+        return size
 
     def resolve(
         self,
@@ -1129,6 +1153,7 @@ class AsyncListService:
     def __init__(self, client: AsyncHTTPClient):
         self._client = client
         self._resolve_cache: dict[tuple[str, ListType | None], AffinityList | None] = {}
+        self._size_cache: dict[ListId, tuple[float, int]] = {}  # (timestamp, size)
 
     def entries(self, list_id: ListId) -> AsyncListEntryService:
         """
@@ -1326,6 +1351,27 @@ class AsyncListService:
         """
         data = await self._client.get(f"/lists/{list_id}", v1=True)
         return _safe_model_validate(AffinityList, data)
+
+    async def get_size(self, list_id: ListId, *, force: bool = False) -> int:
+        """
+        Get accurate list size. Uses V1 API, cached for 5 minutes.
+
+        Args:
+            list_id: The list ID.
+            force: If True, bypass cache and fetch fresh value from API.
+
+        Note: The V2 API's listSize field is unreliable (often returns 0 for
+        non-empty lists). This method uses the V1 API which returns accurate values.
+        """
+        if not force and list_id in self._size_cache:
+            cached_at, size = self._size_cache[list_id]
+            if time.monotonic() - cached_at < _SIZE_CACHE_TTL:
+                return size
+
+        lst = await self.get(list_id)
+        size = lst._list_size_hint
+        self._size_cache[list_id] = (time.monotonic(), size)
+        return size
 
     async def resolve(
         self,

@@ -373,8 +373,11 @@ def list_get(ctx: CLIContext, list_selector: str) -> None:
             resolved=ctx_resolved,
         )
 
+        list_data = serialize_model_for_cli(resolved.list)
+        # Add listSize for MCP compatibility (get_size uses V1 API for accurate values)
+        list_data["listSize"] = client.lists.get_size(list_id)
         data = {
-            "list": serialize_model_for_cli(resolved.list),
+            "list": list_data,
             "fields": serialize_models_for_cli(fields),
             "savedViews": serialize_models_for_cli(views),
         }
@@ -849,8 +852,8 @@ def list_export(
                     "csv": want_csv,
                 }
             if want_expand:
-                # Estimate API calls for expansion
-                entry_count = resolved_list.list.list_size or 0
+                # Estimate API calls for expansion (get_size uses V1 API for accurate values)
+                entry_count = client.lists.get_size(list_id)
                 expand_calls = entry_count  # 1 call per entry (optimized for dual)
                 data["expand"] = sorted(expand_set)
                 data["expandMaxResults"] = effective_expand_limit
@@ -978,7 +981,7 @@ def list_export(
                 and not ctx.quiet
                 and (ctx.progress == "always" or sys.stderr.isatty())
             )
-            entry_total = resolved_list.list.list_size if want_expand else None
+            entry_total = client.lists.get_size(list_id) if want_expand else None
             if show_progress:
                 progress = stack.enter_context(
                     Progress(
@@ -1433,7 +1436,7 @@ def list_export(
             # JSON/table rows in-memory (small exports).
             # Emit memory warning for large JSON exports with expansion
             if want_expand:
-                entry_count = resolved_list.list.list_size or 0
+                entry_count = client.lists.get_size(list_id)
                 # Rough estimate: each entry with associations is ~1KB
                 estimated_rows = entry_count
                 if estimated_rows > 1000:

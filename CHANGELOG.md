@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.13.0 - 2026-01-21
+
+### Changed (Breaking)
+- SDK: `AffinityList.list_size` field removed. The V2 API returns incorrect values (often 0 for non-empty lists). Use `client.lists.get_size(list_id)` instead, which fetches from the V1 API and caches for 5 minutes.
+
+### Added
+- SDK: `ListService.get_size(list_id)` and `AsyncListService.get_size(list_id)` methods to get accurate list size from the V1 API with automatic caching (5 minutes). Use `force=True` to bypass cache when fresh data is critical.
+
 ## 0.12.0 - 2026-01-20
 
 ### Added

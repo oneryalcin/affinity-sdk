@@ -1,9 +1,14 @@
 # mcp/COMPATIBILITY - CLI version requirements for this MCP server
 # Usage: source "${SCRIPT_DIR}/COMPATIBILITY"
 
-CLI_MIN_VERSION="0.12.0"
+CLI_MIN_VERSION="0.13.0"
 CLI_MAX_VERSION="1.0.0"
 
+# MCP 1.12.0 requires CLI 0.13.0 for:
+# - `list get` JSON output: `listSize` now accurate (V1 API) instead of often 0 (V2 API bug)
+# - Dry-run estimates: `estimatedEntries` in query/export dry-runs now accurate
+# - `AffinityList.list_size` removed from SDK; CLI explicitly adds listSize via get_size()
+#
 # MCP 1.11.0 requires CLI 0.12.0 for:
 # - Query tool: `--cursor` option for resumable pagination on truncated responses
 # - Query tool: O(1 streaming resumption via stored API cursor

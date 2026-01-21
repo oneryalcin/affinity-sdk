@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-01-21
+
+### Added
+- **New resources for Claude Desktop users**: Added two new MCP resources that expose Claude Code skill content to all MCP clients:
+  - `xaffinity://workflows-guide` - MCP tools, prompts, and workflow patterns (reads from `.claude-plugin/skills/affinity-mcp-workflows/SKILL.md`)
+  - `xaffinity://query-guide` - Complete query language reference with all operators, aggregations, and advanced filtering (reads from `.claude-plugin/skills/query-language/SKILL.md`)
+  - Resources dynamically read from skill files (single source of truth) and strip YAML frontmatter
+- **Cross-references in data-model resource**: The `xaffinity://data-model` resource now points to `query-guide` and `workflows-guide` for detailed reference material
+- **Tool description updates**: `query` and `execute-read-command` tools now reference the new resources in their descriptions
+
+### Changed
+- **mcp-bash framework 0.12.0**: Upgraded from 0.11.0. Timeout errors now use `isError: true` format instead of JSON-RPC `-32603` errors. This ensures MCP clients (Claude Desktop, etc.) display the full timeout message with structured metadata (`type`, `reason`, `timeoutSecs`, `exitCode`) instead of a generic "Tool execution failed" message.
+- **Dynamic timeout extension for expand/include queries**: Tools with progress reporting (`query`, `execute-read-command`) now use `progressExtendsTimeout` to dynamically extend timeouts as long as the CLI emits progress. This allows large expand/include queries (~400 records) to complete without timeout errors.
+  - `query` tool: 60s watchdog / 600s ceiling (supports ~430 records with expand)
+  - `execute-read-command` tool: 120s watchdog / 300s ceiling (supports ~215 records)
+  - Watchdog resets on each progress message (~0.65s intervals during expand loops)
+  - Queries without progress still timeout at the watchdog interval (stuck detection)
+- **Streamlined data-model resource**: Trimmed redundant content that's now available in `query-guide` (multi-select filtering details, full filter operator list)
+- **CLI compatibility**: Updated `CLI_MIN_VERSION` from 0.12.0 to 0.13.0. Required for accurate `listSize` values in `list get` output and dry-run estimates (V2 API bug returned 0 for non-empty lists; CLI 0.13.0 uses V1 API).
+
 ## [1.11.0] - 2026-01-20
 
 ### Added

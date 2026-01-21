@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "framework": {
     "name": "mcp-bash",
-    "minVersion": "0.11.0"
+    "minVersion": "0.12.0"
   },
   "dependencies": [
     {

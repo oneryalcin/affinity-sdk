@@ -11,7 +11,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from .types import (
     AnyFieldId,
@@ -454,6 +454,11 @@ class AffinityList(AffinityModel):
     A list (spreadsheet) in Affinity.
 
     Named AffinityList to avoid collision with Python's list type.
+
+    Note:
+        The list_size field was removed in v0.13.0 because the V2 API returns
+        incorrect values (often 0 for non-empty lists). Use
+        ``client.lists.get_size(list_id)`` to get accurate list size via V1 API.
     """
 
     id: ListId
@@ -462,7 +467,6 @@ class AffinityList(AffinityModel):
     is_public: bool = Field(alias="public")
     owner_id: UserId = Field(alias="ownerId")
     creator_id: UserId | None = Field(None, alias="creatorId")
-    list_size: int = Field(0, alias="listSize")
 
     # Fields on this list (returned for single list fetch)
     fields: list[FieldMetadata] | None = None
@@ -472,15 +476,34 @@ class AffinityList(AffinityModel):
         default_factory=list, alias="additionalPermissions"
     )
 
+    # Internal - not guaranteed accurate from V2. Excluded from serialization.
+    # Populated from listSize (V2) or list_size (V1) via model_validator + model_post_init.
+    _list_size_hint: int = PrivateAttr(default=0)
+
+    # Temporary field to pass list_size from validator to model_post_init (excluded from output)
+    list_size_temp: int | None = Field(None, exclude=True, repr=False)
+
     @model_validator(mode="before")
     @classmethod
-    def _coerce_v2_is_public(cls, value: Any) -> Any:
+    def _extract_list_size(cls, data: dict[str, Any]) -> dict[str, Any]:
         # V2 list endpoints use `isPublic`; v1 uses `public`.
-        if isinstance(value, Mapping) and "public" not in value and "isPublic" in value:
-            data = dict(value)
-            data["public"] = data.get("isPublic")
-            return data
-        return value
+        if isinstance(data, Mapping):
+            data = dict(data)
+            if "public" not in data and "isPublic" in data:
+                data["public"] = data.get("isPublic")
+            # Extract listSize and pass via temp field (V2 uses listSize, V1 uses list_size)
+            if "listSize" in data:
+                data["list_size_temp"] = data.pop("listSize")
+            elif "list_size" in data:
+                data["list_size_temp"] = data.pop("list_size")
+        return data
+
+    def model_post_init(self, __context: Any) -> None:
+        """Transfer list_size_temp to _list_size_hint private attr."""
+        if self.list_size_temp is not None:
+            object.__setattr__(self, "_list_size_hint", self.list_size_temp)
+            # Clear the temp field
+            object.__setattr__(self, "list_size_temp", None)
 
 
 class ListSummary(AffinityModel):

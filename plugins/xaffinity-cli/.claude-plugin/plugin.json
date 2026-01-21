@@ -1,7 +1,7 @@
 {
   "name": "xaffinity-cli",
   "description": "Command-line interface for Affinity CRM - search, export, filter, and manage CRM data via xaffinity commands",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "author": {
     "name": "Yaniv Golan"
   },

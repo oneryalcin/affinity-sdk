@@ -90,6 +90,46 @@ Claude Desktop logs all JSON-RPC messages, so you can always see:
 - Timeout errors (exit code 137 = SIGKILL from watchdog)
 - CLI errors (exit code 2 = CLI validation/execution error)
 
+## Progress and Timeout Extension
+
+The `query` and `execute-read-command` tools use **dynamic timeout extension** for long-running operations like `expand` and `include` queries.
+
+### How It Works
+
+1. **Watchdog timer**: Tools start with a 60s (query) or 120s (execute-read-command) initial timeout
+2. **Progress emission**: CLI emits NDJSON progress to stderr every ~0.65s during expand/include loops
+3. **Timeout reset**: Each progress message resets the watchdog countdown
+4. **Ceiling limit**: Total execution cannot exceed 10 minutes (query) or 5 minutes (execute-read-command)
+
+### Monitoring Progress in Logs
+
+With debug mode enabled, you'll see progress messages in the logs:
+
+```
+[xaffinity:tool] Progress: {"type":"progress","progress":25,"message":"Processing 50 of 200","current":50,"total":200}
+[xaffinity:tool] Progress: {"type":"progress","progress":50,"message":"Processing 100 of 200","current":100,"total":200}
+```
+
+### Timeout Troubleshooting
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| Timeout at 60s | No progress emitted | Check if CLI is hanging (network issue?) |
+| Timeout at 600s | Query exceeds 10-min ceiling | Batch into smaller queries (≤400 records) |
+| Slow progress | Rate limiting | Normal; SDK handles Retry-After |
+
+### Checking Timeout Behavior
+
+```bash
+# Look for timeout extension in logs
+grep -i "timeout\|progress" ~/Library/Logs/Claude/mcp-server-xaffinity\ MCP.log
+
+# Check for ceiling hits
+grep "exit code 137" ~/Library/Logs/Claude/mcp-server-xaffinity\ MCP.log
+```
+
+Exit code 137 indicates SIGKILL from the watchdog timer (timeout reached).
+
 ## Troubleshooting
 
 ### Debug mode not working?

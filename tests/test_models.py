@@ -373,7 +373,39 @@ class TestAffinityListModel:
         assert lst.name == "Deal Pipeline"
         assert lst.type == ListType.OPPORTUNITY
         assert lst.is_public is True
-        assert lst.list_size == 50
+        # list_size is now private, access via _list_size_hint
+        assert lst._list_size_hint == 50
+
+    def test_list_size_hint_from_list_size_key(self) -> None:
+        """Test _list_size_hint is populated from list_size key (V1 format)."""
+        data = {
+            "id": 123,
+            "name": "Test List",
+            "type": 0,
+            "public": False,
+            "ownerId": 1,
+            "list_size": 100,  # V1 snake_case key
+        }
+        lst = AffinityList.model_validate(data)
+        assert lst._list_size_hint == 100
+
+    def test_list_size_hint_excluded_from_model_dump(self) -> None:
+        """Test _list_size_hint is excluded from model_dump() output."""
+        data = {
+            "id": 456,
+            "name": "Test List",
+            "type": 0,
+            "public": False,
+            "ownerId": 1,
+            "listSize": 75,
+        }
+        lst = AffinityList.model_validate(data)
+        dumped = lst.model_dump()
+        assert "listSize" not in dumped
+        assert "list_size" not in dumped
+        assert "_list_size_hint" not in dumped
+        # But the hint is still accessible
+        assert lst._list_size_hint == 75
 
     def test_list_type_parsing(self) -> None:
         """Test list type enum is parsed correctly."""

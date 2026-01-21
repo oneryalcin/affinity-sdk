@@ -66,6 +66,21 @@ def setup_list_mocks(respx_mock: respx.MockRouter) -> None:
     respx_mock.get("https://api.affinity.co/v2/lists").mock(
         return_value=Response(200, json={"data": [LIST_RESPONSE], "pagination": {}})
     )
+    # V1 API for accurate listSize (called by resolve_list_selector after V2 resolution)
+    respx_mock.get(f"https://api.affinity.co/lists/{LIST_ID}").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": LIST_ID,
+                "name": "Portfolio",
+                "type": 0,
+                "public": False,
+                "owner_id": 100,
+                "creator_id": 100,
+                "list_size": 100,
+            },
+        )
+    )
     # Field metadata
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": FIELDS_RESPONSE, "pagination": {}})
@@ -1018,6 +1033,20 @@ def test_entry_field_numeric_field_name(respx_mock: respx.MockRouter) -> None:
     respx_mock.get("https://api.affinity.co/v2/lists").mock(
         return_value=Response(200, json={"data": [LIST_RESPONSE], "pagination": {}})
     )
+    # V1 API for accurate listSize
+    respx_mock.get(f"https://api.affinity.co/lists/{LIST_ID}").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": LIST_ID,
+                "name": "Portfolio",
+                "type": 0,
+                "public": False,
+                "owner_id": 100,
+                "list_size": 100,
+            },
+        )
+    )
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": fields_with_numeric, "pagination": {}})
     )
@@ -1209,6 +1238,20 @@ def test_entry_field_field_name_like_id(respx_mock: respx.MockRouter) -> None:
     ]
     respx_mock.get("https://api.affinity.co/v2/lists").mock(
         return_value=Response(200, json={"data": [LIST_RESPONSE], "pagination": {}})
+    )
+    # V1 API for accurate listSize
+    respx_mock.get(f"https://api.affinity.co/lists/{LIST_ID}").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": LIST_ID,
+                "name": "Portfolio",
+                "type": 0,
+                "public": False,
+                "owner_id": 100,
+                "list_size": 100,
+            },
+        )
     )
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": fields_with_weird_name, "pagination": {}})

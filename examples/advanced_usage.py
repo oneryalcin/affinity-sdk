@@ -67,7 +67,9 @@ def analyze_portfolio_companies(client: Affinity) -> None:
         if lst.type != ListType.OPPORTUNITY:
             continue
 
-        print(f"Analyzing list: {lst.name} ({lst.list_size} entries)")
+        # Get accurate list size (V2 API returns 0 for non-empty lists)
+        size = client.lists.get_size(lst.id)
+        print(f"Analyzing list: {lst.name} ({size} entries)")
 
         # Get list entries with enriched fields
         entries = client.lists.entries(lst.id)
@@ -106,7 +108,7 @@ def generate_pipeline_dashboard(client: Affinity, list_id: ListId) -> dict:
     # Get list metadata
     pipeline = client.lists.get(list_id)
     print(f"Pipeline: {pipeline.name}")
-    print(f"Total entries: {pipeline.list_size}")
+    print(f"Total entries: {client.lists.get_size(list_id)}")
 
     # Get field definitions for this list
     fields = client.lists.get_fields(list_id)
@@ -342,7 +344,8 @@ def export_list_to_dict(client: Affinity, list_id: ListId) -> list[dict]:
     print("\n=== Data Export ===\n")
 
     lst = client.lists.get(list_id)
-    print(f"Exporting: {lst.name} ({lst.list_size} entries)")
+    size = client.lists.get_size(list_id)
+    print(f"Exporting: {lst.name} ({size} entries)")
 
     # Get field definitions
     fields = client.lists.get_fields(list_id)

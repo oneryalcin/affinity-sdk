@@ -2,6 +2,10 @@
 
 > **MCP Note**: When using commands via MCP tools, output format (JSON) is handled automatically. Do not include `--json` in arguments.
 
+**Related Resources:**
+- `xaffinity://query-guide` - Complete query language reference (all operators, aggregations, advanced filtering)
+- `xaffinity://workflows-guide` - MCP tools, prompts, and workflow patterns
+
 ## Core Concepts
 
 ### Companies and Persons (Global Entities)
@@ -122,17 +126,28 @@ Use `expand: ["interactionDates"]` to add last/next meeting dates and email acti
 ```
 Unlike `include` (which fetches related entities separately), `expand` merges computed data directly into each record.
 
-### Multi-select field filtering
-Multi-select dropdown fields (like "Team Member") return arrays from the API. The query engine handles these automatically:
-- `eq` with scalar: checks if value is IN the array (membership)
-- `eq` with array: checks set equality (order-insensitive)
-- `has_any`: checks if array contains any of the specified values
-- `has_all`: checks if array contains all of the specified values
+### Expand/Include Practical Limits
 
+Both `expand` and `include` trigger N+1 API calls (one per record). MCP tools support dynamic timeout extension for these operations, but there are practical limits:
+
+| Records | Estimated Time | MCP Result |
+|---------|----------------|------------|
+| ≤100 | ~2 minutes | ✅ Completes normally |
+| ~200 | ~5 minutes | ✅ Completes with progress |
+| ~400 | ~9 minutes | ✅ Near ceiling |
+| 430+ | 10+ minutes | ⚠️ May hit 10-minute ceiling |
+
+**Recommendations:**
+- For ≤100 records: Use freely
+- For 100-400 records: Works but takes time; consider if you need all records
+- For 400+ records: Batch into smaller queries or use CLI directly (not via MCP)
+
+### Multi-select field filtering
+Multi-select dropdown fields (like "Team Member") return arrays. Use `eq` for membership check, `has_any`/`has_all` for multiple values:
 ```json
-// Find entries where Team Member includes "LB"
 {"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "fields.Team Member", "op": "eq", "value": "LB"}]}}
 ```
+See `xaffinity://query-guide` for all multi-select operators.
 
 ### Get interactions for a company or person
 ```bash
@@ -147,8 +162,13 @@ For quick overview of last/next meetings and email activity without fetching ful
 ```bash
 company get 12345 --with-interaction-dates                 # Last/next meeting dates, email dates
 person get 67890 --with-interaction-dates                  # Same for persons
-list export Dealflow --expand interactions                  # Interaction dates for all list entries
 ```
+
+**For bulk interaction dates on list entries**, use the `query` tool with `expand: ["interactionDates"]`:
+```json
+{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates"], "limit": 50}
+```
+See "Expand/Include Practical Limits" section above for performance guidance.
 
 The `--with-interaction-dates` flag returns:
 - `lastMeeting.date`, `lastMeeting.daysSince`, `lastMeeting.teamMembers`
@@ -289,38 +309,22 @@ Task statuses: `pending`, `in_progress`, `success`, `failed`
 
 ## Filter Syntax (V2 API)
 
-All commands use the same filter syntax:
+CLI commands use `--filter 'field op "value"'` syntax:
+```bash
+--filter 'name =~ "Acme"'           # contains
+--filter "Status=Active"            # equals
+--filter 'email =$ "@acme.com"'     # ends with
+--filter 'Status in ["New", "Active"]'  # in list
 ```
---filter 'field op "value"'
-```
 
-**Symbolic Operators**:
-- `=` equals
-- `!=` not equals
-- `=~` contains (case-insensitive)
-- `=^` starts with (case-insensitive)
-- `=$` ends with (case-insensitive)
-- `>` `<` `>=` `<=` comparisons
+Common operators: `=` `!=` `=~` (contains) `=^` (starts) `=$` (ends) `>` `<` `>=` `<=`
 
-**Word-based Operators** (SDK filter extension):
-- `contains`, `starts_with`, `ends_with` - string matching
-- `in [val1, val2]` - value in list
-- `between [low, high]` - value in range
-- `has_any [val1, val2]` - array contains any
-- `has_all [val1, val2]` - array contains all
-- `is null`, `is not null`, `is empty` - null/empty checks
-
-**Examples**:
-- `--filter 'name =~ "Acme"'`
-- `--filter "Status=Active"`
-- `--filter 'Industry = "Software"'`
-- `--filter 'email =$ "@acme.com"'`
-- `--filter 'Status in ["New", "Active"]'`
+For the `query` tool, use JSON operators (`eq`, `contains`, `in`, etc.) - see `xaffinity://query-guide` for complete reference.
 
 ## Query vs Filter
 
 - `--filter`: Structured filtering with operators (preferred)
-- `--query`:  free-text search (simple text matching)
+- `--query`: Free-text search (simple text matching)
 
 Use `--filter` for precise matching, `--query` for fuzzy text search.
 

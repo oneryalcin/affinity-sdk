@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "version": 1,
-  "generatedAt": "2026-01-20T01:25:51Z",
+  "generatedAt": "2026-01-21T12:15:37Z",
   "items": [
     {
       "name": "xaffinity-data-model",
@@ -34,8 +34,24 @@
       "uri": "xaffinity://me/person-id",
       "mimeType": "application/json",
       "provider": "xaffinity"
+    },
+    {
+      "name": "xaffinity-query-guide",
+      "description": "Complete query language reference - operators, aggregations, includes, expands, and performance tips",
+      "path": "query-guide/query-guide.sh",
+      "uri": "xaffinity://query-guide",
+      "mimeType": "text/markdown",
+      "provider": "xaffinity"
+    },
+    {
+      "name": "xaffinity-workflows-guide",
+      "description": "Guide to MCP tools, prompts, and workflow patterns - read this to understand how to use xaffinity effectively",
+      "path": "workflows-guide/workflows-guide.sh",
+      "uri": "xaffinity://workflows-guide",
+      "mimeType": "text/markdown",
+      "provider": "xaffinity"
     }
   ],
-  "hash": "e6ac1ce62f34aff4979ec3d4b25016c3a454c4bb369969a90265f12e7c29ea96",
-  "total": 4
+  "hash": "05166b687110c45b17e13b058dc1fe1e8fada6553b1d952af87ac75838da1c36",
+  "total": 6
 }

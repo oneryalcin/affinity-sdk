@@ -400,3 +400,195 @@ class TestListServiceResolve:
 
         result = service.resolve(name="NonExistent")
         assert result is None
+
+
+class TestListServiceGetSize:
+    """Tests for get_size() method."""
+
+    def test_get_size_returns_correct_value(self) -> None:
+        """Test get_size() returns correct list size from V1 API."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            # V1 API endpoint returns list with listSize
+            if "/lists/100" in str(request.url):
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 100,
+                        "name": "Dealflow",
+                        "type": 8,
+                        "public": False,
+                        "owner_id": 1,
+                        "creator_id": 1,
+                        "list_size": 9346,
+                    },
+                    request=request,
+                )
+            return httpx.Response(404, request=request)
+
+        http = HTTPClient(
+            ClientConfig(
+                api_key="test",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+                transport=httpx.MockTransport(handler),
+            )
+        )
+        service = ListService(http)
+
+        size = service.get_size(ListId(100))
+        assert size == 9346
+
+    def test_get_size_uses_cache(self) -> None:
+        """Test get_size() uses cache on second call."""
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 1,
+                    "list_size": 500,
+                },
+                request=request,
+            )
+
+        http = HTTPClient(
+            ClientConfig(
+                api_key="test",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+                transport=httpx.MockTransport(handler),
+            )
+        )
+        service = ListService(http)
+
+        # First call
+        size1 = service.get_size(ListId(100))
+        assert size1 == 500
+        assert call_count == 1
+
+        # Second call should use cache
+        size2 = service.get_size(ListId(100))
+        assert size2 == 500
+        assert call_count == 1  # No additional API call
+
+    def test_get_size_cache_expires(self) -> None:
+        """Test get_size() cache expires after TTL."""
+        import time as time_module
+        from unittest.mock import patch
+
+        from affinity.services.lists import _SIZE_CACHE_TTL
+
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 1,
+                    "list_size": 500 + call_count,  # Different size each call
+                },
+                request=request,
+            )
+
+        http = HTTPClient(
+            ClientConfig(
+                api_key="test",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+                transport=httpx.MockTransport(handler),
+            )
+        )
+        service = ListService(http)
+
+        # Mock time.monotonic to simulate cache expiry
+        current_time = 1000.0
+
+        def mock_monotonic() -> float:
+            return current_time
+
+        with patch.object(time_module, "monotonic", mock_monotonic):
+            # First call
+            size1 = service.get_size(ListId(100))
+            assert size1 == 501
+            assert call_count == 1
+
+            # Second call within TTL - uses cache
+            size2 = service.get_size(ListId(100))
+            assert size2 == 501
+            assert call_count == 1
+
+            # Advance time past TTL
+            current_time += _SIZE_CACHE_TTL + 1
+
+            # Third call after TTL - fetches fresh
+            size3 = service.get_size(ListId(100))
+            assert size3 == 502
+            assert call_count == 2
+
+    def test_get_size_force_bypasses_cache(self) -> None:
+        """Test get_size(force=True) bypasses cache and fetches fresh value."""
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 1,
+                    "list_size": 500 + call_count,  # Different size each call
+                },
+                request=request,
+            )
+
+        http = HTTPClient(
+            ClientConfig(
+                api_key="test",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+                transport=httpx.MockTransport(handler),
+            )
+        )
+        service = ListService(http)
+
+        # First call
+        size1 = service.get_size(ListId(100))
+        assert size1 == 501
+        assert call_count == 1
+
+        # Second call without force - uses cache
+        size2 = service.get_size(ListId(100))
+        assert size2 == 501
+        assert call_count == 1  # No additional API call
+
+        # Third call with force=True - bypasses cache
+        size3 = service.get_size(ListId(100), force=True)
+        assert size3 == 502  # Gets new value
+        assert call_count == 2  # New API call made
+
+        # Fourth call without force - uses newly cached value
+        size4 = service.get_size(ListId(100))
+        assert size4 == 502  # Uses cached value from force call
+        assert call_count == 2  # No additional API call

@@ -109,19 +109,23 @@ See [CLI Pipeline Optimization](../cli/commands.md#pipeline-optimization) for de
 
 ### List entries (efficient)
 
-Every list includes a `list_size` field that returns the entry count in a single API call:
+Use `client.lists.get_size(list_id)` to get accurate entry counts:
 
 ```python
 # Count entries on a single list
-lst = client.lists.get(list_id)
-print(f"Entries: {lst.list_size}")
+count = client.lists.get_size(list_id)
+print(f"Entries: {count}")
 
-# Get counts for all lists at once
+# Get counts for multiple lists (cached for 5 min)
 for lst in client.lists.all():
-    print(f"{lst.name}: {lst.list_size}")
+    count = client.lists.get_size(lst.id)
+    print(f"{lst.name}: {count}")
+
+# Force fresh fetch (bypass cache) when accuracy is critical
+count = client.lists.get_size(list_id, force=True)
 ```
 
-This is the most efficient way to count entities in Affinity.
+This uses the V1 API which returns accurate counts. Results are cached for 5 minutes per list. Use `force=True` to bypass the cache when you need the most up-to-date value.
 
 ### Global persons/companies (no direct method)
 
@@ -144,6 +148,6 @@ person_count = sum(1 for _ in client.persons.iter())
 
 **Recommended alternatives:**
 
-1. **Use lists**: Create a list containing your target entities and use `list_size`
+1. **Use lists**: Create a list containing your target entities and use `client.lists.get_size(list_id)`
 2. **Cache externally**: Count once and store the result in your application
 3. **Estimate**: If exact counts aren't critical, sample or track changes incrementally

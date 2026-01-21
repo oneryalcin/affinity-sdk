@@ -1,0 +1,7 @@
+{
+  "name": "xaffinity-query-guide",
+  "description": "Complete query language reference - operators, aggregations, includes, expands, and performance tips",
+  "uri": "xaffinity://query-guide",
+  "mimeType": "text/markdown",
+  "provider": "xaffinity"
+}

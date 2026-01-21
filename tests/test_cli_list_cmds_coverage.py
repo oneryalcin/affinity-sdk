@@ -281,6 +281,21 @@ class TestListGet:
                 },
             )
         )
+        # V1 API for accurate listSize (called by resolve_list_selector after V2 resolution)
+        respx_mock.get("https://api.affinity.co/lists/456").mock(
+            return_value=Response(
+                200,
+                json={
+                    "id": 456,
+                    "name": "Pipeline",
+                    "type": 0,
+                    "public": False,
+                    "owner_id": 100,
+                    "creator_id": 100,
+                    "list_size": 50,
+                },
+            )
+        )
         respx_mock.get("https://api.affinity.co/v2/lists/456/fields").mock(
             return_value=Response(
                 200,
@@ -301,6 +316,49 @@ class TestListGet:
             env={"AFFINITY_API_KEY": "test-key"},
         )
         assert result.exit_code == 0
+
+    def test_get_json_includes_list_size(self, respx_mock: respx.MockRouter) -> None:
+        """Test that list get JSON output includes listSize for MCP compatibility."""
+        # Mock V1 list get
+        respx_mock.get("https://api.affinity.co/lists/789").mock(
+            return_value=Response(
+                200,
+                json={
+                    "id": 789,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 100,
+                    "list_size": 9346,  # V1 returns accurate size
+                },
+            )
+        )
+        respx_mock.get("https://api.affinity.co/v2/lists/789/fields").mock(
+            return_value=Response(
+                200,
+                json={"data": [], "pagination": {"nextUrl": None}},
+            )
+        )
+        respx_mock.get("https://api.affinity.co/v2/lists/789/saved-views").mock(
+            return_value=Response(
+                200,
+                json={"data": [], "pagination": {"nextUrl": None}},
+            )
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--json", "list", "get", "789"],
+            env={"AFFINITY_API_KEY": "test-key"},
+        )
+        assert result.exit_code == 0
+
+        import json
+
+        output = json.loads(result.output)
+        # Verify listSize is included in the JSON output for MCP compatibility
+        assert output["data"]["list"]["listSize"] == 9346
 
 
 class TestListEntryGet:

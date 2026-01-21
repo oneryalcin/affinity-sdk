@@ -1,0 +1,7 @@
+{
+  "name": "xaffinity-workflows-guide",
+  "description": "Guide to MCP tools, prompts, and workflow patterns - read this to understand how to use xaffinity effectively",
+  "uri": "xaffinity://workflows-guide",
+  "mimeType": "text/markdown",
+  "provider": "xaffinity"
+}

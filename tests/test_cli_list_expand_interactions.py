@@ -330,3 +330,48 @@ def test_list_export_expand_interactions_dry_run(respx_mock: respx.MockRouter) -
     # Dry run output should mention expand or interactions
     lower_output = result.output.lower()
     assert "expand" in lower_output or "interactions" in lower_output or "entries" in lower_output
+
+
+def test_list_export_dry_run_uses_list_size_hint(respx_mock: respx.MockRouter) -> None:
+    """Test that --dry-run uses _list_size_hint for estimatedEntries.
+
+    Spec test #9: Dry-run uses correct size.
+
+    The list_size from V1 API should be captured as _list_size_hint and
+    used in dry-run estimation output.
+    """
+    # Mock V1 list get - returns accurate list_size
+    respx_mock.get("https://api.affinity.co/lists/12345").mock(
+        return_value=Response(
+            200,
+            json={
+                "id": 12345,
+                "name": "Pipeline",
+                "type": 1,  # ListType.COMPANY
+                "public": False,
+                "owner_id": 1,
+                "creator_id": 1,
+                "list_size": 150,  # V1 returns accurate size
+            },
+        )
+    )
+    respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
+        return_value=Response(200, json=MOCK_LIST_FIELDS)
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--json", "list", "export", "12345", "--expand", "interactions", "--dry-run"],
+        env={"AFFINITY_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    # Parse JSON output and verify estimatedEntries matches list_size
+    output = json.loads(result.output)
+    dry_run_data = output["data"]
+    assert dry_run_data["estimatedEntries"] == 150, (
+        f"Expected estimatedEntries=150 from _list_size_hint, "
+        f"got {dry_run_data.get('estimatedEntries')}"
+    )

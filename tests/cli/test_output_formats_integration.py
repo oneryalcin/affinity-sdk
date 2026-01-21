@@ -199,7 +199,7 @@ class TestOutputFlagListExport:
     @respx.mock
     def test_list_export_output_markdown(self, runner: CliRunner) -> None:
         """list export --output markdown produces markdown table."""
-        # Mock list lookup
+        # Mock list lookup (V2)
         respx.get("https://api.affinity.co/v2/lists").mock(
             return_value=Response(
                 200,
@@ -215,6 +215,20 @@ class TestOutputFlagListExport:
                         }
                     ],
                     "pagination": {"next_page_token": None},
+                },
+            )
+        )
+        # Mock list get (V1) - resolve_list_selector fetches full metadata
+        respx.get("https://api.affinity.co/lists/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "id": 123,
+                    "type": 0,
+                    "name": "Pipeline",
+                    "public": True,
+                    "owner_id": 1,
+                    "list_size": 2,
                 },
             )
         )
@@ -282,6 +296,20 @@ class TestOutputFlagListExport:
                         }
                     ],
                     "pagination": {"next_page_token": None},
+                },
+            )
+        )
+        # Mock list get (V1) - resolve_list_selector fetches full metadata
+        respx.get("https://api.affinity.co/lists/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "id": 123,
+                    "type": 0,
+                    "name": "Pipeline",
+                    "public": True,
+                    "owner_id": 1,
+                    "list_size": 1,
                 },
             )
         )

@@ -992,3 +992,116 @@ async def test_async_list_service_create_fields_and_entry_write_ops() -> None:
         ).all_successful is True
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_list_service_get_size() -> None:
+    """Test AsyncListService.get_size() returns correct value and uses cache."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        url = request.url
+
+        # V1 API endpoint returns list with list_size
+        if request.method == "GET" and "/lists/100" in str(url):
+            call_count += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 1,
+                    "list_size": 9346,
+                },
+                request=request,
+            )
+
+        return httpx.Response(404, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="test",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncListService(client)
+
+        # First call
+        size1 = await service.get_size(ListId(100))
+        assert size1 == 9346
+        assert call_count == 1
+
+        # Second call should use cache
+        size2 = await service.get_size(ListId(100))
+        assert size2 == 9346
+        assert call_count == 1  # No additional API call
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_list_service_get_size_force_bypasses_cache() -> None:
+    """Test AsyncListService.get_size(force=True) bypasses cache."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        url = request.url
+
+        # V1 API endpoint returns list with list_size
+        if request.method == "GET" and "/lists/100" in str(url):
+            call_count += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "name": "Dealflow",
+                    "type": 8,
+                    "public": False,
+                    "owner_id": 1,
+                    "list_size": 9000 + call_count,  # Different size each call
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="test",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        service = AsyncListService(client)
+
+        # First call
+        size1 = await service.get_size(ListId(100))
+        assert size1 == 9001
+        assert call_count == 1
+
+        # Second call without force - uses cache
+        size2 = await service.get_size(ListId(100))
+        assert size2 == 9001
+        assert call_count == 1  # No additional API call
+
+        # Third call with force=True - bypasses cache
+        size3 = await service.get_size(ListId(100), force=True)
+        assert size3 == 9002  # Gets new value
+        assert call_count == 2  # New API call made
+
+        # Fourth call without force - uses newly cached value
+        size4 = await service.get_size(ListId(100))
+        assert size4 == 9002  # Uses cached value from force call
+        assert call_count == 2  # No additional API call
+    finally:
+        await client.close()

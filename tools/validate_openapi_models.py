@@ -50,7 +50,7 @@ KNOWN_EXTENSIONS: dict[str, set[str]] = {
     "Opportunity": {"fields", "person_ids", "organization_ids", "list_entries"},
     "ListEntry": {"fields", "entity_id", "entity_type", "entity"},
     # V1-only models that don't exist in V2 OpenAPI
-    "AffinityList": {"type", "is_public", "list_size", "fields", "additional_permissions"},
+    "AffinityList": {"type", "is_public", "fields", "additional_permissions", "list_size_temp"},
     "SavedView": {"list_id", "is_default", "field_ids"},  # V1 fields
     "FieldMetadata": {
         "allows_multiple",
