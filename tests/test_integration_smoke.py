@@ -34,3 +34,11 @@ def test_live_smoke_whoami_and_basic_reads() -> None:
 
         persons = client.persons.list(limit=1)
         assert persons.pagination is not None
+
+        # Test files.list with first company if any exist
+        if companies.data:
+            company_id = companies.data[0].id
+            files = client.files.list(company_id=company_id, page_size=10)
+            # Files may be empty but structure should be valid
+            assert files.data is not None
+            assert isinstance(files.data, list)

@@ -8,13 +8,77 @@ from typing import Any, TypedDict
 from affinity import AsyncAffinity
 from affinity.models.rate_limit_snapshot import RateLimitSnapshot
 from affinity.models.secondary import EntityFile
+from affinity.types import FileId
 
 from ..context import CLIContext
 from ..csv_utils import sanitize_filename
 from ..errors import CLIError
 from ..progress import ProgressManager, ProgressSettings
 from ..results import CommandContext
-from ..runner import CommandOutput
+from ..runner import CommandOutput, run_command
+
+
+def download_single_file(
+    *,
+    ctx: CLIContext,
+    entity_type: str,
+    entity_id: int,
+    file_id: int,
+    out_path: str | None,
+    overwrite: bool,
+) -> None:
+    """Download a single file by ID.
+
+    Args:
+        ctx: CLI context
+        entity_type: Entity type (company, person, opportunity)
+        entity_id: Entity ID
+        file_id: File ID to download
+        out_path: Output path (file path)
+        overwrite: Whether to overwrite existing files
+    """
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        client = ctx.get_client(warnings=warnings)
+
+        # Get file metadata first to know the filename
+        file_meta = client.files.get(FileId(file_id))
+        filename = file_meta.name
+
+        # Determine output path
+        dest = Path(out_path) if out_path else Path.cwd() / filename
+
+        # Check if file exists
+        if dest.exists() and not overwrite:
+            raise CLIError(
+                f"File already exists: {dest}. Use --overwrite to replace.",
+                error_type="usage_error",
+            )
+
+        # Download the file
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        client.files.download_to(FileId(file_id), dest, overwrite=overwrite)
+
+        cmd_context = CommandContext(
+            name=f"{entity_type} files download",
+            inputs={f"{entity_type}Id": entity_id, "fileId": file_id},
+            modifiers={"out": str(dest)} if out_path else {},
+        )
+
+        return CommandOutput(
+            data={
+                "fileId": int(file_id),
+                "name": filename,
+                "size": file_meta.size,
+                "out": str(dest),
+            },
+            context=cmd_context,
+            warnings=warnings,
+            api_called=True,
+            rate_limit=client.rate_limits.snapshot(),
+        )
+
+    run_command(ctx, command=f"{entity_type} files download", fn=fn)
 
 
 class ManifestFile(TypedDict):

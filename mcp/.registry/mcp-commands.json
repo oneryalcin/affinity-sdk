@@ -48,15 +48,22 @@
       ],
       "relatedCommands": ["person get", "person ls", "task wait"]
     },
+    "person files ls": {
+      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "examples": ["person files ls 67890", "person files ls \"email:john@example.com\" --max-results 10"],
+      "relatedCommands": ["person get", "person files upload"],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
+    },
     "person files upload": {
       "whenToUse": "Upload files/documents to a person.",
       "examples": ["person files upload 123 --file doc.pdf"],
-      "relatedCommands": ["person get", "person files dump"]
-    },
-    "person files dump": {
-      "whenToUse": "Download all files attached to a person.",
-      "examples": ["person files dump 123 --out ./downloads"],
-      "relatedCommands": ["person get", "person files upload"]
+      "relatedCommands": ["person get", "person files ls"]
     },
     "company get": {
       "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
@@ -101,15 +108,22 @@
       ],
       "relatedCommands": ["company get", "company ls", "task wait"]
     },
+    "company files ls": {
+      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "examples": ["company files ls 12345", "company files ls \"name:Acme Corp\" --max-results 10"],
+      "relatedCommands": ["company get", "company files upload"],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
+    },
     "company files upload": {
       "whenToUse": "Upload files/documents to a company.",
       "examples": ["company files upload 123 --file doc.pdf"],
-      "relatedCommands": ["company get", "company files dump"]
-    },
-    "company files dump": {
-      "whenToUse": "Download all files attached to a company.",
-      "examples": ["company files dump 123 --out ./downloads"],
-      "relatedCommands": ["company get", "company files upload"]
+      "relatedCommands": ["company get", "company files ls"]
     },
     "opportunity get": {
       "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
@@ -141,15 +155,22 @@
       "whenToUse": "Manage field values on an opportunity.",
       "relatedCommands": ["opportunity get", "field ls"]
     },
+    "opportunity files ls": {
+      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "examples": ["opportunity files ls 98765"],
+      "relatedCommands": ["opportunity get", "opportunity files upload"],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      }
+    },
     "opportunity files upload": {
       "whenToUse": "Upload files/documents to an opportunity.",
       "examples": ["opportunity files upload 123 --file doc.pdf"],
-      "relatedCommands": ["opportunity get", "opportunity files dump"]
-    },
-    "opportunity files dump": {
-      "whenToUse": "Download all files attached to an opportunity.",
-      "examples": ["opportunity files dump 123 --out ./downloads"],
-      "relatedCommands": ["opportunity get", "opportunity files upload"]
+      "relatedCommands": ["opportunity get", "opportunity files ls"]
     },
     "list ls": {
       "whenToUse": "Find list IDs by name. Use before list export or field ls.",

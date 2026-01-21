@@ -2,11 +2,11 @@
   "_generated": {
     "warning": "DO NOT EDIT - This file is auto-generated",
     "generator": "tools/generate_mcp_command_registry.py",
-    "cliVersion": "0.13.1",
+    "cliVersion": "0.14.0",
     "sourceConfig": "mcp/.registry/mcp-commands.json"
   },
   "version": 1,
-  "cliVersion": "0.13.1",
+  "cliVersion": "0.14.0",
   "commands": [
     {
       "name": "company create",
@@ -119,53 +119,81 @@
       ]
     },
     {
-      "name": "company files dump",
-      "description": "Download all files attached to a company.",
+      "name": "company files ls",
+      "description": "List files attached to a company.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
       "parameters": {
-        "--concurrency": {
-          "type": "int",
-          "required": false,
-          "help": "Number of concurrent downloads."
-        },
-        "--max-files": {
-          "type": "int",
-          "required": false,
-          "help": "Stop after N files."
-        },
-        "--out": {
-          "type": "string",
-          "required": false,
-          "help": "Output directory for downloaded files."
-        },
-        "--overwrite": {
+        "--all": {
           "type": "flag",
           "required": false,
-          "help": "Overwrite existing files."
+          "help": "Fetch all pages.",
+          "aliases": [
+            "-A"
+          ]
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false,
+          "help": "Resume from pagination cursor (incompatible with --page-size)."
+        },
+        "--max-results": {
+          "type": "string",
+          "required": false,
+          "help": "Stop after N results (min 1).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         },
         "--page-size": {
-          "type": "int",
+          "type": "string",
           "required": false,
-          "help": "Page size for file listing (max 100)."
+          "help": "Page size (1-100).",
+          "aliases": [
+            "-s"
+          ]
         }
       },
       "positionals": [
         {
-          "name": "COMPANY_ID",
-          "type": "int",
+          "name": "COMPANY",
+          "type": "string",
           "required": true
         }
       ],
-      "whenToUse": "Download all files attached to a company.",
       "examples": [
-        "company files dump 123 --out ./downloads"
+        "company files ls 12345",
+        "company files ls \"name:Acme Corp\" --max-results 10"
       ],
+      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
       "relatedCommands": [
         "company get",
         "company files upload"
-      ]
+      ],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      },
+      "limitConfig": {
+        "flag": "--max-results",
+        "flagAliases": [
+          "--max-results",
+          "--limit",
+          "-n"
+        ],
+        "default": 1000,
+        "max": 10000,
+        "unboundedFlag": "--all",
+        "unboundedFlagAliases": [
+          "--all",
+          "-A"
+        ]
+      }
     },
     {
       "name": "company files upload",
@@ -194,7 +222,7 @@
       "whenToUse": "Upload files/documents to a company.",
       "relatedCommands": [
         "company get",
-        "company files dump"
+        "company files ls"
       ]
     },
     {
@@ -1966,53 +1994,80 @@
       ]
     },
     {
-      "name": "opportunity files dump",
-      "description": "Download all files attached to an opportunity.",
+      "name": "opportunity files ls",
+      "description": "List files attached to an opportunity.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
       "parameters": {
-        "--concurrency": {
-          "type": "int",
-          "required": false,
-          "help": "Number of concurrent downloads."
-        },
-        "--max-files": {
-          "type": "int",
-          "required": false,
-          "help": "Stop after N files."
-        },
-        "--out": {
-          "type": "string",
-          "required": false,
-          "help": "Output directory for downloaded files."
-        },
-        "--overwrite": {
+        "--all": {
           "type": "flag",
           "required": false,
-          "help": "Overwrite existing files."
+          "help": "Fetch all pages.",
+          "aliases": [
+            "-A"
+          ]
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false,
+          "help": "Resume from pagination cursor (incompatible with --page-size)."
+        },
+        "--max-results": {
+          "type": "string",
+          "required": false,
+          "help": "Stop after N results (min 1).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         },
         "--page-size": {
-          "type": "int",
+          "type": "string",
           "required": false,
-          "help": "Page size for file listing (max 100)."
+          "help": "Page size (1-100).",
+          "aliases": [
+            "-s"
+          ]
         }
       },
       "positionals": [
         {
-          "name": "OPPORTUNITY_ID",
-          "type": "int",
+          "name": "OPPORTUNITY",
+          "type": "string",
           "required": true
         }
       ],
-      "whenToUse": "Download all files attached to an opportunity.",
       "examples": [
-        "opportunity files dump 123 --out ./downloads"
+        "opportunity files ls 98765"
       ],
+      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
       "relatedCommands": [
         "opportunity get",
         "opportunity files upload"
-      ]
+      ],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      },
+      "limitConfig": {
+        "flag": "--max-results",
+        "flagAliases": [
+          "--max-results",
+          "--limit",
+          "-n"
+        ],
+        "default": 1000,
+        "max": 10000,
+        "unboundedFlag": "--all",
+        "unboundedFlagAliases": [
+          "--all",
+          "-A"
+        ]
+      }
     },
     {
       "name": "opportunity files upload",
@@ -2041,7 +2096,7 @@
       "whenToUse": "Upload files/documents to an opportunity.",
       "relatedCommands": [
         "opportunity get",
-        "opportunity files dump"
+        "opportunity files ls"
       ]
     },
     {
@@ -2371,53 +2426,81 @@
       ]
     },
     {
-      "name": "person files dump",
-      "description": "Download all files attached to a person.",
+      "name": "person files ls",
+      "description": "List files attached to a person.",
       "category": "read",
       "destructive": false,
       "progressCapable": false,
       "parameters": {
-        "--concurrency": {
-          "type": "int",
-          "required": false,
-          "help": "Number of concurrent downloads."
-        },
-        "--max-files": {
-          "type": "int",
-          "required": false,
-          "help": "Stop after N files."
-        },
-        "--out": {
-          "type": "string",
-          "required": false,
-          "help": "Output directory for downloaded files."
-        },
-        "--overwrite": {
+        "--all": {
           "type": "flag",
           "required": false,
-          "help": "Overwrite existing files."
+          "help": "Fetch all pages.",
+          "aliases": [
+            "-A"
+          ]
+        },
+        "--cursor": {
+          "type": "string",
+          "required": false,
+          "help": "Resume from pagination cursor (incompatible with --page-size)."
+        },
+        "--max-results": {
+          "type": "string",
+          "required": false,
+          "help": "Stop after N results (min 1).",
+          "aliases": [
+            "--limit",
+            "-n"
+          ]
         },
         "--page-size": {
-          "type": "int",
+          "type": "string",
           "required": false,
-          "help": "Page size for file listing (max 100)."
+          "help": "Page size (1-100).",
+          "aliases": [
+            "-s"
+          ]
         }
       },
       "positionals": [
         {
-          "name": "PERSON_ID",
-          "type": "int",
+          "name": "PERSON",
+          "type": "string",
           "required": true
         }
       ],
-      "whenToUse": "Download all files attached to a person.",
       "examples": [
-        "person files dump 123 --out ./downloads"
+        "person files ls 67890",
+        "person files ls \"email:john@example.com\" --max-results 10"
       ],
+      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
       "relatedCommands": [
         "person get",
         "person files upload"
-      ]
+      ],
+      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpBehavior": {
+        "limitEnforced": true,
+        "allFlagBlocked": true,
+        "defaultLimit": 1000,
+        "maxLimit": 10000
+      },
+      "limitConfig": {
+        "flag": "--max-results",
+        "flagAliases": [
+          "--max-results",
+          "--limit",
+          "-n"
+        ],
+        "default": 1000,
+        "max": 10000,
+        "unboundedFlag": "--all",
+        "unboundedFlagAliases": [
+          "--all",
+          "-A"
+        ]
+      }
     },
     {
       "name": "person files upload",
@@ -2446,7 +2529,7 @@
       "whenToUse": "Upload files/documents to a person.",
       "relatedCommands": [
         "person get",
-        "person files dump"
+        "person files ls"
       ]
     },
     {

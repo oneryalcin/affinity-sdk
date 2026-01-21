@@ -82,6 +82,9 @@ from .models.pagination import PaginationProgress
 # Policies
 from .policies import ExternalHookPolicy, Policies, WritePolicy
 
+# File download helpers
+from .services.v1_only import PresignedUrl
+
 __version__ = _get_version("affinity-sdk")
 
 _logger = logging.getLogger("affinity_sdk")
@@ -133,6 +136,8 @@ __all__ = [
     "Policies",
     # Pagination helpers
     "PaginationProgress",
+    # File download helpers
+    "PresignedUrl",
     # Type aliases (re-exported for convenience)
     "types",
     "models",

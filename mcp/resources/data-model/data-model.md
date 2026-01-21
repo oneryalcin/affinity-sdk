@@ -311,6 +311,60 @@ task get "https://api.affinity.co/v2/tasks/abc123"               # Check status 
 
 Task statuses: `pending`, `in_progress`, `success`, `failed`
 
+---
+
+## Reading Files
+
+Files can be attached to companies, persons, and opportunities. To read file content:
+
+### Step 1: List files to get file IDs
+```bash
+company files ls 306016520
+person files ls 67890
+opportunity files ls 98765
+```
+
+This returns file metadata including `id` in `data[].id`.
+
+### Step 2: Get presigned URL
+Use the `get-file-url` tool with the file ID:
+```
+get-file-url fileId=9192757
+```
+
+This returns a presigned URL valid for **60 seconds** that requires no authentication.
+
+### Step 3: Fetch content
+Use WebFetch immediately with the presigned URL to retrieve the file content.
+
+### ⚠️ Claude Desktop Limitation
+
+**WebFetch cannot access `userfiles.affinity.co`** due to Claude Desktop's domain sandbox. This limitation applies to ALL Claude Desktop users:
+
+- Adding the domain to **Settings → Capabilities → Additional allowed domains** does NOT work
+- Setting **Domain allowlist** to **"All domains"** does NOT work
+- This is a known platform limitation (not an xaffinity issue)
+
+**Related bug reports:**
+- [#19087 - Additional allowed domains not applied](https://github.com/anthropics/claude-code/issues/19087)
+- [#11897 - Domain allowlist issues](https://github.com/anthropics/claude-code/issues/11897)
+
+**Workarounds:**
+1. **Copy the URL** returned by `get-file-url` and open in a browser
+2. Use CLI directly (not via MCP) with `files download --file-id`
+3. **Coming soon**: `files read` command will return content inline, bypassing WebFetch entirely
+
+### Why presigned URLs?
+- Avoids base64 encoding overhead (33% larger)
+- Content goes directly to Claude's multimodal processing
+- Better for large files (PDFs, images)
+
+### File size considerations
+- Files up to 10MB can be fetched via presigned URL
+- Larger files may need to be processed in chunks or downloaded locally
+
+---
+
 ## Filter Syntax (V2 API)
 
 CLI commands use `--filter 'field op "value"'` syntax:

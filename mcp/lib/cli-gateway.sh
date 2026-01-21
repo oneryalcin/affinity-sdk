@@ -414,7 +414,10 @@ CLI_GATEWAY_MAX_LIMIT="${CLI_GATEWAY_MAX_LIMIT:-10000}"
 # This prevents large outputs before they happen (more efficient than post-hoc truncation)
 # Args: command argv...
 # Outputs: Modified argv (NUL-delimited) to stdout
-# Usage: mapfile -d '' argv < <(apply_limit_cap "$command" "${argv[@]}")
+# Usage (bash 3.x compatible):
+#   new_argv=()
+#   while IFS= read -r -d '' item; do new_argv+=("$item"); done < <(apply_limit_cap "$command" "${argv[@]}")
+#   argv=("${new_argv[@]}")
 apply_limit_cap() {
     local cmd="$1"
     shift

@@ -1602,6 +1602,12 @@ class HTTPClient:
                     resp.context["ever_external"] = ever_external
                     return resp
 
+                # If stop_at_redirect is set, return the response with redirect location
+                if current_req.context.get("stop_at_redirect"):
+                    resp.context["redirect_location"] = location
+                    resp.context["ever_external"] = ever_external
+                    return resp
+
                 if redirects_followed >= _MAX_DOWNLOAD_REDIRECTS:
                     raise UnsafeUrlError(
                         "Refusing to follow too many redirects for download",
@@ -1822,6 +1828,12 @@ class HTTPClient:
 
                 location = dict(resp.headers).get("Location") or dict(resp.headers).get("location")
                 if not location:
+                    resp.context["ever_external"] = ever_external
+                    return resp
+
+                # If stop_at_redirect is set, return the response with redirect location
+                if current_req.context.get("stop_at_redirect"):
+                    resp.context["redirect_location"] = location
                     resp.context["ever_external"] = ever_external
                     return resp
 
@@ -2335,6 +2347,37 @@ class HTTPClient:
             size=info["size"],
             iter_bytes=_iter(),
         )
+
+    def get_redirect_url(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> str | None:
+        """
+        Get the redirect URL for a download endpoint without following it.
+
+        Makes a GET request and returns the Location header if the response
+        is a redirect (3xx). Returns None if not a redirect.
+
+        This is useful for getting presigned URLs from file download endpoints.
+        """
+        url = self._build_url(path, v1=v1)
+        context: RequestContext = {"stop_at_redirect": True}
+        if timeout is not None:
+            context["timeout"] = timeout
+
+        req = SDKRequest(
+            method="GET",
+            url=url,
+            headers=[("Accept", "*/*")],
+            api_version="v1" if v1 else "v2",
+            write_intent=False,
+            context=context,
+        )
+        resp = self._raw_buffered_pipeline(req)
+        return resp.context.get("redirect_location")
 
     def wrap_validation_error(
         self,
@@ -2941,6 +2984,12 @@ class AsyncHTTPClient:
                     resp.context["ever_external"] = ever_external
                     return resp
 
+                # If stop_at_redirect is set, return the response with redirect location
+                if current_req.context.get("stop_at_redirect"):
+                    resp.context["redirect_location"] = location
+                    resp.context["ever_external"] = ever_external
+                    return resp
+
                 if redirects_followed >= _MAX_DOWNLOAD_REDIRECTS:
                     raise UnsafeUrlError(
                         "Refusing to follow too many redirects for download",
@@ -3163,6 +3212,12 @@ class AsyncHTTPClient:
                 headers_dict = dict(resp.headers)
                 location = headers_dict.get("Location") or headers_dict.get("location")
                 if not location:
+                    resp.context["ever_external"] = ever_external
+                    return resp
+
+                # If stop_at_redirect is set, return the response with redirect location
+                if current_req.context.get("stop_at_redirect"):
+                    resp.context["redirect_location"] = location
                     resp.context["ever_external"] = ever_external
                     return resp
 
@@ -3668,6 +3723,37 @@ class AsyncHTTPClient:
             size=info["size"],
             iter_bytes=_iter_bytes(),
         )
+
+    async def get_redirect_url(
+        self,
+        path: str,
+        *,
+        v1: bool = False,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> str | None:
+        """
+        Get the redirect URL for a download endpoint without following it.
+
+        Makes a GET request and returns the Location header if the response
+        is a redirect (3xx). Returns None if not a redirect.
+
+        This is useful for getting presigned URLs from file download endpoints.
+        """
+        url = self._build_url(path, v1=v1)
+        context: RequestContext = {"stop_at_redirect": True}
+        if timeout is not None:
+            context["timeout"] = timeout
+
+        req = SDKRequest(
+            method="GET",
+            url=url,
+            headers=[("Accept", "*/*")],
+            api_version="v1" if v1 else "v2",
+            write_intent=False,
+            context=context,
+        )
+        resp = await self._raw_buffered_pipeline(req)
+        return resp.context.get("redirect_location")
 
     def wrap_validation_error(
         self,

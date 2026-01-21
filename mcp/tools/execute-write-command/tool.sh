@@ -59,7 +59,11 @@ if ! printf '%s' "$argv_json" | jq_tool -e 'type == "array" and all(type == "str
 fi
 
 # Use NUL-delimited extraction to preserve newlines inside argument strings
-mapfile -d '' argv < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
+# Note: Using while loop instead of mapfile for bash 3.x compatibility (macOS default)
+argv=()
+while IFS= read -r -d '' item; do
+    argv+=("$item")
+done < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 
 # Silently filter out --json if passed (tool appends it automatically anyway)
 filtered_argv=()
@@ -124,7 +128,8 @@ fi
 
 # Build command array safely
 # Note: --session-cache is a global option that must come BEFORE the subcommand
-declare -a cmd_args=("xaffinity")
+# Use XAFFINITY_CLI for full path (set by common.sh for Cowork compatibility)
+declare -a cmd_args=("${XAFFINITY_CLI:-xaffinity}")
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cmd_args+=("--session-cache" "${AFFINITY_SESSION_CACHE}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")

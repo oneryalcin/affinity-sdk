@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-01-21
+
+### Added
+- **New `get-file-url` tool**: Get presigned download URLs for files attached to companies, persons, or opportunities. Returns URL valid for 60 seconds with file metadata (name, size, contentType). Use with WebFetch to read file content.
+- **File listing commands**: `company files ls`, `person files ls`, `opportunity files ls` now discoverable via MCP with guidance to use `get-file-url` for content access.
+
+### Changed
+- **Hidden `files download` from MCP**: The `files download` command (renamed from `dump`) is hidden from MCP discovery since it downloads to local filesystem which LLMs cannot access. Use `get-file-url` + WebFetch instead.
+- **Updated `files ls` commands**: Added `mcpNote` guiding users to use `get-file-url` tool with file IDs from `data[].id` to get presigned URLs.
+- **Data model documentation**: Added "Reading Files" section to `xaffinity://data-model` resource explaining the 3-step workflow: `files ls` → `get-file-url` → WebFetch.
+- **CLI compatibility**: Updated `CLI_MIN_VERSION` from 0.13.0 to 0.14.0. Required for `files ls`, `file-url`, and `files download --file-id` commands.
+
+### Fixed
+- **Claude Cowork compatibility**: Fixed "xaffinity: command not found" errors when MCP server is spawned with minimal PATH that excludes version manager shims (pyenv, asdf, mise, pipx). Added runtime CLI detection using mcp-bash recommended pattern (`lib/cli-detect.sh`). Detection searches common shim locations at tool execution time when `$HOME` is available. Users can override with `XAFFINITY_CLI=/path/to/xaffinity`.
+- **Policy error messages**: Improved error messages when tools are blocked by policy - now explains whether tool is missing from allowlist or blocked by read-only mode.
+- **Bash 3.x compatibility**: Fixed `apply_limit_cap` usage comment to use while-loop pattern instead of `mapfile` (not available in macOS default Bash 3.2).
+
+### Known Issues
+- **Claude Desktop domain sandbox**: The `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects ALL Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). **Workarounds**: (1) Copy URL to browser, (2) Use CLI directly with `files download --file-id`, (3) A future `files read` command will return content inline, bypassing WebFetch.
+
 ## [1.12.1] - 2026-01-21
 
 ### Fixed

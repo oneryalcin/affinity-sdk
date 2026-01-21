@@ -1,9 +1,15 @@
 # mcp/COMPATIBILITY - CLI version requirements for this MCP server
 # Usage: source "${SCRIPT_DIR}/COMPATIBILITY"
 
-CLI_MIN_VERSION="0.13.0"
+CLI_MIN_VERSION="0.14.0"
 CLI_MAX_VERSION="1.0.0"
 
+# MCP 1.13.0 requires CLI 0.14.0 for:
+# - `get-file-url` tool: New MCP tool for file content access via presigned URLs
+# - `files ls` commands: New commands to list files attached to entities
+# - `files download --file-id`: Single-file download support
+# - `file-url` command: Get presigned download URLs (powers get-file-url tool)
+#
 # MCP 1.12.0 requires CLI 0.13.0 for:
 # - `list get` JSON output: `listSize` now accurate (V1 API) instead of often 0 (V2 API bug)
 # - Dry-run estimates: `estimatedEntries` in query/export dry-runs now accurate

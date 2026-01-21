@@ -31,6 +31,25 @@ if [[ -z "${XAFFINITY_MCP_VERSION:-}" ]]; then
     export XAFFINITY_MCP_VERSION=$(cat "${MCPBASH_PROJECT_ROOT}/VERSION" 2>/dev/null || echo "unknown")
 fi
 
+# ==============================================================================
+# xaffinity CLI Location (Runtime Detection)
+# ==============================================================================
+# Some MCP hosts (e.g., Claude Cowork) spawn servers with minimal PATH that
+# excludes version manager shims. We detect the CLI at runtime using the
+# mcp-bash recommended pattern (see CLI-DETECTION-PATTERN.md).
+#
+# Override: Set XAFFINITY_CLI=/path/to/xaffinity in your environment.
+
+source "${MCPBASH_PROJECT_ROOT}/lib/cli-detect.sh"
+
+if [[ -z "${XAFFINITY_CLI:-}" ]]; then
+    # Detect CLI; don't fail here (tools handle failure appropriately)
+    XAFFINITY_CLI=$(mcp_detect_cli xaffinity "pip install affinity-sdk[cli]" 2>/dev/null) || true
+    # Fall back to bare name if not found (will fail with clear error at execution)
+    : "${XAFFINITY_CLI:=xaffinity}"
+    export XAFFINITY_CLI
+fi
+
 # Source cache utilities
 source "${MCPBASH_PROJECT_ROOT}/lib/cache.sh"
 
@@ -212,7 +231,8 @@ run_xaffinity() {
     done
 
     # Build command with global options first
-    local cmd=(xaffinity)
+    # Use XAFFINITY_CLI for full path (set by env.sh for Cowork compatibility)
+    local cmd=("${XAFFINITY_CLI:-xaffinity}")
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     cmd+=("${filtered_args[@]}")
@@ -247,14 +267,15 @@ run_xaffinity_readonly() {
     done
 
     # Build command with global options first
-    local cmd=(xaffinity)
+    # Use XAFFINITY_CLI for full path (set by env.sh for Cowork compatibility)
+    local cmd=("${XAFFINITY_CLI:-xaffinity}")
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     cmd+=(--readonly)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     cmd+=("${filtered_args[@]}")
 
     # Log command start in debug mode
-    xaffinity_log_debug "cli" "executing: xaffinity --readonly $subcommand ..."
+    xaffinity_log_debug "cli" "executing: ${XAFFINITY_CLI:-xaffinity} --readonly $subcommand ..."
 
     # Execute with retry for transient failures (3 attempts, 0.5s base delay)
     # Note: mcp_with_retry is only available in tool contexts (tool-sdk.sh sourced).
@@ -329,7 +350,8 @@ run_xaffinity_with_progress() {
     fi
 
     # Build command array
-    local -a cmd=(xaffinity)
+    # Use XAFFINITY_CLI for full path (set by env.sh for Cowork compatibility)
+    local -a cmd=("${XAFFINITY_CLI:-xaffinity}")
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     cmd+=("$@")
 

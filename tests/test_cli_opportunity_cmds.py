@@ -346,8 +346,8 @@ def test_opportunity_get_expand_both(respx_mock: respx.MockRouter) -> None:
     assert payload["meta"]["resolved"]["expand"] == ["companies", "persons"]  # sorted
 
 
-def test_opportunity_files_dump(respx_mock: respx.MockRouter, tmp_path: object) -> None:
-    """Test opportunity files dump downloads files and creates manifest."""
+def test_opportunity_files_download(respx_mock: respx.MockRouter, tmp_path: object) -> None:
+    """Test opportunity files download downloads files and creates manifest."""
     out_dir = Path(tmp_path) / "opp-files"  # type: ignore[arg-type]
 
     # Mock files list endpoint (V1 entity-files API)
@@ -378,7 +378,7 @@ def test_opportunity_files_dump(respx_mock: respx.MockRouter, tmp_path: object) 
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--json", "opportunity", "files", "dump", "123", "--out", str(out_dir)],
+        ["--json", "opportunity", "files", "download", "123", "--out", str(out_dir)],
         env={"AFFINITY_API_KEY": "test-key"},
     )
     assert result.exit_code == 0, result.output

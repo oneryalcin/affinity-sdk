@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import contextlib
 import mimetypes
 from collections.abc import AsyncIterator, Iterator, Sequence
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -74,6 +77,31 @@ if TYPE_CHECKING:
 
 # TypeVar for default parameter in get_for_entity()
 T = TypeVar("T")
+
+
+# Presigned URL response for file downloads
+@dataclass
+class PresignedUrl:
+    """Presigned URL for downloading a file without authentication.
+
+    Attributes:
+        url: The presigned download URL (valid for expires_in seconds)
+        file_id: ID of the file
+        name: Original filename
+        size: File size in bytes
+        content_type: MIME type of the file (e.g., "application/pdf")
+        expires_in: Seconds until the URL expires (typically 60)
+        expires_at: Datetime when the URL expires
+    """
+
+    url: str
+    file_id: int
+    name: str
+    size: int
+    content_type: str | None
+    expires_in: int
+    expires_at: datetime
+
 
 # Sentinel for distinguishing None from "not provided" in get_for_entity()
 _UNSET: Any = object()
@@ -1215,6 +1243,63 @@ class EntityFileService:
             v1=True,
             timeout=timeout,
             deadline_seconds=deadline_seconds,
+        )
+
+    def get_download_url(
+        self,
+        file_id: FileId,
+        *,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> PresignedUrl:
+        """
+        Get a presigned download URL for a file without downloading its content.
+
+        The returned URL is valid for approximately 60 seconds and can be
+        fetched without authentication (it's self-authenticating via signature).
+
+        Args:
+            file_id: The entity file ID
+            timeout: Optional request timeout
+
+        Returns:
+            PresignedUrl with the URL, file metadata, and expiration info
+
+        Raises:
+            AffinityError: If the API doesn't return a redirect URL
+        """
+        # Fetch file metadata first
+        file_meta = self.get(file_id)
+
+        url = self._client.get_redirect_url(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            timeout=timeout,
+        )
+        if not url:
+            raise AffinityError(
+                f"Failed to get presigned URL for file {file_id}: no redirect returned"
+            )
+
+        # Parse X-Amz-Expires from the presigned URL to determine TTL
+        # Default to 60 seconds if not found (Affinity's typical TTL)
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        expires_in = 60  # default
+        if "X-Amz-Expires" in qs:
+            with contextlib.suppress(ValueError, IndexError):
+                expires_in = int(qs["X-Amz-Expires"][0])
+
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=expires_in)
+
+        return PresignedUrl(
+            url=url,
+            file_id=int(file_id),
+            name=file_meta.name,
+            size=file_meta.size,
+            content_type=file_meta.content_type,
+            expires_in=expires_in,
+            expires_at=expires_at,
         )
 
     def download_stream(
@@ -2474,6 +2559,63 @@ class AsyncEntityFileService:
             v1=True,
             timeout=timeout,
             deadline_seconds=deadline_seconds,
+        )
+
+    async def get_download_url(
+        self,
+        file_id: FileId,
+        *,
+        timeout: httpx.Timeout | float | None = None,
+    ) -> PresignedUrl:
+        """
+        Get a presigned download URL for a file without downloading its content.
+
+        The returned URL is valid for approximately 60 seconds and can be
+        fetched without authentication (it's self-authenticating via signature).
+
+        Args:
+            file_id: The entity file ID
+            timeout: Optional request timeout
+
+        Returns:
+            PresignedUrl with the URL, file metadata, and expiration info
+
+        Raises:
+            AffinityError: If the API doesn't return a redirect URL
+        """
+        # Fetch file metadata first
+        file_meta = await self.get(file_id)
+
+        url = await self._client.get_redirect_url(
+            f"/entity-files/download/{file_id}",
+            v1=True,
+            timeout=timeout,
+        )
+        if not url:
+            raise AffinityError(
+                f"Failed to get presigned URL for file {file_id}: no redirect returned"
+            )
+
+        # Parse X-Amz-Expires from the presigned URL to determine TTL
+        # Default to 60 seconds if not found (Affinity's typical TTL)
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        expires_in = 60  # default
+        if "X-Amz-Expires" in qs:
+            with contextlib.suppress(ValueError, IndexError):
+                expires_in = int(qs["X-Amz-Expires"][0])
+
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=expires_in)
+
+        return PresignedUrl(
+            url=url,
+            file_id=int(file_id),
+            name=file_meta.name,
+            size=file_meta.size,
+            content_type=file_meta.content_type,
+            expires_in=expires_in,
+            expires_at=expires_at,
         )
 
     def download_stream(

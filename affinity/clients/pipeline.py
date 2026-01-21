@@ -39,6 +39,8 @@ class RequestContext(TypedDict, total=False):
     timeout: Any
     timeout_seconds: float
     tenant_hash: str
+    # Stop at redirect and return the redirect URL instead of following it.
+    stop_at_redirect: bool
 
 
 class ResponseContext(TypedDict, total=False):
@@ -50,6 +52,8 @@ class ResponseContext(TypedDict, total=False):
     request_id: str
     elapsed_seconds: float
     retry_count: int
+    # Redirect URL when stop_at_redirect is used.
+    redirect_location: str
 
 
 class SDKBaseResponse(Protocol):

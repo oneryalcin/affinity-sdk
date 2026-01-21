@@ -4,20 +4,25 @@
 # ==============================================================================
 # Tool Environment Passthrough
 # ==============================================================================
-# Allow policy environment variables to be passed through to tool scripts.
+# Allow environment variables to be passed through to tool scripts.
 # By default, mcp-bash only passes MCP*/MCPBASH* variables for security.
-# We use "allowlist" mode to also pass AFFINITY_MCP_* policy variables.
+# We use "allowlist" mode to pass additional variables.
 #
-# Available policy variables:
+# Allowlist variables:
+#   XAFFINITY_CLI                    - Path override for xaffinity CLI (user-set)
 #   AFFINITY_MCP_READ_ONLY=1         - Restrict to read-only operations
 #   AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 - Block destructive commands entirely
-#
-# Session cache variables (auto-configured below):
-#   AFFINITY_SESSION_CACHE           - Cache directory for cross-command caching
+#   XAFFINITY_DEBUG                  - Enable debug logging
+#   AFFINITY_TRACE                   - Enable CLI command tracing
+#   AFFINITY_SESSION_CACHE           - Cache directory (auto-configured below)
 #   AFFINITY_SESSION_CACHE_TTL       - Cache TTL in seconds (default: 600)
+#
+# Note: XAFFINITY_CLI allows users to override the CLI path. The actual CLI
+# detection happens at runtime in lib/common.sh (not here) because env.sh
+# variables don't reliably pass through to tool subprocesses in all contexts.
 
 export MCPBASH_TOOL_ENV_MODE="allowlist"
-export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
+export MCPBASH_TOOL_ENV_ALLOWLIST="XAFFINITY_CLI,AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
 
 # ==============================================================================
 # Debug Mode Configuration

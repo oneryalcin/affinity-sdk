@@ -50,7 +50,7 @@ calc_dynamic_timeout() {
     local dry_output
     local session_cache_opt=""
     [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && session_cache_opt="--session-cache ${AFFINITY_SESSION_CACHE}"
-    dry_output=$(printf '%s' "$query_json" | xaffinity query --dry-run --max-records "$max_records" --output json $session_cache_opt 2>/dev/null) || return 1
+    dry_output=$(printf '%s' "$query_json" | "${XAFFINITY_CLI:-xaffinity}" query --dry-run --max-records "$max_records" --output json $session_cache_opt 2>/dev/null) || return 1
 
     # Parse estimatedApiCalls from dry-run output
     local estimated_calls

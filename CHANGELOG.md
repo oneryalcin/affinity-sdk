@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.14.0 - 2026-01-21
+
+### Added
+- CLI: `company files ls`, `person files ls`, `opportunity files ls` commands to list files attached to entities without downloading them. Supports pagination (`--page-size`, `--cursor`, `--max-results`, `--all`), selector resolution (ID, URL, name, domain, email), and MCP safety limits.
+- CLI: `file-url` command to get presigned download URLs for files. Returns URL valid for 60 seconds along with file metadata (name, size, contentType). Useful for programmatic access and MCP workflows.
+- CLI: `files download --file-id` option for single-file downloads. Downloads one file directly without creating a manifest.
+- SDK: `FilesService.get_download_url(file_id)` method to get presigned download URLs without downloading content. Returns `PresignedUrl` with URL, file metadata, and expiration info.
+- SDK: `PresignedUrl` dataclass exported from `affinity` package with fields: `url`, `file_id`, `name`, `size`, `content_type`, `expires_in`, `expires_at`.
+
+### Changed
+- CLI: `files dump` renamed to `files download` for clarity.
+
+### Known Issues
+- MCP: `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects all Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). Workaround: Copy URL to browser, or use CLI directly with `files download --file-id`.
+
 ## 0.13.1 - 2026-01-21
 
 ### Fixed

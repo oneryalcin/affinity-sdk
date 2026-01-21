@@ -30,7 +30,7 @@ from ..resolvers import ResolvedEntity
 from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
-from ._entity_files_dump import dump_entity_files_bundle
+from ._entity_files_dump import download_single_file, dump_entity_files_bundle
 from ._list_entry_fields import (
     ListEntryFieldsScope,
     build_list_entry_field_rows,
@@ -1437,78 +1437,316 @@ def person_files_group() -> None:
 
 
 @category("read")
-@person_files_group.command(name="dump", cls=RichCommand)
+@person_files_group.command(name="ls", cls=RichCommand)
+@click.argument("person", type=str)
+@click.option(
+    "--page-size",
+    "-s",
+    type=click.IntRange(1, 100),
+    default=None,
+    help="Page size (1-100).",
+)
+@click.option(
+    "--cursor",
+    type=str,
+    default=None,
+    help="Resume from pagination cursor (incompatible with --page-size).",
+)
+@click.option(
+    "--max-results",
+    "--limit",
+    "-n",
+    type=click.IntRange(1, None),
+    default=None,
+    help="Stop after N results (min 1).",
+)
+@click.option("--all", "-A", "all_pages", is_flag=True, help="Fetch all pages.")
+@output_options
+@click.pass_obj
+@apply_mcp_limits()
+def person_files_ls(
+    ctx_obj: CLIContext,
+    person: str,
+    *,
+    page_size: int | None,
+    cursor: str | None,
+    max_results: int | None,
+    all_pages: bool,
+) -> None:
+    """
+    List files attached to a person.
+
+    PERSON can be an ID, URL, email:EMAIL, or name:NAME.
+
+    Examples:
+
+    - `xaffinity person files ls 12345`
+    - `xaffinity person files ls "email:john@example.com"`
+    - `xaffinity person files ls "name:John Smith" --max-results 10`
+    """
+    # Detect if --max-results was explicitly set by user (vs MCP-injected default)
+    max_results_explicit = False
+    click_ctx = click.get_current_context(silent=True)
+    if click_ctx is not None:
+        get_source = getattr(cast(Any, click_ctx), "get_parameter_source", None)
+        if callable(get_source):
+            source_enum = getattr(cast(Any, click.core), "ParameterSource", None)
+            default_source = getattr(source_enum, "DEFAULT", None) if source_enum else None
+            source = get_source("max_results")
+            if source is not None and source != default_source:
+                max_results_explicit = True
+
+    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        # Validate cursor/page-size exclusivity
+        if cursor is not None and page_size is not None:
+            raise CLIError(
+                "--cursor cannot be combined with --page-size.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        # Validate --all exclusivity
+        if all_pages and cursor is not None:
+            raise CLIError(
+                "--all cannot be combined with --cursor.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+        if all_pages and max_results is not None:
+            raise CLIError(
+                "--all cannot be combined with --max-results.",
+                exit_code=2,
+                error_type="usage_error",
+            )
+
+        client = ctx.get_client(warnings=warnings)
+        cache = ctx.session_cache
+
+        # Resolve person selector to ID
+        person_id, resolved = _resolve_person_selector(client=client, selector=person, cache=cache)
+
+        # Build modifiers dict (excluding None values)
+        modifiers: dict[str, object] = {}
+        if page_size is not None:
+            modifiers["pageSize"] = page_size
+        if cursor is not None:
+            modifiers["cursor"] = cursor
+        if max_results is not None:
+            modifiers["maxResults"] = max_results
+        if all_pages:
+            modifiers["allPages"] = True
+
+        cmd_context = CommandContext(
+            name="person files ls",
+            inputs={"selector": person},
+            modifiers=modifiers,
+        )
+
+        # When truncated by --max-results, remove allPages from context (misleading)
+        cmd_context_truncated = CommandContext(
+            name="person files ls",
+            inputs={"selector": person},
+            modifiers={k: v for k, v in modifiers.items() if k != "allPages"},
+        )
+
+        results: list[dict[str, object]] = []
+        first_page = True
+        page_token: str | None = cursor
+
+        while True:
+            page = client.files.list(
+                person_id=person_id,
+                page_size=page_size,
+                page_token=page_token,
+            )
+
+            for idx, f in enumerate(page.data):
+                results.append(
+                    {
+                        "id": int(f.id),
+                        "name": f.name,
+                        "size": f.size,
+                        "contentType": f.content_type,
+                        "uploaderId": int(f.uploader_id),
+                        "createdAt": f.created_at.isoformat(),
+                    }
+                )
+
+                # Check if we've hit max_results
+                if max_results is not None and len(results) >= max_results:
+                    stopped_mid_page = idx < (len(page.data) - 1)
+                    pagination = None
+                    is_mcp_injected = not max_results_explicit
+
+                    if page.next_cursor and not stopped_mid_page:
+                        pagination = {"nextCursor": page.next_cursor, "prevCursor": None}
+                        if is_mcp_injected:
+                            warnings.append(
+                                f"Results limited to {max_results} (MCP safety limit); "
+                                "use --cursor to continue."
+                            )
+                        else:
+                            warnings.append(
+                                "Results limited by --max-results; "
+                                "more data available (use --cursor to continue)."
+                            )
+                    elif stopped_mid_page or page.next_cursor:
+                        if is_mcp_injected:
+                            warnings.append(
+                                f"Results limited to {max_results} (MCP safety limit); "
+                                "more data may exist."
+                            )
+                        else:
+                            warnings.append(
+                                "Results limited by --max-results; "
+                                "more data may exist but no resumption cursor available."
+                            )
+                    return CommandOutput(
+                        data=results[:max_results],
+                        context=cmd_context_truncated,
+                        pagination=pagination,
+                        resolved=resolved,
+                        warnings=warnings,
+                        api_called=True,
+                        rate_limit=client.rate_limits.snapshot(),
+                    )
+
+            # Single page mode (no --all, no --max-results)
+            if first_page and not all_pages and max_results is None:
+                pagination = (
+                    {"nextCursor": page.next_cursor, "prevCursor": None}
+                    if page.next_cursor
+                    else None
+                )
+                return CommandOutput(
+                    data=results,
+                    context=cmd_context,
+                    pagination=pagination,
+                    resolved=resolved,
+                    warnings=warnings,
+                    api_called=True,
+                    rate_limit=client.rate_limits.snapshot(),
+                )
+            first_page = False
+
+            page_token = page.next_cursor
+            if not page_token:
+                break
+
+        return CommandOutput(
+            data=results,
+            context=cmd_context,
+            pagination=None,
+            resolved=resolved,
+            warnings=warnings,
+            api_called=True,
+            rate_limit=client.rate_limits.snapshot(),
+        )
+
+    run_command(ctx_obj, command="person files ls", fn=fn)
+
+
+@category("read")
+@person_files_group.command(name="download", cls=RichCommand)
 @click.argument("person_id", type=int)
 @click.option(
+    "--file-id",
+    type=int,
+    default=None,
+    help="Download a single file by ID (omit for all files).",
+)
+@click.option(
     "--out",
-    "out_dir",
+    "out_path",
     type=click.Path(),
     default=None,
-    help="Output directory for downloaded files.",
+    help="Output path (file path for --file-id, directory for bulk mode).",
 )
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files.")
 @click.option(
-    "--concurrency", type=int, default=3, show_default=True, help="Number of concurrent downloads."
+    "--concurrency",
+    type=int,
+    default=3,
+    show_default=True,
+    help="Number of concurrent downloads (bulk mode only).",
 )
 @click.option(
     "--page-size",
     type=int,
     default=100,
     show_default=True,
-    help="Page size for file listing (max 100).",
+    help="Page size for file listing (max 100, bulk mode only).",
 )
-@click.option("--max-files", type=int, default=None, help="Stop after N files.")
+@click.option("--max-files", type=int, default=None, help="Stop after N files (bulk mode only).")
 @output_options
 @click.pass_obj
-def person_files_dump(
+def person_files_download(
     ctx: CLIContext,
     person_id: int,
     *,
-    out_dir: str | None,
+    file_id: int | None,
+    out_path: str | None,
     overwrite: bool,
     concurrency: int,
     page_size: int,
     max_files: int | None,
 ) -> None:
-    """Download all files attached to a person."""
+    """Download files attached to a person.
 
-    def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
-        # Build CommandContext
-        ctx_modifiers: dict[str, object] = {}
-        if out_dir:
-            ctx_modifiers["outDir"] = out_dir
-        if overwrite:
-            ctx_modifiers["overwrite"] = True
-        if concurrency != 3:
-            ctx_modifiers["concurrency"] = concurrency
-        if page_size != 100:
-            ctx_modifiers["pageSize"] = page_size
-        if max_files is not None:
-            ctx_modifiers["maxFiles"] = max_files
+    Single file mode (with --file-id):
+        person files download 123 --file-id 456 --out ./resume.pdf
 
-        cmd_context = CommandContext(
-            name="person files dump",
-            inputs={"personId": person_id},
-            modifiers=ctx_modifiers,
+    Bulk mode (without --file-id):
+        person files download 123 --out ./backups/
+    """
+    if file_id is not None:
+        # Single file mode
+        download_single_file(
+            ctx=ctx,
+            entity_type="person",
+            entity_id=person_id,
+            file_id=file_id,
+            out_path=out_path,
+            overwrite=overwrite,
         )
+    else:
+        # Bulk mode (original dump behavior)
+        def fn(ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+            ctx_modifiers: dict[str, object] = {}
+            if out_path:
+                ctx_modifiers["outDir"] = out_path
+            if overwrite:
+                ctx_modifiers["overwrite"] = True
+            if concurrency != 3:
+                ctx_modifiers["concurrency"] = concurrency
+            if page_size != 100:
+                ctx_modifiers["pageSize"] = page_size
+            if max_files is not None:
+                ctx_modifiers["maxFiles"] = max_files
 
-        return asyncio.run(
-            dump_entity_files_bundle(
-                ctx=ctx,
-                warnings=warnings,
-                out_dir=out_dir,
-                overwrite=overwrite,
-                concurrency=concurrency,
-                page_size=page_size,
-                max_files=max_files,
-                default_dirname=f"affinity-person-{person_id}-files",
-                manifest_entity={"type": "person", "personId": person_id},
-                files_list_kwargs={"person_id": PersonId(person_id)},
-                context=cmd_context,
+            cmd_context = CommandContext(
+                name="person files download",
+                inputs={"personId": person_id},
+                modifiers=ctx_modifiers,
             )
-        )
 
-    run_command(ctx, command="person files dump", fn=fn)
+            return asyncio.run(
+                dump_entity_files_bundle(
+                    ctx=ctx,
+                    warnings=warnings,
+                    out_dir=out_path,
+                    overwrite=overwrite,
+                    concurrency=concurrency,
+                    page_size=page_size,
+                    max_files=max_files,
+                    default_dirname=f"affinity-person-{person_id}-files",
+                    manifest_entity={"type": "person", "personId": person_id},
+                    files_list_kwargs={"person_id": PersonId(person_id)},
+                    context=cmd_context,
+                )
+            )
+
+        run_command(ctx, command="person files download", fn=fn)
 
 
 @category("write")
