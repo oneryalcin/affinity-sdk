@@ -2,9 +2,11 @@
 
 > **MCP Note**: When using commands via MCP tools, output format (JSON) is handled automatically. Do not include `--json` in arguments.
 
-**Related Resources:**
-- `xaffinity://query-guide` - Complete query language reference (all operators, aggregations, advanced filtering)
-- `xaffinity://workflows-guide` - MCP tools, prompts, and workflow patterns
+> ⚠️ **Performance Warning**: Using `fields.*` (select all custom fields) on lists with 50+ fields can cause timeouts. **Always select specific fields** like `fields.Status`, `fields.Owner` instead.
+
+**📖 Read Before Querying:**
+- `xaffinity://query-guide` - **Read this first** for query performance tips, field selection best practices, and operator reference
+- `xaffinity://workflows-guide` - **Read for complex tasks** covering common patterns, error handling, and when to use query vs CLI
 
 ## Core Concepts
 
