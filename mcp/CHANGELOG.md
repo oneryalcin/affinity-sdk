@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-01-21
+
+### Fixed
+- **execute-read-command**: Fixed `list export` truncation path (`.data.rows` instead of incorrect `.data.listEntries`)
+- **Resources**: Skill files (workflows-guide, query-guide) now bundled correctly via `MCPB_INCLUDE`
+- **Error handling**: Resources (`me.sh`, `me-person-id.sh`) now capture and include actual CLI errors instead of generic messages
+- **Error handling**: Tools (`get-entity-dossier`) now use graceful degradation with logged warnings instead of failing silently
+- **Resource context**: `run_xaffinity_readonly` now works in resource scripts by falling back to direct execution when `mcp_with_retry` is unavailable
+
+### Changed
+- **Documentation**: Added performance warnings for `fields.*` in data-model and query-guide resources
+
 ## [1.12.0] - 2026-01-21
 
 ### Added
