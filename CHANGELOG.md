@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- CLI: `--env-file` now implicitly enables dotenv loading when an explicit file path is provided (not the default `.env`). Previously, using `--env-file .sandbox.env` without `--dotenv` would silently ignore the file.
+- CLI: Fixed dropdown field value resolution in `entry field --set` and `--append` commands. The V2 API requires `{"dropdownOptionId": ID}` format, but the CLI was sending raw values. Now dropdown text (e.g., "In Progress") or numeric IDs are properly resolved to the V2 API format.
+- CLI: List field metadata now fetched from V1 API to include `dropdown_options`, which V2 API omits.
+
 ## 0.14.0 - 2026-01-22
 
 ### Added

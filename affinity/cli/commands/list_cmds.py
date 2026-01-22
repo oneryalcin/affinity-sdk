@@ -3352,7 +3352,12 @@ def list_entry_field(
             except ValueError:
                 parsed_field_id = EnrichedFieldId(target_field_id)
 
-            result = entries.update_field_value(ListEntryId(entry_id), parsed_field_id, value)
+            # Resolve dropdown values (text → option ID) and get correct value_type
+            resolved_value, value_type_str = resolver.resolve_dropdown_value(target_field_id, value)
+
+            result = entries.update_field_value(
+                ListEntryId(entry_id), parsed_field_id, resolved_value, value_type=value_type_str
+            )
             created_values.append(serialize_model_for_cli(result))
 
         # Phase 2: Handle --append (add without replacing)
@@ -3365,7 +3370,12 @@ def list_entry_field(
             except ValueError:
                 parsed_field_id = EnrichedFieldId(target_field_id)
 
-            result = entries.update_field_value(ListEntryId(entry_id), parsed_field_id, value)
+            # Resolve dropdown values (text → option ID) and get correct value_type
+            resolved_value, value_type_str = resolver.resolve_dropdown_value(target_field_id, value)
+
+            result = entries.update_field_value(
+                ListEntryId(entry_id), parsed_field_id, resolved_value, value_type=value_type_str
+            )
             created_values.append(serialize_model_for_cli(result))
 
         # Refresh existing values for unset operations (in case set/append modified them)

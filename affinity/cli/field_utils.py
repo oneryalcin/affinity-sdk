@@ -271,6 +271,92 @@ class FieldResolver:
         """
         return self._by_id.get(field_id, "")
 
+    def get_field_metadata(self, field_id: str) -> FieldMetadata | None:
+        """Get field metadata by field ID.
+
+        Args:
+            field_id: The field ID (e.g., "field-260419").
+
+        Returns:
+            FieldMetadata if found, None otherwise.
+        """
+        for field in self._fields:
+            if str(field.id) == field_id:
+                return field
+        return None
+
+    def resolve_dropdown_value(self, field_id: str, value: str) -> tuple[dict[str, int] | str, str]:
+        """Resolve a dropdown value (text or ID) to its option ID and value_type.
+
+        For dropdown/ranked-dropdown fields, accepts either:
+        - Dropdown option text (e.g., "In Progress") → returns (option_id, value_type)
+        - Dropdown option ID (e.g., "304089" or 304089) → returns (option_id, value_type)
+
+        For non-dropdown fields, returns the value unchanged with inferred type.
+
+        Args:
+            field_id: The field ID.
+            value: The value to resolve (text or ID).
+
+        Returns:
+            Tuple of (resolved_value, value_type_string).
+
+        Raises:
+            CLIError: If dropdown option text not found.
+        """
+        from ..models.types import FieldValueType
+
+        field = self.get_field_metadata(field_id)
+        if field is None:
+            # Field not found, return value as-is with text type
+            return value, "text"
+
+        value_type = field.value_type
+        type_str = value_type.value if isinstance(value_type, FieldValueType) else str(value_type)
+
+        # Handle dropdown and ranked-dropdown fields
+        # V2 API expects: {"data": {"dropdownOptionId": ID}, "type": "dropdown|ranked-dropdown"}
+        if type_str in ("dropdown", "ranked-dropdown"):
+            options = field.dropdown_options
+
+            # First, try to match by option text (case-insensitive)
+            value_lower = value.strip().lower()
+            for opt in options:
+                if opt.text.lower() == value_lower:
+                    # V2 API format: wrap option ID in {"dropdownOptionId": ...}
+                    return {"dropdownOptionId": int(opt.id)}, type_str
+
+            # Then, try to parse as option ID
+            try:
+                option_id = int(value)
+                # Validate the ID exists
+                for opt in options:
+                    if int(opt.id) == option_id:
+                        # V2 API format: wrap option ID in {"dropdownOptionId": ...}
+                        return {"dropdownOptionId": option_id}, type_str
+                # ID not found in options
+                available = [f"'{opt.text}'" for opt in options[:5]]
+                suffix = "..." if len(options) > 5 else ""
+                raise CLIError(
+                    f"Dropdown option ID {option_id} not found for field '{field.name}'.",
+                    exit_code=2,
+                    error_type="validation_error",
+                    hint=f"Available options: {', '.join(available)}{suffix}",
+                )
+            except ValueError:
+                # Not a valid integer, treat as text that wasn't found
+                available = [f"'{opt.text}'" for opt in options[:5]]
+                suffix = "..." if len(options) > 5 else ""
+                raise CLIError(
+                    f"Dropdown option '{value}' not found for field '{field.name}'.",
+                    exit_code=2,
+                    error_type="validation_error",
+                    hint=f"Available options: {', '.join(available)}{suffix}",
+                ) from None
+
+        # For non-dropdown fields, return value and inferred type
+        return value, type_str
+
 
 def validate_field_option_mutual_exclusion(
     *,

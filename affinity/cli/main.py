@@ -163,6 +163,11 @@ def cli(
         raise click.BadParameter("must be positive", param_hint="'--timeout'")
     if max_columns is not None and max_columns <= 0:
         raise click.BadParameter("must be positive", param_hint="'--max-columns'")
+    # If user explicitly provided --env-file (not the default), implicitly enable dotenv.
+    # This follows CLI best practices: explicit file path = user expects it to be used.
+    if env_file != ".env":
+        dotenv = True
+
     # Validate env file exists when dotenv is enabled (Bug #40)
     if dotenv and not Path(env_file).exists():
         raise click.BadParameter(f"file not found: {env_file}", param_hint="'--env-file'")

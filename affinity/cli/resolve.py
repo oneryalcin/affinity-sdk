@@ -218,7 +218,11 @@ def list_fields_for_list(
     list_id: ListId,
     cache: SessionCache | None = None,
 ) -> list[FieldMetadata]:
-    """Get list fields with optional session cache support."""
+    """Get list fields with optional session cache support.
+
+    Uses V1 API (client.fields.list) because V2 API doesn't include dropdown_options
+    which are required for resolving dropdown field values.
+    """
     cache_key = f"list_fields_{list_id}"
 
     if cache and cache.enabled:
@@ -226,7 +230,8 @@ def list_fields_for_list(
         if cached is not None:
             return cached
 
-    fields = client.lists.get_fields(list_id)
+    # Use V1 API because it includes dropdown_options (V2 doesn't)
+    fields = client.fields.list(list_id=list_id)
 
     if cache and cache.enabled:
         cache.set(cache_key, fields)
