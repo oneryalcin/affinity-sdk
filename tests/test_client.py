@@ -840,8 +840,13 @@ class TestErrorHandling:
     @pytest.mark.req("NFR-004")
     def test_not_found_error(self, respx_mock: respx.MockRouter) -> None:
         """Test 404 error handling."""
+        # V2 returns 404
         respx_mock.get("https://api.affinity.co/v2/companies/99999").mock(
             return_value=Response(404, json={"message": "Company not found"})
+        )
+        # V1 fallback also returns 404
+        respx_mock.get("https://api.affinity.co/organizations/99999").mock(
+            return_value=Response(404, json={"message": "Organization not found"})
         )
 
         with pytest.raises(NotFoundError), Affinity(api_key="test-key", max_retries=0) as client:

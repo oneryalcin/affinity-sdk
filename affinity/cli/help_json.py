@@ -96,6 +96,10 @@ def _extract_option(opt: Option, all_opt_names: list[str] | None = None) -> dict
     if opt.multiple:
         result["multiple"] = True
 
+    # Add nargs if option takes multiple values (e.g., --set FIELD VALUE has nargs=2)
+    if hasattr(opt, "nargs") and opt.nargs is not None and opt.nargs > 1:
+        result["nargs"] = opt.nargs
+
     # Add aliases if there are multiple option names (excluding the primary)
     if all_opt_names and len(all_opt_names) > 1:
         # Primary is the longest, aliases are the rest

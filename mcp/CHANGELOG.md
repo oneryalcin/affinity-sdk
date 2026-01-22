@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.13.0] - 2026-01-21
+## [1.13.0] - 2026-01-22
 
 ### Added
 - **New `get-file-url` tool**: Get presigned download URLs for files attached to companies, persons, or opportunities. Returns URL valid for 60 seconds with file metadata (name, size, contentType). Use with WebFetch to read file content.
@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI compatibility**: Updated `CLI_MIN_VERSION` from 0.13.0 to 0.14.0. Required for `files ls`, `file-url`, and `files download --file-id` commands.
 
 ### Fixed
+- **CLI Gateway nargs validation**: Fixed argument validation for options with `nargs > 1` (e.g., `entry field set --set FIELD VALUE`). Previously, `validate_argv` only consumed one value for such options, causing "Too many arguments" errors when the second value was incorrectly treated as a positional argument. Now correctly consumes the number of values specified by `nargs` in the registry schema.
 - **Claude Cowork compatibility**: Fixed "xaffinity: command not found" errors when MCP server is spawned with minimal PATH that excludes version manager shims (pyenv, asdf, mise, pipx). Added runtime CLI detection using mcp-bash recommended pattern (`lib/cli-detect.sh`). Detection searches common shim locations at tool execution time when `$HOME` is available. Users can override with `XAFFINITY_CLI=/path/to/xaffinity`.
 - **Policy error messages**: Improved error messages when tools are blocked by policy - now explains whether tool is missing from allowlist or blocked by read-only mode.
 - **Bash 3.x compatibility**: Fixed `apply_limit_cap` usage comment to use while-loop pattern instead of `mapfile` (not available in macOS default Bash 3.2).

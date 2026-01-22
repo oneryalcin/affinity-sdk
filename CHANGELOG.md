@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## 0.14.0 - 2026-01-21
+## 0.14.0 - 2026-01-22
 
 ### Added
 - CLI: `company files ls`, `person files ls`, `opportunity files ls` commands to list files attached to entities without downloading them. Supports pagination (`--page-size`, `--cursor`, `--max-results`, `--all`), selector resolution (ID, URL, name, domain, email), and MCP safety limits.
@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - CLI: `files dump` renamed to `files download` for clarity.
+
+### Fixed
+- SDK: `CompanyService.get()` and `PersonService.get()` now automatically fall back to V1 API when V2 returns 404. This handles V1→V2 eventual consistency issues where a search (`company ls --query`, `person ls --query`) finds an entity via V1, but a subsequent `get` fails because V2 hasn't synced yet. The fallback is transparent and requires no code changes.
 
 ### Known Issues
 - MCP: `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects all Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). Workaround: Copy URL to browser, or use CLI directly with `files download --file-id`.

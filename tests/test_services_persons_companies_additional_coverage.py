@@ -2874,3 +2874,312 @@ def test_company_service_get_associated_opportunity_ids_batch_success() -> None:
         assert result[CompanyId(200)] == [OpportunityId(30)]
     finally:
         http.close()
+
+
+# =============================================================================
+# V1 Fallback Tests (V1→V2 eventual consistency handling)
+# =============================================================================
+
+
+def test_company_service_get_v1_fallback_on_v2_404() -> None:
+    """Test that company get() falls back to V1 API when V2 returns 404."""
+    calls: dict[str, int] = {"v2": 0, "v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        # V2 returns 404
+        if request.method == "GET" and url.path == "/v2/companies/123":
+            calls["v2"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        # V1 returns the company (eventual consistency - V1 has it, V2 doesn't yet)
+        if request.method == "GET" and url.path == "/organizations/123":
+            calls["v1"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 123,
+                    "name": "Acme Corp",
+                    "domain": "acme.com",
+                },
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        company = svc.get(CompanyId(123))
+
+        # Verify V1 fallback was used
+        assert calls["v2"] == 1  # V2 was tried first
+        assert calls["v1"] == 1  # V1 fallback was used
+        assert company.id == CompanyId(123)
+        assert company.name == "Acme Corp"
+    finally:
+        http.close()
+
+
+def test_company_service_get_v1_fallback_skipped_when_both_fail() -> None:
+    """Test that original V2 404 is raised when V1 also returns 404."""
+    from affinity.exceptions import NotFoundError
+
+    calls: dict[str, int] = {"v2": 0, "v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        if request.method == "GET" and url.path == "/v2/companies/999":
+            calls["v2"] += 1
+            return httpx.Response(404, json={"message": "V2 not found"}, request=request)
+
+        if request.method == "GET" and url.path == "/organizations/999":
+            calls["v1"] += 1
+            return httpx.Response(404, json={"message": "V1 not found"}, request=request)
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        with pytest.raises(NotFoundError):
+            svc.get(CompanyId(999))
+
+        # Verify both APIs were tried
+        assert calls["v2"] == 1
+        assert calls["v1"] == 1
+    finally:
+        http.close()
+
+
+def test_company_service_get_v1_fallback_skipped_with_interaction_dates() -> None:
+    """Test that V1 fallback is skipped when with_interaction_dates=True (already using V1)."""
+    from affinity.exceptions import NotFoundError
+
+    calls: dict[str, int] = {"v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        # V1 path (with_interaction_dates) returns 404
+        if request.method == "GET" and url.path == "/organizations/123":
+            calls["v1"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = CompanyService(http)
+        with pytest.raises(NotFoundError):
+            svc.get(CompanyId(123), with_interaction_dates=True)
+
+        # V1 was called once (no duplicate fallback attempt)
+        assert calls["v1"] == 1
+    finally:
+        http.close()
+
+
+def test_person_service_get_v1_fallback_on_v2_404() -> None:
+    """Test that person get() falls back to V1 API when V2 returns 404."""
+    calls: dict[str, int] = {"v2": 0, "v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        # V2 returns 404
+        if request.method == "GET" and url.path == "/v2/persons/456":
+            calls["v2"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        # V1 returns the person
+        if request.method == "GET" and url.path == "/persons/456":
+            calls["v1"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 456,
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "primary_email": "jane@example.com",
+                    "emails": ["jane@example.com"],
+                    "type": 0,  # external
+                },
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        person = svc.get(PersonId(456))
+
+        # Verify V1 fallback was used
+        assert calls["v2"] == 1
+        assert calls["v1"] == 1
+        assert person.id == PersonId(456)
+        assert person.first_name == "Jane"
+    finally:
+        http.close()
+
+
+def test_person_service_get_v1_fallback_skipped_with_include_field_values() -> None:
+    """Test that V1 fallback is skipped when include_field_values=True (already using V1)."""
+    from affinity.exceptions import NotFoundError
+
+    calls: dict[str, int] = {"v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        # V1 path returns 404
+        if request.method == "GET" and url.path == "/persons/789":
+            calls["v1"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    http = HTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = PersonService(http)
+        with pytest.raises(NotFoundError):
+            svc.get(PersonId(789), include_field_values=True)
+
+        # V1 was called once (no duplicate fallback attempt)
+        assert calls["v1"] == 1
+    finally:
+        http.close()
+
+
+@pytest.mark.asyncio
+async def test_async_company_service_get_v1_fallback_on_v2_404() -> None:
+    """Test that async company get() falls back to V1 API when V2 returns 404."""
+    calls: dict[str, int] = {"v2": 0, "v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        if request.method == "GET" and url.path == "/v2/companies/123":
+            calls["v2"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        if request.method == "GET" and url.path == "/organizations/123":
+            calls["v1"] += 1
+            return httpx.Response(
+                200,
+                json={"id": 123, "name": "Acme Corp", "domain": "acme.com"},
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = AsyncCompanyService(client)
+        company = await svc.get(CompanyId(123))
+
+        assert calls["v2"] == 1
+        assert calls["v1"] == 1
+        assert company.id == CompanyId(123)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_person_service_get_v1_fallback_on_v2_404() -> None:
+    """Test that async person get() falls back to V1 API when V2 returns 404."""
+    calls: dict[str, int] = {"v2": 0, "v1": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = request.url
+
+        if request.method == "GET" and url.path == "/v2/persons/456":
+            calls["v2"] += 1
+            return httpx.Response(404, json={"message": "not found"}, request=request)
+
+        if request.method == "GET" and url.path == "/persons/456":
+            calls["v1"] += 1
+            return httpx.Response(
+                200,
+                json={
+                    "id": 456,
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "primary_email": "jane@example.com",
+                    "emails": ["jane@example.com"],
+                    "type": 0,
+                },
+                request=request,
+            )
+
+        return httpx.Response(404, json={"message": "not found"}, request=request)
+
+    client = AsyncHTTPClient(
+        ClientConfig(
+            api_key="k",
+            v1_base_url="https://v1.example",
+            v2_base_url="https://v2.example/v2",
+            max_retries=0,
+            async_transport=httpx.MockTransport(handler),
+        )
+    )
+    try:
+        svc = AsyncPersonService(client)
+        person = await svc.get(PersonId(456))
+
+        assert calls["v2"] == 1
+        assert calls["v1"] == 1
+        assert person.id == PersonId(456)
+    finally:
+        await client.close()

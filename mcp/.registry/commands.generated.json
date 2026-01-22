@@ -84,7 +84,8 @@
           "type": "string",
           "required": false,
           "help": "Set field value (repeatable). Use two args: FIELD VALUE.",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         },
         "--set-json": {
           "type": "string",
@@ -336,10 +337,10 @@
       "examples": [
         "company get 12345",
         "company get domain:wellybox.com",
-        "company get domain:wellybox.com --expand list-entries",
+        "company get 12345 --expand list-entries",
         "company get 12345 --with-interaction-dates"
       ],
-      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to check which lists the company is on (efficient single-entity lookup). Use --with-interaction-dates for last/next meeting dates and email activity.",
       "relatedCommands": [
         "company ls",
         "company field"
@@ -675,7 +676,8 @@
           "type": "string",
           "required": false,
           "help": "Append to multi-value field (repeatable). Adds without replacing.",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         },
         "--get": {
           "type": "string",
@@ -687,7 +689,8 @@
           "type": "string",
           "required": false,
           "help": "Set field value (repeatable). Replaces existing value(s).",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         },
         "--set-json": {
           "type": "string",
@@ -704,7 +707,8 @@
           "type": "string",
           "required": false,
           "help": "Unset specific value from multi-value field (repeatable).",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         }
       },
       "positionals": [
@@ -1959,7 +1963,8 @@
           "type": "string",
           "required": false,
           "help": "Set field value (repeatable). Use two args: FIELD VALUE.",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         },
         "--set-json": {
           "type": "string",
@@ -2391,7 +2396,8 @@
           "type": "string",
           "required": false,
           "help": "Set field value (repeatable). Use two args: FIELD VALUE.",
-          "multiple": true
+          "multiple": true,
+          "nargs": 2
         },
         "--set-json": {
           "type": "string",
@@ -2645,7 +2651,7 @@
         "person get 12345 --expand list-entries",
         "person get 12345 --with-interaction-dates"
       ],
-      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries to check which lists the person is on (efficient single-entity lookup). Use --with-interaction-dates for last/next meeting dates and email activity.",
       "relatedCommands": [
         "person ls",
         "person field"

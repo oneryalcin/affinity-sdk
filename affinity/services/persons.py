@@ -353,6 +353,16 @@ class PersonService:
                 if attempt < attempts - 1:  # Don't sleep after last attempt
                     time.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
 
+        # V1 fallback: If V2 returned 404, try V1 API (handles V1→V2 sync delays)
+        # Skip if already using V1 path (include_field_values or with_interaction_dates)
+        if last_error is not None and not include_field_values and not with_interaction_dates:
+            try:
+                v1_data = self._client.get(f"/persons/{person_id}", v1=True)
+                normalized = _normalize_v1_person_response(v1_data)
+                return Person.model_validate(normalized)
+            except NotFoundError:
+                pass  # V1 also failed, raise original V2 error
+
         raise last_error  # type: ignore[misc]
 
     def _get_impl(
@@ -1195,6 +1205,16 @@ class AsyncPersonService:
                 last_error = e
                 if attempt < attempts - 1:  # Don't sleep after last attempt
                     await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+
+        # V1 fallback: If V2 returned 404, try V1 API (handles V1→V2 sync delays)
+        # Skip if already using V1 path (include_field_values or with_interaction_dates)
+        if last_error is not None and not include_field_values and not with_interaction_dates:
+            try:
+                v1_data = await self._client.get(f"/persons/{person_id}", v1=True)
+                normalized = _normalize_v1_person_response(v1_data)
+                return Person.model_validate(normalized)
+            except NotFoundError:
+                pass  # V1 also failed, raise original V2 error
 
         raise last_error  # type: ignore[misc]
 

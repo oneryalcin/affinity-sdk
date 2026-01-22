@@ -48,28 +48,26 @@ When an entity is added to a list, it becomes a **List Entry** with field values
 
 ### Checking List Membership
 
-To check if a company/person is in a specific list, use `--expand list_entries`:
+To check if a company/person is in a specific list, use `--expand list-entries`:
 
 ```bash
-company get 12345 --expand list_entries
-person get john@example.com --expand list_entries
+company get 12345 --expand list-entries
+person get john@example.com --expand list-entries
 ```
 
-Response includes all lists the entity belongs to:
+Response includes all lists the entity belongs to in `data.listEntries`:
 ```json
 {
   "data": {
-    "id": 12345,
-    "name": "Acme Corp",
-    "list_entries": [
-      { "id": 99999, "list_id": 500, "list": { "id": 500, "name": "Dealflow" } },
-      { "id": 99998, "list_id": 501, "list": { "id": 501, "name": "Portfolio" } }
+    "company": { "id": 12345, "name": "Acme Corp" },
+    "listEntries": [
+      { "id": 99999, "listId": 41780, "fields": [...] }
     ]
   }
 }
 ```
 
-Check if `data.list_entries[].list.name` matches your target list (e.g., "Dealflow").
+Check if `data.listEntries` is non-empty to verify list membership. Use `--list "Dealflow"` to filter to a specific list.
 
 **Why this is efficient**: Fetches one entity's data instead of scanning an entire list. Use this for single lookups. For batch checks, use `query` with a `companyId IN [...]` filter.
 

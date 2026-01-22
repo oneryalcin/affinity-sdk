@@ -271,9 +271,10 @@ validate_argv() {
             local primary_flag
             primary_flag=$(printf '%s' "$alias_map" | jq_tool -r --arg f "$flag_name" '.[$f] // $f')
 
-            # Get flag type from schema (using primary flag name)
-            local flag_type
+            # Get flag type and nargs from schema (using primary flag name)
+            local flag_type flag_nargs
             flag_type=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$primary_flag" '.parameters[$f].type // "string"')
+            flag_nargs=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$primary_flag" '.parameters[$f].nargs // 1')
 
             if [[ "$flag_type" == "flag" ]]; then
                 # Boolean flag (no value expected) - reject ANY use of = syntax
@@ -283,45 +284,66 @@ validate_argv() {
                     return 1
                 fi
             else
-                # Value-taking flag
+                # Value-taking flag - consume nargs values
                 if [[ "$has_equals" == "false" ]]; then
-                    # Value should be next argument
-                    if [[ $((i + 1)) -ge $argc ]]; then
-                        mcp_error "validation_error" "Flag $flag_name requires a value" \
-                            --hint "Add a value after $flag_name or use $flag_name=value"
+                    # Check we have enough remaining arguments
+                    if [[ $((i + flag_nargs)) -gt $argc ]]; then
+                        if [[ "$flag_nargs" -gt 1 ]]; then
+                            mcp_error "validation_error" "Flag $flag_name requires $flag_nargs values" \
+                                --hint "Provide $flag_nargs values after $flag_name"
+                        else
+                            mcp_error "validation_error" "Flag $flag_name requires a value" \
+                                --hint "Add a value after $flag_name or use $flag_name=value"
+                        fi
                         return 1
                     fi
-                    local next_arg="${argv[$((i + 1))]}"
-                    # Only reject dash-leading values if they match a known flag
-                    if [[ "$next_arg" == -* ]]; then
-                        local next_flag_name="${next_arg%%=*}"
-                        if printf '%s' "$allowed_flags" | grep -qxF -- "$next_flag_name"; then
-                            mcp_error "validation_error" "Flag $flag_name requires a value, got another flag" \
-                                --hint "Add a value between $flag_name and $next_arg"
-                            return 1
+
+                    # Consume nargs values (skip over them)
+                    local val_idx
+                    for ((val_idx = 1; val_idx <= flag_nargs; val_idx++)); do
+                        local next_arg="${argv[$((i + val_idx))]}"
+                        # Only reject dash-leading values if they match a known flag
+                        if [[ "$next_arg" == -* ]]; then
+                            local next_flag_name="${next_arg%%=*}"
+                            if printf '%s' "$allowed_flags" | grep -qxF -- "$next_flag_name"; then
+                                if [[ "$flag_nargs" -gt 1 ]]; then
+                                    mcp_error "validation_error" "Flag $flag_name requires $flag_nargs values, got $((val_idx - 1)) before another flag" \
+                                        --hint "Provide $flag_nargs values after $flag_name"
+                                else
+                                    mcp_error "validation_error" "Flag $flag_name requires a value, got another flag" \
+                                        --hint "Add a value between $flag_name and $next_arg"
+                                fi
+                                return 1
+                            fi
                         fi
-                    fi
-                    flag_value="$next_arg"
-                    ((i++))
+                        # For single-value flags, capture for type validation
+                        if [[ "$flag_nargs" -eq 1 ]]; then
+                            flag_value="$next_arg"
+                        fi
+                    done
+                    # Skip past all consumed values
+                    ((i += flag_nargs))
                 fi
 
-                # Type validation
-                case "$flag_type" in
-                    int|integer)
-                        if ! [[ "$flag_value" =~ ^-?[0-9]+$ ]]; then
-                            mcp_error "validation_error" "Flag $flag_name requires integer, got: $flag_value" \
-                                --hint "Provide a numeric value like $flag_name=10"
-                            return 1
-                        fi
-                        ;;
-                    bool|boolean)
-                        if ! [[ "$flag_value" =~ ^(true|false)$ ]]; then
-                            mcp_error "validation_error" "Flag $flag_name requires true/false, got: $flag_value" \
-                                --hint "Use $flag_name=true or $flag_name=false"
-                            return 1
-                        fi
-                        ;;
-                esac
+                # Type validation (only for single-value flags)
+                if [[ "$flag_nargs" -eq 1 ]]; then
+                    case "$flag_type" in
+                        int|integer)
+                            if ! [[ "$flag_value" =~ ^-?[0-9]+$ ]]; then
+                                mcp_error "validation_error" "Flag $flag_name requires integer, got: $flag_value" \
+                                    --hint "Provide a numeric value like $flag_name=10"
+                                return 1
+                            fi
+                            ;;
+                        bool|boolean)
+                            if ! [[ "$flag_value" =~ ^(true|false)$ ]]; then
+                                mcp_error "validation_error" "Flag $flag_name requires true/false, got: $flag_value" \
+                                    --hint "Use $flag_name=true or $flag_name=false"
+                                return 1
+                            fi
+                            ;;
+                    esac
+                fi
             fi
 
             # Check for duplicate flags
