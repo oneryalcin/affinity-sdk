@@ -31,6 +31,7 @@ from ..results import CommandContext
 from ..runner import CommandOutput, run_command
 from ..serialization import serialize_model_for_cli
 from ._entity_files_dump import download_single_file, dump_entity_files_bundle
+from ._entity_files_read import parse_size, read_file_content
 from ._list_entry_fields import (
     ListEntryFieldsScope,
     build_list_entry_field_rows,
@@ -1113,6 +1114,56 @@ def company_files_ls(
         )
 
     run_command(ctx_obj, command="company files ls", fn=fn)
+
+
+@category("read")
+@company_files_group.command(name="read", cls=RichCommand)
+@click.argument("company_id", type=int)
+@click.option("--file-id", type=int, required=True, help="File ID to read.")
+@click.option(
+    "--offset",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Byte offset to start reading.",
+)
+@click.option(
+    "--limit",
+    type=str,
+    default="1MB",
+    show_default=True,
+    help="Max bytes to read (e.g., '1MB', '500KB', '1048576').",
+)
+@output_options
+@click.pass_obj
+def company_files_read(
+    ctx: CLIContext,
+    company_id: int,
+    *,
+    file_id: int,
+    offset: int,
+    limit: str,
+) -> None:
+    """Read file content with chunking support.
+
+    Returns base64-encoded content. For large files, use --offset and --limit
+    to fetch in chunks. The response includes 'nextOffset' for easy iteration.
+
+    Examples:
+
+    - `xaffinity company files read 123 --file-id 456`
+    - `xaffinity company files read 123 --file-id 456 --offset 1048576`
+    - `xaffinity company files read 123 --file-id 456 --limit 500KB`
+    """
+    limit_bytes = parse_size(limit)
+    read_file_content(
+        ctx=ctx,
+        entity_type="company",
+        entity_id=company_id,
+        file_id=file_id,
+        offset=offset,
+        limit=limit_bytes,
+    )
 
 
 @category("read")

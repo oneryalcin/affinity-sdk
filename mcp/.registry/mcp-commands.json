@@ -49,16 +49,26 @@
       "relatedCommands": ["person get", "person ls", "task wait"]
     },
     "person files ls": {
-      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'person files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "examples": ["person files ls 67890", "person files ls \"email:john@example.com\" --max-results 10"],
-      "relatedCommands": ["person get", "person files upload"],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "relatedCommands": ["person get", "person files read", "person files upload"],
+      "mcpNote": "After listing, use 'person files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
         "defaultLimit": 1000,
         "maxLimit": 10000
       }
+    },
+    "person files read": {
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "examples": [
+        "person files read 67890 --file-id 123456",
+        "person files read 67890 --file-id 123456 --offset 0 --limit 1MB",
+        "person files read 67890 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "relatedCommands": ["person files ls", "person get"],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL."
     },
     "person files upload": {
       "whenToUse": "Upload files/documents to a person.",
@@ -109,16 +119,26 @@
       "relatedCommands": ["company get", "company ls", "task wait"]
     },
     "company files ls": {
-      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'company files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "examples": ["company files ls 12345", "company files ls \"name:Acme Corp\" --max-results 10"],
-      "relatedCommands": ["company get", "company files upload"],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "relatedCommands": ["company get", "company files read", "company files upload"],
+      "mcpNote": "After listing, use 'company files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
         "defaultLimit": 1000,
         "maxLimit": 10000
       }
+    },
+    "company files read": {
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "examples": [
+        "company files read 12345 --file-id 123456",
+        "company files read 12345 --file-id 123456 --offset 0 --limit 1MB",
+        "company files read 12345 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "relatedCommands": ["company files ls", "company get"],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL."
     },
     "company files upload": {
       "whenToUse": "Upload files/documents to a company.",
@@ -156,16 +176,26 @@
       "relatedCommands": ["opportunity get", "field ls"]
     },
     "opportunity files ls": {
-      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'opportunity files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "examples": ["opportunity files ls 98765"],
-      "relatedCommands": ["opportunity get", "opportunity files upload"],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "relatedCommands": ["opportunity get", "opportunity files read", "opportunity files upload"],
+      "mcpNote": "After listing, use 'opportunity files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
         "defaultLimit": 1000,
         "maxLimit": 10000
       }
+    },
+    "opportunity files read": {
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "examples": [
+        "opportunity files read 98765 --file-id 123456",
+        "opportunity files read 98765 --file-id 123456 --offset 0 --limit 1MB",
+        "opportunity files read 98765 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "relatedCommands": ["opportunity files ls", "opportunity get"],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL."
     },
     "opportunity files upload": {
       "whenToUse": "Upload files/documents to an opportunity.",

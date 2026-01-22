@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`files read` commands**: `company files read`, `person files read`, `opportunity files read` now discoverable via MCP. Returns base64-encoded file content with chunking support (`--offset`, `--limit`). Use this instead of `get-file-url` when WebFetch is blocked (Claude Desktop/Cowork).
+
+### Changed
+- **Updated data-model documentation**: "Reading Files" section now presents both options (`files read` vs `get-file-url`) with comparison table showing when to use each approach.
+- **Updated `files ls` commands**: Now recommend `files read` for Claude Desktop/Cowork environments where presigned URLs are blocked.
+
+### Fixed
+- **Claude Desktop/Cowork file access**: The `files read` command provides a workaround for the domain sandbox restriction that blocks `userfiles.affinity.co`. Content is returned inline as base64, bypassing WebFetch.
+
 ## [1.13.0] - 2026-01-22
 
 ### Added
@@ -26,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bash 3.x compatibility**: Fixed `apply_limit_cap` usage comment to use while-loop pattern instead of `mapfile` (not available in macOS default Bash 3.2).
 
 ### Known Issues
-- **Claude Desktop domain sandbox**: The `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects ALL Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). **Workarounds**: (1) Copy URL to browser, (2) Use CLI directly with `files download --file-id`, (3) A future `files read` command will return content inline, bypassing WebFetch.
+- **Claude Desktop domain sandbox**: The `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects ALL Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). **Workaround**: Use `files read` command (returns content inline as base64), copy URL to browser, or use CLI directly with `files download --file-id`.
 
 ## [1.12.1] - 2026-01-21
 

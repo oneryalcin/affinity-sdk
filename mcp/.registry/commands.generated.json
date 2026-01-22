@@ -168,12 +168,13 @@
         "company files ls 12345",
         "company files ls \"name:Acme Corp\" --max-results 10"
       ],
-      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to a company. Use this first to get file IDs, then use 'company files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "relatedCommands": [
         "company get",
+        "company files read",
         "company files upload"
       ],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpNote": "After listing, use 'company files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
@@ -194,6 +195,56 @@
           "--all",
           "-A"
         ]
+      }
+    },
+    {
+      "name": "company files read",
+      "description": "Read file content with chunking support.",
+      "category": "read",
+      "destructive": false,
+      "progressCapable": false,
+      "parameters": {
+        "--file-id": {
+          "type": "int",
+          "required": true,
+          "help": "File ID to read."
+        },
+        "--limit": {
+          "type": "string",
+          "required": false,
+          "help": "Max bytes to read (e.g., '1MB', '500KB', '1048576')."
+        },
+        "--offset": {
+          "type": "int",
+          "required": false,
+          "help": "Byte offset to start reading."
+        }
+      },
+      "positionals": [
+        {
+          "name": "COMPANY_ID",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "examples": [
+        "company files read 12345 --file-id 123456",
+        "company files read 12345 --file-id 123456 --offset 0 --limit 1MB",
+        "company files read 12345 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "relatedCommands": [
+        "company files ls",
+        "company get"
+      ],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL.",
+      "limitConfig": {
+        "flag": "--limit",
+        "flagAliases": [
+          "--limit"
+        ],
+        "default": 1000,
+        "max": 10000
       }
     },
     {
@@ -2046,12 +2097,13 @@
       "examples": [
         "opportunity files ls 98765"
       ],
-      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to an opportunity. Use this first to get file IDs, then use 'opportunity files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "relatedCommands": [
         "opportunity get",
+        "opportunity files read",
         "opportunity files upload"
       ],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpNote": "After listing, use 'opportunity files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
@@ -2072,6 +2124,56 @@
           "--all",
           "-A"
         ]
+      }
+    },
+    {
+      "name": "opportunity files read",
+      "description": "Read file content with chunking support.",
+      "category": "read",
+      "destructive": false,
+      "progressCapable": false,
+      "parameters": {
+        "--file-id": {
+          "type": "int",
+          "required": true,
+          "help": "File ID to read."
+        },
+        "--limit": {
+          "type": "string",
+          "required": false,
+          "help": "Max bytes to read (e.g., '1MB', '500KB', '1048576')."
+        },
+        "--offset": {
+          "type": "int",
+          "required": false,
+          "help": "Byte offset to start reading."
+        }
+      },
+      "positionals": [
+        {
+          "name": "OPPORTUNITY_ID",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "examples": [
+        "opportunity files read 98765 --file-id 123456",
+        "opportunity files read 98765 --file-id 123456 --offset 0 --limit 1MB",
+        "opportunity files read 98765 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "relatedCommands": [
+        "opportunity files ls",
+        "opportunity get"
+      ],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL.",
+      "limitConfig": {
+        "flag": "--limit",
+        "flagAliases": [
+          "--limit"
+        ],
+        "default": 1000,
+        "max": 10000
       }
     },
     {
@@ -2480,12 +2582,13 @@
         "person files ls 67890",
         "person files ls \"email:john@example.com\" --max-results 10"
       ],
-      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'get-file-url' tool to get presigned URLs for reading file content.",
+      "whenToUse": "List files attached to a person. Use this first to get file IDs, then use 'person files read' to read file content inline (works in Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "relatedCommands": [
         "person get",
+        "person files read",
         "person files upload"
       ],
-      "mcpNote": "After listing, use 'get-file-url' tool with fileId from data[].id to get presigned URL, then WebFetch to read content.",
+      "mcpNote": "After listing, use 'person files read' with fileId to read content inline (recommended for Claude Desktop/Cowork), or 'get-file-url' for presigned URLs.",
       "mcpBehavior": {
         "limitEnforced": true,
         "allFlagBlocked": true,
@@ -2506,6 +2609,56 @@
           "--all",
           "-A"
         ]
+      }
+    },
+    {
+      "name": "person files read",
+      "description": "Read file content with chunking support.",
+      "category": "read",
+      "destructive": false,
+      "progressCapable": false,
+      "parameters": {
+        "--file-id": {
+          "type": "int",
+          "required": true,
+          "help": "File ID to read."
+        },
+        "--limit": {
+          "type": "string",
+          "required": false,
+          "help": "Max bytes to read (e.g., '1MB', '500KB', '1048576')."
+        },
+        "--offset": {
+          "type": "int",
+          "required": false,
+          "help": "Byte offset to start reading."
+        }
+      },
+      "positionals": [
+        {
+          "name": "PERSON_ID",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "examples": [
+        "person files read 67890 --file-id 123456",
+        "person files read 67890 --file-id 123456 --offset 0 --limit 1MB",
+        "person files read 67890 --file-id 123456 --offset 1048576 --limit 500KB"
+      ],
+      "whenToUse": "Read file content inline with chunking support. Returns base64-encoded content. Use this when Claude Desktop/Cowork blocks presigned URLs (userfiles.affinity.co). For large files, use --offset and --limit to fetch in chunks.",
+      "relatedCommands": [
+        "person files ls",
+        "person get"
+      ],
+      "mcpNote": "Response includes hasMore and nextOffset for chunked downloads. LLMs with Python sandbox can reassemble chunks and process with tools like PyPDF2, pandas, PIL.",
+      "limitConfig": {
+        "flag": "--limit",
+        "flagAliases": [
+          "--limit"
+        ],
+        "default": 1000,
+        "max": 10000
       }
     },
     {
@@ -3535,5 +3688,5 @@
       ]
     }
   ],
-  "total": 62
+  "total": 65
 }

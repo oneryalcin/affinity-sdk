@@ -340,7 +340,7 @@ Task statuses: `pending`, `in_progress`, `success`, `failed`
 
 ## Reading Files
 
-Files can be attached to companies, persons, and opportunities. To read file content:
+Files can be attached to companies, persons, and opportunities.
 
 ### Step 1: List files to get file IDs
 ```bash
@@ -351,42 +351,102 @@ opportunity files ls 98765
 
 This returns file metadata including `id` in `data[].id`.
 
-### Step 2: Get presigned URL
-Use the `get-file-url` tool with the file ID:
+### Step 2: Choose how to read file content
+
+Two options are available - choose based on your environment:
+
+| Method | Use When | Pros | Cons |
+|--------|----------|------|------|
+| `files read` | Claude Desktop, Claude Cowork, or any sandboxed environment | Works everywhere, supports chunking | Base64 encoding adds ~33% overhead |
+| `get-file-url` | Claude Code, API clients, browsers | Direct URL access, no encoding overhead | Blocked in Claude Desktop/Cowork |
+
+### Option A: `files read` (Recommended for MCP)
+
+Returns base64-encoded content inline. Works in all environments including Claude Desktop/Cowork.
+
+```bash
+company files read 306016520 --file-id 9192757
+person files read 67890 --file-id 9192758
+opportunity files read 98765 --file-id 9192759
 ```
+
+**Response structure:**
+```json
+{
+  "data": {
+    "fileId": 9192757,
+    "name": "pitch-deck.pdf",
+    "size": 5242880,
+    "contentType": "application/pdf",
+    "offset": 0,
+    "length": 1048576,
+    "hasMore": true,
+    "nextOffset": 1048576,
+    "encoding": "base64",
+    "content": "JVBERi0xLjQK..."
+  }
+}
+```
+
+**Chunking for large files:**
+
+Default limit is 1MB per request. For larger files, use `--offset` to fetch chunks:
+
+```bash
+# First chunk (offset=0, default)
+company files read 123 --file-id 456
+
+# Next chunk (use nextOffset from previous response)
+company files read 123 --file-id 456 --offset 1048576
+
+# Custom chunk size
+company files read 123 --file-id 456 --limit 500KB
+```
+
+**Reassembling in Python sandbox:**
+```python
+import base64
+
+offset = 0
+with open('/tmp/file.pdf', 'wb') as f:
+    while True:
+        # Call via execute-read-command
+        result = execute_read_command(f"company files read 123 --file-id 456 --offset {offset}")
+        f.write(base64.b64decode(result['data']['content']))
+        if not result['data']['hasMore']:
+            break
+        offset = result['data']['nextOffset']
+
+# Process with Python tools
+import PyPDF2
+reader = PyPDF2.PdfReader('/tmp/file.pdf')
+```
+
+### Option B: `get-file-url` (Presigned URL)
+
+Returns a presigned S3 URL valid for 60 seconds. More efficient for direct downloads but **blocked in Claude Desktop/Cowork**.
+
+```bash
 get-file-url fileId=9192757
 ```
 
-This returns a presigned URL valid for **60 seconds** that requires no authentication.
+**Response:**
+```json
+{
+  "fileId": 9192757,
+  "name": "pitch-deck.pdf",
+  "size": 5242880,
+  "url": "https://userfiles.affinity.co/...",
+  "expiresIn": 60
+}
+```
 
-### Step 3: Fetch content
-Use WebFetch immediately with the presigned URL to retrieve the file content.
+**Use cases:**
+- Claude Code: Use WebFetch with the returned URL
+- CLI/scripts: Use `curl` or download directly
+- Browser: Copy URL and open in browser
 
-### ⚠️ Claude Desktop Limitation
-
-**WebFetch cannot access `userfiles.affinity.co`** due to Claude Desktop's domain sandbox. This limitation applies to ALL Claude Desktop users:
-
-- Adding the domain to **Settings → Capabilities → Additional allowed domains** does NOT work
-- Setting **Domain allowlist** to **"All domains"** does NOT work
-- This is a known platform limitation (not an xaffinity issue)
-
-**Related bug reports:**
-- [#19087 - Additional allowed domains not applied](https://github.com/anthropics/claude-code/issues/19087)
-- [#11897 - Domain allowlist issues](https://github.com/anthropics/claude-code/issues/11897)
-
-**Workarounds:**
-1. **Copy the URL** returned by `get-file-url` and open in a browser
-2. Use CLI directly (not via MCP) with `files download --file-id`
-3. **Coming soon**: `files read` command will return content inline, bypassing WebFetch entirely
-
-### Why presigned URLs?
-- Avoids base64 encoding overhead (33% larger)
-- Content goes directly to Claude's multimodal processing
-- Better for large files (PDFs, images)
-
-### File size considerations
-- Files up to 10MB can be fetched via presigned URL
-- Larger files may need to be processed in chunks or downloaded locally
+**⚠️ Claude Desktop/Cowork limitation:** WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. Use `files read` instead.
 
 ---
 

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI: `company files read`, `person files read`, `opportunity files read` commands to read file content with chunking support. Returns base64-encoded content with metadata (`size`, `offset`, `length`, `hasMore`, `nextOffset`). Use `--offset` and `--limit` to fetch large files in chunks. Default chunk size is 1MB.
+
 ### Fixed
 - CLI: `--env-file` now implicitly enables dotenv loading when an explicit file path is provided (not the default `.env`). Previously, using `--env-file .sandbox.env` without `--dotenv` would silently ignore the file.
 - CLI: Fixed dropdown field value resolution in `entry field --set` and `--append` commands. The V2 API requires `{"dropdownOptionId": ID}` format, but the CLI was sending raw values. Now dropdown text (e.g., "In Progress") or numeric IDs are properly resolved to the V2 API format.
@@ -28,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SDK: `CompanyService.get()` and `PersonService.get()` now automatically fall back to V1 API when V2 returns 404. This handles V1→V2 eventual consistency issues where a search (`company ls --query`, `person ls --query`) finds an entity via V1, but a subsequent `get` fails because V2 hasn't synced yet. The fallback is transparent and requires no code changes.
 
 ### Known Issues
-- MCP: `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects all Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). Workaround: Copy URL to browser, or use CLI directly with `files download --file-id`.
+- MCP: `get-file-url` tool returns valid presigned URLs, but Claude Desktop's WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. This affects all Claude Desktop users - neither "Additional allowed domains" nor "All domains" settings work around this limitation ([#19087](https://github.com/anthropics/claude-code/issues/19087), [#11897](https://github.com/anthropics/claude-code/issues/11897)). Workaround: Use `files read` command (returns content inline), copy URL to browser, or use CLI directly with `files download --file-id`.
 
 ## 0.13.1 - 2026-01-21
 
