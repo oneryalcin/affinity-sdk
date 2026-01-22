@@ -676,4 +676,6 @@ class TestMcpWarningDifferentiation:
         )
         # MCP limit decorator raises UsageError which bypasses JSON formatter
         assert result.exit_code == 2
-        assert "--all is not allowed via MCP" in result.output
+        # Rich may wrap text across lines; normalize whitespace for assertion
+        normalized_output = " ".join(result.output.split())
+        assert "--all is not allowed via MCP" in normalized_output
