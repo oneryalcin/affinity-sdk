@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import click
 import pytest
 
 pytest.importorskip("rich_click")
@@ -676,6 +677,7 @@ class TestMcpWarningDifferentiation:
         )
         # MCP limit decorator raises UsageError which bypasses JSON formatter
         assert result.exit_code == 2
-        # Rich may wrap text across lines; normalize whitespace for assertion
-        normalized_output = " ".join(result.output.split())
+        # Strip ANSI codes and normalize whitespace (Rich formatting varies by env)
+        clean_output = click.unstyle(result.output)
+        normalized_output = " ".join(clean_output.split())
         assert "--all is not allowed via MCP" in normalized_output
