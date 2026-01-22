@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Updated data-model documentation**: "Reading Files" section now presents both options (`files read` vs `get-file-url`) with comparison table showing when to use each approach.
 - **Updated `files ls` commands**: Now recommend `files read` for Claude Desktop/Cowork environments where presigned URLs are blocked.
+- **Updated mcp-bash framework to v0.13.0**: Brings `timeoutHint` support for actionable timeout messages and improved activity detection (any pattern match extends timeout, not just progress fields).
+- **Added `timeoutHint` to timeout-prone tools**: `query`, `execute-read-command`, `execute-write-command`, and `get-entity-dossier` now provide actionable guidance when tools timeout, helping LLMs adjust their approach (e.g., "Use dryRun=true first", "Reduce batch size").
+
 
 ### Fixed
 - **Claude Desktop/Cowork file access**: The `files read` command provides a workaround for the domain sandbox restriction that blocks `userfiles.affinity.co`. Content is returned inline as base64, bypassing WebFetch.

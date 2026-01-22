@@ -42,5 +42,6 @@
     "readOnlyHint": true,
     "openWorldHint": true
   },
-  "timeoutSecs": 45
+  "timeoutSecs": 45,
+  "timeoutHint": "Try fetching with fewer includes (e.g., omit interactions or notes for faster response)."
 }

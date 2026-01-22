@@ -27,6 +27,7 @@
     }
   },
   "timeoutSecs": 30,
+  "timeoutHint": "For batch creates, reduce batch size. Check network connectivity if retries exhaust.",
   "annotations": {
     "readOnlyHint": false,
     "destructiveHint": true,

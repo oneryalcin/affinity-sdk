@@ -29,6 +29,7 @@
   "timeoutSecs": 120,
   "maxTimeoutSecs": 300,
   "progressExtendsTimeout": true,
+  "timeoutHint": "For large exports, use --limit to reduce batch size. Avoid --expand/--include on large lists.",
   "annotations": {
     "readOnlyHint": true,
     "destructiveHint": false,

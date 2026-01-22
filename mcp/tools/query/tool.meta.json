@@ -101,6 +101,7 @@
   "timeoutSecs": 60,
   "maxTimeoutSecs": 600,
   "progressExtendsTimeout": true,
+  "timeoutHint": "Use dryRun=true to test filters first. For large datasets, set limit <= 100 and avoid expand/include.",
   "annotations": {
     "readOnlyHint": true,
     "destructiveHint": false,
