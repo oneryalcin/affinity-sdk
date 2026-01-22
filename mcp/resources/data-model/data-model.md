@@ -46,6 +46,33 @@ When an entity is added to a list, it becomes a **List Entry** with field values
 - **Use case**: Get entities from a specific list, filtered by list fields
 - **Note**: Companies/Persons can be on multiple lists; Opportunities are on exactly one
 
+### Checking List Membership
+
+To check if a company/person is in a specific list, use `--expand list_entries`:
+
+```bash
+company get 12345 --expand list_entries
+person get john@example.com --expand list_entries
+```
+
+Response includes all lists the entity belongs to:
+```json
+{
+  "data": {
+    "id": 12345,
+    "name": "Acme Corp",
+    "list_entries": [
+      { "id": 99999, "list_id": 500, "list": { "id": 500, "name": "Dealflow" } },
+      { "id": 99998, "list_id": 501, "list": { "id": 501, "name": "Portfolio" } }
+    ]
+  }
+}
+```
+
+Check if `data.list_entries[].list.name` matches your target list (e.g., "Dealflow").
+
+**Why this is efficient**: Fetches one entity's data instead of scanning an entire list. Use this for single lookups. For batch checks, use `query` with a `companyId IN [...]` filter.
+
 ## Selectors: Names Work Directly
 
 Most commands accept **names, IDs, or emails** as selectors - no need to look up IDs first.

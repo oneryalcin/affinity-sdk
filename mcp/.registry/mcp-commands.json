@@ -2,11 +2,11 @@
   "_comment": "MCP Command Registry Config. Only commands listed here are exposed via discover-commands. Edit this file to control what CLI commands LLMs can discover.",
   "commands": {
     "person get": {
-      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list-entries for list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "whenToUse": "Get full details for a person. Selector formats: numeric ID, Affinity URL, or 'email:user@example.com'. Use --expand list_entries to check which lists the person is on (efficient single-entity lookup). Use --with-interaction-dates for last/next meeting dates and email activity.",
       "examples": [
         "person get 12345",
         "person get email:john@example.com",
-        "person get 12345 --expand list-entries",
+        "person get 12345 --expand list_entries",
         "person get 12345 --with-interaction-dates"
       ],
       "relatedCommands": ["person ls", "person field"]
@@ -66,11 +66,11 @@
       "relatedCommands": ["person get", "person files ls"]
     },
     "company get": {
-      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list-entries to see list memberships. Use --with-interaction-dates for last/next meeting dates and email activity.",
+      "whenToUse": "Get full details for a company. Selector formats: numeric ID, Affinity URL, 'domain:example.com', or 'name:Company Name'. Use --expand list_entries to check which lists the company is on (efficient single-entity lookup). Use --with-interaction-dates for last/next meeting dates and email activity.",
       "examples": [
         "company get 12345",
         "company get domain:wellybox.com",
-        "company get domain:wellybox.com --expand list-entries",
+        "company get 12345 --expand list_entries",
         "company get 12345 --with-interaction-dates"
       ],
       "relatedCommands": ["company ls", "company field"]
