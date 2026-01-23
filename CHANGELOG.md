@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.0] - 2026-01-23
 
 ### Added
 - CLI: `company files read`, `person files read`, `opportunity files read` commands to read file content with chunking support. Returns base64-encoded content with metadata (`size`, `offset`, `length`, `hasMore`, `nextOffset`). Use `--offset` and `--limit` to fetch large files in chunks. Default chunk size is 1MB.

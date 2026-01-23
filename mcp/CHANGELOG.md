@@ -5,7 +5,7 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.14.0] - 2026-01-23
 
 ### Added
 - **`files read` commands**: `company files read`, `person files read`, `opportunity files read` now discoverable via MCP. Returns base64-encoded file content with chunking support (`--offset`, `--limit`). Use this instead of `get-file-url` when WebFetch is blocked (Claude Desktop/Cowork).
