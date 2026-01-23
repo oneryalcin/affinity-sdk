@@ -7,6 +7,12 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 
 # Parse arguments using mcp-bash SDK
 query_json="$(mcp_args_require '.query' 'Query is required')"
+
+# Debug: Trace query_json through pipeline (Issue 3 investigation)
+# Enable with XAFFINITY_MCP_DEBUG=1 or MCPBASH_LOG_LEVEL=debug
+xaffinity_log_debug "query" "query_json length: ${#query_json}"
+xaffinity_log_debug "query" "query_json first 200 chars: ${query_json:0:200}"
+
 dry_run="$(mcp_args_get '.dryRun // false')"
 max_records="$(mcp_args_int '.maxRecords' --default 1000)"
 user_timeout_secs="$(mcp_args_int '.timeout' --default 0)"  # 0 = auto-calculate

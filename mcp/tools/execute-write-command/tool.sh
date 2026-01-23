@@ -66,14 +66,18 @@ while IFS= read -r -d '' item; do
 done < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 
 # Silently filter out --json if passed (tool appends it automatically anyway)
+# Note: Guard for Bash 3.2 compatibility - empty arrays fail with set -u
 filtered_argv=()
-for arg in "${argv[@]}"; do
-    [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
-done
+if [[ ${#argv[@]} -gt 0 ]]; then
+    for arg in "${argv[@]}"; do
+        [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
+    done
+fi
 argv=("${filtered_argv[@]+"${filtered_argv[@]}"}")
 
 # Validate argv against per-command schema
-validate_argv "$command" "${argv[@]}" || exit 0
+# Note: ${argv[@]+...} syntax for Bash 3.2 compatibility with empty arrays
+validate_argv "$command" ${argv[@]+"${argv[@]}"} || exit 0
 
 # Block destructive commands entirely if policy disables them
 if [[ "${AFFINITY_MCP_DISABLE_DESTRUCTIVE:-}" == "1" ]] && is_destructive "$command"; then
@@ -85,10 +89,13 @@ fi
 # Handle destructive operations with layered confirmation
 if is_destructive "$command"; then
     # Check if --yes already in argv (user shouldn't provide it directly)
+    # Note: Guard for Bash 3.2 compatibility - empty arrays fail with set -u
     has_yes=false
-    for arg in "${argv[@]}"; do
-        [[ "$arg" == "--yes" || "$arg" == "-y" ]] && has_yes=true && break
-    done
+    if [[ ${#argv[@]} -gt 0 ]]; then
+        for arg in "${argv[@]}"; do
+            [[ "$arg" == "--yes" || "$arg" == "-y" ]] && has_yes=true && break
+        done
+    fi
     if [[ "$has_yes" == "true" ]]; then
         mcp_error "validation_error" "--yes flag not allowed in argv; use confirm parameter instead" \
             --hint 'Remove --yes from argv and add "confirm": true to your request'
@@ -133,7 +140,8 @@ declare -a cmd_args=("${XAFFINITY_CLI:-xaffinity}")
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cmd_args+=("--session-cache" "${AFFINITY_SESSION_CACHE}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")
-cmd_args+=("${argv[@]}")
+# Note: Guard for Bash 3.2 compatibility with empty arrays
+[[ ${#argv[@]} -gt 0 ]] && cmd_args+=("${argv[@]}")
 cmd_args+=("--json")
 
 # Check for cancellation before execution

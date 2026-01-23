@@ -369,6 +369,9 @@ run_xaffinity_with_progress() {
             # Capture stdin before backgrounding (queries are small, <10KB)
             local stdin_content
             stdin_content=$(cat)
+            # Debug: Trace stdin through pipeline (Issue 3 investigation)
+            xaffinity_log_debug "run_xaffinity_with_progress" "stdin_content length: ${#stdin_content}"
+            xaffinity_log_debug "run_xaffinity_with_progress" "stdin_content first 200 chars: ${stdin_content:0:200}"
             printf '%s' "$stdin_content" | mcp_run_with_progress "${progress_args[@]}" -- "${cmd[@]}"
         else
             mcp_run_with_progress "${progress_args[@]}" -- "${cmd[@]}"
@@ -378,6 +381,9 @@ run_xaffinity_with_progress() {
         if [[ "$use_stdin" == "true" ]]; then
             local stdin_content
             stdin_content=$(cat)
+            # Debug: Trace stdin through pipeline (Issue 3 investigation)
+            xaffinity_log_debug "run_xaffinity_with_progress" "stdin_content length (no progress): ${#stdin_content}"
+            xaffinity_log_debug "run_xaffinity_with_progress" "stdin_content first 200 chars: ${stdin_content:0:200}"
             printf '%s' "$stdin_content" | "${cmd[@]}"
         else
             "${cmd[@]}"

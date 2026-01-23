@@ -239,8 +239,8 @@ validate_argv() {
     local total_positional_count
     total_positional_count=$(printf '%s' "$positional_defs" | jq_tool -r 'length' 2>/dev/null || printf '0')
 
-    # Track provided params
-    local -A provided_flags
+    # Track provided params (space-delimited string for Bash 3.2 compatibility)
+    local provided_flags=""
     local positional_count=0
     local i=0
 
@@ -346,8 +346,8 @@ validate_argv() {
                 fi
             fi
 
-            # Check for duplicate flags
-            if [[ -n "${provided_flags[$flag_name]:-}" ]]; then
+            # Check for duplicate flags (using string contains for Bash 3.2 compatibility)
+            if [[ " $provided_flags " == *" $flag_name "* ]]; then
                 local allows_multiple
                 allows_multiple=$(printf '%s' "$cmd_schema" | jq_tool -r --arg f "$flag_name" '.parameters[$f].multiple // false')
                 if [[ "$allows_multiple" != "true" ]]; then
@@ -356,7 +356,7 @@ validate_argv() {
                     return 1
                 fi
             fi
-            provided_flags["$flag_name"]=1
+            provided_flags="$provided_flags $flag_name"
 
         else
             # --- Positional argument ---
@@ -394,11 +394,11 @@ validate_argv() {
         return 1
     fi
 
-    # Check required flags
+    # Check required flags (using string contains for Bash 3.2 compatibility)
     local required_flags
     required_flags=$(printf '%s' "$cmd_schema" | jq_tool -r '.parameters // {} | to_entries[] | select(.key | startswith("-")) | select(.value.required == true) | .key' 2>/dev/null || printf '')
     for req_flag in $required_flags; do
-        if [[ -z "${provided_flags[$req_flag]:-}" ]]; then
+        if [[ " $provided_flags " != *" $req_flag "* ]]; then
             mcp_error "validation_error" "Missing required flag: $req_flag" \
                 --hint "Add $req_flag to your argv"
             return 1
@@ -462,7 +462,8 @@ apply_limit_cap() {
     unbounded_aliases=$(echo "$limit_config" | jq_tool -r '.unboundedFlagAliases // [] | .[]')
 
     # Block unbounded flag (--all and aliases like -A) with clear error
-    if [[ -n "$unbounded_aliases" ]]; then
+    # Note: Guard for Bash 3.2 compatibility - empty arrays fail with set -u
+    if [[ -n "$unbounded_aliases" && ${#argv[@]} -gt 0 ]]; then
         for arg in "${argv[@]}"; do
             for alias in $unbounded_aliases; do
                 if [[ "$arg" == "$alias" ]]; then

@@ -5,6 +5,16 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-01-24
+
+### Fixed
+- **Bash 3.2 compatibility (associative arrays)**: Replaced `local -A provided_flags` in `cli-gateway.sh` with string-based tracking. macOS ships with Bash 3.2.57 which doesn't support associative arrays (`local -A`). This caused `execute-read-command` and `execute-write-command` to fail with "local: -A: invalid option" when any flags were passed in argv.
+- **Bash 3.2 compatibility (empty arrays)**: Fixed empty array expansion in `execute-read-command` and `execute-write-command` tools. With `set -u` (strict mode), `${argv[@]}` fails as "unbound variable" when argv is empty in Bash 3.2. Now uses `${argv[@]+"${argv[@]}"}` pattern and `[[ ${#argv[@]} -gt 0 ]]` guards.
+- **Resource scripts CLI path**: Fixed "xaffinity: command not found" errors in `saved-views`, `field-catalogs`, and `workflow-config` resource scripts. These scripts now source `common.sh` and use `${XAFFINITY_CLI:-xaffinity}` for CLI invocation, matching the pattern used by tools.
+
+### Added
+- **Debug logging for query pipeline**: Added `xaffinity_log_debug` tracing in `query/tool.sh` and `common.sh` to help diagnose Issue 3 (empty stdin to CLI) if it recurs. Enable with `XAFFINITY_MCP_DEBUG=1` or `MCPBASH_LOG_LEVEL=debug`.
+
 ## [1.14.0] - 2026-01-23
 
 ### Added

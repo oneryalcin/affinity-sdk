@@ -3,6 +3,8 @@
 # Includes status field options and saved views
 set -euo pipefail
 
+source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
+
 listId="${1:-}"
 if [[ -z "${listId}" ]]; then
     echo "Usage: workflow-config.sh <listId>" >&2
@@ -12,13 +14,13 @@ fi
 jq_tool="${MCPBASH_JSON_TOOL_BIN:-jq}"
 
 # Get list details including saved views
-list_output=$(xaffinity list get "${listId}" --json 2>&1) || {
+list_output=$("${XAFFINITY_CLI:-xaffinity}" list get "${listId}" --json 2>&1) || {
     echo "Failed to get list ${listId}: ${list_output}" >&2
     exit 3
 }
 
 # Get fields for the list to find status/dropdown fields
-fields_output=$(xaffinity field ls --list-id "${listId}" --json 2>&1) || {
+fields_output=$("${XAFFINITY_CLI:-xaffinity}" field ls --list-id "${listId}" --json 2>&1) || {
     echo "Failed to get fields for list ${listId}: ${fields_output}" >&2
     exit 3
 }

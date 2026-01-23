@@ -121,21 +121,25 @@ while IFS= read -r -d '' item; do
 done < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 
 # Silently filter out --json if passed (tool appends it automatically anyway)
+# Note: Guard for Bash 3.2 compatibility - empty arrays fail with set -u
 filtered_argv=()
-for arg in "${argv[@]}"; do
-    [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
-done
+if [[ ${#argv[@]} -gt 0 ]]; then
+    for arg in "${argv[@]}"; do
+        [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
+    done
+fi
 argv=("${filtered_argv[@]+"${filtered_argv[@]}"}")
 
 # Validate argv against per-command schema
-validate_argv "$command" "${argv[@]}" || exit 0
+# Note: ${argv[@]+...} syntax for Bash 3.2 compatibility with empty arrays
+validate_argv "$command" ${argv[@]+"${argv[@]}"} || exit 0
 
 # Apply proactive limiting - inject/cap --limit for commands that support it
 # Note: Using while loop instead of mapfile for bash 3.x compatibility (macOS default)
 new_argv=()
 while IFS= read -r -d '' item; do
     new_argv+=("$item")
-done < <(apply_limit_cap "$command" "${argv[@]}")
+done < <(apply_limit_cap "$command" ${argv[@]+"${argv[@]}"})
 argv=("${new_argv[@]+"${new_argv[@]}"}")
 
 # Build command array safely
@@ -145,7 +149,8 @@ declare -a cmd_args=("${XAFFINITY_CLI:-xaffinity}")
 [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && cmd_args+=("--session-cache" "${AFFINITY_SESSION_CACHE}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")
-cmd_args+=("${argv[@]}")
+# Note: ${argv[@]+...} syntax for Bash 3.2 compatibility with empty arrays
+[[ ${#argv[@]} -gt 0 ]] && cmd_args+=("${argv[@]}")
 cmd_args+=("--json")
 
 # Check for cancellation before execution

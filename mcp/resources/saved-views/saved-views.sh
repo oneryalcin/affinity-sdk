@@ -3,6 +3,8 @@
 # Called by xaffinity.sh provider with listId as argument
 set -euo pipefail
 
+source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
+
 listId="${1:-}"
 if [[ -z "${listId}" ]]; then
     echo "Usage: saved-views.sh <listId>" >&2
@@ -10,7 +12,7 @@ if [[ -z "${listId}" ]]; then
 fi
 
 # Get list details including saved views
-output=$(xaffinity list get "${listId}" --json 2>&1) || {
+output=$("${XAFFINITY_CLI:-xaffinity}" list get "${listId}" --json 2>&1) || {
     echo "Failed to get list ${listId}: ${output}" >&2
     exit 3
 }

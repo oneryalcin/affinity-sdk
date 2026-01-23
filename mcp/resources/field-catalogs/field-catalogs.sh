@@ -3,6 +3,8 @@
 # entityType can be: a listId (numeric), list name, "company", "person", or "opportunity"
 set -euo pipefail
 
+source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
+
 entityType="${1:-}"
 if [[ -z "${entityType}" ]]; then
     echo "Usage: field-catalogs.sh <entityType|listId|listName>" >&2
@@ -17,7 +19,7 @@ if [[ "${entityType}" =~ ^[0-9]+$ ]]; then
     listId="${entityType}"
 elif [[ ! "${entityType}" =~ ^(company|companies|person|persons|people|opportunity|opportunities)$ ]]; then
     # Try to resolve as list name
-    lists_output=$(xaffinity list ls --json 2>&1) || {
+    lists_output=$("${XAFFINITY_CLI:-xaffinity}" list ls --json 2>&1) || {
         echo "Failed to fetch lists: ${lists_output}" >&2
         exit 3
     }
@@ -33,7 +35,7 @@ fi
 # Handle list ID (numeric or resolved from name)
 if [[ -n "${listId}" ]]; then
     # List ID - get list-specific fields
-    fields_output=$(xaffinity field ls --list-id "${listId}" --json 2>&1) || {
+    fields_output=$("${XAFFINITY_CLI:-xaffinity}" field ls --list-id "${listId}" --json 2>&1) || {
         echo "Failed to get fields for list ${listId}: ${fields_output}" >&2
         exit 3
     }
