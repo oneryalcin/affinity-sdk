@@ -255,7 +255,7 @@ class TestOutputFlagListExport:
                 },
             )
         )
-        # Mock fields
+        # Mock fields (V2)
         respx.get("https://api.affinity.co/v2/lists/123/fields").mock(
             return_value=Response(
                 200,
@@ -265,6 +265,8 @@ class TestOutputFlagListExport:
                 },
             )
         )
+        # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+        respx.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
         result = runner.invoke(
             cli,
@@ -341,6 +343,8 @@ class TestOutputFlagListExport:
                 json={"data": [], "pagination": {"next_page_token": None}},
             )
         )
+        # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+        respx.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
         result = runner.invoke(
             cli,

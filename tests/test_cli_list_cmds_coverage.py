@@ -238,12 +238,16 @@ class TestListGet:
                 json={"id": 123, "name": "Pipeline", "type": 0, "public": False, "owner_id": 100},
             )
         )
-        # Mock list fields endpoint
+        # Mock list fields endpoint (V2)
         respx_mock.get("https://api.affinity.co/v2/lists/123/fields").mock(
             return_value=Response(
                 200,
                 json={"data": [], "pagination": {"nextUrl": None}},
             )
+        )
+        # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+        respx_mock.get("https://api.affinity.co/fields").mock(
+            return_value=Response(200, json={"data": []})
         )
         # Mock saved views endpoint
         respx_mock.get("https://api.affinity.co/v2/lists/123/saved-views").mock(
@@ -302,6 +306,10 @@ class TestListGet:
                 json={"data": [], "pagination": {"nextUrl": None}},
             )
         )
+        # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+        respx_mock.get("https://api.affinity.co/fields").mock(
+            return_value=Response(200, json={"data": []})
+        )
         respx_mock.get("https://api.affinity.co/v2/lists/456/saved-views").mock(
             return_value=Response(
                 200,
@@ -338,6 +346,10 @@ class TestListGet:
                 200,
                 json={"data": [], "pagination": {"nextUrl": None}},
             )
+        )
+        # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+        respx_mock.get("https://api.affinity.co/fields").mock(
+            return_value=Response(200, json={"data": []})
         )
         respx_mock.get("https://api.affinity.co/v2/lists/789/saved-views").mock(
             return_value=Response(

@@ -51,6 +51,13 @@ FIELDS_RESPONSE = [
     {"id": "field-102", "name": "Tags", "valueType": 0, "allowsMultiple": True},
 ]
 
+# V1 API format uses snake_case
+FIELDS_RESPONSE_V1 = [
+    {"id": "field-100", "name": "Status", "value_type": 0, "allows_multiple": False},
+    {"id": "field-101", "name": "Priority", "value_type": 0, "allows_multiple": False},
+    {"id": "field-102", "name": "Tags", "value_type": 0, "allows_multiple": True},
+]
+
 FIELD_VALUE_RESPONSE = {
     "id": 999,
     "fieldId": "field-100",
@@ -81,9 +88,13 @@ def setup_list_mocks(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
-    # Field metadata
+    # Field metadata (V2)
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": FIELDS_RESPONSE, "pagination": {}})
+    )
+    # Field metadata (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get("https://api.affinity.co/fields").mock(
+        return_value=Response(200, json={"data": FIELDS_RESPONSE_V1})
     )
 
 
@@ -1050,6 +1061,14 @@ def test_entry_field_numeric_field_name(respx_mock: respx.MockRouter) -> None:
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": fields_with_numeric, "pagination": {}})
     )
+    # V1 fields format for list_fields_for_list (with snake_case keys)
+    fields_with_numeric_v1 = [
+        *FIELDS_RESPONSE_V1,
+        {"id": "field-200", "name": "2024", "value_type": 0, "allows_multiple": False},
+    ]
+    respx_mock.get("https://api.affinity.co/fields").mock(
+        return_value=Response(200, json={"data": fields_with_numeric_v1})
+    )
     respx_mock.get("https://api.affinity.co/field-values").mock(return_value=Response(200, json=[]))
     respx_mock.post(
         f"https://api.affinity.co/v2/lists/{LIST_ID}/list-entries/{ENTRY_ID}/fields/field-200"
@@ -1255,6 +1274,14 @@ def test_entry_field_field_name_like_id(respx_mock: respx.MockRouter) -> None:
     )
     respx_mock.get(f"https://api.affinity.co/v2/lists/{LIST_ID}/fields").mock(
         return_value=Response(200, json={"data": fields_with_weird_name, "pagination": {}})
+    )
+    # V1 fields format for list_fields_for_list (with snake_case keys)
+    fields_with_weird_name_v1 = [
+        *FIELDS_RESPONSE_V1,
+        {"id": "field-999", "name": "field-123", "value_type": 0, "allows_multiple": False},
+    ]
+    respx_mock.get("https://api.affinity.co/fields").mock(
+        return_value=Response(200, json={"data": fields_with_weird_name_v1})
     )
 
     runner = CliRunner()

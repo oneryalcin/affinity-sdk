@@ -589,7 +589,7 @@ def test_list_export_csv_to_stdout(respx_mock: respx.MockRouter) -> None:
         )
     )
 
-    # Mock fields
+    # Mock fields (V2)
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(
             200,
@@ -599,6 +599,8 @@ def test_list_export_csv_to_stdout(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
     # Mock list entries
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
@@ -663,7 +665,7 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
         )
     )
 
-    # Mock fields
+    # Mock fields (V2)
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(
             200,
@@ -673,6 +675,8 @@ def test_list_export_expand_json_output(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
     # Mock list entries
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
@@ -802,7 +806,7 @@ def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
         )
     )
 
-    # Mock fields
+    # Mock fields (V2)
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(
             200,
@@ -812,6 +816,8 @@ def test_list_export_dry_run_with_expand(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
     runner = CliRunner()
     result = runner.invoke(
@@ -967,10 +973,12 @@ def test_list_export_expand_opportunities_valid_on_person_list(
         )
     )
 
-    # Mock fields endpoint
+    # Mock fields (V2)
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json={"fields": []})
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get("https://api.affinity.co/fields").mock(return_value=Response(200, json=[]))
 
     # Mock list entries
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(

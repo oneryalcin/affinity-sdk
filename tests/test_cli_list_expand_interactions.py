@@ -111,9 +111,13 @@ def test_list_export_expand_interactions_json(respx_mock: respx.MockRouter) -> N
         return_value=Response(200, json=MOCK_LIST_COMPANY)
     )
 
-    # Mock list fields endpoint
+    # Mock list fields endpoint (V2)
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
+    )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
     )
 
     # Mock list entries endpoint
@@ -167,6 +171,10 @@ def test_list_export_expand_interactions_with_persons(respx_mock: respx.MockRout
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
+    )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
         return_value=Response(200, json=MOCK_LIST_ENTRIES_COMPANY)
     )
@@ -207,6 +215,10 @@ def test_list_export_expand_interactions_csv(respx_mock: respx.MockRouter) -> No
     )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
+    )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
     )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
         return_value=Response(200, json=MOCK_LIST_ENTRIES_COMPANY)
@@ -292,6 +304,10 @@ def test_list_export_expand_interactions_no_interaction_data(respx_mock: respx.M
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
+    )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/list-entries").mock(
         return_value=Response(200, json=MOCK_LIST_ENTRIES_COMPANY)
     )
@@ -317,6 +333,10 @@ def test_list_export_expand_interactions_dry_run(respx_mock: respx.MockRouter) -
     )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
+    )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
     )
 
     runner = CliRunner()
@@ -357,6 +377,10 @@ def test_list_export_dry_run_uses_list_size_hint(respx_mock: respx.MockRouter) -
     )
     respx_mock.get("https://api.affinity.co/v2/lists/12345/fields").mock(
         return_value=Response(200, json=MOCK_LIST_FIELDS)
+    )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(200, json={"data": []})
     )
 
     runner = CliRunner()

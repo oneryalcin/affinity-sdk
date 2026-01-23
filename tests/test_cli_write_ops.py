@@ -238,6 +238,23 @@ def test_list_create_and_entry_ops(respx_mock: respx.MockRouter) -> None:
             },
         )
     )
+    # Mock fields (V1) - list_fields_for_list fetches from V1 for dropdown_options
+    respx_mock.get(url__regex=r"https://api\.affinity\.co/fields(\?.*)?$").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "field-1",
+                        "name": "Status",
+                        "value_type": 0,
+                        "allows_multiple": False,
+                        "list_id": 123,
+                    }
+                ]
+            },
+        )
+    )
     # Mock for existing field values check (used by set-field)
     respx_mock.get("https://api.affinity.co/field-values").mock(return_value=Response(200, json=[]))
 
