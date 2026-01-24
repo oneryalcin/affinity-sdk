@@ -299,9 +299,10 @@ run_xaffinity_readonly() {
 # ==============================================================================
 # Progress-Aware CLI Execution
 # ==============================================================================
-# Execute xaffinity with progress forwarding for progress-capable commands.
-# Uses mcp_run_with_progress from mcp-bash to parse CLI JSON progress and
-# forward it to MCP clients.
+# Execute xaffinity with progress forwarding and timeout extension.
+# Uses mcp_run_with_progress from mcp-bash to:
+# 1. Parse CLI JSON progress from stderr (for timeout extension)
+# 2. Forward progress to MCP clients (when MCP_PROGRESS_STREAM is set)
 #
 # Usage: run_xaffinity_with_progress [--stdin] [--stderr-file FILE] <command> [args...]
 # Example: run_xaffinity_with_progress person files-upload 12345 --file /path/to/file
@@ -315,11 +316,16 @@ run_xaffinity_readonly() {
 #   {"type":"progress","progress":50,"message":"Uploading...","current":50,"total":100}
 #
 # This helper:
-# - Uses mcp_run_with_progress when MCP_PROGRESS_STREAM is available
-# - Falls back to direct execution when progress not supported
+# - ALWAYS uses mcp_run_with_progress for timeout extension (pattern matching on stderr)
+# - Forwards progress to MCP client only when MCP_PROGRESS_STREAM is set
+# - Falls back to direct execution only when mcp_run_with_progress unavailable
 # - Returns stdout (the CLI's JSON result)
 # - Preserves exit code
 # - Optionally captures non-progress stderr for error reporting (requires mcp-bash 0.9.11+)
+#
+# NOTE: Timeout extension works independently of progress forwarding. Even if
+# Claude Desktop doesn't send progressToken (so MCP_PROGRESS_STREAM is unset),
+# mcp-bash still extends the timeout when it detects progress patterns on stderr.
 run_xaffinity_with_progress() {
     local use_stdin=false
     local stderr_file=""
@@ -355,9 +361,11 @@ run_xaffinity_with_progress() {
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     cmd+=("$@")
 
-    # Check if progress support is available (MCP_PROGRESS_STREAM set by mcp-bash)
-    if [[ -n "${MCP_PROGRESS_STREAM:-}" ]] && type mcp_run_with_progress &>/dev/null; then
-        # Build mcp_run_with_progress arguments
+    # ALWAYS use mcp_run_with_progress when available for timeout extension.
+    # This enables progressExtendsTimeout even when client doesn't send progressToken.
+    # Progress forwarding to client only happens when MCP_PROGRESS_STREAM is set.
+    if type mcp_run_with_progress &>/dev/null; then
+        # Build mcp_run_with_progress arguments for timeout extension
         local -a progress_args=(
             --pattern '^\{.*"type"[[:space:]]*:[[:space:]]*"progress"'
             --extract json
@@ -377,7 +385,8 @@ run_xaffinity_with_progress() {
             mcp_run_with_progress "${progress_args[@]}" -- "${cmd[@]}"
         fi
     else
-        # No progress support - run directly
+        # mcp_run_with_progress not available - run directly (no timeout extension)
+        xaffinity_log_debug "run_xaffinity_with_progress" "mcp_run_with_progress not available, running directly"
         if [[ "$use_stdin" == "true" ]]; then
             local stdin_content
             stdin_content=$(cat)
