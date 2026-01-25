@@ -5,6 +5,15 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-01-25
+
+### Changed
+- **mcp-bash framework 0.14.0**: Upgraded from 0.13.0. Key improvements:
+  - **Zombie process mitigation**: MCP servers now automatically exit on idle timeout (default 1 hour) and when parent process dies (orphan detection). Prevents zombie server accumulation in Claude Desktop/Cowork. Configurable via `MCPBASH_IDLE_TIMEOUT`, `MCPBASH_IDLE_TIMEOUT_ENABLED`, `MCPBASH_ORPHAN_CHECK_ENABLED`.
+  - **Progress-aware timeout fix**: Registry generation now correctly copies `progressExtendsTimeout` and `maxTimeoutSecs` fields from `tool.meta.json`. Previously these settings were silently ignored, causing tools like `query` and `execute-read-command` to fall back to fixed countdown mode. Timeout extension now works as configured.
+  - **Debug file fix**: The `server.d/.debug` marker file now properly enables debug-level MCP log notifications (previously only set env var but didn't sync log level).
+  - **Log notification reliability**: Log notifications emitted during handler execution no longer corrupt JSON-RPC responses (deferred to queue file and flushed after handler completes).
+
 ## [1.14.1] - 2026-01-24
 
 ### Fixed
