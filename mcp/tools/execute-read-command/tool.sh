@@ -121,13 +121,11 @@ while IFS= read -r -d '' item; do
 done < <(printf '%s' "$argv_json" | jq_tool -jr '.[] + "\u0000"')
 
 # Silently filter out --json if passed (tool appends it automatically anyway)
-# Note: Guard for Bash 3.2 compatibility - empty arrays fail with set -u
+# Note: ${argv[@]+...} syntax for Bash 3.2 compatibility with empty arrays
 filtered_argv=()
-if [[ ${#argv[@]} -gt 0 ]]; then
-    for arg in "${argv[@]}"; do
-        [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
-    done
-fi
+for arg in ${argv[@]+"${argv[@]}"}; do
+    [[ "$arg" != "--json" ]] && filtered_argv+=("$arg")
+done
 argv=("${filtered_argv[@]+"${filtered_argv[@]}"}")
 
 # Validate argv against per-command schema
@@ -150,7 +148,7 @@ declare -a cmd_args=("${XAFFINITY_CLI:-xaffinity}")
 read -ra parts <<< "$command"
 cmd_args+=("${parts[@]}")
 # Note: ${argv[@]+...} syntax for Bash 3.2 compatibility with empty arrays
-[[ ${#argv[@]} -gt 0 ]] && cmd_args+=("${argv[@]}")
+cmd_args+=(${argv[@]+"${argv[@]}"})
 cmd_args+=("--json")
 
 # Check for cancellation before execution
