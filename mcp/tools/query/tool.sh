@@ -8,10 +8,14 @@ source "${MCPBASH_PROJECT_ROOT}/lib/common.sh"
 # Parse arguments using mcp-bash SDK
 query_json="$(mcp_args_require '.query' 'Query is required')"
 
-# Debug: Trace query_json through pipeline (Issue 3 investigation)
-# Enable with XAFFINITY_MCP_DEBUG=1 or MCPBASH_LOG_LEVEL=debug
+# Debug: Trace query_json (enable with XAFFINITY_MCP_DEBUG=1 or MCPBASH_LOG_LEVEL=debug)
 xaffinity_log_debug "query" "query_json length: ${#query_json}"
 xaffinity_log_debug "query" "query_json first 200 chars: ${query_json:0:200}"
+
+# Write query to temp file (avoids stdin pipeline issues in some environments like Cowork VMs)
+query_file=$(mktemp)
+trap 'rm -f "$query_file"' EXIT
+printf '%s' "$query_json" > "$query_file"
 
 dry_run="$(mcp_args_get '.dryRun // false')"
 max_records="$(mcp_args_int '.maxRecords' --default 1000)"
@@ -32,7 +36,7 @@ _get_time_ms() { local t; t=$(date +%s%3N 2>/dev/null); [[ "$t" =~ ^[0-9]+$ ]] &
 start_time_ms=$(_get_time_ms)
 
 # Validate query has required 'from' field
-if ! printf '%s' "$query_json" | jq_tool -e '.from' >/dev/null 2>&1; then
+if ! jq_tool -e '.from' "$query_file" >/dev/null 2>&1; then
     mcp_error "validation_error" 'Query must have a "from" field specifying the entity type' \
         --hint "Valid types: persons, companies, opportunities, listEntries, interactions, notes"
     exit 0
@@ -56,7 +60,7 @@ calc_dynamic_timeout() {
     local dry_output
     local session_cache_opt=""
     [[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && session_cache_opt="--session-cache ${AFFINITY_SESSION_CACHE}"
-    dry_output=$(printf '%s' "$query_json" | "${XAFFINITY_CLI:-xaffinity}" query --dry-run --max-records "$max_records" --output json $session_cache_opt 2>/dev/null) || return 1
+    dry_output=$("${XAFFINITY_CLI:-xaffinity}" query --file "$query_file" --dry-run --max-records "$max_records" --output json $session_cache_opt 2>/dev/null) || return 1
 
     # Parse estimatedApiCalls from dry-run output
     local estimated_calls
@@ -93,10 +97,10 @@ xaffinity_log_debug "query" "dryRun=$dry_run maxRecords=$max_records timeout=$ti
 # Create temp files for stdout/stderr capture
 stdout_file=$(mktemp)
 stderr_file=$(mktemp)
-trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
+trap 'rm -f "$query_file" "$stdout_file" "$stderr_file"' EXIT
 
 # Build command for transparency logging (actual execution uses run_xaffinity_with_progress)
-declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--output" "$format")
+declare -a cmd_display=("xaffinity" "query" "--file" "<query.json>" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--output" "$format")
 [[ "$dry_run" == "true" ]] && cmd_display+=("--dry-run")
 # CLI handles truncation via --max-output-bytes for all formats including JSON
 cmd_display+=("--max-output-bytes" "$max_output_bytes")
@@ -113,14 +117,14 @@ fi
 # - Uses run_xaffinity_with_progress to forward NDJSON progress to MCP clients
 # - CLI emits step-by-step progress (fetch, filter, aggregate) when stderr is not a TTY
 # - CLI emits cursor to stderr as NDJSON {"type": "cursor", ...} when truncated
-# - --stdin pipes query JSON to the command
+# - --file reads query from temp file (more reliable than stdin in VM environments)
 # - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
 # - --max-output-bytes for all formats (CLI handles truncation, returns exit code 100 if truncated)
 # - --session-cache enables cross-invocation reuse of list/field metadata (must come before subcommand)
 set +e
-printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
+run_xaffinity_with_progress --stderr-file "$stderr_file" \
     $([[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && echo "--session-cache" "${AFFINITY_SESSION_CACHE}") \
-    query --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
+    query --file "$query_file" --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
     $([[ "$dry_run" == "true" ]] && echo "--dry-run") \
     --max-output-bytes "$max_output_bytes" \
     $([[ -n "$cursor" ]] && echo "--cursor" "$cursor") >"$stdout_file"
