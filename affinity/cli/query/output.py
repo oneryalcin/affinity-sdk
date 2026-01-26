@@ -1009,6 +1009,86 @@ def truncate_csv_output(content: str, max_bytes: int) -> tuple[str, bool]:
     return "\n".join([header, *kept_rows]), True
 
 
+def truncate_json_result(
+    result: QueryResult,
+    max_bytes: int,
+    *,
+    include_meta: bool = False,
+) -> tuple[QueryResult, int, bool]:
+    """Truncate QueryResult data for JSON output to fit within byte limit.
+
+    Operates on the Python object BEFORE serialization to avoid precision loss
+    from JSON parse/re-serialize round-trip. This is important because JSON
+    number serialization can lose precision for large integers or floats.
+
+    Args:
+        result: QueryResult to potentially truncate
+        max_bytes: Maximum byte size for serialized output
+        include_meta: Whether metadata will be included in output
+
+    Returns:
+        Tuple of (result, items_kept, was_truncated)
+        - result: QueryResult with data potentially truncated
+        - items_kept: Number of data items kept (for cursor calculation)
+        - was_truncated: True if truncation occurred
+    """
+    # First, check if truncation is needed
+    test_output = format_json(result, pretty=False, include_meta=include_meta)
+    if len(test_output.encode()) <= max_bytes:
+        return result, len(result.data) if result.data else 0, False
+
+    if not result.data:
+        # No data to truncate - can't help (caller must handle)
+        return result, 0, False
+
+    original_data = result.data
+    original_count = len(original_data)
+
+    # Binary search for maximum items that fit
+    lo, hi = 0, original_count
+    best_fit = 0
+
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        result.data = original_data[:mid]
+        test_output = format_json(result, pretty=False, include_meta=include_meta)
+
+        if len(test_output.encode()) <= max_bytes:
+            best_fit = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    # Edge case: can't fit even one item (envelope too large)
+    if best_fit == 0:
+        result.data = original_data  # Restore
+        return result, original_count, False  # Can't truncate
+
+    # Edge case: all items fit (shouldn't happen since we checked above)
+    if best_fit >= original_count:
+        result.data = original_data
+        return result, original_count, False
+
+    # Apply truncation
+    result.data = original_data[:best_fit]
+
+    # Final sanity check - binary search guarantees best_fit items fit,
+    # but verify to catch any edge cases
+    final_output = format_json(result, pretty=False, include_meta=include_meta)
+    if len(final_output.encode()) > max_bytes:
+        # This shouldn't happen given binary search, but be defensive
+        logger.error(
+            "JSON truncation: output %d bytes > max %d - binary search bug",
+            len(final_output.encode()),
+            max_bytes,
+        )
+        # Decrement by one as fallback
+        result.data = original_data[: max(0, best_fit - 1)]
+        best_fit = max(0, best_fit - 1)
+
+    return result, best_fit, True
+
+
 # =============================================================================
 # Unified Format Output
 # =============================================================================

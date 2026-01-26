@@ -94,7 +94,7 @@
       },
       "cursor": {
         "type": "string",
-        "description": "Opaque cursor from previous truncated response (the 'nextCursor' value). When provided, returns the next chunk of results. IMPORTANT: The query object AND format parameter must be IDENTICAL to the original request. Changing any query field or format invalidates the cursor. Two resumption modes: streaming (O(1) via API cursor) and full-fetch (disk cache for orderBy/aggregate). Cursors expire after 1 hour."
+        "description": "Opaque cursor from previous truncated response. Pass the exact 'nextCursor' value to resume fetching. The query object AND format parameter must be IDENTICAL to the original request. Cursors expire after 1 hour. Works with all formats (toon, markdown, json, jsonl, csv). NEVER fabricate a cursor; it contains cryptographic hashes and will fail validation."
       }
     }
   },

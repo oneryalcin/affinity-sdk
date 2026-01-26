@@ -6,12 +6,165 @@ respecting byte limits.
 
 from __future__ import annotations
 
+import json
+
 from affinity.cli.query.output import (
+    format_json,
     truncate_csv_output,
+    truncate_json_result,
     truncate_jsonl_output,
     truncate_markdown_output,
     truncate_toon_output,
 )
+
+
+class TestTruncateJsonResult:
+    """Tests for truncate_json_result() - object-level JSON truncation."""
+
+    def _make_result(
+        self, data: list, included: dict | None = None, pagination: dict | None = None
+    ):
+        """Helper to create QueryResult for testing."""
+        from affinity.cli.query.models import QueryResult
+
+        return QueryResult(data=data, included=included or {}, pagination=pagination)
+
+    def test_no_truncation_needed(self) -> None:
+        """Data within limit returns unchanged."""
+        result = self._make_result([{"id": 1}, {"id": 2}])
+        original_data = result.data.copy()
+
+        result, items_kept, was_truncated = truncate_json_result(result, 1000)
+
+        assert result.data == original_data
+        assert items_kept == 2
+        assert was_truncated is False
+
+    def test_truncates_data_array(self) -> None:
+        """Large data array is truncated to fit limit."""
+        data = [{"id": i, "name": f"Name{i}"} for i in range(100)]
+        result = self._make_result(data)
+
+        result, items_kept, was_truncated = truncate_json_result(result, 500)
+
+        assert was_truncated is True
+        assert items_kept < 100
+        assert len(result.data) == items_kept
+        # Verify serialized output fits
+        output = format_json(result, pretty=False)
+        assert len(output.encode()) <= 500
+        # Verify valid JSON
+        json.loads(output)
+
+    def test_preserves_envelope(self) -> None:
+        """Non-data fields (included, pagination) are preserved."""
+        data = [{"id": i} for i in range(100)]
+        included = {"companies": [{"id": 1, "name": "Acme"}]}
+        pagination = {"hasMore": True, "total": 500}
+        result = self._make_result(data, included=included, pagination=pagination)
+
+        result, _items_kept, was_truncated = truncate_json_result(result, 500)
+
+        assert was_truncated is True
+        assert result.included == included  # Preserved
+        assert result.pagination == pagination  # Preserved
+        output = format_json(result, pretty=False)
+        output_obj = json.loads(output)
+        assert "included" in output_obj
+        assert "pagination" in output_obj
+
+    def test_empty_data_array(self) -> None:
+        """Empty data array returns unchanged."""
+        result = self._make_result([])
+
+        result, items_kept, was_truncated = truncate_json_result(result, 100)
+
+        assert was_truncated is False
+        assert items_kept == 0
+
+    def test_cant_truncate_envelope_too_large(self) -> None:
+        """When envelope alone exceeds limit, return unchanged with was_truncated=False."""
+        # Large included section that exceeds limit on its own
+        included = {"companies": [{"id": i, "name": f"Company{i}" * 100} for i in range(10)]}
+        result = self._make_result([{"id": 1}], included=included)
+
+        _result, _items_kept, was_truncated = truncate_json_result(result, 100)
+
+        # Can't truncate - envelope too large
+        assert was_truncated is False
+
+    def test_empty_data_with_large_envelope(self) -> None:
+        """Empty data with large envelope returns was_truncated=False (caller must handle)."""
+        # Edge case from Review 3: empty data but huge included section
+        included = {"companies": [{"id": i, "name": f"Company{i}" * 100} for i in range(10)]}
+        result = self._make_result([], included=included)
+
+        result, items_kept, was_truncated = truncate_json_result(result, 100)
+
+        # Can't truncate empty data - caller (query_cmd.py) must check size and error
+        assert was_truncated is False
+        assert items_kept == 0
+
+    def test_output_never_exceeds_limit(self) -> None:
+        """Final output must never exceed max_bytes when truncation succeeds."""
+        data = [{"id": i, "name": f"LongName{i}" * 10} for i in range(1000)]
+
+        for max_bytes in [500, 1000, 5000, 10000]:
+            result_copy = self._make_result(data.copy())
+            result_copy, _items_kept, was_truncated = truncate_json_result(result_copy, max_bytes)
+            if was_truncated:
+                output = format_json(result_copy, pretty=False)
+                assert len(output.encode()) <= max_bytes
+
+    def test_precision_preserved(self) -> None:
+        """Numeric precision is preserved (no parse/re-serialize round-trip)."""
+        # Use numbers that could lose precision in JSON round-trip
+        data = [
+            {"id": 1, "value": 1.0000000000000001},
+            {"id": 2, "value": 9999999999999999},
+        ]
+        result = self._make_result(data)
+
+        result, _items_kept, _was_truncated = truncate_json_result(result, 10000)
+
+        # Values should be exactly preserved (truncation operates on Python objects)
+        assert result.data[0]["value"] == 1.0000000000000001
+        assert result.data[1]["value"] == 9999999999999999
+
+    def test_with_include_meta(self) -> None:
+        """Truncation respects include_meta parameter."""
+        from affinity.cli.results import ResultSummary
+
+        data = [{"id": i, "name": f"Name{i}"} for i in range(100)]
+        result = self._make_result(data)
+        result.summary = ResultSummary(fetched=100, returned=100, filtered=0, rate_limited=0)
+        result.meta = {"executionTime": 1.5}
+
+        # Truncate with include_meta=True - should account for larger output size
+        result, _items_kept, was_truncated = truncate_json_result(result, 500, include_meta=True)
+
+        assert was_truncated is True
+        output = format_json(result, pretty=False, include_meta=True)
+        assert len(output.encode()) <= 500
+
+    def test_binary_search_finds_optimal(self) -> None:
+        """Binary search finds maximum items that fit."""
+        # Create data where each item is ~50 bytes
+        data = [{"id": i, "name": f"Name{i:04d}"} for i in range(100)]
+        result = self._make_result(data)
+
+        # Set limit that should fit ~10 items
+        result, items_kept, was_truncated = truncate_json_result(result, 600)
+
+        assert was_truncated is True
+        # Verify we kept as many as possible
+        output = format_json(result, pretty=False)
+        assert len(output.encode()) <= 600
+        # Adding one more should exceed limit
+        if items_kept < len(data):
+            result.data = data[: items_kept + 1]
+            test_output = format_json(result, pretty=False)
+            assert len(test_output.encode()) > 600
 
 
 class TestTruncateToonOutput:

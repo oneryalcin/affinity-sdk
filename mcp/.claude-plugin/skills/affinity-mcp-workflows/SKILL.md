@@ -268,11 +268,11 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
   {"from": "listEntries", "where": {"and": [{"path": "listName", "op": "eq", "value": "Dealflow"}, {"path": "entityName", "op": "contains", "value": "Acme"}]}}
   ```
 - **Output formats**: The `format` parameter controls result format:
-  - `toon` (default for query): 40% fewer tokens, **always use for bulk queries** (prevents truncation)
+  - `toon` (default for query): 40% fewer tokens, best for bulk queries
   - `markdown`: Best for LLM comprehension when analyzing data
-  - `json`: Full structure with envelope - **avoid for bulk queries** (causes truncation >15 records)
+  - `json`: Full structure with envelope - supports cursor pagination for large results
   - `csv`: For spreadsheet export
-  - **Important**: Omit `format` to use TOON default, or explicitly use `"format": "toon"` for bulk data retrieval
+  - All formats support cursor pagination when results are truncated (use `nextCursor` to resume)
 
 ## Troubleshooting
 

@@ -7,7 +7,7 @@ description: Use when user needs complex data queries, multi-entity joins, aggre
 
 This skill covers the structured query language for querying Affinity CRM data via the `query` MCP tool.
 
-> ⚠️ **Before running queries:** Complete the pre-flight checklist from `affinity-mcp-workflows` skill (read data-model, run discover-commands, state what you learned). This ensures you use current syntax and don't miss useful flags.
+> ⚠️ **Before running queries:** Complete the pre-flight checklist from `xaffinity://workflows-guide` (read data-model, run discover-commands, state what you learned). This ensures you use current syntax and don't miss useful flags.
 
 ## When to Use This Tool
 
@@ -675,6 +675,30 @@ Returns execution plan with:
 | `timeout` | integer | auto | Query timeout in seconds (auto-calculated from estimated API calls if not specified) |
 | `maxOutputBytes` | integer | 50000 | Truncation limit for results |
 | `format` | string | "toon" | Output format (see Output Formats below) |
+| `cursor` | string | null | Resume from previous truncated response (see Truncated Responses below) |
+
+### Truncated Responses
+
+When output exceeds `maxOutputBytes`, the response includes `truncated: true` and a `nextCursor`. Pass this cursor to continue from the truncation point:
+
+```json
+// Response with truncation
+{
+  "data": [...],
+  "truncated": true,
+  "nextCursor": "eyJ2IjoxLC...",
+  "_cursorMode": "streaming"
+}
+
+// Resume with cursor (keep query and format identical)
+{
+  "query": {"from": "persons", "limit": 1000},
+  "format": "toon",
+  "cursor": "eyJ2IjoxLC..."
+}
+```
+
+**Important**: The `nextCursor` is for **output size truncation**, not record limits. A query returning all requested records won't have a `nextCursor` unless the output was too large. See "Handling Truncated Responses" in `xaffinity://data-model` for details.
 
 ### Timeout Auto-Calculation
 
@@ -735,6 +759,29 @@ pagination:
 ```
 
 **Note:** `jsonl` and `csv` are data-only export formats (no envelope). `toon`, `json`, and `markdown` preserve pagination and included entity information.
+
+### Truncated Response Example
+
+When output exceeds `maxOutputBytes`, the response includes truncation metadata (shown for JSON format):
+
+```json
+{
+  "data": [{"id": 1, "name": "Acme"}, {"id": 2, "name": "Beta"}, ...],
+  "executed": ["xaffinity", "query", "--output", "json", ...],
+  "truncated": true,
+  "nextCursor": "eyJ2IjoxLCJxaCI6IjZmYzJhZDJkYTI5...",
+  "_cursorMode": "streaming"
+}
+```
+
+For TOON format, truncation appears as:
+```
+data[56]{id,name}:
+  ...
+truncated: true
+nextCursor: eyJ2IjoxLCJxaCI6IjZmYzJhZDJkYTI5...
+_cursorMode: streaming
+```
 
 ## Performance
 

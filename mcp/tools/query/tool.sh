@@ -98,8 +98,8 @@ trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 # Build command for transparency logging (actual execution uses run_xaffinity_with_progress)
 declare -a cmd_display=("xaffinity" "query" "--max-records" "$max_records" "--timeout" "$timeout_secs" "--output" "$format")
 [[ "$dry_run" == "true" ]] && cmd_display+=("--dry-run")
-# For non-JSON formats, CLI handles truncation via --max-output-bytes
-[[ "$format" != "json" ]] && cmd_display+=("--max-output-bytes" "$max_output_bytes")
+# CLI handles truncation via --max-output-bytes for all formats including JSON
+cmd_display+=("--max-output-bytes" "$max_output_bytes")
 # Pass cursor to CLI if provided
 [[ -n "$cursor" ]] && cmd_display+=("--cursor" "$cursor")
 
@@ -115,14 +115,14 @@ fi
 # - CLI emits cursor to stderr as NDJSON {"type": "cursor", ...} when truncated
 # - --stdin pipes query JSON to the command
 # - --stderr-file captures non-progress stderr for error reporting (mcp-bash 0.9.11+)
-# - --max-output-bytes for non-JSON formats (CLI handles truncation, returns exit code 100 if truncated)
+# - --max-output-bytes for all formats (CLI handles truncation, returns exit code 100 if truncated)
 # - --session-cache enables cross-invocation reuse of list/field metadata (must come before subcommand)
 set +e
 printf '%s' "$query_json" | run_xaffinity_with_progress --stdin --stderr-file "$stderr_file" \
     $([[ -n "${AFFINITY_SESSION_CACHE:-}" ]] && echo "--session-cache" "${AFFINITY_SESSION_CACHE}") \
     query --max-records "$max_records" --timeout "$timeout_secs" --output "$format" \
     $([[ "$dry_run" == "true" ]] && echo "--dry-run") \
-    $([[ "$format" != "json" ]] && echo "--max-output-bytes" "$max_output_bytes") \
+    --max-output-bytes "$max_output_bytes" \
     $([[ -n "$cursor" ]] && echo "--cursor" "$cursor") >"$stdout_file"
 exit_code=$?
 set -e
@@ -170,22 +170,27 @@ log_metric "query_output_bytes" "${#stdout_content}" "dryRun=$dry_run"
 if [[ $exit_code -eq 0 ]]; then
     # Format-specific response handling
     if [[ "$format" == "json" ]]; then
-        # JSON format: validate and apply semantic truncation via mcp_json_truncate
+        # JSON format: CLI handles truncation, MCP just passes through and adds metadata
         if mcp_is_valid_json "$stdout_content"; then
-            if truncated_result=$(mcp_json_truncate "$stdout_content" "$max_output_bytes" --array-path ".data"); then
-                # Add nextCursor if present
+            # Build response based on truncation state
+            if [[ "$was_truncated" == "true" ]]; then
+                # Truncated: add truncated flag and cursor if present
                 if [[ -n "$next_cursor" ]]; then
-                    mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool \
+                    mcp_result_success "$(printf '%s' "$stdout_content" | jq_tool \
                         --argjson cmd "$cmd_json" \
                         --arg cursor "$next_cursor" \
                         --arg mode "$cursor_mode" \
-                        '. + {executed: $cmd, nextCursor: $cursor, _cursorMode: $mode}')"
+                        '. + {executed: $cmd, truncated: true, nextCursor: $cursor, _cursorMode: $mode}')"
                 else
-                    mcp_result_success "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '. + {executed: $cmd}')"
+                    mcp_result_success "$(printf '%s' "$stdout_content" | jq_tool \
+                        --argjson cmd "$cmd_json" \
+                        '. + {executed: $cmd, truncated: true}')"
                 fi
             else
-                # Truncation failed (output too large, can't truncate safely)
-                mcp_result_error "$(printf '%s' "$truncated_result" | jq_tool --argjson cmd "$cmd_json" '.error + {executed: $cmd}')"
+                # Not truncated: just add executed command (NO truncated: false)
+                mcp_result_success "$(printf '%s' "$stdout_content" | jq_tool \
+                    --argjson cmd "$cmd_json" \
+                    '. + {executed: $cmd}')"
             fi
         else
             # Invalid JSON - shouldn't happen for --output json

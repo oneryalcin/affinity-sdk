@@ -5,6 +5,18 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-01-25
+
+### Added
+- **JSON format cursor pagination**: The `query` tool now supports cursor-based pagination for JSON format output. Previously, JSON truncation happened at the MCP layer (post-CLI) which could not emit cursors, causing `truncated: true` responses without a `nextCursor`. Now all formats (toon, markdown, json, jsonl, csv) use unified CLI-level truncation with cursor support.
+
+### Changed
+- **Unified truncation flow**: All output formats now pass `--max-output-bytes` to CLI. CLI performs semantic truncation (removes array items while preserving structure) and emits cursors when output is truncated. MCP layer simplified to pass through CLI output.
+- **Improved LLM guidance**: Updated `tool.meta.json` and `data-model.md` documentation to clarify cursor behavior and prevent cursor fabrication.
+
+### Fixed
+- **Cursor availability for JSON format**: Fixed issue where JSON format responses could have `truncated: true` without a `nextCursor`, leading LLMs to fabricate invalid cursors.
+
 ## [1.15.0] - 2026-01-25
 
 ### Changed

@@ -268,6 +268,7 @@ def _query_cmd_impl(
         format_table,
         insert_cursor_in_toon_truncation,
         truncate_csv_output,
+        truncate_json_result,
         truncate_jsonl_output,
         truncate_markdown_output,
         truncate_toon_output,
@@ -517,6 +518,9 @@ def _query_cmd_impl(
     # Format and output results
     was_truncated = False
 
+    # Track pre-truncation count for JSON format (see cursor logic below)
+    json_pre_truncation_count: int = 0
+
     if csv_flag:
         from ..csv_utils import write_csv_to_stdout
 
@@ -533,8 +537,25 @@ def _query_cmd_impl(
         write_csv_to_stdout(rows=result.data, fieldnames=fieldnames, bom=csv_bom)
         sys.exit(0)
     elif ctx.output == "json":
+        # Truncate at object level BEFORE serialization to avoid precision loss
+        # Save count before truncation for cursor logic (line ~593)
+        json_pre_truncation_count = len(result.data) if result.data else 0
+        if max_output_bytes:
+            result, _items_kept, was_truncated = truncate_json_result(
+                result, max_output_bytes, include_meta=include_meta
+            )
+            # Handle can't-truncate case: envelope too large or empty data with large included
+            # IMPORTANT: Always check size when not truncated, even if data is empty
+            if not was_truncated:
+                test_output = format_json(result, pretty=False, include_meta=include_meta)
+                if len(test_output.encode()) > max_output_bytes:
+                    # Can't truncate but output exceeds limit - this is an error
+                    raise CLIError(
+                        f"JSON output exceeds {max_output_bytes} bytes and cannot be "
+                        "truncated. Reduce 'select' fields, remove 'include'/'expand', "
+                        "or increase 'maxOutputBytes'."
+                    )
         output = format_json(result, pretty=False, include_meta=include_meta)
-        # JSON truncation handled by MCP bash layer (mcp_json_truncate)
     elif ctx.output in ("toon", "markdown"):
         # TOON and markdown support full envelope (pagination, included)
         output = format_query_result(result, ctx.output, pretty=False, include_meta=include_meta)
@@ -574,7 +595,14 @@ def _query_cmd_impl(
     if was_truncated:
         rows_shown = _count_rows_in_output(output, output_format)
         total_records = len(all_data_for_cache) if all_data_for_cache else 0
-        remaining_records = len(result.data) if result.data else 0
+        # For JSON, use pre-truncation count since truncate_json_result modifies result.data
+        remaining_records = (
+            json_pre_truncation_count
+            if output_format == "json" and json_pre_truncation_count > 0
+            else len(result.data)
+            if result.data
+            else 0
+        )
 
         if rows_shown < remaining_records:
             # Calculate new skip position (cumulative from original position)

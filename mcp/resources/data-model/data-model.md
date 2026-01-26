@@ -266,23 +266,29 @@ company ls --filter "Status=New"
 list export Dealflow --filter "Status=New"
 ```
 
-### Mistake 3: Using JSON format for bulk queries
+### Output Format Recommendations
 
-When using the `query` tool for bulk data retrieval, **always use TOON format** (the default):
+When using the `query` tool, prefer **TOON format** (the default) for bulk data retrieval:
+
+| Format | Best For | Token Efficiency |
+|--------|----------|------------------|
+| toon | Bulk data retrieval (default) | ~40% fewer tokens |
+| markdown | LLM analysis and comprehension | Good |
+| json | Programmatic parsing, nested structures | Standard |
+| csv/jsonl | Export, downstream processing | N/A |
 
 ```json
-// ✗ WRONG - JSON format causes truncation on large result sets
-{"format": "json", "query": {"from": "listEntries", "where": {...}}}
-
-// ✓ RIGHT - Use TOON (or omit format to use default)
+// ✓ RECOMMENDED - TOON format (default) is most token-efficient
 {"query": {"from": "listEntries", "where": {...}}}
-{"format": "toon", "query": {"from": "listEntries", "where": {...}}}
+
+// ✓ OK - JSON works with cursor pagination if needed
+{"format": "json", "query": {"from": "listEntries", "where": {...}}}
 ```
 
-**Why this matters:**
-- JSON format causes truncation on result sets >15-20 records (wastes API calls)
-- TOON is 40% more token-efficient and prevents truncation
-- Only use `format: "json"` when you need to programmatically parse nested structures outside of Claude
+**Why prefer TOON:**
+- TOON is 40% more token-efficient than JSON
+- All formats (including JSON) now support cursor pagination for large result sets
+- Use `format: "json"` when you need to programmatically parse nested structures outside of Claude
 
 ## Full Scan Protection
 
@@ -510,17 +516,32 @@ with open('/tmp/data.toon') as f:
 
 ## Handling Truncated Responses
 
-Large query results may be truncated to fit within output limits (~50KB default). When this happens, the response includes a `nextCursor` field that allows you to fetch the remaining data.
+Large query results may be truncated to fit within output limits (~50KB default). The response will include `truncated: true` when this happens.
 
-### Detecting Truncation
+### Cursor Pagination (All Formats Supported)
 
-Truncated responses include:
-- `truncated: true` in the MCP response
-- `nextCursor`: Opaque string to fetch the next chunk
+All output formats (toon, markdown, json, jsonl, csv) support cursor-based pagination for large result sets.
+
+**Important**: The presence or absence of `nextCursor` tells you what action to take:
+
+| Response | Meaning | Action |
+|----------|---------|--------|
+| `truncated: true` + `nextCursor: "..."` | Output truncated mid-stream; more fetched data available | Pass cursor to continue from truncation point |
+| `truncated: true` + **NO** `nextCursor` | Rare edge case - envelope too large to fit any data | Reduce `include`/`expand` or increase `maxOutputBytes` |
+
+**Critical**: Never fabricate a cursor. The cursor format is opaque and cryptographically validated - any made-up cursor will fail validation.
+
+### Edge Case: Truncation Without Cursor
+
+In rare cases, truncation may occur without a cursor when:
+- The envelope (`included`/`meta`) is so large that even 0 data records exceed `maxOutputBytes`
+- The CLI returns an error rather than silently exceeding the size limit
+
+**Solution**: Reduce `include`/`expand` fields or increase `maxOutputBytes`.
 
 ### Resuming with Cursor
 
-To get the next chunk of results, call the query tool again with:
+When `nextCursor` IS provided, call the query tool again with:
 1. The **exact same `query` object** (unchanged)
 2. The **exact same `format` parameter** (unchanged)
 3. The `cursor` parameter set to the `nextCursor` value
@@ -537,14 +558,46 @@ result1 = await query(
     maxOutputBytes=50000
 )
 
-# If truncated, get next chunk
+# Check BOTH truncated AND nextCursor before resuming
 if result1.get("truncated") and result1.get("nextCursor"):
+    # More data exists - use cursor to resume
     result2 = await query(
         query={"from": "persons", "limit": 1000},  # IDENTICAL query
         format="toon",  # IDENTICAL format
         cursor=result1["nextCursor"]  # Pass the cursor
     )
+elif result1.get("truncated"):
+    # No cursor = all data fetched but output too large
+    # Retry with larger maxOutputBytes or fewer select fields
+    result2 = await query(
+        query={"from": "persons", "limit": 1000},
+        format="toon",
+        maxOutputBytes=150000  # Increase output limit
+    )
 ```
+
+### Two Types of Cursors
+
+The system uses two different cursor mechanisms - don't confuse them:
+
+| Cursor Type | Location | Purpose | When Present |
+|-------------|----------|---------|--------------|
+| **Truncation cursor** | Top-level `nextCursor` | Resume after `maxOutputBytes` truncation | When output exceeds size limit |
+| **API pagination cursor** | `meta.pagination.rows.nextCursor` | Affinity API's native pagination | When more API pages exist |
+
+**Truncation cursor** (what `query` tool returns):
+- Appears at response root as `nextCursor` + `_cursorMode`
+- Created when CLI output is truncated due to `maxOutputBytes`
+- Pass to `cursor` parameter to resume from exact truncation point
+- Base64-encoded, contains query hash for validation
+
+**API pagination cursor** (from Affinity API):
+- Appears inside `meta.pagination.rows.nextCursor`
+- A full URL pointing to the next API page
+- Used internally by CLI for pagination; rarely needed directly
+- Only relevant when using `execute-read-command` with `list export`
+
+**Key insight**: The `query` tool's `nextCursor` is for **output size truncation**, not record limits. A query with `limit: 100` that returns all 100 records won't have a `nextCursor` unless the output was too large.
 
 ### Cursor Behavior
 
@@ -554,3 +607,4 @@ if result1.get("truncated") and result1.get("nextCursor"):
   - **Streaming mode** (simple queries): Fast resumption via API cursor
   - **Full-fetch mode** (queries with orderBy/aggregate): Cached results served from disk
 - Pass the cursor back unchanged - it's opaque and should not be modified
+- Never fabricate or modify cursor values - they contain cryptographic hashes for validation

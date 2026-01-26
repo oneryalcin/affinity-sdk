@@ -411,9 +411,10 @@
         "csv": "For spreadsheets"
       },
       "truncationResumption": {
-        "description": "When output is truncated (truncated: true), use the nextCursor value to resume",
+        "description": "When truncated=true, use the nextCursor value to resume fetching the remaining data",
         "usage": "Pass the nextCursor value as the cursor parameter with the IDENTICAL query",
-        "important": "Query and format MUST match exactly - any change invalidates the cursor",
+        "important": "NEVER fabricate a cursor - only use the exact nextCursor value from the response. Query and format MUST match exactly",
+        "allFormatsSupported": "Cursor pagination works with all output formats (toon, markdown, json, jsonl, csv)",
         "modes": {
           "streaming": "Simple queries without orderBy/aggregate",
           "full-fetch": "Complex queries with orderBy/aggregate - results are cached for efficient resumption"
