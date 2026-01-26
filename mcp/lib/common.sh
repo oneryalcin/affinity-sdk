@@ -247,7 +247,8 @@ run_xaffinity() {
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     [[ -n "$session_cache" ]] && cmd+=(--session-cache "$session_cache")
-    cmd+=("${filtered_args[@]}")
+    # Note: ${arr[@]+...} syntax for Bash 3.2 compatibility with empty arrays
+    cmd+=(${filtered_args[@]+"${filtered_args[@]}"})
 
     # Execute with retry for transient failures
     mcp_with_retry 3 0.5 -- "${cmd[@]}"
@@ -296,7 +297,8 @@ run_xaffinity_readonly() {
     cmd+=(--readonly)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
     [[ -n "$session_cache" ]] && cmd+=(--session-cache "$session_cache")
-    cmd+=("${filtered_args[@]}")
+    # Note: ${arr[@]+...} syntax for Bash 3.2 compatibility with empty arrays
+    cmd+=(${filtered_args[@]+"${filtered_args[@]}"})
 
     # Log command start in debug mode
     xaffinity_log_debug "cli" "executing: ${XAFFINITY_CLI:-xaffinity} --readonly $subcommand ..."

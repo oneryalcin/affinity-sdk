@@ -97,8 +97,9 @@ mcp_detect_cli() {
     candidates+=("/bin/${name}")
 
     # Check candidates in order
+    # Note: candidates is always populated above, but use safe pattern for Bash 3.2
     local candidate
-    for candidate in "${candidates[@]}"; do
+    for candidate in ${candidates[@]+"${candidates[@]}"}; do
         if [[ -x "${candidate}" ]]; then
             printf '%s\n' "${candidate}"
             return 0
