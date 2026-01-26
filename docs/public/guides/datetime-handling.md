@@ -2,6 +2,13 @@
 
 This guide explains how the SDK and CLI handle datetime values, including timezone behavior.
 
+!!! warning "SDK and CLI interpret naive datetimes differently"
+    **SDK (Python)**: Naive datetime strings like `"2024-01-01"` are assumed to be **UTC**.
+
+    **CLI**: Naive datetime strings like `--after 2024-01-01` are assumed to be **local time**.
+
+    This difference can cause subtle bugs if you're not aware of it. For portable, reproducible behavior, always use explicit timezone suffixes (`Z` for UTC or `+HH:MM` offset).
+
 ## SDK (Python API)
 
 All datetime fields in SDK models are **UTC-aware**:

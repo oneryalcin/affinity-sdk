@@ -14,7 +14,7 @@ Connect AI tools to Affinity CRM for intelligent workflows, meeting preparation,
 The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server connects desktop AI applications to Affinity:
 
 - **Claude Desktop**, **ChatGPT Desktop**, **Cursor**, **Windsurf**, **VS Code + Copilot**, and more
-- 17 tools for entity search, relationship insights, workflow management, interaction logging, and full CLI access
+- 7 native tools for entity search, relationship insights, workflow management, and full CLI access via gateway
 - 8 guided prompts for common workflows (meeting prep, pipeline review, warm intros)
 
 [MCP Server documentation](../mcp/index.md){ .md-button }

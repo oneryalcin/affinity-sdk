@@ -102,7 +102,7 @@ When running multiple CLI commands in a pipeline, you can enable session caching
 export AFFINITY_SESSION_CACHE=$(xaffinity session start)
 
 # Run your commands - metadata is cached across invocations
-xaffinity list export "My List" --format json > entries.json
+xaffinity list export "My List" --json > entries.json
 xaffinity field ls --list-id 12345
 xaffinity person get 12345
 
@@ -602,7 +602,7 @@ xaffinity list export 123 --field Stage --field Amount --filter '"Stage" = "Acti
 xaffinity list export 123 --csv --csv-bom > out.csv
 
 # Include interaction dates (last meeting, next meeting, email dates)
-xaffinity list export "Dealflow" --expand interactions --format json
+xaffinity list export "Dealflow" --expand interactions --json
 xaffinity list export "Dealflow" --expand interactions --csv > pipeline.csv
 
 # Check for unreplied incoming messages (email + chat)

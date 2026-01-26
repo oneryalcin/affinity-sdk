@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-01-26
+
+### Changed (Breaking)
+- SDK: `Person.interactions` and `Company.interactions` attribute type changed from `dict[str, Any]` to typed `Interactions` model. Migration: change dict access (`person.interactions["last_event"]["person_ids"]`) to attribute access (`person.interactions.last_event.person_ids`). The `Interactions` model provides typed access to `first_email`, `last_email`, `first_event`, `last_event`, `next_event`, `last_chat_message`, and `last_interaction` fields, each containing an `InteractionEvent` with `date` and `person_ids` attributes.
+
+### Fixed
+- SDK: `PersonService.get()` field values are now properly validated as `FieldValue` models.
+
 ## [0.15.1] - 2026-01-25
 
 ### Fixed

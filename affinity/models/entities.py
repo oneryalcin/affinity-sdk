@@ -244,8 +244,8 @@ class Person(AffinityModel):
     # Interaction dates (V1 format, returned when with_interaction_dates=True)
     interaction_dates: InteractionDates | None = Field(None, alias="interactionDates")
 
-    # V1: only returned when with_interaction_dates=true; preserve shape for forward compatibility.
-    interactions: dict[str, Any] | None = None
+    # Detailed interaction data with person IDs (returned when with_interaction_persons=True)
+    interactions: Interactions | None = None
 
     # List entries (returned for single person fetch)
     list_entries: list[ListEntry] | None = Field(None, alias="listEntries")
@@ -336,8 +336,8 @@ class Company(AffinityModel):
     # Interaction dates
     interaction_dates: InteractionDates | None = Field(None, alias="interactionDates")
 
-    # V1: only returned when with_interaction_dates=true; preserve shape for forward compatibility.
-    interactions: dict[str, Any] | None = None
+    # Detailed interaction data with person IDs (returned when with_interaction_persons=True)
+    interactions: Interactions | None = None
 
 
 class CompanyCreate(AffinityModel):
@@ -828,6 +828,29 @@ class InteractionDates(AffinityModel):
     next_event_date: ISODatetime | None = Field(None, alias="nextEventDate")
     last_chat_message_date: ISODatetime | None = Field(None, alias="lastChatMessageDate")
     last_interaction_date: ISODatetime | None = Field(None, alias="lastInteractionDate")
+
+
+class InteractionEvent(AffinityModel):
+    """Details of an interaction event (meeting, email, etc.)."""
+
+    date: ISODatetime | None = None
+    person_ids: list[int] = Field(default_factory=list, alias="personIds")
+
+
+class Interactions(AffinityModel):
+    """Detailed interaction data with person IDs for each interaction type.
+
+    Returned when with_interaction_dates=True and with_interaction_persons=True.
+    Fields correspond to those in InteractionDates.
+    """
+
+    first_email: InteractionEvent | None = Field(None, alias="firstEmail")
+    last_email: InteractionEvent | None = Field(None, alias="lastEmail")
+    first_event: InteractionEvent | None = Field(None, alias="firstEvent")
+    last_event: InteractionEvent | None = Field(None, alias="lastEvent")
+    next_event: InteractionEvent | None = Field(None, alias="nextEvent")
+    last_chat_message: InteractionEvent | None = Field(None, alias="lastChatMessage")
+    last_interaction: InteractionEvent | None = Field(None, alias="lastInteraction")
 
 
 # Forward reference resolution

@@ -11,7 +11,7 @@ Use `affinity.F` to build type-safe filter expressions:
 ```python
 from affinity import Affinity, F
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     # Recommended: Type-safe filter builder
     companies = client.companies.list(
         filter=F.field("Industry").equals("Software")

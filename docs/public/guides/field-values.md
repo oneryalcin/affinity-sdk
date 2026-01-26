@@ -10,7 +10,7 @@ Use `field_values.list()` to get all field values for a specific entity:
 from affinity import Affinity
 from affinity.types import PersonId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     field_values = client.field_values.list(person_id=PersonId(123))
     for fv in field_values:
         print(f"{fv.field_id}: {fv.value}")
@@ -26,7 +26,7 @@ Use `get_for_entity()` to get a single field value without iterating:
 from affinity import Affinity
 from affinity.types import FieldId, PersonId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     # Returns FieldValue or None if not found
     status = client.field_values.get_for_entity(
         FieldId("field-123"),
@@ -54,7 +54,7 @@ Use `list_batch()` to get field values for multiple entities:
 from affinity import Affinity
 from affinity.types import PersonId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     person_ids = [PersonId(1), PersonId(2), PersonId(3)]
 
     # Returns dict mapping entity_id -> list of field values
@@ -84,7 +84,7 @@ Check if a field exists before using it:
 from affinity import Affinity
 from affinity.types import FieldId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     if client.fields.exists(FieldId("field-123")):
         # Field exists, safe to use
         pass
@@ -109,20 +109,18 @@ When you need both person data and field values, use `include_field_values` to s
 from affinity import Affinity
 from affinity.types import PersonId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     # Single API call returns person + field values
     person = client.persons.get(
         PersonId(123),
         include_field_values=True,
     )
 
-    # Field values are attached to the person object
-    if hasattr(person, "field_values"):
+    # Field values are attached to the person object (may be None if not returned)
+    if person.field_values:
         for fv in person.field_values:
-            print(f"{fv['field_id']}: {fv['value']}")
+            print(f"{fv.field_id}: {fv.value}")
 ```
-
-**Note:** This uses the V1 API internally, which returns field values in the response.
 
 ## Resource management
 
@@ -130,11 +128,11 @@ Always use the client as a context manager to ensure proper cleanup:
 
 ```python
 # Recommended: context manager ensures cleanup
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     field_values = client.field_values.list(person_id=PersonId(123))
 
 # Or close explicitly
-client = Affinity(api_key="your-key")
+client = Affinity(api_key="your-api-key")
 try:
     field_values = client.field_values.list(person_id=PersonId(123))
 finally:

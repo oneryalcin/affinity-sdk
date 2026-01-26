@@ -121,10 +121,10 @@ class TestCompanyServiceGetWithInteractionDates:
         assert company.interaction_dates.last_email_date is not None
         assert company.interaction_dates.last_interaction_date is not None
 
-        # Verify interactions dict (preserves shape for forward compatibility)
+        # Verify interactions model
         assert company.interactions is not None
-        assert "last_event" in company.interactions
-        assert company.interactions["last_event"]["person_ids"] == [1, 2]
+        assert company.interactions.last_event is not None
+        assert company.interactions.last_event.person_ids == [1, 2]
 
     def test_get_with_interaction_persons_includes_person_ids(self) -> None:
         """Test that person_ids are included in interactions."""
@@ -171,7 +171,8 @@ class TestCompanyServiceGetWithInteractionDates:
 
         # Verify person_ids in interactions
         assert company.interactions is not None
-        assert company.interactions["last_event"]["person_ids"] == [1, 2, 3]
+        assert company.interactions.last_event is not None
+        assert company.interactions.last_event.person_ids == [1, 2, 3]
 
     def test_get_without_interaction_dates_uses_v2_api(self) -> None:
         """Test that default get() still uses V2 API."""
@@ -348,7 +349,7 @@ class TestPersonServiceGetWithInteractionDates:
                     "first_name": "John",
                     "last_name": "Doe",
                     "field_values": [
-                        {"field_id": 1, "value": "test value"},
+                        {"id": 99, "field_id": 1, "value": "test value"},
                     ],
                     "interaction_dates": {
                         "last_event_date": "2026-01-10T10:00:00Z",
@@ -386,7 +387,8 @@ class TestPersonServiceGetWithInteractionDates:
         # Verify both data types were returned
         assert person.interaction_dates is not None
         assert hasattr(person, "field_values")
-        assert person.field_values == [{"field_id": 1, "value": "test value"}]
+        assert len(person.field_values) == 1
+        assert person.field_values[0].value == "test value"
 
     def test_get_without_interaction_dates_uses_v2_api(self) -> None:
         """Test that default get() still uses V2 API."""
@@ -580,8 +582,10 @@ class TestCompanyModelWithInteractions:
 
         assert company.id == 123
         assert company.interactions is not None
-        assert company.interactions["last_event"]["person_ids"] == [1, 2, 3]
-        assert company.interactions["next_event"]["person_ids"] == [4]
+        assert company.interactions.last_event is not None
+        assert company.interactions.last_event.person_ids == [1, 2, 3]
+        assert company.interactions.next_event is not None
+        assert company.interactions.next_event.person_ids == [4]
 
     def test_company_model_without_interactions(self) -> None:
         """Test that Company works without interactions field."""

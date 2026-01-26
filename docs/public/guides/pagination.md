@@ -3,36 +3,46 @@
 Most list endpoints support both:
 
 - `list(...)`: fetch a single page
-- `iter(...)` / `all(...)`: iterate across pages automatically
+- `iter(...)` or `all(...)`: iterate across pages automatically
 
 ## Services with pagination
 
-All paginated services support `iter()` for streaming and `all()` for collecting results:
+| Service | Auto-pagination | Page-by-page | API |
+|---------|-----------------|--------------|-----|
+| `persons` | `all()`, `iter()` | `pages()` | V2 |
+| `companies` | `all()`, `iter()` | `pages()` | V2 |
+| `opportunities` | `all()`, `iter()` | `pages()` | V2 |
+| `lists` | `all()`, `iter()` | `pages()` | V2 |
+| `notes` | `iter()` | use `list()` | V1 |
+| `reminders` | `iter()` | use `list()` | V1 |
+| `interactions` | `iter()` | use `list()` | V1 |
+| `files` | `all()`, `iter()` | use `list()` | V1 |
 
-| Service | Methods |
-|---------|---------|
-| `persons` | `iter()`, `all()`, `pages()` |
-| `companies` | `iter()`, `all()`, `pages()` |
-| `opportunities` | `iter()`, `all()`, `pages()` |
-| `lists` | `iter()`, `all()`, `pages()` |
-| `notes` | `iter()` |
-| `reminders` | `iter()` |
-| `interactions` | `iter()` |
-| `files` | `iter()`, `all()` |
+!!! note "V1 vs V2 method availability"
+    **V2 services** (persons, companies, opportunities, lists) have `all()` and `iter()` as aliases, plus a dedicated `pages()` method for page-by-page iteration with progress callbacks.
+
+    **V1 services** (notes, reminders, interactions, files) have `iter()` for auto-pagination. For manual page-by-page control, use `list()` with `page_token` parameter directly.
 
 Example:
 
 ```python
 from affinity import Affinity
 
-with Affinity(api_key="your-key") as client:
-    for company in client.companies.iter():
+with Affinity(api_key="your-api-key") as client:
+    # Stream through all companies (memory-efficient)
+    for company in client.companies.all():
         print(company.name)
+
+    # For V1 services, use iter()
+    for note in client.notes.iter(person_id=person_id):
+        print(note.content)
 ```
 
 ## Progress callbacks
 
-Use `on_progress` to track pagination progress for logging, progress bars, or debugging:
+Use `on_progress` to track pagination progress for logging, progress bars, or debugging.
+
+The `on_progress` callback is available on `PageIterator.pages()`:
 
 ```python
 from affinity import Affinity, PaginationProgress
@@ -40,11 +50,17 @@ from affinity import Affinity, PaginationProgress
 def log_progress(p: PaginationProgress) -> None:
     print(f"Page {p.page_number}: {p.items_so_far} items so far")
 
-with Affinity(api_key="your-key") as client:
-    for page in client.companies.pages(on_progress=log_progress):
+with Affinity(api_key="your-api-key") as client:
+    # Get a PageIterator, then iterate page-by-page with progress
+    iterator = client.companies.all()
+    for page in iterator.pages(on_progress=log_progress):
         for company in page.data:
             process(company)
 ```
+
+!!! note "Service `pages()` vs `PageIterator.pages()`"
+    V2 services (persons, companies, etc.) have a direct `pages()` method for convenience.
+    The `PageIterator.pages()` method shown above works with any auto-pagination method.
 
 `PaginationProgress` provides:
 
@@ -55,36 +71,49 @@ with Affinity(api_key="your-key") as client:
 | `items_so_far` | Cumulative items including current page |
 | `has_next` | Whether more pages exist |
 
-## Memory safety
+## Collecting results into a list
 
-The `.all()` method returns a list, which can cause out-of-memory issues with large datasets. By default, it limits results to 100,000 items and raises `TooManyResultsError` if exceeded:
+Service methods like `client.companies.all()` return a `PageIterator` for streaming iteration. While the return type annotation is `Iterator[T]` for interface compatibility, the actual object returned is a `PageIterator` which provides additional methods like `.all()` and `.pages()`.
+
+If you need all items in a list (instead of streaming), call the `PageIterator.all()` method:
 
 ```python
 from affinity import Affinity, TooManyResultsError
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     try:
-        # Raises TooManyResultsError if > 100,000 items
-        companies = client.companies.all()
+        # service.all() returns PageIterator
+        # PageIterator.all() collects all items into a list
+        iterator = client.companies.all()
+        companies = iterator.all()  # Returns list[Company]
+        # Or as a one-liner: client.companies.all().all()
     except TooManyResultsError as e:
-        print(f"Too many results: {e.count} items")
+        print(f"Too many results: {e}")
 ```
 
-Adjust or disable the limit with `max_results`:
+!!! warning "The `.all().all()` pattern"
+    The double `.all()` can look confusing. Here's what's happening:
+
+    1. `client.companies.all()` → returns a `PageIterator` (streams items lazily)
+    2. `PageIterator.all()` → collects all items into a `list` (loads into memory)
+
+    By default, `PageIterator.all()` raises `TooManyResultsError` if results exceed 100,000 items.
+
+Adjust or disable the limit with the `limit` parameter:
 
 ```python
 # Lower limit for safety
-companies = client.companies.all(max_results=1000)
+companies = client.companies.all().all(limit=1000)
 
 # Disable limit (use with caution)
-companies = client.companies.all(max_results=None)
+companies = client.companies.all().all(limit=None)
 ```
 
-For very large datasets, prefer streaming with `iter()`:
+For very large datasets, prefer streaming directly (no collection into list):
 
 ```python
 # Memory-efficient: processes one item at a time
-for company in client.companies.iter():
+for company in client.companies.all():
     process(company)
 ```
 
@@ -95,7 +124,7 @@ When iterating pages manually, use the `next_cursor` property to get the cursor 
 ```python
 from affinity import Affinity
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     page = client.companies.list(limit=100)
 
     while page.has_next:

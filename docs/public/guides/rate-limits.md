@@ -9,7 +9,7 @@ The SDK exposes a version-agnostic rate limit surface via `client.rate_limits`:
 ```python
 from affinity import Affinity
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     client.companies.list()
     print(client.rate_limits.snapshot())
 ```
@@ -19,7 +19,7 @@ with Affinity(api_key="your-key") as client:
 ```python
 from affinity import Affinity
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     limits = client.rate_limits.refresh()
     print(limits)
 ```

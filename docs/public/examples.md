@@ -40,23 +40,22 @@ Query the change history for a specific field on an entity:
 from affinity import Affinity
 from affinity.types import CompanyId, FieldId, FieldValueChangeAction
 
-client = Affinity.from_env()
+with Affinity.from_env() as client:
+    # Get all changes to field "field-123" for company 456
+    changes = client.field_value_changes.list(
+        FieldId("field-123"),
+        company_id=CompanyId(456),
+    )
 
-# Get all changes to field "field-123" for company 456
-changes = client.field_value_changes.list(
-    FieldId("field-123"),
-    company_id=CompanyId(456),
-)
+    for change in changes:
+        print(f"{change.changed_at}: {change.value} (action={change.action_type})")
 
-for change in changes:
-    print(f"{change.changed_at}: {change.value} (action={change.action_type})")
-
-# Filter by action type (e.g., only updates)
-updates = client.field_value_changes.list(
-    FieldId("field-123"),
-    company_id=CompanyId(456),
-    action_type=FieldValueChangeAction.UPDATE,
-)
+    # Filter by action type (e.g., only updates)
+    updates = client.field_value_changes.list(
+        FieldId("field-123"),
+        company_id=CompanyId(456),
+        action_type=FieldValueChangeAction.UPDATE,
+    )
 ```
 
 Note: This endpoint is not paginated. For large histories, use narrow filters.
@@ -70,8 +69,7 @@ organizations API and are documented as exceptions:
 from affinity import Affinity
 from affinity.types import CompanyId
 
-client = Affinity.from_env()
-
-person_ids = client.companies.get_associated_person_ids(CompanyId(224925494))
-people = client.companies.get_associated_people(CompanyId(224925494), max_results=5)
+with Affinity.from_env() as client:
+    person_ids = client.companies.get_associated_person_ids(CompanyId(224925494))
+    people = client.companies.get_associated_people(CompanyId(224925494), max_results=5)
 ```

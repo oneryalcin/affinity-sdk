@@ -307,7 +307,7 @@ class TestPersonServiceGetParameterCombinations:
                         "interaction_dates": {
                             "last_event_date": "2026-01-10T10:00:00Z",
                         },
-                        "field_values": [{"field_id": 1, "value": "test"}],
+                        "field_values": [{"id": 99, "field_id": 1, "value": "test"}],
                     },
                     request=request,
                 )

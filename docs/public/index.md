@@ -24,10 +24,20 @@ with Affinity(api_key="your-api-key") as client:
 
 ## Next steps
 
-- [Getting started](getting-started.md)
+- [Getting started](getting-started.md) - Authentication, first request, common patterns
 - [Examples](examples.md)
 - [CLI](cli/index.md)
 - [AI Integrations](ai-integrations/index.md) - MCP Server & Claude Code plugins
 - [Troubleshooting](troubleshooting.md)
-- [Guides](guides/authentication.md)
 - [API reference](reference/client.md)
+
+## Guides
+
+- [Authentication](guides/authentication.md) - API keys, env vars, context managers
+- [Pagination](guides/pagination.md) - Iterating large result sets
+- [Filtering](guides/filtering.md) - Filter query syntax
+- [Field values](guides/field-values.md) - Custom field data
+- [Errors & retries](guides/errors-and-retries.md) - Exception handling
+- [Rate limits](guides/rate-limits.md) - Managing API quotas
+- [Datetime handling](guides/datetime-handling.md) - Timezone behavior
+- [Sync vs async](guides/sync-vs-async.md) - Choosing the right client

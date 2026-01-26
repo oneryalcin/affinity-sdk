@@ -301,7 +301,7 @@ class TestPersonModel:
         assert person.type == PersonType.INTERNAL
 
     def test_person_accepts_v1_current_organization_ids_and_interactions(self) -> None:
-        # V1 API returns camelCase field names
+        # V1 API returns snake_case field names for interactions
         data = {
             "id": 1,
             "type": "external",
@@ -313,7 +313,8 @@ class TestPersonModel:
         person = Person.model_validate(data)
         assert person.current_company_ids == [CompanyId(123)]
         assert person.interactions is not None
-        assert "last_interaction" in person.interactions
+        assert person.interactions.last_interaction is not None
+        assert person.interactions.last_interaction.person_ids == [999]
 
 
 @pytest.mark.req("TR-002")

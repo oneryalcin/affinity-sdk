@@ -6,14 +6,16 @@ This document describes the output formats available from Affinity CLI commands.
 
 The CLI supports multiple output formats via the `--output` / `-o` flag:
 
-| Format | Flag | Description |
-|--------|------|-------------|
-| `table` | default | Rich terminal tables (default for interactive use) |
-| `json` | `--json` or `-o json` | Full JSON with envelope (`ok`, `data`, `meta`, `error`) |
-| `jsonl` | `-o jsonl` | JSON Lines (one object per line, data only) |
-| `markdown` | `-o markdown` | GitHub-flavored markdown tables (data only) |
-| `toon` | `-o toon` | Token-Optimized Object Notation (30-60% fewer tokens) |
-| `csv` | `--csv` or `-o csv` | Comma-separated values (data only) |
+| Format | Flag | Availability | Description |
+|--------|------|--------------|-------------|
+| `table` | default | Global | Rich terminal tables (default for interactive use) |
+| `json` | `--json` or `-o json` | Global | Full JSON with envelope (`ok`, `data`, `meta`, `error`) |
+| `jsonl` | `-o jsonl` | Per-command | JSON Lines (one object per line, data only) |
+| `markdown` | `-o markdown` | Per-command | GitHub-flavored markdown tables (data only) |
+| `toon` | `-o toon` | Per-command | Token-Optimized Object Notation (30-60% fewer tokens) |
+| `csv` | `--csv` or `-o csv` | Per-command | Comma-separated values (data only) |
+
+**Note:** `table` and `json` are available on all commands. Other formats (`jsonl`, `markdown`, `toon`, `csv`) are available on specific commands that support them (primarily list/export commands).
 
 **For LLM/MCP use**: Use `markdown` for best comprehension or `toon` for large datasets.
 
@@ -41,7 +43,7 @@ All CLI commands support the `--json` flag for machine-readable output. The resp
 ```json
 {
   "ok": true,
-  "command": "person get",
+  "command": {"name": "person get", "inputs": {"personSelector": "12345"}, "modifiers": {}, "resolved": null},
   "data": {
     "person": {
       "id": 12345,
@@ -66,7 +68,7 @@ All CLI commands support the `--json` flag for machine-readable output. The resp
 ### Top-Level Fields
 
 - **ok** (boolean): `true` if the command succeeded, `false` if it failed
-- **command** (string): The command that was executed (e.g., `"person get"`)
+- **command** (object): Command metadata with `name` (string), `inputs` (object), `modifiers` (object), and `resolved` (object|null)
 - **data** (object): The command's result data (structure varies by command)
 - **meta** (object): Metadata about the command execution
 
@@ -121,7 +123,7 @@ The entity object (e.g., `person`, `company`, `opportunity`) contains:
 
 #### Field Selection
 
-When field selection options are used (e.g., `--field-id`, `--field-type`), the `fieldSelection` object contains:
+When field selection options are used (e.g., `--field`), the `fieldSelection` object contains:
 
 - **fieldIds** (array of strings): Specific field IDs requested
 - **fieldTypes** (array of strings): Field types requested (e.g., `"global"`, `"list-specific"`)
@@ -257,7 +259,7 @@ When a command fails, the response structure changes:
 ```json
 {
   "ok": false,
-  "command": "person get",
+  "command": {"name": "person get", "inputs": {"personSelector": "99999"}, "modifiers": {}, "resolved": null},
   "error": {
     "type": "api_error",
     "message": "Person not found",
@@ -373,20 +375,20 @@ Response:
 }
 ```
 
-### List Rows with Saved View
+### List Export with Saved View
 
 Command:
 ```bash
-xaffinity list rows "Sales Pipeline" --saved-view "Active Deals" --json
+xaffinity list export "Sales Pipeline" --saved-view "Active Deals" --json
 ```
 
 Response:
 ```json
 {
   "ok": true,
-  "command": "list rows",
+  "command": {"name": "list export", "inputs": {"listSelector": "Sales Pipeline"}, "modifiers": {"savedView": "Active Deals"}, "resolved": null},
   "data": {
-    "rows": [
+    "entries": [
       {
         "id": 101,
         "listId": 789,
@@ -409,7 +411,7 @@ Response:
       }
     },
     "pagination": {
-      "rows": {
+      "entries": {
         "nextCursor": null,
         "prevCursor": null
       }

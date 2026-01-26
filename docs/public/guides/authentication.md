@@ -17,10 +17,26 @@ If you prefer reading from the environment:
 ```python
 from affinity import Affinity
 
+# Reads AFFINITY_API_KEY by default
 client = Affinity.from_env()
+
+# Use a custom environment variable name
+client = Affinity.from_env(env_var="MY_AFFINITY_KEY")
 ```
 
-For defensive “no writes” usage (scripts, audits), disable writes via policy:
+For local development, you can load a `.env` file (requires `python-dotenv`):
+
+```python
+from affinity import Affinity
+
+# Load .env from current directory
+client = Affinity.from_env(load_dotenv=True)
+
+# Load from a specific path
+client = Affinity.from_env(load_dotenv=True, dotenv_path=".env.local")
+```
+
+For defensive "no writes" usage (scripts, audits), disable writes via policy:
 
 ```python
 from affinity import Affinity

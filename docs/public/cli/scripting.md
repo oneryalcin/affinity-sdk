@@ -30,7 +30,7 @@ All JSON responses use a standard envelope structure:
 ```json
 {
   "ok": true,
-  "command": {"name": "person get", "args": ["123"]},
+  "command": {"name": "person get", "inputs": {"personSelector": "123"}, "modifiers": {}, "resolved": null},
   "data": {"person": {"id": 123, "firstName": "Alice", ...}},
   "meta": {"rateLimit": {...}, "pagination": {...}},
   "error": null
@@ -40,7 +40,7 @@ All JSON responses use a standard envelope structure:
 | Field | Description |
 |-------|-------------|
 | `ok` | `true` if command succeeded, `false` on error |
-| `command` | Command name and arguments (useful for logging) |
+| `command` | Object with `name`, `inputs`, `modifiers`, and `resolved` fields |
 | `data` | The entity or entities returned (keyed by type) |
 | `meta` | Rate limit info, pagination cursors, timing |
 | `error` | Error details when `ok` is `false` |

@@ -17,6 +17,7 @@ from ..exceptions import AffinityError, BetaEndpointDisabledError, NotFoundError
 from ..filters import FilterExpression
 from ..models.entities import (
     FieldMetadata,
+    FieldValue,
     ListEntry,
     ListSummary,
     Person,
@@ -402,9 +403,14 @@ class PersonService:
             )
 
             field_values_data = data.get("field_values", [])
+            # V1 embedded field_values don't include entityId; add it before validation
+            field_values = [
+                FieldValue.model_validate({**fv, "entityId": int(person_id)})
+                for fv in field_values_data
+            ]
             normalized = _normalize_v1_person_response(data)
             person = Person.model_validate(normalized)
-            object.__setattr__(person, "field_values", field_values_data)
+            object.__setattr__(person, "field_values", field_values)
             return person
 
         # Path 2: with_interaction_dates (may need merge if field filters present)
@@ -694,7 +700,7 @@ class PersonService:
             page_token: Pagination token
 
         Returns:
-            Dict with 'persons' and 'next_page_token'
+            PaginatedResponse[Person] with matching persons and pagination info
         """
         params: dict[str, Any] = {"term": term}
         if with_interaction_dates:
@@ -1255,9 +1261,14 @@ class AsyncPersonService:
             )
 
             field_values_data = data.get("field_values", [])
+            # V1 embedded field_values don't include entityId; add it before validation
+            field_values = [
+                FieldValue.model_validate({**fv, "entityId": int(person_id)})
+                for fv in field_values_data
+            ]
             normalized = _normalize_v1_person_response(data)
             person = Person.model_validate(normalized)
-            object.__setattr__(person, "field_values", field_values_data)
+            object.__setattr__(person, "field_values", field_values)
             return person
 
         # Path 2: with_interaction_dates (may need merge if field filters present)

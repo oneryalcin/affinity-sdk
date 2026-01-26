@@ -10,7 +10,7 @@ Use `FieldType` to request which field scopes you want:
 from affinity import Affinity
 from affinity.types import FieldType, PersonId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     person = client.persons.get(PersonId(123), field_types=[FieldType.ENRICHED, FieldType.GLOBAL])
     if person.fields.requested:
         print(person.fields.data)
@@ -36,7 +36,7 @@ If you know specific field IDs, you can request only those:
 from affinity import Affinity
 from affinity.types import FieldId, FieldType
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     page = client.companies.list(field_ids=[FieldId(101)], field_types=[FieldType.GLOBAL])
     for company in page.data:
         if company.fields.requested:

@@ -131,7 +131,8 @@ run_dry_run() {
 		extra_flags+=(--verbose)
 	fi
 
-	if output=$("${MCPBASH_BIN}" run-tool "${name}" --args "${args}" --dry-run "${extra_flags[@]}" 2>&1); then
+	# Note: Use ${extra_flags[@]+"${extra_flags[@]}"} for Bash 3.2 compatibility
+	if output=$("${MCPBASH_BIN}" run-tool "${name}" --args "${args}" --dry-run ${extra_flags[@]+"${extra_flags[@]}"} 2>&1); then
 		printf '%sPASS%s\n' "${GREEN}" "${RESET}"
 		((++passed)) || true
 	else

@@ -59,11 +59,18 @@ For **Cursor, Windsurf, VS Code + Copilot, Zed**, and other MCP clients:
 
 **Prerequisites:**
 
-1. Install the CLI:
+1. Install the CLI (choose one):
 
 ```bash
+# Recommended: isolated installation with pipx
+pipx install "affinity-sdk[cli]"
+
+# Alternative: install in a virtualenv
 pip install "affinity-sdk[cli]"
 ```
+
+!!! tip "Why pipx?"
+    `pipx` installs CLI tools in isolated environments, avoiding dependency conflicts. See [pipx.pypa.io](https://pipx.pypa.io/) for installation.
 
 2. Configure your API key:
 
@@ -83,6 +90,17 @@ xaffinity config check-key
 
 For manual installation, add the MCP server to your client's configuration.
 
+!!! tip "Finding the MCP server path"
+    If you installed the MCPB bundle, the server is at:
+    ```
+    ~/Library/Application Support/Claude/Claude Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server/xaffinity-mcp.sh
+    ```
+
+    If you cloned the repo, use the path to your clone:
+    ```
+    /path/to/your/affinity-sdk/mcp/xaffinity-mcp.sh
+    ```
+
 ### Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
@@ -91,7 +109,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 {
   "mcpServers": {
     "xaffinity": {
-      "command": "/path/to/affinity-sdk/mcp/xaffinity-mcp.sh"
+      "command": "/path/to/xaffinity-mcp.sh"
     }
   }
 }
@@ -105,7 +123,7 @@ Add to your MCP configuration:
 {
   "mcpServers": {
     "xaffinity": {
-      "command": "/path/to/affinity-sdk/mcp/xaffinity-mcp.sh"
+      "command": "/path/to/xaffinity-mcp.sh"
     }
   }
 }
@@ -119,7 +137,7 @@ Add to your MCP settings:
 {
   "mcpServers": {
     "xaffinity": {
-      "command": "/path/to/affinity-sdk/mcp/xaffinity-mcp.sh"
+      "command": "/path/to/xaffinity-mcp.sh"
     }
   }
 }
@@ -133,63 +151,35 @@ Any MCP client supporting stdio transport can connect using:
 {
   "mcpServers": {
     "xaffinity": {
-      "command": "/path/to/affinity-sdk/mcp/xaffinity-mcp.sh"
+      "command": "/path/to/xaffinity-mcp.sh"
     }
   }
 }
 ```
 
-Replace `/path/to/affinity-sdk` with your actual installation path.
+Replace `/path/to/xaffinity-mcp.sh` with the actual path (see tip above).
 
 ---
 
-## Available Tools (17)
+## Available Tools (7)
 
-### Search & Lookup (read-only)
+The MCP server exposes 7 native tools. Most CRM operations are accessed through the CLI gateway tools, which provide access to the full `xaffinity` CLI.
 
-| Tool | Description |
-|------|-------------|
-| `find-entities` | Search persons, companies, opportunities by name/email |
-| `find-lists` | Find Affinity lists by name |
-| `get-entity-dossier` | Comprehensive entity info: details, relationship strength, interactions, notes, list memberships |
-| `read-xaffinity-resource` | Access dynamic resources via `xaffinity://` URIs |
-
-### Workflow Management
-
-| Tool | Description |
-|------|-------------|
-| `get-list-workflow-config` | Get workflow config (statuses, fields) for a list |
-| `get-workflow-view` | Get items from a saved workflow view |
-| `resolve-workflow-item` | Resolve entity to list entry ID (needed before status updates) |
-| `set-workflow-status` | Update workflow item status **(write)** |
-| `update-workflow-fields` | Update multiple fields on workflow item **(write)** |
-
-### Relationships & Intelligence
-
-| Tool | Description |
-|------|-------------|
-| `get-relationship-insights` | Relationship strength scores, warm intro paths via shared connections |
-| `get-status-timeline` | Status change history for a workflow item |
-| `get-interactions` | Interaction history (calls, meetings, emails) for an entity |
-
-### Logging (write operations)
-
-| Tool | Description |
-|------|-------------|
-| `add-note` | Add note to a person, company, or opportunity **(write)** |
-| `log-interaction` | Log call, meeting, email, or chat message **(write)** |
-
-### CLI Gateway (full CLI access)
-
-These tools provide access to the full xaffinity CLI with minimal token overhead:
+### Native MCP Tools
 
 | Tool | Description |
 |------|-------------|
 | `discover-commands` | Search CLI commands by keyword (e.g., "create person", "delete note") |
-| `execute-read-command` | Execute read-only CLI commands (get, search, list) |
+| `execute-read-command` | Execute read-only CLI commands (get, search, list, export) |
 | `execute-write-command` | Execute write CLI commands (create, update, delete) |
+| `query` | Execute structured JSON queries with filtering, includes, and aggregations |
+| `get-entity-dossier` | Comprehensive entity info: details, relationship strength, interactions, notes, list memberships |
+| `get-file-url` | Get presigned URL to access a file attachment |
+| `read-xaffinity-resource` | Access dynamic resources via `xaffinity://` URIs |
 
-**Usage pattern:**
+### CLI Gateway Pattern
+
+The `discover-commands`, `execute-read-command`, and `execute-write-command` tools provide access to the full xaffinity CLI:
 
 1. **Discover** the right command:
    ```json
@@ -205,6 +195,33 @@ These tools provide access to the full xaffinity CLI with minimal token overhead
 ```json
 {"command": "person delete", "argv": ["456"], "confirm": true}
 ```
+
+### Common CLI Operations (via gateway)
+
+These operations are available through `execute-read-command` and `execute-write-command`:
+
+**Search & Lookup (read-only)**
+
+| CLI Command | Description |
+|-------------|-------------|
+| `person ls`, `company ls` | Search persons, companies by name/email |
+| `list ls` | Find Affinity lists by name |
+| `list export <name>` | Export list entries with custom fields |
+| `interaction ls` | Interaction history (calls, meetings, emails) for an entity |
+
+**Workflow Management**
+
+| CLI Command | Description |
+|-------------|-------------|
+| `list get <name>` | Get workflow config (statuses, fields, saved views) for a list |
+| `entry field <list> <id>` | Update fields on a list entry **(write)** |
+
+**Logging (write operations)**
+
+| CLI Command | Description |
+|-------------|-------------|
+| `note create` | Add note to a person, company, or opportunity **(write)** |
+| `interaction create` | Log call, meeting, email, or chat message **(write)** |
 
 ---
 
@@ -248,11 +265,14 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 
 | URI | Returns |
 |-----|---------|
+| `xaffinity://data-model` | Conceptual guide to Affinity's data model (read first!) |
+| `xaffinity://query-guide` | Complete query language reference |
+| `xaffinity://workflows-guide` | Workflow patterns and best practices |
 | `xaffinity://me` | Current authenticated user details |
 | `xaffinity://me/person-id` | Current user's person ID in Affinity |
 | `xaffinity://interaction-enums` | Valid interaction types and directions |
 | `xaffinity://saved-views/{listId}` | Saved views available for a list |
-| `xaffinity://field-catalogs/{listId}` | Field definitions for a list |
+| `xaffinity://field-catalogs/{listId}` | Field definitions for a list or entity type |
 | `xaffinity://workflow-config/{listId}` | Workflow configuration for a list |
 
 ---
@@ -261,36 +281,34 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 
 ### Before a Meeting
 
-1. `find-entities` to locate the person/company
+1. `person ls` or `company ls` to locate the person/company
 2. `get-entity-dossier` for full context (relationship strength, recent interactions, notes)
 3. **Or use**: `prepare-briefing` prompt for a guided flow
 
 ### After a Call/Meeting
 
-1. `log-interaction` to record what happened
-2. `resolve-workflow-item` to get list entry ID (if updating pipeline)
-3. `set-workflow-status` if deal stage changed
-4. **Or use**: `log-interaction-and-update-workflow` prompt
+1. `interaction create` to record what happened
+2. `entry field` to update pipeline fields if needed
+3. **Or use**: `log-interaction-and-update-workflow` prompt
 
 ### Finding Warm Introductions
 
-1. `find-entities` to locate target person
-2. `get-relationship-insights` for connection paths
+1. `person ls` to locate target person
+2. `get-entity-dossier` includes relationship strength data
 3. **Or use**: `warm-intro` prompt for guided flow
 
 ### Pipeline Review
 
-1. `find-lists` to locate the pipeline list
-2. `get-workflow-view` to see items in a saved view
+1. `list ls` to locate the pipeline list
+2. `query` tool with listEntries to fetch items with filters
 3. **Or use**: `pipeline-review` prompt
 
 ### Updating Deal Status
 
-1. `find-entities` to find the opportunity
-2. `resolve-workflow-item` to get list entry ID
-3. `get-list-workflow-config` to see available statuses
-4. `set-workflow-status` to update
-5. **Or use**: `change-status` prompt
+1. `person ls` or `company ls` to find the entity
+2. `list get <name>` to see available status options
+3. `entry field` to update the status field
+4. **Or use**: `change-status` prompt
 
 ---
 
@@ -357,8 +375,8 @@ Run health check:
 - **Entity types**: `person`, `company`, `opportunity`
 - **Interaction types**: `call`, `meeting`, `email`, `chat_message`, `in_person`
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
-- **Resolve before update**: Always use `resolve-workflow-item` before `set-workflow-status` or `update-workflow-fields`
-- **Check workflow config**: Use `get-list-workflow-config` to discover valid status options before updating
+- **Check workflow config**: Use `list get <name>` to discover valid status options and saved views before updating
+- **Start with data-model**: Read `xaffinity://data-model` to understand when to use `company ls` vs `list export`
 
 ---
 

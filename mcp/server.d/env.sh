@@ -16,13 +16,15 @@
 #   AFFINITY_TRACE                   - Enable CLI command tracing
 #   AFFINITY_SESSION_CACHE           - Cache directory (auto-configured below)
 #   AFFINITY_SESSION_CACHE_TTL       - Cache TTL in seconds (default: 600)
+#   XAFFINITY_CLI_PATTERN            - CLI invocation pattern from check-key (includes --dotenv if needed)
+#   XAFFINITY_CLI_VERSION            - CLI version for feature detection
 #
 # Note: XAFFINITY_CLI allows users to override the CLI path. The actual CLI
 # detection happens at runtime in lib/common.sh (not here) because env.sh
 # variables don't reliably pass through to tool subprocesses in all contexts.
 
 export MCPBASH_TOOL_ENV_MODE="allowlist"
-export MCPBASH_TOOL_ENV_ALLOWLIST="XAFFINITY_CLI,AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
+export MCPBASH_TOOL_ENV_ALLOWLIST="XAFFINITY_CLI,XAFFINITY_CLI_PATTERN,XAFFINITY_CLI_VERSION,AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
 
 # ==============================================================================
 # Debug Mode Configuration

@@ -99,9 +99,11 @@ fi
 
 # Execute the resource script
 # The script should output JSON content
+# Note: Use ${script_args[@]+"${script_args[@]}"} for Bash 3.2 compatibility
+# (empty array expansion fails with set -u in older Bash versions)
 if [ -x "${script_path}" ]; then
-    exec "${script_path}" "${script_args[@]}"
+    exec "${script_path}" ${script_args[@]+"${script_args[@]}"}
 else
     # Fall back to bash execution if not marked executable
-    exec bash "${script_path}" "${script_args[@]}"
+    exec bash "${script_path}" ${script_args[@]+"${script_args[@]}"}
 fi

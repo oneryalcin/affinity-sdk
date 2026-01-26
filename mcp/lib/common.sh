@@ -214,20 +214,31 @@ run_xaffinity() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
     local needs_quiet=false
+    local session_cache=""
 
     # Check if pattern includes --dotenv
     if [[ "$pattern" == *"--dotenv"* ]]; then
         needs_dotenv=true
     fi
 
-    # Check for --quiet in arguments and filter it out
+    # Check for global options in arguments and filter them out
+    # These must be placed before the subcommand
     local filtered_args=()
-    for arg in "$@"; do
+    local args=("$@")
+    local i=0
+    while [[ $i -lt ${#args[@]} ]]; do
+        local arg="${args[$i]}"
         if [[ "$arg" == "--quiet" || "$arg" == "-q" ]]; then
             needs_quiet=true
+        elif [[ "$arg" == "--session-cache" && $((i + 1)) -lt ${#args[@]} ]]; then
+            session_cache="${args[$((i + 1))]}"
+            ((i++))  # Skip the value
+        elif [[ "$arg" == --session-cache=* ]]; then
+            session_cache="${arg#--session-cache=}"
         else
             filtered_args+=("$arg")
         fi
+        ((i++))
     done
 
     # Build command with global options first
@@ -235,6 +246,7 @@ run_xaffinity() {
     local cmd=("${XAFFINITY_CLI:-xaffinity}")
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
+    [[ -n "$session_cache" ]] && cmd+=(--session-cache "$session_cache")
     cmd+=("${filtered_args[@]}")
 
     # Execute with retry for transient failures
@@ -250,20 +262,31 @@ run_xaffinity_readonly() {
     local pattern="${XAFFINITY_CLI_PATTERN:-xaffinity --readonly <command> --json}"
     local needs_dotenv=false
     local needs_quiet=false
+    local session_cache=""
     local subcommand="${1:-unknown}"
 
     if [[ "$pattern" == *"--dotenv"* ]]; then
         needs_dotenv=true
     fi
 
-    # Check for --quiet in arguments and filter it out
+    # Check for global options in arguments and filter them out
+    # These must be placed before the subcommand
     local filtered_args=()
-    for arg in "$@"; do
+    local args=("$@")
+    local i=0
+    while [[ $i -lt ${#args[@]} ]]; do
+        local arg="${args[$i]}"
         if [[ "$arg" == "--quiet" || "$arg" == "-q" ]]; then
             needs_quiet=true
+        elif [[ "$arg" == "--session-cache" && $((i + 1)) -lt ${#args[@]} ]]; then
+            session_cache="${args[$((i + 1))]}"
+            ((i++))  # Skip the value
+        elif [[ "$arg" == --session-cache=* ]]; then
+            session_cache="${arg#--session-cache=}"
         else
             filtered_args+=("$arg")
         fi
+        ((i++))
     done
 
     # Build command with global options first
@@ -272,6 +295,7 @@ run_xaffinity_readonly() {
     [[ "$needs_dotenv" == "true" ]] && cmd+=(--dotenv)
     cmd+=(--readonly)
     [[ "$needs_quiet" == "true" ]] && cmd+=(--quiet)
+    [[ -n "$session_cache" ]] && cmd+=(--session-cache "$session_cache")
     cmd+=("${filtered_args[@]}")
 
     # Log command start in debug mode

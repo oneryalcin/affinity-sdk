@@ -7,7 +7,7 @@ Use `Affinity`:
 ```python
 from affinity import Affinity
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     for person in client.persons.all():
         print(person.first_name)
 ```
@@ -20,7 +20,7 @@ Use `AsyncAffinity`:
 from affinity import AsyncAffinity
 
 async def main() -> None:
-    async with AsyncAffinity(api_key="your-key") as client:
+    async with AsyncAffinity(api_key="your-api-key") as client:
         async for company in client.companies.all():
             print(company.name)
 ```
@@ -34,6 +34,7 @@ async def main() -> None:
 | companies | ✅ | ✅ |
 | persons | ✅ | ✅ |
 | lists | ✅ | ✅ |
+| lists.entries | ✅ | ✅ |
 | opportunities | ✅ | ✅ |
 | tasks | ✅ | ✅ |
 | notes | ✅ | ✅ |
@@ -42,10 +43,13 @@ async def main() -> None:
 | interactions | ✅ | ✅ |
 | fields | ✅ | ✅ |
 | field_values | ✅ | ✅ |
+| field_value_changes | ✅ | ✅ |
 | files | ✅ | ✅ |
 | relationships | ✅ | ✅ |
 | auth | ✅ | ✅ |
 | rate_limits | ✅ | ✅ |
+
+Nested services (like `lists.entries`) have the same sync/async parity as their parent services.
 
 ## Next steps
 

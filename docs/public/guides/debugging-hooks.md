@@ -12,7 +12,7 @@ def on_event(event: HookEvent) -> None:
     # Each event has a `.type` discriminator (e.g., "request_started", "request_failed", ...)
     print(event.type)
 
-with Affinity(api_key="your-key", on_event=on_event) as client:
+with Affinity(api_key="your-api-key", on_event=on_event) as client:
     client.companies.list()
 ```
 
@@ -44,7 +44,7 @@ def on_response(res) -> None:
 def on_error(err) -> None:
     print("!!", type(err.error).__name__, err.request.url)
 
-with Affinity(api_key="your-key", on_request=on_request, on_response=on_response, on_error=on_error) as client:
+with Affinity(api_key="your-api-key", on_request=on_request, on_response=on_response, on_error=on_error) as client:
     client.companies.list()
 ```
 
@@ -62,7 +62,7 @@ from affinity import Affinity, ExternalHookPolicy
 from affinity.policies import Policies
 
 client = Affinity(
-    api_key="your-key",
+    api_key="your-api-key",
     on_event=lambda e: print(e.type),
     policies=Policies(external_hooks=ExternalHookPolicy.REDACT),
 )
@@ -74,12 +74,12 @@ If you need request interception for tests (without real network calls), use tra
 import httpx
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", transport=httpx.MockTransport(lambda req: httpx.Response(200)))
+client = Affinity(api_key="your-api-key", transport=httpx.MockTransport(lambda req: httpx.Response(200)))
 ```
 
 ## CLI
 
-The `affinity` CLI can also trace requests/responses/errors:
+The `xaffinity` CLI can also trace requests/responses/errors:
 
 ```bash
 xaffinity --trace --no-progress whoami

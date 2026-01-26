@@ -152,11 +152,11 @@ def test_company_get_with_interaction_persons(respx_mock: respx.MockRouter) -> N
     output = json.loads(result.output)
     assert output["ok"] is True
     company = output["data"]["company"]
-    # Should have interactions with person_ids
+    # Should have interactions with personIds (camelCase in JSON output)
     interactions = company.get("interactions")
     assert interactions is not None
-    assert "last_event" in interactions
-    assert "person_ids" in interactions["last_event"]
+    assert "lastEvent" in interactions
+    assert "personIds" in interactions["lastEvent"]
 
 
 # ==============================================================================

@@ -1630,12 +1630,12 @@ def test_person_service_get_with_include_field_values() -> None:
         assert person.first_name == "Alice"
         assert person.last_name == "Smith"
 
-        # Verify field_values is attached (dynamically added, not in model)
+        # Verify field_values is attached as FieldValue models (dynamically added)
         assert hasattr(person, "field_values")
         field_values = person.field_values  # type: ignore[attr-defined]
         assert len(field_values) == 2
-        assert field_values[0]["value"] == "Active"
-        assert field_values[1]["value"] == "Premium"
+        assert field_values[0].value == "Active"
+        assert field_values[1].value == "Premium"
     finally:
         http.close()
 
@@ -1729,11 +1729,11 @@ async def test_async_person_service_get_with_include_field_values() -> None:
         assert person.id == PersonId(1)
         assert person.first_name == "Bob"
 
-        # Verify field_values is attached (dynamically added, not in model)
+        # Verify field_values is attached as FieldValue models (dynamically added)
         assert hasattr(person, "field_values")
         field_values = person.field_values  # type: ignore[attr-defined]
         assert len(field_values) == 1
-        assert field_values[0]["value"] == "Manager"
+        assert field_values[0].value == "Manager"
     finally:
         await client.close()
 

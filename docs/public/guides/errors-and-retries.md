@@ -8,8 +8,11 @@ The SDK raises typed exceptions (subclasses of `AffinityError`) and retries some
 - `AuthorizationError` (403): insufficient permissions
 - `NotFoundError` (404): entity or endpoint not found
 - `ValidationError` (400/422): invalid parameters/payload
+- `ConflictError` (409): resource conflict (e.g., duplicate email)
 - `RateLimitError` (429): you are being rate limited (may include `retry_after`)
-- `ServerError` (500/503): transient server-side errors
+- `ServerError` (500/502/503/504): transient server-side errors
+- `NetworkError`: connection or network-level failure
+- `TimeoutError`: request or download deadline exceeded
 - `WriteNotAllowedError`: you attempted a write while writes are disabled by policy
 - `BetaEndpointDisabledError`: you called a beta V2 endpoint without `enable_beta_endpoints=True`
 - `VersionCompatibilityError`: response parsing failed, often due to V2 API version mismatch
@@ -40,7 +43,7 @@ from affinity import Affinity
 from affinity.exceptions import AffinityError, RateLimitError
 
 try:
-    with Affinity(api_key="your-key") as client:
+    with Affinity(api_key="your-api-key") as client:
         client.companies.list()
 except RateLimitError as e:
     print("Rate limited:", e)
@@ -62,10 +65,12 @@ The SDK retries some failures for safe reads (`GET`/`HEAD`), but production syst
 - **AuthenticationError (401), AuthorizationError (403)**: do not retry; fix credentials/permissions; alert immediately.
 - **ValidationError (400/422)**: do not retry; treat as a bug or bad input; log the response body snippet for debugging.
 - **NotFoundError (404)**: generally do not retry; treat as "missing" and handle at the business layer. **Exception**: see [V1→V2 eventual consistency](#v1v2-eventual-consistency) below for 404s immediately after create.
+- **ConflictError (409)**: do not retry; handle the conflict (e.g., duplicate email, concurrent modification). May indicate you need to fetch-then-update instead of blind update.
 - **RateLimitError (429)**: retry only after `retry_after` (when present), reduce concurrency, and consider queueing/batching to smooth bursts.
 - **Server errors (5xx) / transient network errors / timeouts**:
   - **Reads (`GET`/`HEAD`)**: retry with backoff (the SDK already does).
   - **Writes (`POST`/`PATCH`/`PUT`/`DELETE`)**: only retry if you can make the operation idempotent.
+- **NetworkError / TimeoutError**: for reads, retry with backoff; for writes, only retry if idempotent.
 - **VersionCompatibilityError**: do not retry; fix API-version configuration (see below).
 
 ### Retrying writes safely (idempotency)
@@ -188,7 +193,7 @@ If you see `BetaEndpointDisabledError`, enable beta endpoints:
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", enable_beta_endpoints=True)
+client = Affinity(api_key="your-api-key", enable_beta_endpoints=True)
 ```
 
 If you see `VersionCompatibilityError`, this often indicates a V2 API version mismatch between your API key settings and what the SDK expects. Check your API key’s “Default API Version”, and consider setting `expected_v2_version` for clearer diagnostics:
@@ -196,7 +201,7 @@ If you see `VersionCompatibilityError`, this often indicates a V2 API version mi
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", expected_v2_version="2024-01-01")
+client = Affinity(api_key="your-api-key", expected_v2_version="2024-01-01")
 ```
 
 See [API versions & routing](api-versions-and-routing.md) and the [Glossary](../glossary.md).

@@ -330,7 +330,7 @@ xaffinity list export 123 --all --csv | awk -F',' '$3 > 1000'
 
 - Run `xaffinity <command> --help` to see all available options
 - Check `xaffinity --version` to ensure you have the latest version
-- Report issues at https://github.com/anthropics/affinity-api-x/issues
+- Report issues at https://github.com/yaniv-golan/affinity-sdk/issues
 
 ## Related Documentation
 

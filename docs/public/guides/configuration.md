@@ -10,6 +10,17 @@ from affinity import Affinity
 client = Affinity.from_env()
 ```
 
+By default, `from_env()` reads the `AFFINITY_API_KEY` environment variable. You can customize this:
+
+```python
+from affinity import Affinity
+
+# Use a different environment variable
+client = Affinity.from_env(env_var="MY_AFFINITY_KEY")
+```
+
+### Using .env files
+
 To load a local `.env` file, install the optional extra and set `load_dotenv=True`:
 
 ```bash
@@ -19,7 +30,14 @@ pip install "affinity-sdk[dotenv]"
 ```python
 from affinity import Affinity
 
+# Load from .env in current directory
 client = Affinity.from_env(load_dotenv=True)
+
+# Load from a specific .env file
+client = Affinity.from_env(load_dotenv=True, dotenv_path="/path/to/.env.local")
+
+# Override existing environment variables with .env values
+client = Affinity.from_env(load_dotenv=True, dotenv_override=True)
 ```
 
 ## Timeouts
@@ -27,7 +45,7 @@ client = Affinity.from_env(load_dotenv=True)
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", timeout=60.0)
+client = Affinity(api_key="your-api-key", timeout=60.0)
 ```
 
 For file downloads, you can override timeouts per call, and (for streaming downloads) set a total time budget:
@@ -36,10 +54,21 @@ For file downloads, you can override timeouts per call, and (for streaming downl
 from affinity import Affinity
 from affinity.types import FileId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     for chunk in client.files.download_stream(FileId(123), timeout=60.0, deadline_seconds=300):
         ...
 ```
+
+### Streaming download parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `timeout` | Per-request timeout in seconds (default: client timeout) |
+| `deadline_seconds` | Total time budget for the entire download including retries |
+
+If `deadline_seconds` is exceeded, the SDK raises `TimeoutError`.
+
+### Preserving file metadata
 
 To preserve server-provided file metadata (like filename and size), use `download_stream_with_info(...)`:
 
@@ -47,12 +76,40 @@ To preserve server-provided file metadata (like filename and size), use `downloa
 from affinity import Affinity
 from affinity.types import FileId
 
-with Affinity(api_key="your-key") as client:
+with Affinity(api_key="your-api-key") as client:
     downloaded = client.files.download_stream_with_info(FileId(123), timeout=60.0, deadline_seconds=300)
     filename = downloaded.filename or client.files.get(FileId(123)).name
     for chunk in downloaded.iter_bytes:
         ...
 ```
+
+The `DownloadedFile` object provides:
+
+- `filename`: Original filename from Content-Disposition header (may be `None`)
+- `content_type`: MIME type from Content-Type header
+- `size`: File size in bytes (may be `None` if server doesn't provide it)
+- `iter_bytes`: Iterator yielding file content chunks
+
+### Error handling for downloads
+
+```python
+from affinity import Affinity
+from affinity.types import FileId
+from affinity.exceptions import AffinityError
+
+with Affinity(api_key="your-api-key") as client:
+    try:
+        with open("output.pdf", "wb") as f:
+            for chunk in client.files.download_stream(FileId(123), deadline_seconds=120):
+                f.write(chunk)
+    except TimeoutError:
+        print("Download timed out - file may be too large or connection too slow")
+    except AffinityError as e:
+        print(f"Download failed: {e}")
+```
+
+!!! note "No resume support"
+    The SDK does not currently support resuming partial downloads. If a download fails, you must restart from the beginning.
 
 ## Retries
 
@@ -62,7 +119,7 @@ with Affinity(api_key="your-key") as client:
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", max_retries=5)
+client = Affinity(api_key="your-api-key", max_retries=5)
 ```
 
 ## Download redirects (files)
@@ -74,17 +131,21 @@ If you must allow insecure redirects (not recommended), opt in explicitly:
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", allow_insecure_download_redirects=True)
+client = Affinity(api_key="your-api-key", allow_insecure_download_redirects=True)
 ```
 
 ## Caching
 
-Caching is optional and currently targets metadata-style responses (e.g., field metadata).
+Caching is optional and currently targets metadata-style responses (e.g., field metadata). Default TTL is 300 seconds (5 minutes).
 
 ```python
 from affinity import Affinity
 
-client = Affinity(api_key="your-key", enable_cache=True, cache_ttl=300.0)
+# Enable with default 5-minute TTL
+client = Affinity(api_key="your-api-key", enable_cache=True)
+
+# Custom TTL (in seconds)
+client = Affinity(api_key="your-api-key", enable_cache=True, cache_ttl=600.0)
 ```
 
 ## Logging and hooks
@@ -97,7 +158,7 @@ def on_event(event: HookEvent) -> None:
     print(event.type)
 
 client = Affinity(
-    api_key="your-key",
+    api_key="your-api-key",
     log_requests=True,
     on_event=on_event,
     hook_error_policy="swallow",  # or "raise"
@@ -117,7 +178,7 @@ from affinity import Affinity, ExternalHookPolicy
 from affinity.policies import Policies
 
 client = Affinity(
-    api_key="your-key",
+    api_key="your-api-key",
     on_event=lambda e: print(e.type),
     policies=Policies(external_hooks=ExternalHookPolicy.REDACT),  # or SUPPRESS / EMIT_UNSAFE
 )
@@ -132,7 +193,7 @@ disable writes via policy:
 from affinity import Affinity
 from affinity.policies import Policies, WritePolicy
 
-client = Affinity(api_key="your-key", policies=Policies(write=WritePolicy.DENY))
+client = Affinity(api_key="your-api-key", policies=Policies(write=WritePolicy.DENY))
 ```
 
 ## HTTP transport injection (advanced)
@@ -148,7 +209,7 @@ def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"data": [], "pagination": {}}, request=request)
     return httpx.Response(404, json={}, request=request)
 
-client = Affinity(api_key="your-key", transport=httpx.MockTransport(handler))
+client = Affinity(api_key="your-api-key", transport=httpx.MockTransport(handler))
 ```
 
 ## V1/V2 URLs and auth mode
@@ -157,7 +218,7 @@ client = Affinity(api_key="your-key", transport=httpx.MockTransport(handler))
 from affinity import Affinity
 
 client = Affinity(
-    api_key="your-key",
+    api_key="your-api-key",
     v1_base_url="https://api.affinity.co",
     v2_base_url="https://api.affinity.co/v2",
     v1_auth_mode="bearer",  # or "basic"
@@ -172,7 +233,7 @@ If you opt into beta endpoints or want stricter diagnostics around v2 response s
 from affinity import Affinity
 
 client = Affinity(
-    api_key="your-key",
+    api_key="your-api-key",
     enable_beta_endpoints=True,
     expected_v2_version="2024-01-01",
 )

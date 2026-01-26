@@ -7,7 +7,7 @@
 
 ## 404 immediately after create
 
-If you get a 404 `NotFoundError` when calling `get()` right after `create()`, this is due to V1→V2 eventual consistency. The entity exists but hasn't propagated to V2 yet.
+If you get a 404 `NotFoundError` when calling `get()` right after `create()`, this is due to V1→V2 eventual consistency. The entity exists but hasn't propagated to V2 yet. This typically resolves within 100-500ms, but can take longer under load.
 
 **Solutions:**
 - Use the object returned by `create()` directly (recommended)
@@ -17,7 +17,7 @@ See [V1→V2 eventual consistency](guides/errors-and-retries.md#v1v2-eventual-co
 
 ## Stale data after update
 
-If `get()` returns old values after calling `update()`, this is also due to V1→V2 eventual consistency. The update succeeded, but V2 hasn't synced yet.
+If `get()` returns old values after calling `update()`, this is also due to V1→V2 eventual consistency. The update succeeded, but V2 hasn't synced yet. Like the 404 case, this typically resolves within 100-500ms.
 
 **Solution:** Use the object returned by `update()` directly - it contains the updated data.
 
@@ -48,7 +48,7 @@ See [Client](reference/client.md) and [Exceptions](reference/exceptions.md).
 
 ## Debugging
 
-Enable hooks (`guides/debugging-hooks.md`) or set `log_requests=True` on the client.
+Enable [hooks](guides/debugging-hooks.md) or set `log_requests=True` on the client.
 
 ## Next steps
 

@@ -7,7 +7,6 @@ and query expand: ["interactionDates"].
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -105,16 +104,16 @@ class TestTransformInteractionData:
         assert result["lastInteraction"]["date"] == "2026-01-14T15:00:00+00:00"
         assert result["lastInteraction"]["daysSince"] == 0  # Same day
 
-    def test_includes_team_member_ids_from_interactions_dict(self) -> None:
-        """Test that team member IDs are extracted from interactions dict."""
-        from affinity.models.entities import InteractionDates
+    def test_includes_team_member_ids_from_interactions(self) -> None:
+        """Test that team member IDs are extracted from interactions model."""
+        from affinity.models.entities import InteractionDates, InteractionEvent, Interactions
 
         interaction_dates = InteractionDates(
             last_event_date=datetime(2026, 1, 10, 10, 0, 0, tzinfo=timezone.utc),
         )
-        interactions: dict[str, Any] = {
-            "last_event": {"person_ids": [101, 102, 103]},
-        }
+        interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[101, 102, 103]),
+        )
 
         result = transform_interaction_data(interaction_dates, interactions)
 
@@ -124,14 +123,14 @@ class TestTransformInteractionData:
 
     def test_resolves_person_names_when_client_provided(self) -> None:
         """Test that person names are resolved when client is provided."""
-        from affinity.models.entities import InteractionDates
+        from affinity.models.entities import InteractionDates, InteractionEvent, Interactions
 
         interaction_dates = InteractionDates(
             last_event_date=datetime(2026, 1, 10, 10, 0, 0, tzinfo=timezone.utc),
         )
-        interactions: dict[str, Any] = {
-            "last_event": {"person_ids": [101, 102]},
-        }
+        interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[101, 102]),
+        )
 
         # Mock client and person responses
         mock_client = MagicMock()
@@ -149,14 +148,14 @@ class TestTransformInteractionData:
 
     def test_uses_person_name_cache(self) -> None:
         """Test that person name cache is used to avoid duplicate lookups."""
-        from affinity.models.entities import InteractionDates
+        from affinity.models.entities import InteractionDates, InteractionEvent, Interactions
 
         interaction_dates = InteractionDates(
             last_event_date=datetime(2026, 1, 10, 10, 0, 0, tzinfo=timezone.utc),
         )
-        interactions: dict[str, Any] = {
-            "last_event": {"person_ids": [101, 102]},
-        }
+        interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[101, 102]),
+        )
 
         mock_client = MagicMock()
         mock_person = MagicMock()

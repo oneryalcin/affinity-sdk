@@ -9,7 +9,7 @@ The SDK ships an optional `xaffinity` CLI that dogfoods the SDK. Install it as a
 - **Filtering**: Server-side filtering on custom fields with `--filter` ([Filtering Guide](../guides/filtering.md))
 - **JSON Output**: All commands support `--json` for programmatic use ([Scripting Guide](scripting.md))
 - **Datetime Handling**: Local time input, UTC output for JSON ([Datetime Guide](../guides/datetime-handling.md))
-- **Pagination**: Fetch all pages with `--all` or control page size with `--page-size`
+- **Pagination**: Fetch all pages with `--all`, control page size with `--page-size` (items per API call), or limit total results with `--max-results`
 - **Name Resolution**: Use names instead of IDs for lists, fields, and entities
 - **Session Caching**: Share metadata across pipeline commands with `session start/end` ([Pipeline Optimization](commands.md#pipeline-optimization))
 
@@ -72,9 +72,26 @@ See [config check-key](commands.md#xaffinity-config-check-key) and [config setup
 
 The CLI checks these sources in order (highest precedence first):
 
-1. `AFFINITY_API_KEY` environment variable
-2. `.env` file in current directory (requires `--dotenv` flag)
-3. `api_key` in user config file (`~/.config/xaffinity/config.toml`)
+1. `--api-key-stdin` flag (reads from stdin)
+2. `--api-key-file PATH` (reads from file, or `-` for stdin)
+3. `AFFINITY_API_KEY` environment variable
+4. `.env` file in current directory (requires `--dotenv` flag, or use `--env-file <path>` which implicitly enables dotenv)
+5. `api_key` in user config file (`~/.config/xaffinity/config.toml`)
+
+### Reading from File or Stdin
+
+For scripts or CI/CD pipelines, you can pass the API key via file or stdin:
+
+```bash
+# Read from a secrets file
+xaffinity --api-key-file /run/secrets/affinity-key whoami
+
+# Read from stdin (useful for piping from secret managers)
+vault kv get -field=api_key secret/affinity | xaffinity --api-key-stdin whoami
+
+# Equivalent: --api-key-file - reads from stdin
+echo "$SECRET_KEY" | xaffinity --api-key-file - whoami
+```
 
 ### Using .env Files
 

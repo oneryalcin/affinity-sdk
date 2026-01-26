@@ -163,7 +163,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 {
   "from": "listEntries",
   "where": {
-    "and_": [
+    "and": [
       { "path": "listName", "op": "eq", "value": "Dealflow" },
       { "path": "fields.Team Member", "op": "eq", "value": "LB" }
     ]
@@ -207,7 +207,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 {
   "from": "persons",
   "where": {
-    "and_": [
+    "and": [
       { "path": "email", "op": "is_not_null" },
       { "path": "firstName", "op": "starts_with", "value": "J" }
     ]
@@ -221,7 +221,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 {
   "from": "persons",
   "where": {
-    "or_": [
+    "or": [
       { "path": "email", "op": "contains", "value": "@acme.com" },
       { "path": "email", "op": "contains", "value": "@acme.io" }
     ]
@@ -235,7 +235,7 @@ Multi-select dropdown fields (like "Team Member") return arrays from the API. Th
 {
   "from": "persons",
   "where": {
-    "not_": { "path": "status", "op": "eq", "value": "Inactive" }
+    "not": { "path": "status", "op": "eq", "value": "Inactive" }
   }
 }
 ```
@@ -266,8 +266,13 @@ Array access:
 
 ```json
 {
-  "from": "interactions",
-  "where": { "path": "created_at", "op": "gte", "value": "-30d" }
+  "from": "listEntries",
+  "where": {
+    "and": [
+      { "path": "listName", "op": "eq", "value": "Pipeline" },
+      { "path": "createdAt", "op": "gte", "value": "-30d" }
+    ]
+  }
 }
 ```
 
@@ -545,7 +550,7 @@ xaffinity query --file query.json --json --include-meta
 {
   "from": "persons",
   "where": {
-    "and_": [
+    "and": [
       { "path": "fields.VIP", "op": "eq", "value": true },
       { "path": "email", "op": "is_not_null" }
     ]
@@ -570,22 +575,21 @@ xaffinity query --file query.json --json --include-meta
 }
 ```
 
-### Recent Meeting Interactions
+### Recent Meetings with Persons
+
+Since interactions cannot be queried directly, fetch persons with their recent interactions included:
 
 ```json
 {
-  "from": "interactions",
-  "where": {
-    "and_": [
-      { "path": "created_at", "op": "gte", "value": "-7d" },
-      { "path": "type", "op": "eq", "value": "meeting" }
-    ]
-  },
-  "include": ["persons"],
-  "orderBy": [{ "field": "created_at", "direction": "desc" }],
-  "limit": 50
+  "from": "persons",
+  "include": [
+    { "interactions": { "limit": 50, "days": 7 } }
+  ],
+  "limit": 100
 }
 ```
+
+Then filter for meetings client-side, or use the CLI with `--expand-filter` for post-fetch filtering.
 
 ## Best Practices
 

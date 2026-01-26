@@ -2,9 +2,7 @@
 
 > **MCP Note**: When using commands via MCP tools, output format (JSON) is handled automatically. Do not include `--json` in arguments.
 
-> ⚠️ **Performance Warning**: Using `fields.*` (select all custom fields) on lists with 50+ fields can cause timeouts. **Always select specific fields** like `fields.Status`, `fields.Owner` instead.
-
-**📖 Read Before Querying:**
+**Read Before Querying:**
 - `xaffinity://query-guide` - **Read this first** for query performance tips, field selection best practices, and operator reference
 - `xaffinity://workflows-guide` - **Read for complex tasks** covering common patterns, error handling, and when to use query vs CLI
 
@@ -55,33 +53,27 @@ company get 12345 --expand list-entries
 person get john@example.com --expand list-entries
 ```
 
-Response includes all lists the entity belongs to in `data.listEntries`:
-```json
-{
-  "data": {
-    "company": { "id": 12345, "name": "Acme Corp" },
-    "listEntries": [
-      { "id": 99999, "listId": 41780, "fields": [...] }
-    ]
-  }
-}
+Response includes `data.listEntries` array with all lists the entity belongs to. Check if non-empty to verify membership. Use `--list "Dealflow"` to filter to a specific list. For batch checks, use `query` with a `companyId IN [...]` filter.
+
+### Current User Context
+
+To check who is authenticated and get tenant information:
+
+```bash
+whoami                    # Returns user info, tenant, and API key scope
 ```
 
-Check if `data.listEntries` is non-empty to verify list membership. Use `--list "Dealflow"` to filter to a specific list.
-
-**Why this is efficient**: Fetches one entity's data instead of scanning an entire list. Use this for single lookups. For batch checks, use `query` with a `companyId IN [...]` filter.
+**MCP Resources**: `xaffinity://me` (full user details), `xaffinity://me/person-id` (just person ID, cached)
 
 ## Selectors: Names Work Directly
 
 Most commands accept **names, IDs, or emails** as selectors - no need to look up IDs first.
 
 ```bash
-# These all work - use names directly!
-list export Dealflow --filter "Status=New"     # list name
-list export 41780 --filter "Status=New"        # list ID (also works)
-company get "Acme Corp"                        # company name
-person get john@example.com                    # email address
-opportunity get "Big Deal Q1"                  # opportunity name
+list export Dealflow --filter "Status=New"
+company get "Acme Corp"
+person get john@example.com
+opportunity get "Big Deal Q1"
 ```
 
 ## Filtering List Entries
@@ -90,17 +82,13 @@ opportunity get "Big Deal Q1"                  # opportunity name
 ```bash
 list export Dealflow --filter 'Status="New"'
 ```
-- Filter by any field value directly
-- Works for any criteria you specify
-- Use when you know the field name and value
+Use when you know the field name and value.
 
 ### --saved-view (Pre-Configured Views)
 ```bash
 list export Dealflow --saved-view "Active Pipeline"
 ```
-- Uses a named view pre-configured in Affinity UI
-- More efficient (server-side filtering)
-- Caveat: You cannot query what filters a saved view applies
+Uses a named view from Affinity UI (server-side filtering). Caveat: Cannot query what filters a saved view applies.
 
 ### Decision Flow
 1. Get workflow config: `xaffinity://workflow-config/{listId}` (returns status options + saved views in one call)
@@ -123,7 +111,7 @@ list export Dealflow --filter 'Status="New"'
 
 ### Query list entries with filter
 ```bash
-list export Dealflow --filter "Status=New"     # ✓ One call
+list export Dealflow --filter "Status=New"
 ```
 
 ### Get list entries with specific field values
@@ -187,19 +175,14 @@ interaction ls --type email --person-id 67890 --max-results 5                  #
 ```
 
 ### Get interaction date summaries
-For quick overview of last/next meetings and email activity without fetching full interaction history:
 ```bash
-company get 12345 --with-interaction-dates                 # Last/next meeting dates, email dates
-person get 67890 --with-interaction-dates                  # Same for persons
+company get 12345 --with-interaction-dates
+person get 67890 --with-interaction-dates
 ```
 
-**For bulk interaction dates on list entries**, use the `query` tool with `expand: ["interactionDates"]`:
-```json
-{"from": "listEntries", "where": {"path": "listName", "op": "eq", "value": "Dealflow"}, "expand": ["interactionDates"], "limit": 50}
-```
-See "Expand/Include Practical Limits" section above for performance guidance.
+For bulk interaction dates, use `query` with `expand: ["interactionDates"]` (see above).
 
-The `--with-interaction-dates` flag returns:
+Returns:
 - `lastMeeting.date`, `lastMeeting.daysSince`, `lastMeeting.teamMembers`
 - `nextMeeting.date`, `nextMeeting.daysUntil`, `nextMeeting.teamMembers`
 - `lastEmail.date`, `lastEmail.daysSince`
@@ -214,13 +197,7 @@ list export Dealflow --check-unreplied --unreplied-lookback-days 60  # Custom lo
 
 ### Search companies globally
 ```bash
-company ls --filter 'name =~ "Acme"'           # ✓ One call
-```
-
-### Get entity details
-```bash
-company get "Acme Corp"                        # ✓ One call (name works)
-person get john@example.com                    # ✓ One call (email works)
+company ls --filter 'name =~ "Acme"'
 ```
 
 ### See list fields and dropdown options
@@ -277,18 +254,7 @@ When using the `query` tool, prefer **TOON format** (the default) for bulk data 
 | json | Programmatic parsing, nested structures | Standard |
 | csv/jsonl | Export, downstream processing | N/A |
 
-```json
-// ✓ RECOMMENDED - TOON format (default) is most token-efficient
-{"query": {"from": "listEntries", "where": {...}}}
-
-// ✓ OK - JSON works with cursor pagination if needed
-{"format": "json", "query": {"from": "listEntries", "where": {...}}}
-```
-
-**Why prefer TOON:**
-- TOON is 40% more token-efficient than JSON
-- All formats (including JSON) now support cursor pagination for large result sets
-- Use `format: "json"` when you need to programmatically parse nested structures outside of Claude
+TOON is the default. Use `format: "json"` only when programmatically parsing nested structures outside of Claude.
 
 ## Full Scan Protection
 
@@ -311,9 +277,6 @@ list export Dealflow --max-results 10000
 list export Dealflow --cursor abc123 --max-results 10000
 ```
 
-**Why is `--all` blocked?**
-Unbounded scans can consume your entire API quota and take hours.
-Explicit limits force intentional decisions about data volume.
 
 ---
 
@@ -341,6 +304,34 @@ task get "https://api.affinity.co/v2/tasks/abc123"               # Check status 
 ```
 
 Task statuses: `pending`, `in_progress`, `success`, `failed`
+
+---
+
+## Write Operations
+
+Use `execute-write-command` for mutations (create, update, delete). Common patterns:
+
+### Updating List Entry Fields
+To set a field value on a list entry:
+```bash
+entry field --entry-id 12345 --field-id 67890 --value "New Value"
+```
+
+Field IDs can be found via `field ls --list-id Dealflow`. For dropdown fields, use the option text (not ID).
+
+### Notes
+Notes attach to persons, companies, or opportunities:
+```bash
+note create --person-id 12345 --content "Call summary: discussed Q2 plans"
+note create --company-id 67890 --content "Site visit notes"
+note ls --company-id 67890                    # List notes for an entity
+```
+
+### Entity Dossier (Comprehensive View)
+For complete entity information (all fields, list memberships, interactions, notes) in one call, use the **`get-entity-dossier`** MCP tool instead of multiple commands:
+- Returns aggregated data for a person, company, or opportunity
+- More efficient than separate `get`, `interaction ls`, `note ls` calls
+- Ideal for "tell me everything about X" requests
 
 ---
 
@@ -376,27 +367,9 @@ person files read 67890 --file-id 9192758
 opportunity files read 98765 --file-id 9192759
 ```
 
-**Response structure:**
-```json
-{
-  "data": {
-    "fileId": 9192757,
-    "name": "pitch-deck.pdf",
-    "size": 5242880,
-    "contentType": "application/pdf",
-    "offset": 0,
-    "length": 1048576,
-    "hasMore": true,
-    "nextOffset": 1048576,
-    "encoding": "base64",
-    "content": "JVBERi0xLjQK..."
-  }
-}
-```
+Response includes `data.content` (base64), `data.hasMore`, `data.nextOffset` for chunking.
 
-**Chunking for large files:**
-
-Default limit is 1MB per request. For larger files, use `--offset` to fetch chunks:
+**Chunking:** Default 1MB per request. For larger files:
 
 ```bash
 # First chunk (offset=0, default)
@@ -409,24 +382,7 @@ company files read 123 --file-id 456 --offset 1048576
 company files read 123 --file-id 456 --limit 500KB
 ```
 
-**Reassembling in Python sandbox:**
-```python
-import base64
-
-offset = 0
-with open('/tmp/file.pdf', 'wb') as f:
-    while True:
-        # Call via execute-read-command
-        result = execute_read_command(f"company files read 123 --file-id 456 --offset {offset}")
-        f.write(base64.b64decode(result['data']['content']))
-        if not result['data']['hasMore']:
-            break
-        offset = result['data']['nextOffset']
-
-# Process with Python tools
-import PyPDF2
-reader = PyPDF2.PdfReader('/tmp/file.pdf')
-```
+**Reassembling:** Loop with `--offset`, decode base64, write chunks until `hasMore` is false.
 
 ### Option B: `get-file-url` (Presigned URL)
 
@@ -436,23 +392,7 @@ Returns a presigned S3 URL valid for 60 seconds. More efficient for direct downl
 get-file-url fileId=9192757
 ```
 
-**Response:**
-```json
-{
-  "fileId": 9192757,
-  "name": "pitch-deck.pdf",
-  "size": 5242880,
-  "url": "https://userfiles.affinity.co/...",
-  "expiresIn": 60
-}
-```
-
-**Use cases:**
-- Claude Code: Use WebFetch with the returned URL
-- CLI/scripts: Use `curl` or download directly
-- Browser: Copy URL and open in browser
-
-**⚠️ Claude Desktop/Cowork limitation:** WebFetch cannot access `userfiles.affinity.co` due to domain sandbox restrictions. Use `files read` instead.
+Returns presigned `url` (60s expiry). **⚠️ Blocked in Claude Desktop/Cowork** - use `files read` instead.
 
 ---
 
@@ -483,34 +423,11 @@ Use `--filter` for precise matching, `--query` for fuzzy text search.
 
 Some commands may output data in **TOON format** - a structured format specifically designed for LLM consumption with reduced token costs.
 
-**Do NOT manually parse TOON output.** Use the official Python library:
-
-```bash
-pip install git+https://github.com/toon-format/toon-python.git
-```
-
+**Do NOT manually parse TOON.** Use the official library:
 ```python
-from toon_format import decode
-
-data = decode(toon_string)  # Returns proper Python dict/list
+from toon_format import decode  # pip install git+https://github.com/toon-format/toon-python.git
+data = decode(toon_string)
 ```
-
-**For multi-step processing, save to file first** (don't embed TOON output inline in scripts):
-```python
-from toon_format import decode
-
-# Save MCP tool result to file, then process
-with open('/tmp/data.toon') as f:
-    data = decode(f.read())
-# Now iterate on analysis without re-querying
-```
-
-**Why this matters:**
-- TOON looks like tabular/CSV data but has specific parsing rules
-- Manual parsing with string splitting or regex is fragile and error-prone
-- The `toon-format` library handles all edge cases correctly
-
-**Reference:** https://github.com/toon-format/toon-python
 
 ---
 
@@ -531,80 +448,30 @@ All output formats (toon, markdown, json, jsonl, csv) support cursor-based pagin
 
 **Critical**: Never fabricate a cursor. The cursor format is opaque and cryptographically validated - any made-up cursor will fail validation.
 
-### Edge Case: Truncation Without Cursor
-
-In rare cases, truncation may occur without a cursor when:
-- The envelope (`included`/`meta`) is so large that even 0 data records exceed `maxOutputBytes`
-- The CLI returns an error rather than silently exceeding the size limit
-
-**Solution**: Reduce `include`/`expand` fields or increase `maxOutputBytes`.
-
 ### Resuming with Cursor
 
-When `nextCursor` IS provided, call the query tool again with:
-1. The **exact same `query` object** (unchanged)
-2. The **exact same `format` parameter** (unchanged)
-3. The `cursor` parameter set to the `nextCursor` value
+When `nextCursor` is provided, call query again with **identical** `query` and `format`, plus `cursor` set to `nextCursor`. Changing query/format invalidates the cursor.
 
-**Important**: Changing any query field or format invalidates the cursor.
+If truncated without cursor (rare): reduce `include`/`expand` or increase `maxOutputBytes`.
 
 ### Example
-
 ```python
-# First request
-result1 = await query(
-    query={"from": "persons", "limit": 1000},
-    format="toon",
-    maxOutputBytes=50000
-)
-
-# Check BOTH truncated AND nextCursor before resuming
-if result1.get("truncated") and result1.get("nextCursor"):
-    # More data exists - use cursor to resume
-    result2 = await query(
-        query={"from": "persons", "limit": 1000},  # IDENTICAL query
-        format="toon",  # IDENTICAL format
-        cursor=result1["nextCursor"]  # Pass the cursor
-    )
-elif result1.get("truncated"):
-    # No cursor = all data fetched but output too large
-    # Retry with larger maxOutputBytes or fewer select fields
-    result2 = await query(
-        query={"from": "persons", "limit": 1000},
-        format="toon",
-        maxOutputBytes=150000  # Increase output limit
-    )
+result = await query(query={"from": "persons", "limit": 1000}, format="toon")
+if result.get("truncated") and result.get("nextCursor"):
+    result2 = await query(query={"from": "persons", "limit": 1000}, format="toon", cursor=result["nextCursor"])
 ```
 
 ### Two Types of Cursors
 
-The system uses two different cursor mechanisms - don't confuse them:
+| Cursor Type | Location | Purpose |
+|-------------|----------|---------|
+| **Truncation cursor** | Top-level `nextCursor` | Resume after `maxOutputBytes` truncation |
+| **API pagination cursor** | `meta.pagination.rows.nextCursor` | Affinity API's native pagination (used internally) |
 
-| Cursor Type | Location | Purpose | When Present |
-|-------------|----------|---------|--------------|
-| **Truncation cursor** | Top-level `nextCursor` | Resume after `maxOutputBytes` truncation | When output exceeds size limit |
-| **API pagination cursor** | `meta.pagination.rows.nextCursor` | Affinity API's native pagination | When more API pages exist |
-
-**Truncation cursor** (what `query` tool returns):
-- Appears at response root as `nextCursor` + `_cursorMode`
-- Created when CLI output is truncated due to `maxOutputBytes`
-- Pass to `cursor` parameter to resume from exact truncation point
-- Base64-encoded, contains query hash for validation
-
-**API pagination cursor** (from Affinity API):
-- Appears inside `meta.pagination.rows.nextCursor`
-- A full URL pointing to the next API page
-- Used internally by CLI for pagination; rarely needed directly
-- Only relevant when using `execute-read-command` with `list export`
-
-**Key insight**: The `query` tool's `nextCursor` is for **output size truncation**, not record limits. A query with `limit: 100` that returns all 100 records won't have a `nextCursor` unless the output was too large.
+The `query` tool's `nextCursor` is for **output size truncation**, not record limits.
 
 ### Cursor Behavior
 
-- Cursors are typically 150-500 bytes (base64-encoded)
-- Cursors expire after 1 hour
-- Cursors are mode-specific:
-  - **Streaming mode** (simple queries): Fast resumption via API cursor
-  - **Full-fetch mode** (queries with orderBy/aggregate): Cached results served from disk
-- Pass the cursor back unchanged - it's opaque and should not be modified
-- Never fabricate or modify cursor values - they contain cryptographic hashes for validation
+- Expire after 1 hour
+- Pass back unchanged - never fabricate or modify (cryptographically validated)
+- Mode-specific: streaming (simple queries) vs full-fetch (orderBy/aggregate)

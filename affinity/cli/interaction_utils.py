@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from affinity import Affinity, AsyncAffinity
-    from affinity.models.entities import InteractionDates
+    from affinity.models.entities import InteractionDates, Interactions
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +55,12 @@ UNREPLIED_CSV_COLUMNS: list[str] = [
 
 def transform_interaction_data(
     interaction_dates: InteractionDates | None,
-    interactions: dict[str, Any] | None,
+    interactions: Interactions | None,
     *,
     client: Affinity | None = None,
     person_name_cache: dict[int, str] | None = None,
 ) -> dict[str, Any] | None:
-    """Transform raw interaction date data into a structured dict.
+    """Transform interaction data into a structured dict.
 
     Combines data from both `interaction_dates` (date values) and `interactions`
     (detailed data with person_ids) into a unified structure suitable for
@@ -68,7 +68,7 @@ def transform_interaction_data(
 
     Args:
         interaction_dates: Parsed InteractionDates object from entity
-        interactions: Raw interactions dict from V1 API response
+        interactions: Interactions model with person IDs
         client: Optional Affinity client for resolving person IDs to names
         person_name_cache: Optional cache dict for resolved person names.
             Will be mutated to store resolved names. Thread-safe under CPython GIL.
@@ -101,9 +101,9 @@ def transform_interaction_data(
             "date": _format_datetime(interaction_dates.last_event_date),
             "daysSince": _days_since(interaction_dates.last_event_date, now),
         }
-        # Add team member data from interactions dict
-        if interactions and "last_event" in interactions:
-            person_ids = interactions["last_event"].get("person_ids", [])
+        # Add team member data from interactions
+        if interactions and interactions.last_event:
+            person_ids = interactions.last_event.person_ids
             meeting_data["teamMemberIds"] = person_ids
             if client and person_ids:
                 meeting_data["teamMemberNames"] = _resolve_person_names(
@@ -117,8 +117,8 @@ def transform_interaction_data(
             "date": _format_datetime(interaction_dates.next_event_date),
             "daysUntil": _days_until(interaction_dates.next_event_date, now),
         }
-        if interactions and "next_event" in interactions:
-            person_ids = interactions["next_event"].get("person_ids", [])
+        if interactions and interactions.next_event:
+            person_ids = interactions.next_event.person_ids
             meeting_data["teamMemberIds"] = person_ids
             if client and person_ids:
                 meeting_data["teamMemberNames"] = _resolve_person_names(
@@ -132,8 +132,8 @@ def transform_interaction_data(
             "date": _format_datetime(interaction_dates.last_email_date),
             "daysSince": _days_since(interaction_dates.last_email_date, now),
         }
-        if interactions and "last_email" in interactions:
-            person_ids = interactions["last_email"].get("person_ids", [])
+        if interactions and interactions.last_email:
+            person_ids = interactions.last_email.person_ids
             email_data["teamMemberIds"] = person_ids
             if client and person_ids:
                 email_data["teamMemberNames"] = _resolve_person_names(

@@ -57,7 +57,7 @@ repos:
       - id: sync-mcp-registry
         name: Sync MCP CLI commands registry
         entry: python tools/sync_mcp_registry.py
-        language: python
+        language: system
         files: ^(pyproject\.toml|affinity/cli/commands/.*\.py)$
         pass_filenames: false
       - id: sync-mcp-version

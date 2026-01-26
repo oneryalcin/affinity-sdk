@@ -321,7 +321,11 @@ class TestStreamingPathWithExpand:
 
         mock_person_expanded = MagicMock(spec=Person)
         mock_person_expanded.interaction_dates = mock_interaction_dates
-        mock_person_expanded.interactions = {"last_event": {"person_ids": [456]}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_person_expanded.interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[456])
+        )
         mock_person_expanded.full_name = "Test User"
 
         # Mock the team member lookup
@@ -438,7 +442,11 @@ class TestExpandViaSingleIdLookup:
 
         mock_person_expanded = MagicMock(spec=Person)
         mock_person_expanded.interaction_dates = mock_interaction_dates
-        mock_person_expanded.interactions = {"last_event": {"person_ids": [456]}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_person_expanded.interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[456])
+        )
 
         # Mock team member for name resolution
         mock_team_member = MagicMock(spec=Person)
@@ -537,7 +545,9 @@ class TestExpandViaSingleIdLookup:
 
         mock_person_expanded = MagicMock(spec=Person)
         mock_person_expanded.interaction_dates = mock_interaction_dates
-        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_person_expanded.interactions = Interactions(last_event=InteractionEvent(person_ids=[]))
 
         # Track service calls
         entry_get_called = False
@@ -652,7 +662,9 @@ class TestExpandViaExecuteStepPath:
 
         mock_person_expanded = MagicMock(spec=Person)
         mock_person_expanded.interaction_dates = mock_interaction_dates
-        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_person_expanded.interactions = Interactions(last_event=InteractionEvent(person_ids=[]))
 
         # Create mock async client
         mock_client = AsyncMock()
@@ -748,7 +760,9 @@ class TestExpandViaExecuteStepPath:
 
         mock_person_expanded = MagicMock(spec=Person)
         mock_person_expanded.interaction_dates = mock_interaction_dates
-        mock_person_expanded.interactions = {"last_event": {"person_ids": []}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_person_expanded.interactions = Interactions(last_event=InteractionEvent(person_ids=[]))
 
         # Create mock async client
         mock_client = AsyncMock()
@@ -857,7 +871,11 @@ class TestExpandConcurrencyOptimizations:
         mock_company_expanded = MagicMock(spec=Company)
         mock_company_expanded.interaction_dates = mock_interaction_dates
         # Each company has 3 team members -> 10 companies x 3 = 30 person fetches
-        mock_company_expanded.interactions = {"last_event": {"person_ids": [100, 101, 102]}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_company_expanded.interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[100, 101, 102])
+        )
 
         async def mock_person_get(_person_id, **_kwargs):
             nonlocal concurrent_person_fetches, max_concurrent_person_fetches
@@ -946,7 +964,11 @@ class TestExpandConcurrencyOptimizations:
 
         mock_company_expanded = MagicMock(spec=Company)
         mock_company_expanded.interaction_dates = mock_interaction_dates
-        mock_company_expanded.interactions = {"last_event": {"person_ids": [456, 789]}}
+        from affinity.models.entities import InteractionEvent, Interactions
+
+        mock_company_expanded.interactions = Interactions(
+            last_event=InteractionEvent(person_ids=[456, 789])
+        )
 
         # Mock client
         mock_client = AsyncMock()
