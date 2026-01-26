@@ -29,64 +29,98 @@ jobs:
           # This check finds arrays that are:
           # 1. Initialized as empty: arr=() or local arr=()
           # 2. In scripts using set -u
-          # 3. Expanded without the safe pattern or a length guard
+          # 3. Expanded without the safe pattern
 
-          echo "Checking for unsafe empty array expansions..."
+          echo "========================================"
+          echo "Checking for unsafe empty array expansions"
+          echo "========================================"
+          echo ""
+
           errors=0
+          files_checked=0
 
-          while IFS= read -r file; do
+          for file in $(find mcp -name '*.sh' -type f | sort); do
             # Skip if file doesn't use set -u
-            if ! grep -qE 'set -[a-z]*u|set -o nounset' "$file"; then
+            if ! grep -qE 'set -[a-z]*u|set -o nounset' "$file" 2>/dev/null; then
               continue
             fi
 
+            files_checked=$((files_checked + 1))
+
             # Find arrays initialized as empty: arr=() or local arr=() or local -a arr=()
-            empty_arrays=$(grep -oE '(local[[:space:]]+(-a[[:space:]]+)?)?[a-zA-Z_][a-zA-Z0-9_]*=\(\)' "$file" | \
-                           sed -E 's/^(local[[:space:]]+(-a[[:space:]]+)?)?([a-zA-Z_][a-zA-Z0-9_]*)=\(\)$/\3/' | sort -u)
+            empty_arrays=$(grep -oE '(local[[:space:]]+(-a[[:space:]]+)?)?[a-zA-Z_][a-zA-Z0-9_]*=\(\)' "$file" 2>/dev/null | \
+                           sed -E 's/^(local[[:space:]]+(-a[[:space:]]+)?)?([a-zA-Z_][a-zA-Z0-9_]*)=\(\)$/\3/' | sort -u) || true
 
             if [ -z "$empty_arrays" ]; then
               continue
             fi
 
             file_has_errors=false
-            for arr in $empty_arrays; do
+
+            # Process each array name (handle newlines properly)
+            echo "$empty_arrays" | while IFS= read -r arr; do
+              [ -z "$arr" ] && continue
+
               # Find lines with this array expanded unsafely (not using +".." pattern)
-              # Also filter out commented lines
-              unsafe_lines=$(grep -nE "\"\\\$\\{${arr}\\[@\\]\\}\"" "$file" | \
-                             grep -vE "\+\"\\\$\\{${arr}" | \
-                             grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*#')
+              # The safe pattern is: ${arr[@]+"${arr[@]}"}
+              # Unsafe pattern is: "${arr[@]}" without the + prefix
+              unsafe_lines=$(grep -nE "\"\\\$\{${arr}\[@\]\}\"" "$file" 2>/dev/null | \
+                             grep -vE "\+\"\\\$\{${arr}" || true)
 
               if [ -n "$unsafe_lines" ]; then
-                while IFS=: read -r linenum content; do
-                  # Skip if line is a comment
-                  if echo "$content" | grep -qE '^[[:space:]]*#'; then
-                    continue
+                echo "$unsafe_lines" | while IFS=: read -r linenum content; do
+                  [ -z "$linenum" ] && continue
+
+                  # Skip comment lines
+                  case "$content" in
+                    *'#'*)
+                      # Check if # comes before the array reference
+                      prefix="${content%%\$\{${arr}*}"
+                      if echo "$prefix" | grep -q '#'; then
+                        continue
+                      fi
+                      ;;
+                  esac
+
+                  if [ "$file_has_errors" = false ]; then
+                    echo ""
+                    echo "ERROR in: $file"
+                    echo "Array '$arr' may be empty and will fail with 'set -u' in Bash 3.2"
+                    file_has_errors=true
+                    # Write to temp file to track errors across subshells
+                    echo "1" >> /tmp/bash32_errors_$$
                   fi
-                  # Check if there's a length guard in preceding context (within 3 lines)
-                  context_start=$((linenum > 3 ? linenum - 3 : 1))
-                  if ! sed -n "${context_start},${linenum}p" "$file" | grep -qE "\\[\\[.*\\\$\\{#${arr}\\[@\\]\\}"; then
-                    if [ "$file_has_errors" = false ]; then
-                      echo ""
-                      echo "ERROR: $file - empty array may fail with set -u in Bash 3.2"
-                      file_has_errors=true
-                      errors=$((errors + 1))
-                    fi
-                    echo "  Line $linenum: $(echo "$content" | head -c 100)"
-                  fi
-                done <<< "$unsafe_lines"
+                  echo "  Line $linenum: $(echo "$content" | head -c 120)"
+                done
               fi
             done
-          done < <(find mcp -name '*.sh' -type f)
+          done
+
+          # Count errors from temp file (subshell can't modify parent variables)
+          if [ -f /tmp/bash32_errors_$$ ]; then
+            errors=$(wc -l < /tmp/bash32_errors_$$)
+            rm -f /tmp/bash32_errors_$$
+          fi
 
           echo ""
+          echo "========================================"
+          echo "Checked $files_checked files with 'set -u'"
+
           if [ "$errors" -gt 0 ]; then
-            echo "Found $errors file(s) with potentially unsafe array expansions."
-            echo "Fix: Use \${arr[@]+\"\${arr[@]}\"} pattern for arrays that may be empty"
-            echo "See: https://stackoverflow.com/q/7577052 for explanation"
+            echo "Found $errors unsafe array expansion(s)"
+            echo "========================================"
+            echo ""
+            echo "HOW TO FIX:"
+            echo "  Replace: \"\${arr[@]}\""
+            echo "  With:    \${arr[@]+\"\${arr[@]}\"}"
+            echo ""
+            echo "This pattern safely expands to nothing when the array is empty."
+            echo "See: https://stackoverflow.com/q/7577052"
             exit 1
           fi
 
           echo "All array expansions are Bash 3.2 compatible!"
+          echo "========================================"
 
   mcp-plugin:
     runs-on: ubuntu-latest
