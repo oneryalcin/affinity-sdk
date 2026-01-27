@@ -156,10 +156,11 @@ cd "$(find ~ -name 'xaffinity-mcp.sh' -type f 2>/dev/null | head -1 | xargs dirn
 
 </details>
 
-Then test the MCP tool:
+**For MCPB installations**: If Step 1 passes, your setup is complete. The MCP server shells out to CLI, so if CLI works with your API key, the MCP server will too. Restart Claude Desktop and test the tools there.
+
+**For manual installations**: You can also test the MCP layer directly:
 
 ```bash
-# Test MCP tool with your API key
 AFFINITY_API_KEY="your-key-here" \
   mcp-bash run-tool execute-read-command \
   --args '{"command":"whoami"}'

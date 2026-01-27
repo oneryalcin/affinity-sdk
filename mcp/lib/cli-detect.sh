@@ -92,6 +92,12 @@ mcp_detect_cli() {
     candidates+=("/opt/homebrew/bin/${name}")
     candidates+=("/usr/local/bin/${name}")
 
+    # macOS Python framework (python.org installer, Homebrew Python)
+    local py_version
+    for py_version in /Library/Frameworks/Python.framework/Versions/*/bin/"${name}"; do
+        [[ -x "${py_version}" ]] && candidates+=("${py_version}")
+    done
+
     # System paths
     candidates+=("/usr/bin/${name}")
     candidates+=("/bin/${name}")
