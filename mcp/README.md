@@ -113,13 +113,68 @@ For other MCP clients or development. Requires [additional prerequisites](#for-m
 
 ## Troubleshooting
 
-If the MCP server fails to start, run diagnostics:
+### Verify Installation
+
+Before debugging, verify each layer works in order:
+
+**Step 1: CLI Installation**
+
+First, verify the CLI is installed and can reach the Affinity API. See [CLI: Verify Installation](https://yaniv-golan.github.io/affinity-sdk/latest/cli/#verify-installation).
+
+```bash
+# Check CLI is installed
+xaffinity --version
+
+# Check API connectivity (set your API key - same one entered in Claude Desktop)
+AFFINITY_API_KEY="your-key-here" xaffinity whoami --json
+```
+
+If `whoami` hangs, check network connectivity (firewall, proxy, VPN).
+
+**Step 2: MCP Server**
+
+Once the CLI works, test the MCP server end-to-end.
+
+First, locate your MCP server directory:
+
+```bash
+# MCPB installation (macOS)
+cd ~/Library/Application\ Support/Claude/Claude\ Extensions/local.mcpb.yaniv-golan.xaffinity-mcp/server
+
+# Or find it automatically
+cd "$(find ~ -name 'xaffinity-mcp.sh' -type f 2>/dev/null | head -1 | xargs dirname)"
+```
+
+<details>
+<summary>Other platforms/installations</summary>
+
+| Installation | Path |
+|--------------|------|
+| MCPB (Windows) | `%APPDATA%\Claude\Claude Extensions\local.mcpb.yaniv-golan.xaffinity-mcp\server\` |
+| Manual install | Your chosen extraction location |
+| Development | `<repo>/mcp/` |
+
+</details>
+
+Then test the MCP tool:
+
+```bash
+# Test MCP tool with your API key
+AFFINITY_API_KEY="your-key-here" \
+  mcp-bash run-tool execute-read-command \
+  --args '{"command":"whoami"}'
+```
+
+**Expected**: JSON response with your user information.
+
+If Step 1 works but Step 2 fails, the issue is MCP-specific. Run diagnostics:
 
 ```bash
 ./xaffinity-mcp.sh doctor
+./xaffinity-mcp.sh validate
 ```
 
-Common issues:
+### Common Issues
 
 | Error | Cause | Solution |
 |-------|-------|----------|
@@ -239,6 +294,29 @@ The `confirm: true` parameter is required for destructive commands. The tool wil
 | `interaction-brief` | Get interaction history summary |
 
 ## Configuration
+
+### API Key
+
+The MCP server uses the xaffinity CLI, which resolves API keys in this order (highest priority first):
+
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 | `--api-key-stdin` | CLI flag (reads from stdin) |
+| 2 | `--api-key-file` | CLI flag (reads from file) |
+| 3 | `AFFINITY_API_KEY` env var | **← Claude Desktop sets this** |
+| 4 | `.env` file | Requires `--dotenv` flag |
+| 5 | Config file | `~/.config/xaffinity/config.toml` |
+
+**Claude Desktop / MCPB**: When you enter an API key in the Claude Desktop configuration UI, it's passed to the MCP server as the `AFFINITY_API_KEY` environment variable (priority 3). This means:
+
+- It **overrides** any key in your config file (priority 5)
+- It **does not override** explicit CLI flags like `--api-key-file` (priorities 1-2)
+- If you have a key configured via `xaffinity config setup-key` AND enter one in Claude Desktop, the **Claude Desktop key wins**
+
+**Recommendation**: Use ONE of these methods:
+- **Claude Desktop only**: Enter your key in the MCPB configuration UI (simplest)
+- **CLI + MCP**: Run `xaffinity config setup-key` and leave the Claude Desktop field empty
+- **Environment variable**: Set `AFFINITY_API_KEY` in your shell profile
 
 ### Read-Only Mode
 

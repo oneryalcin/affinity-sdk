@@ -48,6 +48,28 @@ Or in a virtualenv:
 pip install "affinity-sdk[cli]"
 ```
 
+## Verify Installation
+
+**Step 1**: Check the CLI is installed:
+
+```bash
+xaffinity --version
+```
+
+**Expected**: Version number (e.g., `0.15.0`)
+
+**Step 2**: Verify API connectivity with your API key:
+
+```bash
+AFFINITY_API_KEY="your-key-here" xaffinity whoami
+```
+
+**Expected**: Your user information and tenant details
+
+If `whoami` hangs, check network connectivity (firewall, proxy, VPN). If it returns an authentication error, verify your API key is correct (Settings → API Keys in Affinity).
+
+Once verified, see [Authentication](#authentication) for persistent API key configuration options.
+
 ## Authentication
 
 The CLI never makes "background" requests. It only calls the API for commands that require it.

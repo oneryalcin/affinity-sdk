@@ -5,6 +5,15 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.2] - 2026-01-27
+
+### Added
+- Docs: "API Key" configuration section in README explaining how MCPB config interacts with CLI's API key resolution priority. Documents that Claude Desktop sets `AFFINITY_API_KEY` env var (priority 3), which overrides config file but not explicit CLI flags.
+- Docs: "Verify Installation" troubleshooting section with two-layer health check: (1) CLI layer (`xaffinity --version`, `AFFINITY_API_KEY=... xaffinity whoami`), (2) MCP layer (`mcp-bash run-tool`). Includes platform-specific paths for locating MCPB installations.
+
+### Changed
+- Requires CLI 0.16.1 (version alignment).
+
 ## [1.16.1] - 2026-01-26
 
 ### Fixed
