@@ -9,6 +9,7 @@
 # We use "allowlist" mode to pass additional variables.
 #
 # Allowlist variables:
+#   AFFINITY_API_KEY                 - Affinity API key (from MCPB user config)
 #   XAFFINITY_CLI                    - Path override for xaffinity CLI (user-set)
 #   AFFINITY_MCP_READ_ONLY=1         - Restrict to read-only operations
 #   AFFINITY_MCP_DISABLE_DESTRUCTIVE=1 - Block destructive commands entirely
@@ -24,7 +25,7 @@
 # variables don't reliably pass through to tool subprocesses in all contexts.
 
 export MCPBASH_TOOL_ENV_MODE="allowlist"
-export MCPBASH_TOOL_ENV_ALLOWLIST="XAFFINITY_CLI,XAFFINITY_CLI_PATTERN,XAFFINITY_CLI_VERSION,AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
+export MCPBASH_TOOL_ENV_ALLOWLIST="AFFINITY_API_KEY,XAFFINITY_CLI,XAFFINITY_CLI_PATTERN,XAFFINITY_CLI_VERSION,AFFINITY_MCP_READ_ONLY,AFFINITY_MCP_DISABLE_DESTRUCTIVE,XAFFINITY_DEBUG,AFFINITY_TRACE,AFFINITY_SESSION_CACHE,AFFINITY_SESSION_CACHE_TTL"
 
 # ==============================================================================
 # Debug Mode Configuration
