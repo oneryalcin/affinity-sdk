@@ -146,7 +146,7 @@
       "relatedCommands": ["company get", "company files ls"]
     },
     "opportunity get": {
-      "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
+      "whenToUse": "Get opportunity details. Use --expand persons/companies for associations.",
       "relatedCommands": ["opportunity ls", "opportunity field"]
     },
     "opportunity ls": {

@@ -11,8 +11,8 @@
       },
       "interactionType": {
         "type": "string",
-        "enum": ["call", "meeting", "email", "chat_message", "in_person"],
-        "description": "Type of interaction"
+        "enum": ["call", "meeting", "email", "chat-message"],
+        "description": "Type of interaction (chat-message can also be specified as 'chat')"
       },
       "subject": {
         "type": "string",

@@ -158,6 +158,33 @@ class CLIContext:
             return cfg.default
         return cfg.profiles.get(self._effective_profile(), ProfileConfig())
 
+    @property
+    def update_check_enabled(self) -> bool:
+        """Check if update checking is enabled based on config and environment."""
+        # Environment variable takes precedence
+        if os.environ.get("XAFFINITY_NO_UPDATE_CHECK"):
+            return False
+
+        # Then check profile config
+        prof = self._profile_config()
+        return prof.update_check
+
+    @property
+    def update_notify_mode(self) -> str:
+        """Get update notification mode from config or environment.
+
+        Returns:
+            "interactive" (default), "always", or "never"
+        """
+        # Environment variable takes precedence
+        env_mode = os.environ.get("XAFFINITY_UPDATE_NOTIFY")
+        if env_mode in ("interactive", "always", "never"):
+            return env_mode
+
+        # Then check profile config
+        prof = self._profile_config()
+        return prof.update_notify
+
     def resolve_api_key(self, *, warnings: list[str]) -> str:
         if self.api_key_stdin:
             raw = sys.stdin.read()

@@ -22,6 +22,9 @@ class ProfileConfig:
     timeout_seconds: float | None = None
     v1_base_url: str | None = None
     v2_base_url: str | None = None
+    # Update checking configuration
+    update_check: bool = True  # Enable/disable update checks
+    update_notify: str = "interactive"  # "interactive", "always", "never"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +40,9 @@ def _profile_from_mapping(data: dict[str, Any]) -> ProfileConfig:
         timeout_seconds=float(timeout) if timeout is not None else None,
         v1_base_url=data.get("v1_base_url") or None,
         v2_base_url=data.get("v2_base_url") or None,
+        # Update checking configuration
+        update_check=data.get("update_check", True),
+        update_notify=data.get("update_notify", "interactive"),
     )
 
 
@@ -133,6 +139,13 @@ def config_init_template() -> str:
 [default]
 # api_key = "..."
 # timeout_seconds = 30
+
+# Update checking configuration (optional)
+# update_check = true          # Enable/disable update checks (default: true)
+# update_notify = "interactive" # When to show notifications:
+#                               #   "interactive" - only in interactive sessions (default)
+#                               #   "always" - always show (not recommended)
+#                               #   "never" - never show (use for scripts)
 
 [profiles.dev]
 # api_key = "..."

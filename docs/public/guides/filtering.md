@@ -221,7 +221,7 @@ The `list export` command supports two filter options with **identical syntax** 
 
 The Affinity API supports filtering for list entries, but **does not support filtering associations**.
 
-When you use `--expand people`, the CLI:
+When you use `--expand persons`, the CLI:
 
 1. Fetches the list entries (can be filtered with `--filter`)
 2. For each entry, fetches ALL associated people (API returns all, no filter option)
@@ -241,7 +241,7 @@ This means `--expand-filter`:
 # Client-side: only include people with valid email status
 xaffinity list export 275454 \
   --filter "Status=Active" \
-  --expand people \
+  --expand persons \
   --expand-filter '"Primary Email Status"=Valid | "Primary Email Status"=Unknown | "Primary Email Status" is null' \
   --all --csv > output.csv
 ```

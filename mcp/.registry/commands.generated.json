@@ -2,11 +2,11 @@
   "_generated": {
     "warning": "DO NOT EDIT - This file is auto-generated",
     "generator": "tools/generate_mcp_command_registry.py",
-    "cliVersion": "0.16.1",
+    "cliVersion": "1.0.0",
     "sourceConfig": "mcp/.registry/mcp-commands.json"
   },
   "version": 1,
-  "cliVersion": "0.16.1",
+  "cliVersion": "1.0.0",
   "commands": [
     {
       "name": "company create",
@@ -2257,7 +2257,7 @@
         "opportunity get 123 --expand persons",
         "opportunity get 123 --expand persons --expand companies"
       ],
-      "whenToUse": "Get opportunity details. Use --expand people/companies for associations.",
+      "whenToUse": "Get opportunity details. Use --expand persons/companies for associations.",
       "relatedCommands": [
         "opportunity ls",
         "opportunity field"

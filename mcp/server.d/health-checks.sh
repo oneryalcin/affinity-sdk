@@ -30,3 +30,18 @@ else
     mcp_log_warn "CLI commands registry not found: $REGISTRY_FILE"
     mcp_log_warn "CLI Gateway tools (discover-commands, execute-*-command) will not work"
 fi
+
+# Optional: Trigger background update check for supervised environments
+# Only spawns background refresh, no warnings (those come from env.sh at startup)
+# Uses same throttle file as env.sh so they don't duplicate spawns
+# NOTE: No `local` keyword - health-checks.sh runs at top level, not in a function
+if command -v xaffinity &>/dev/null; then
+    _hc_throttle_dir="${XDG_STATE_HOME:-$HOME/.local/state}/xaffinity"
+    _hc_throttle_file="${_hc_throttle_dir}/.mcp_update_check_timestamp"
+    mkdir -p "$_hc_throttle_dir" 2>/dev/null || true
+    # Throttle: only spawn if timestamp older than 24h (same as env.sh)
+    if [[ ! -f "$_hc_throttle_file" ]] || (( $(date +%s) - $(cat "$_hc_throttle_file" 2>/dev/null || echo 0) >= 86400 )); then
+        xaffinity config update-check --background 2>/dev/null && date +%s > "$_hc_throttle_file" || true
+    fi
+    unset _hc_throttle_dir _hc_throttle_file
+fi

@@ -5,6 +5,11 @@ All notable changes to the xaffinity MCP server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Update notifications for MCP-only users**: The MCP server now checks for CLI updates at startup and displays warnings when a new version is available. This helps users who only use the MCP server (via Claude Desktop or Claude Code) stay up to date. Update checks are non-blocking, throttled to 24 hours, and respect user opt-out (`XAFFINITY_NO_UPDATE_CHECK=1` or config file). Uses new CLI `--background` flag for background checks.
+
 ## [1.16.4] - 2026-01-27
 
 ### Fixed

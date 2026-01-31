@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-01-31
+
+**First stable release.** The SDK and CLI APIs are now considered stable. Breaking changes will follow semantic versioning (major version bumps).
+
+### Added
+- CLI: Auto-update notifications. The CLI now checks PyPI daily (in background) and displays a notification when a new version is available. Notifications are suppressed in non-interactive environments (`--quiet`, `--output json`, CI, no TTY). Disable with `XAFFINITY_NO_UPDATE_CHECK=1` or `update_check = false` in config.
+- CLI: `xaffinity config update-check --background` flag for non-blocking update checks. Used by MCP server to trigger background updates without waiting for results.
+
+### Fixed
+- MCP: Add `AFFINITY_API_KEY` to environment variable allowlist. API keys configured in Claude Desktop's MCP settings were being silently dropped, requiring manual config file creation as a workaround.
+- MCP: Detect CLI in macOS Python framework path (`/Library/Frameworks/Python.framework/Versions/*/bin/`). Users who installed via `pip install` with python.org Python were getting "xaffinity: command not found" errors.
+
 ## [0.16.1] - 2026-01-27
 
 ### Added

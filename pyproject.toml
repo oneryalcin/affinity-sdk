@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "affinity-sdk"
-version = "0.16.1"
+version = "1.0.0"
 description = "A modern, strongly-typed Python SDK for the Affinity CRM API"
 readme = "README.md"
 license = "MIT"
@@ -54,6 +54,8 @@ dev = [
     "rich>=13,<15",
     "rich-click>=1.8",
     "platformdirs>=4",
+    "packaging>=21.0",
+    "filelock>=3.0",
     # mypy targets python_version=3.10, so TOML parsing must be importable during type-checking.
     "tomli>=2",
 ]
@@ -68,6 +70,8 @@ cli = [
     "tomli>=2; python_version<'3.11'",
     "tomli-w>=1.0",
     "python-dotenv>=1.0.0",
+    "packaging>=21.0",  # Version comparison for update checking
+    "filelock>=3.0",    # Cross-platform file locking for update checks
 ]
 docs = [
     "mkdocs>=1.5.0",
@@ -152,6 +156,14 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "httpx.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "packaging.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "filelock"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

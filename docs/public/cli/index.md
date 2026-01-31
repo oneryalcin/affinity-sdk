@@ -159,6 +159,73 @@ For the `query` command, advanced users can tune concurrency:
 
 Higher values speed up queries with `include` or `expand` but may trigger rate limits on smaller accounts.
 
+## Update Notifications
+
+The CLI checks for available updates once per day and displays a notification after command execution:
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Update available: 1.0.0 → 1.1.0                     │
+│  Run: pip install --upgrade "affinity-sdk[cli]"      │
+└──────────────────────────────────────────────────────┘
+```
+
+The upgrade command is auto-detected based on your installation method (pipx, uv, pip).
+
+The check is non-blocking and never delays command execution. Notifications are automatically suppressed when:
+
+- Using `--quiet` or `--output json`
+- Running in CI/CD environments (`CI`, `GITHUB_ACTIONS`, etc.)
+- Not attached to a terminal
+- Using the `--no-update-check` flag
+
+### Configuration
+
+Disable update checks via config file (`~/.config/xaffinity/config.toml`):
+
+```toml
+[default]
+update_check = false
+```
+
+Or via environment variable:
+
+```bash
+export XAFFINITY_NO_UPDATE_CHECK=1
+```
+
+Control notification behavior with `update_notify`:
+
+```toml
+[default]
+update_notify = "interactive"  # "interactive" (default), "always", or "never"
+```
+
+### Manual Check
+
+Check for updates manually:
+
+```bash
+xaffinity config update-check --now
+```
+
+See current update status:
+
+```bash
+xaffinity config update-check --status
+```
+
+### Background Check (for MCP/Automation)
+
+Trigger a non-blocking background update check (used by MCP server):
+
+```bash
+xaffinity config update-check --background
+```
+
+This spawns a background worker that checks for updates and caches the result.
+It exits immediately with no output on success, exit code 1 on failure.
+
 ## Progress + quiet mode
 
 - Long operations show progress bars/spinners on **stderr** when interactive.

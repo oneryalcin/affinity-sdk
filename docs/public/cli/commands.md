@@ -414,7 +414,7 @@ Expansions:
 
 - `--expand lists`: include lists the company is on (auto-paginates up to a safe cap; use `--max-results` / `--all` to adjust).
 - `--expand list-entries`: include list entries for the company (first page by default; use `--max-results` / `--all` to fetch more).
-- `--expand people`: include people associated with the company (use `--max-results` / `--all` to control volume).
+- `--expand persons`: include people associated with the company (use `--max-results` / `--all` to control volume).
 - `--list <id-or-exact-name>`: filter list entries to a specific list (requires `--expand list-entries`).
 - `--list-entry-field <id-or-exact-name>` (repeatable): project list-entry fields into columns (requires `--expand list-entries`). Field names are only allowed with `--list`.
 - `--show-list-entry-fields`: render per-list-entry Fields tables in human output (requires `--expand list-entries` and `--max-results <= 3`). Mutually exclusive with `--list-entry-field`.
@@ -431,7 +431,7 @@ xaffinity company get 224925494 --expand list-entries --list "Dealflow" --max-re
 xaffinity company get 224925494 --expand list-entries --list "Dealflow" --list-entry-field Stage --list-entry-field Amount
 xaffinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields
 xaffinity company get 224925494 --expand list-entries --max-results 1 --show-list-entry-fields --list-entry-fields-scope all
-xaffinity company get 224925494 --expand people --max-results 50
+xaffinity company get 224925494 --expand persons --max-results 50
 xaffinity company get 224925494 --all-fields --expand lists --json | jq '.data.company.name'
 
 # Include interaction dates (last meeting, next meeting, email dates)

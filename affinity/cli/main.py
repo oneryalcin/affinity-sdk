@@ -16,6 +16,79 @@ if TYPE_CHECKING:
     pass
 
 
+# CI environment variables that indicate non-interactive environment
+_CI_ENV_VARS = (
+    "CI",  # Generic CI indicator (GitHub Actions, GitLab CI, etc.)
+    "GITHUB_ACTIONS",  # GitHub Actions
+    "GITLAB_CI",  # GitLab CI
+    "JENKINS_URL",  # Jenkins
+    "CIRCLECI",  # CircleCI
+    "BUILDKITE",  # Buildkite
+    "TRAVIS",  # Travis CI
+    "TF_BUILD",  # Azure Pipelines
+    "AZURE_PIPELINES",  # Azure Pipelines (alternative)
+    "CODEBUILD_BUILD_ID",  # AWS CodeBuild
+    "TEAMCITY_VERSION",  # TeamCity
+)
+
+
+def _should_check_for_updates(click_ctx: click.Context, *, no_update_check: bool = False) -> bool:
+    """Determine if update check should run."""
+    ctx: CLIContext | None = click_ctx.obj
+
+    # Skip during shell completion (resilient_parsing=True means Click is parsing
+    # for tab completion, not actual execution)
+    if click_ctx.resilient_parsing:
+        return False
+
+    # Honor explicit --no-update-check flag
+    if no_update_check:
+        return False
+
+    # Never check if quiet mode
+    if ctx and ctx.quiet:
+        return False
+
+    # Never check for JSON output (likely automated)
+    if ctx and ctx.output == "json":
+        return False
+
+    # Never check in CI environments
+    if any(os.environ.get(var) for var in _CI_ENV_VARS):
+        return False
+
+    # Honor explicit opt-out environment variable
+    if os.environ.get("XAFFINITY_NO_UPDATE_CHECK"):
+        return False
+
+    # Check user preference (default: enabled)
+    if ctx and not ctx.update_check_enabled:
+        return False
+
+    # Check update_notify mode
+    if ctx:
+        mode = ctx.update_notify_mode
+        if mode == "never":
+            return False
+        if mode == "always":
+            return True
+        # mode == "interactive" (default): check TTY
+        return sys.stderr.isatty()
+
+    # No context - default to interactive check
+    return sys.stderr.isatty()
+
+
+def _run_update_check_on_exit(state_dir: Path) -> None:
+    """Run update check after command completion. Accepts Path, not context."""
+    try:
+        from .update_check import check_for_update_interactive
+
+        check_for_update_interactive(state_dir)
+    except Exception:
+        pass  # Never crash on update check failure
+
+
 class _RootGroupMixin:
     """Mixin that adds --help --json support to the root CLI group."""
 
@@ -130,6 +203,7 @@ RootGroup: type[click.Group] = type("RootGroup", (_RootGroupMixin, RichGroup), {
     help="Enable session caching using the specified directory.",
 )
 @click.option("--no-cache", is_flag=True, help="Disable session caching.")
+@click.option("--no-update-check", is_flag=True, help="Disable update check for this invocation.")
 @click.version_option(version=affinity.__version__, prog_name="xaffinity")
 @click.pass_context
 def cli(
@@ -157,6 +231,7 @@ def cli(
     no_log_file: bool,
     session_cache: str | None,
     no_cache: bool,
+    no_update_check: bool,
 ) -> None:
     # Validate numeric options (Bug #33, #34)
     if timeout is not None and timeout <= 0:
@@ -246,6 +321,13 @@ def cli(
         api_key_for_redaction=None,
     )
     click_ctx.call_on_close(lambda: restore_logging(previous_logging))
+
+    # Register update check to run after command completes
+    if _should_check_for_updates(click_ctx, no_update_check=no_update_check):
+        state_dir = paths.state_dir
+        # Use lambda to capture state_dir value, not context reference
+        # (context object may be invalidated by the time cleanup runs)
+        click_ctx.call_on_close(lambda sd=state_dir: _run_update_check_on_exit(state_dir=sd))
 
 
 # Register commands

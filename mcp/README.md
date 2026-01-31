@@ -179,8 +179,8 @@ If Step 1 works but Step 2 fails, the issue is MCP-specific. Run diagnostics:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| "Could not detect xaffinity CLI" | CLI not installed | `pip install affinity-sdk` |
-| "CLI version X is too old" | Outdated CLI | `pip install --upgrade affinity-sdk` |
+| "Could not detect xaffinity CLI" | CLI not installed | `pip install "affinity-sdk[cli]"` |
+| "CLI version X is too old" | Outdated CLI | `pip install --upgrade "affinity-sdk[cli]"` |
 | "API key not configured" | Missing credentials | `xaffinity config setup-key` |
 | "No JSON processor found" | jq/gojq not installed (manual install only) | See [Installing jq/gojq](#installing-jqgojq) |
 | "Framework not found" | MCP Bash not installed (manual install only) | `./xaffinity-mcp.sh install` |
@@ -343,6 +343,25 @@ Adjust cache duration (default 10 minutes):
 
 ```bash
 AFFINITY_SESSION_CACHE_TTL=300 ./xaffinity-mcp.sh
+```
+
+### Update Notifications
+
+The MCP server checks for CLI updates at startup and displays a warning if a new version is available. This helps MCP-only users (who don't run CLI commands directly) stay up to date.
+
+Update checks are:
+- **Non-blocking**: The check runs in the background and doesn't delay server startup
+- **Throttled**: Background checks are limited to once per 24 hours
+- **Respectful**: Honors user opt-out via `XAFFINITY_NO_UPDATE_CHECK=1` or config file
+
+To disable update notifications:
+
+```bash
+# Via environment variable
+XAFFINITY_NO_UPDATE_CHECK=1 ./xaffinity-mcp.sh
+
+# Or via CLI config
+xaffinity config update-check --disable
 ```
 
 ## Development

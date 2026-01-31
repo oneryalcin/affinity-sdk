@@ -544,3 +544,158 @@ def setup_key(ctx: CLIContext, *, scope: str | None, force: bool, validate: bool
         raise click.exceptions.Exit(result.exit_code)
 
     run_command(ctx, command="config setup-key", fn=fn)
+
+
+@category("local")
+@config_group.command(name="update-check", cls=RichCommand)
+@click.option("--enable/--disable", "enable", default=None, help="Enable/disable update checks.")
+@click.option("--now", is_flag=True, help="Check for updates immediately.")
+@click.option("--status", is_flag=True, help="Show update check status.")
+@click.option("--background", is_flag=True, help="Trigger background check (for MCP/automation).")
+@output_options
+@click.pass_obj
+def config_update_check(
+    ctx: CLIContext, *, enable: bool | None, now: bool, status: bool, background: bool
+) -> None:
+    """
+    Configure automatic update checking.
+
+    By default, xaffinity checks for updates once per day in interactive
+    sessions and displays a notification if a new version is available.
+
+    This check never blocks command execution and is suppressed when:
+    - Using --quiet or --output json
+    - Running in CI/CD (CI environment variable set)
+    - Not attached to a terminal
+    - Config has update_check = false
+
+    Examples:
+        xaffinity config update-check                # Show current settings
+        xaffinity config update-check --status       # Show update status
+        xaffinity config update-check --now          # Check for updates now
+        xaffinity config update-check --background   # Trigger background check
+        xaffinity config update-check --enable       # Enable update checks
+        xaffinity config update-check --disable      # Disable update checks
+    """
+    # Enforce mutual exclusion between flags
+    action_flags = [now, status, background]
+    config_flags = [enable is True, enable is False] if enable is not None else []
+    if sum(action_flags) > 1:
+        raise click.UsageError("--now, --status, and --background are mutually exclusive")
+    if sum(config_flags) > 1:
+        raise click.UsageError("--enable and --disable are mutually exclusive")
+    if any(action_flags) and enable is not None:
+        raise click.UsageError("Cannot combine action flags with --enable/--disable")
+    from datetime import datetime, timezone
+
+    import affinity
+
+    from ..update_check import (
+        UpdateInfo,
+        check_pypi_version,
+        get_cached_update_info,
+        get_upgrade_command,
+        is_update_available,
+        save_update_info,
+        trigger_background_update_check,
+    )
+
+    # Handle --background: spawn background worker and exit immediately
+    if background:
+        state_dir = ctx.paths.state_dir
+        try:
+            trigger_background_update_check(state_dir)
+            # Silent success - no output for --background
+            return
+        except Exception as e:
+            # Exit with code 1 on failure
+            raise click.exceptions.Exit(1) from e
+
+    def fn(_ctx: CLIContext, warnings: list[str]) -> CommandOutput:
+        state_dir = ctx.paths.state_dir
+        cache_path = state_dir / "update_check.json"
+
+        result_data: dict[str, object] = {
+            "update_check_enabled": ctx.update_check_enabled,
+            "update_notify_mode": ctx.update_notify_mode,
+        }
+
+        # Handle --now: check for updates immediately
+        if now:
+            latest = check_pypi_version()
+            current = affinity.__version__
+            if latest:
+                update_avail = is_update_available(current, latest)
+                # Save to cache
+                info = UpdateInfo(
+                    current_version=current,
+                    latest_version=latest,
+                    checked_at=datetime.now(timezone.utc),
+                    update_available=update_avail,
+                )
+                save_update_info(cache_path, info)
+                result_data["current_version"] = current
+                result_data["latest_version"] = latest
+                result_data["update_available"] = update_avail
+                if update_avail:
+                    result_data["upgrade_command"] = get_upgrade_command()
+            else:
+                result_data["error"] = "Failed to check PyPI"
+                warnings.append("Could not reach PyPI to check for updates")
+            return CommandOutput(data=result_data, api_called=False)
+
+        # Handle --status: show cached update info
+        if status:
+            # Always include state_dir for MCP throttle file alignment
+            result_data["state_dir"] = str(state_dir)
+            cached = get_cached_update_info(cache_path)
+            if cached:
+                result_data["current_version"] = cached.current_version
+                result_data["latest_version"] = cached.latest_version
+                result_data["update_available"] = cached.update_available
+                result_data["checked_at"] = cached.checked_at.isoformat()
+                result_data["cache_stale"] = cached.is_stale()
+                if cached.last_notified_at:
+                    result_data["last_notified_at"] = cached.last_notified_at.isoformat()
+                if cached.update_available and cached.latest_version:
+                    result_data["upgrade_command"] = get_upgrade_command()
+            else:
+                result_data["cache_exists"] = False
+                result_data["cache_stale"] = True  # No cache means stale
+                result_data["message"] = "No update check cache. Run with --now to check."
+            return CommandOutput(data=result_data, api_called=False)
+
+        # Handle --enable/--disable: update config
+        # Note: This would require modifying the config file, which is complex
+        # For now, we document the manual approach
+        if enable is not None:
+            if enable:
+                result_data["action"] = "enable"
+                result_data["message"] = (
+                    "To enable update checks, ensure update_check = true in your config file "
+                    f"({ctx.paths.config_path}) or remove XAFFINITY_NO_UPDATE_CHECK env var."
+                )
+            else:
+                result_data["action"] = "disable"
+                result_data["message"] = (
+                    "To disable update checks, set update_check = false in your config file "
+                    f"({ctx.paths.config_path}) or set XAFFINITY_NO_UPDATE_CHECK=1."
+                )
+            return CommandOutput(data=result_data, api_called=False)
+
+        # Default: show current settings
+        result_data["config_path"] = str(ctx.paths.config_path)
+        result_data["state_dir"] = str(state_dir)
+        result_data["env_var_set"] = bool(os.environ.get("XAFFINITY_NO_UPDATE_CHECK"))
+
+        # Also show cache status if it exists
+        cached = get_cached_update_info(cache_path)
+        if cached:
+            result_data["last_check"] = cached.checked_at.isoformat()
+            result_data["update_available"] = cached.update_available
+            if cached.update_available and cached.latest_version:
+                result_data["latest_version"] = cached.latest_version
+
+        return CommandOutput(data=result_data, api_called=False)
+
+    run_command(ctx, command="config update-check", fn=fn)

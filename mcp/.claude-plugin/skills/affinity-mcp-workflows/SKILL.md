@@ -260,7 +260,7 @@ Access dynamic data via `xaffinity://` URIs using `read-xaffinity-resource`:
 ## Tips
 
 - **Entity types**: `person`, `company`, `opportunity`
-- **Interaction types**: `call`, `meeting`, `email`, `chat_message`, `in_person`
+- **Interaction types**: `call`, `meeting`, `email`, `chat-message` (or `chat`)
 - **Dossier is comprehensive**: `get-entity-dossier` returns relationship strength, interactions, notes, and list memberships in one call
 - **Use names directly**: Most commands accept names instead of IDs (e.g., `person ls --query "John"`)
 - **Finding entities in a list**: Use `query` with filters:
@@ -302,4 +302,4 @@ Debug logs show component prefixes like `[xaffinity:tool:1.2.3]` to identify whi
 |---------|--------------|-----|
 | Tools show old behavior after update | Cached MCP server process | Fully quit and restart Claude Desktop |
 | API key errors | Key not configured | Run `xaffinity config setup-key` |
-| CLI version errors | Outdated CLI | Run `pip install --upgrade affinity-sdk`
+| CLI version errors | Outdated CLI | Run `pip install --upgrade "affinity-sdk[cli]"`

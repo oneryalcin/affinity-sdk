@@ -314,10 +314,10 @@ Use `execute-write-command` for mutations (create, update, delete). Common patte
 ### Updating List Entry Fields
 To set a field value on a list entry:
 ```bash
-entry field --entry-id 12345 --field-id 67890 --value "New Value"
+entry field "Dealflow" 12345 --set "Status" "New Value"
 ```
 
-Field IDs can be found via `field ls --list-id Dealflow`. For dropdown fields, use the option text (not ID).
+Field names can be found via `field ls "Dealflow"`. For dropdown fields, use the option text (not ID).
 
 ### Notes
 Notes attach to persons, companies, or opportunities:

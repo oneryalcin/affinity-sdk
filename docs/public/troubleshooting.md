@@ -50,6 +50,30 @@ See [Client](reference/client.md) and [Exceptions](reference/exceptions.md).
 
 Enable [hooks](guides/debugging-hooks.md) or set `log_requests=True` on the client.
 
+## CLI: Disable update notifications
+
+The CLI shows update notifications in interactive sessions. To disable:
+
+**For a single command:**
+```bash
+xaffinity --no-update-check person ls
+```
+
+**Via environment variable:**
+```bash
+export XAFFINITY_NO_UPDATE_CHECK=1
+```
+
+**Via config file (`~/.config/xaffinity/config.toml`):**
+```toml
+[default]
+update_check = false
+```
+
+**Automatic suppression:** Notifications are automatically hidden when using `--quiet`, `--output json`, in CI environments, or when not attached to a terminal.
+
+See [CLI Update Notifications](cli/index.md#update-notifications) for more details.
+
 ## Next steps
 
 - [Getting started](getting-started.md)
