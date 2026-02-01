@@ -522,10 +522,16 @@ class InteractionService:
         - One entity ID: person_id, company_id, or opportunity_id
 
         Returns V1 paginated response with `data` and `next_page_token`.
+
+        Raises:
+            ValueError: If type is not provided (required by Affinity V1 API)
         """
-        params: dict[str, Any] = {}
-        if type is not None:
-            params["type"] = int(type)
+        if type is None:
+            raise ValueError(
+                "type is required for interactions API. "
+                "Use InteractionType.EMAIL, MEETING, CALL, or CHAT_MESSAGE."
+            )
+        params: dict[str, Any] = {"type": int(type)}
         if start_time:
             params["start_time"] = start_time.isoformat()
         if end_time:
@@ -1903,9 +1909,12 @@ class AsyncInteractionService:
         page_size: int | None = None,
         page_token: str | None = None,
     ) -> PaginatedResponse[Interaction]:
-        params: dict[str, Any] = {}
-        if type is not None:
-            params["type"] = int(type)
+        if type is None:
+            raise ValueError(
+                "type is required for interactions API. "
+                "Use InteractionType.EMAIL, MEETING, CALL, or CHAT_MESSAGE."
+            )
+        params: dict[str, Any] = {"type": int(type)}
         if start_time:
             params["start_time"] = start_time.isoformat()
         if end_time:

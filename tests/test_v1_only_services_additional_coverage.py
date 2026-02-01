@@ -420,7 +420,9 @@ def test_v1_only_services_end_to_end_smoke_and_branch_coverage(tmp_path: Path) -
         interactions = InteractionService(http)
         assert interactions.list(type=InteractionType.EMAIL).data[0].id == 1
         assert interactions.list(type=InteractionType.MEETING).data == []
-        assert interactions.list().data[0].id == 1
+        # type is required - verify ValueError is raised without it
+        with pytest.raises(ValueError, match="type is required"):
+            interactions.list()
         assert interactions.get(1, InteractionType.EMAIL).id == 1
         created_i = interactions.create(
             InteractionCreate(

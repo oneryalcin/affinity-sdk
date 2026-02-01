@@ -10,6 +10,7 @@ from affinity.exceptions import AffinityError
 from affinity.models.types import (
     CompanyId,
     FieldId,
+    InteractionType,
     ListEntryId,
     OpportunityId,
     PersonId,
@@ -23,6 +24,21 @@ from affinity.services.v1_only import (
 
 class TestInteractionServiceCoverage:
     """Tests for uncovered branches in InteractionService."""
+
+    def test_list_requires_type_parameter(self) -> None:
+        """Test that list() raises ValueError when type is not provided."""
+        http = HTTPClient(
+            ClientConfig(
+                api_key="test",
+                v1_base_url="https://v1.example",
+                v2_base_url="https://v2.example/v2",
+                max_retries=0,
+            )
+        )
+        service = InteractionService(http)
+
+        with pytest.raises(ValueError, match="type is required"):
+            service.list(company_id=CompanyId(100))
 
     def test_list_with_company_id_filter(self) -> None:
         """Test filtering interactions by company_id (organization_id in V1)."""
@@ -58,7 +74,7 @@ class TestInteractionServiceCoverage:
         )
         service = InteractionService(http)
 
-        result = service.list(company_id=CompanyId(100))
+        result = service.list(type=InteractionType.EMAIL, company_id=CompanyId(100))
         assert len(result.data) == 1
 
     def test_list_with_opportunity_id_filter(self) -> None:
@@ -95,7 +111,7 @@ class TestInteractionServiceCoverage:
         )
         service = InteractionService(http)
 
-        result = service.list(opportunity_id=OpportunityId(200))
+        result = service.list(type=InteractionType.EMAIL, opportunity_id=OpportunityId(200))
         assert len(result.data) == 1
 
 

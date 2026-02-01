@@ -652,6 +652,13 @@ def format_dry_run_json(plan: ExecutionPlan) -> str:
     if plan.total_api_calls == "UNBOUNDED":
         execution["estimatedApiCallsNote"] = "Could be 10K-100K+ based on database size"
 
+    # Add warning for high API call counts (helps LLMs notice expensive operations)
+    if isinstance(plan.total_api_calls, int) and plan.total_api_calls > 50:
+        execution["warning"] = (
+            f"High API call count ({plan.total_api_calls}). "
+            "Consider reducing limit or removing expand/include."
+        )
+
     output = {
         "version": plan.version,
         "query": {

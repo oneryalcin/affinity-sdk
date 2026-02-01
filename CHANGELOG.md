@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-02-01
+
+### Fixed
+- SDK: `InteractionService.list()` and `iter()` now validate that `type` parameter is required, raising `ValueError` with clear guidance instead of failing with cryptic API 422 errors. The Affinity V1 API has always required this parameter.
+- CLI: `--check-unreplied` and `expand: ["unreplied"]` now work correctly. Previously, all unreplied checks silently failed (returning null) due to missing `type` parameter in interaction API calls.
+- CLI: Query `dryRun` JSON output now includes a warning when estimated API calls exceed 50, helping LLMs notice expensive operations.
+
 ## [1.0.0] - 2026-01-31
 
 **First stable release.** The SDK and CLI APIs are now considered stable. Breaking changes will follow semantic versioning (major version bumps).

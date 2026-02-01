@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from affinity.clients.http import ClientConfig, HTTPClient
 from affinity.models.entities import FieldCreate, FieldValueCreate
@@ -429,7 +430,9 @@ def test_v1_only_services_cover_optional_params_and_fallback_shapes(tmp_path: Pa
         )
         assert interactions.list(type=InteractionType.CALL).data[0].id == 2
         assert interactions.list(type=InteractionType(999)).data == []
-        assert interactions.list().data == []
+        # type is required - verify ValueError is raised without it
+        with pytest.raises(ValueError, match="type is required"):
+            interactions.list()
         _ = interactions.create(
             InteractionCreate(
                 type=InteractionType.EMAIL,
