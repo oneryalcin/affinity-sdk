@@ -12,6 +12,29 @@ An MCP (Model Context Protocol) server for Affinity CRM, built with the [MCP Bas
 
 ## Quick Start
 
+**Easiest: Python MCP Server via uvx (no install needed)**
+
+Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "affinity": {
+      "command": "uvx",
+      "args": [
+        "--from", "affinity-sdk[mcp] @ git+https://github.com/oneryalcin/affinity-sdk",
+        "xaffinity-mcp"
+      ],
+      "env": {"AFFINITY_API_KEY": "your-api-key"}
+    }
+  }
+}
+```
+
+That's it. Restart Claude Desktop.
+
+**Alternative: Bash MCP Server (more tools, requires setup)**
+
 ```bash
 # 1. Install the xaffinity CLI
 pipx install "affinity-sdk[cli]"
@@ -76,6 +99,32 @@ Either [jq](https://jqlang.org/) or [gojq](https://github.com/itchyny/gojq) work
 | Binary download | [GitHub Releases](https://github.com/itchyny/gojq/releases) |
 
 ## Installation
+
+### Option 0: Python MCP Server (uvx - Simplest)
+
+Zero installation required. Just configure and go:
+
+```json
+{
+  "mcpServers": {
+    "affinity": {
+      "command": "uvx",
+      "args": [
+        "--from", "affinity-sdk[mcp] @ git+https://github.com/oneryalcin/affinity-sdk",
+        "xaffinity-mcp"
+      ],
+      "env": {"AFFINITY_API_KEY": "your-api-key"}
+    }
+  }
+}
+```
+
+**Pros:** No install, no dependencies, works everywhere uvx works
+**Cons:** Subset of tools (10 vs full CLI gateway)
+
+**Available tools:** company-get, company-list, person-get, person-search, list-get, list-entries, opportunity-get, note-list, interaction-list, query
+
+---
 
 ### Option 1: Claude Desktop (One-Click)
 
