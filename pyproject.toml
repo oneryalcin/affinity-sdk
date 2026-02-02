@@ -73,6 +73,19 @@ cli = [
     "packaging>=21.0",  # Version comparison for update checking
     "filelock>=3.0",    # Cross-platform file locking for update checks
 ]
+mcp = [
+    "mcp>=1.0.0",
+    # MCP server wraps CLI, so include CLI deps
+    "click>=8.1",
+    "rich>=13,<15",
+    "rich-click>=1.8",
+    "platformdirs>=4",
+    "tomli>=2; python_version<'3.11'",
+    "tomli-w>=1.0",
+    "python-dotenv>=1.0.0",
+    "packaging>=21.0",
+    "filelock>=3.0",
+]
 docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
@@ -83,6 +96,7 @@ docs = [
 
 [project.scripts]
 xaffinity = "affinity.cli.main:cli"
+xaffinity-mcp = "affinity.mcp:main"
 
 [project.urls]
 Homepage = "https://github.com/yaniv-golan/affinity-sdk"
@@ -171,6 +185,15 @@ module = "affinity.cli.*"
 disallow_untyped_decorators = false
 # Allow type ignores that may be needed for pre-commit mypy version compatibility
 warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "affinity.mcp.*"
+# MCP SDK types may not be fully typed
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mcp.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
