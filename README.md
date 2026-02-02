@@ -71,23 +71,52 @@ pipx install "affinity-sdk[cli]"
 
 The CLI includes a powerful `query` command for structured data extraction with filtering, aggregations, and relationship includes. Output formats include JSON, CSV, markdown, and TOON (token-optimized for LLMs).
 
+Optional: MCP server (for AI integrations):
+
+```bash
+pip install "affinity-sdk[mcp]"
+xaffinity-mcp  # starts MCP server on stdio
+```
+
+Or run without installing via uvx (see [MCP Server](#mcp-server) section).
+
 CLI docs: https://yaniv-golan.github.io/affinity-sdk/latest/cli/
 
 ### MCP Server
 
 Connect desktop AI tools to Affinity CRM.
 
-**Claude Desktop** (easiest - MCPB bundle):
+**Option 1: Python MCP Server (uvx - no install needed)**
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "affinity": {
+      "command": "uvx",
+      "args": [
+        "--from", "affinity-sdk[mcp] @ git+https://github.com/oneryalcin/affinity-sdk",
+        "xaffinity-mcp"
+      ],
+      "env": {"AFFINITY_API_KEY": "your-api-key"}
+    }
+  }
+}
+```
+
+This runs entirely via uvx - no manual installation required.
+
+**Option 2: MCPB bundle (Claude Desktop only)**
 
 1. Install CLI: `pipx install "affinity-sdk[cli]"`
 2. *(Optional)* Pre-configure API key: `xaffinity config setup-key`
-   - If skipped, Claude Desktop will prompt for your API key during MCPB install
 3. Download the `.mcpb` bundle from [GitHub Releases](https://github.com/yaniv-golan/affinity-sdk/releases)
-4. Double-click to install (or drag to Claude Desktop)
+4. Double-click to install
 
 **Other clients** (Cursor, Windsurf, VS Code + Copilot, Zed, etc.):
 
-These require manual configuration. See the [MCP Server docs](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/) for step-by-step instructions.
+Use the uvx config above, or see the [MCP Server docs](https://yaniv-golan.github.io/affinity-sdk/latest/mcp/) for bash-based setup.
 
 MCP docs: https://yaniv-golan.github.io/affinity-sdk/latest/mcp/
 
