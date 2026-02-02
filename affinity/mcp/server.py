@@ -25,6 +25,61 @@ from mcp.types import TextContent, Tool
 # Cache for command registry
 _command_cache: dict[str, Any] | None = None
 
+# Static resources (embedded to avoid file path issues with uvx)
+_INTERACTION_ENUMS = {
+    "interactionTypes": [
+        {"value": "call", "label": "Phone Call", "description": "Voice call with a contact"},
+        {"value": "meeting", "label": "Meeting", "description": "Scheduled meeting (video or in-person)"},
+        {"value": "email", "label": "Email", "description": "Email correspondence"},
+        {"value": "chat-message", "label": "Chat Message", "description": "Instant message (Slack, Teams, etc.)"},
+    ],
+    "interactionDirections": [
+        {"value": "incoming", "label": "Incoming", "description": "Received from contact"},
+        {"value": "outgoing", "label": "Outgoing", "description": "Sent to contact"},
+    ],
+}
+
+_DATA_MODEL_SUMMARY = """# Affinity Data Model
+
+## Core Concepts
+
+### Companies and Persons (Global Entities)
+Exist globally in your CRM, independent of any list.
+- Commands: `company ls`, `person ls`, `company get`, `person get`
+- Can be added to multiple lists
+
+### Opportunities (List-Scoped Entities)
+ONLY exist within a specific list (pipeline).
+- Commands: `opportunity ls`, `opportunity get`
+- Each opportunity belongs to exactly ONE list
+
+### Lists (Collections with Custom Fields)
+Pipelines/collections that organize entities with custom Fields.
+- Commands: `list ls`, `list get`, `list export`
+
+### List Entries (Entity + List Membership)
+When an entity is added to a list, it becomes a List Entry with field values.
+- Commands: `list export`, `list-entry get`
+- Filter by list-specific fields (Status, Stage, etc.)
+
+## Selectors: Names Work Directly
+Most commands accept names, IDs, or emails:
+```
+list export Dealflow --filter "Status=New"
+company get "Acme Corp"
+person get john@example.com
+```
+
+## Common Patterns
+- `list export Dealflow --filter 'Status="New"'` - Get entries with filter
+- `company get 12345 --expand list-entries` - Check list membership
+- `interaction ls --type all --company-id 12345` - Get interactions
+- `field ls --list-id Dealflow` - See list fields and dropdown options
+
+## Filter Syntax
+`--filter 'field op "value"'` where op is = != =~ (contains) =^ (starts) =$ (ends) > < >= <=
+"""
+
 
 def _find_cli() -> str:
     """Find xaffinity CLI."""
@@ -272,6 +327,68 @@ TOOLS: list[Tool] = [
             },
         },
     ),
+    Tool(
+        name="get-entity-dossier",
+        description="Get comprehensive dossier for a person, company, or opportunity. Aggregates: entity details, relationship strength, recent interactions, notes, and list memberships in one call.",
+        inputSchema={
+            "type": "object",
+            "required": ["entityType", "entityId"],
+            "properties": {
+                "entityType": {
+                    "type": "string",
+                    "enum": ["person", "company", "opportunity"],
+                    "description": "Entity type"
+                },
+                "entityId": {
+                    "type": "integer",
+                    "description": "Entity ID"
+                },
+                "includeInteractions": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include recent interactions"
+                },
+                "includeNotes": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include recent notes"
+                },
+                "includeLists": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include list memberships"
+                },
+            },
+        },
+    ),
+    Tool(
+        name="get-file-url",
+        description="Get a presigned URL to download a file. URL valid for 60 seconds. Get file IDs from 'company files ls', 'person files ls', etc.",
+        inputSchema={
+            "type": "object",
+            "required": ["fileId"],
+            "properties": {
+                "fileId": {
+                    "type": "integer",
+                    "description": "File ID (from files ls output)"
+                },
+            },
+        },
+    ),
+    Tool(
+        name="read-xaffinity-resource",
+        description="Read an xaffinity:// resource.\n\nAvailable:\n- xaffinity://data-model - Affinity data model guide\n- xaffinity://me - Current authenticated user\n- xaffinity://interaction-enums - Interaction type/direction values\n- xaffinity://field-catalogs/{listId} - Field schema for a list",
+        inputSchema={
+            "type": "object",
+            "required": ["uri"],
+            "properties": {
+                "uri": {
+                    "type": "string",
+                    "description": "Resource URI (e.g., 'xaffinity://data-model', 'xaffinity://me')"
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -340,6 +457,115 @@ async def serve() -> None:
 
                 result = _run_cli(args, timeout=300, input_data=query_json)
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+            elif name == "get-entity-dossier":
+                entity_type = arguments["entityType"]
+                entity_id = arguments["entityId"]
+                include_interactions = arguments.get("includeInteractions", True)
+                include_notes = arguments.get("includeNotes", True)
+                include_lists = arguments.get("includeLists", True)
+
+                dossier: dict[str, Any] = {
+                    "entity": {"type": entity_type, "id": entity_id},
+                    "details": {},
+                    "relationshipStrength": None,
+                    "recentInteractions": [],
+                    "recentNotes": [],
+                    "listMemberships": [],
+                }
+
+                # Get entity details
+                entity_result = _run_cli([entity_type, "get", str(entity_id), "--json"])
+                if entity_result.get("ok") and "data" in entity_result:
+                    dossier["details"] = entity_result["data"].get(entity_type, {})
+
+                # Get relationship strength (persons only)
+                if entity_type == "person":
+                    rs_result = _run_cli(["relationship-strength", "ls", "--external-id", str(entity_id), "--json"])
+                    if rs_result.get("ok") and "data" in rs_result:
+                        strengths = rs_result["data"].get("relationshipStrengths", [])
+                        if strengths:
+                            dossier["relationshipStrength"] = strengths[0]
+
+                # Get interactions
+                if include_interactions:
+                    int_result = _run_cli([
+                        "interaction", "ls",
+                        f"--{entity_type}-id", str(entity_id),
+                        "--type", "all", "--days", "365", "--max-results", "10", "--json"
+                    ])
+                    if int_result.get("ok") and "data" in int_result:
+                        dossier["recentInteractions"] = int_result["data"]
+
+                # Get notes
+                if include_notes:
+                    notes_result = _run_cli([
+                        "note", "ls",
+                        f"--{entity_type}-id", str(entity_id),
+                        "--max-results", "10", "--json"
+                    ])
+                    if notes_result.get("ok") and "data" in notes_result:
+                        dossier["recentNotes"] = notes_result["data"]
+
+                # Get list memberships
+                if include_lists:
+                    lists_result = _run_cli([
+                        "list-entry", "ls",
+                        f"--{entity_type}-id", str(entity_id), "--json"
+                    ])
+                    if lists_result.get("ok") and "data" in lists_result:
+                        dossier["listMemberships"] = lists_result["data"].get("entries", [])
+
+                return [TextContent(type="text", text=json.dumps(dossier, indent=2, ensure_ascii=False))]
+
+            elif name == "get-file-url":
+                file_id = arguments["fileId"]
+                result = _run_cli(["file-url", str(file_id), "--json"])
+                if result.get("ok") and "data" in result:
+                    return [TextContent(type="text", text=json.dumps(result["data"], indent=2))]
+                return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            elif name == "read-xaffinity-resource":
+                uri = arguments["uri"]
+                # Parse URI: xaffinity://resource-name or xaffinity://resource-name/param
+                if not uri.startswith("xaffinity://"):
+                    return [TextContent(type="text", text=json.dumps({"error": "Invalid URI format"}))]
+
+                path = uri[len("xaffinity://"):]
+                parts = path.split("/", 1)
+                resource_name = parts[0]
+                resource_param = parts[1] if len(parts) > 1 else None
+
+                if resource_name == "data-model":
+                    return [TextContent(type="text", text=_DATA_MODEL_SUMMARY)]
+
+                elif resource_name == "interaction-enums":
+                    return [TextContent(type="text", text=json.dumps(_INTERACTION_ENUMS, indent=2))]
+
+                elif resource_name == "me":
+                    result = _run_cli(["whoami", "--json"])
+                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+                elif resource_name == "me-person-id":
+                    result = _run_cli(["whoami", "--json"])
+                    if result.get("ok") and "data" in result:
+                        person_id = result["data"].get("user", {}).get("personId")
+                        return [TextContent(type="text", text=json.dumps({"personId": person_id}))]
+                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+                elif resource_name == "field-catalogs" and resource_param:
+                    result = _run_cli(["field", "ls", "--list-id", resource_param, "--json"])
+                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+                elif resource_name == "saved-views" and resource_param:
+                    result = _run_cli(["list", "get", resource_param, "--json"])
+                    if result.get("ok") and "data" in result:
+                        views = result["data"].get("list", {}).get("savedViews", [])
+                        return [TextContent(type="text", text=json.dumps({"savedViews": views}, indent=2))]
+                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+                else:
+                    return [TextContent(type="text", text=json.dumps({"error": f"Unknown resource: {resource_name}"}))]
 
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]

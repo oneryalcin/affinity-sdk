@@ -120,9 +120,9 @@ Zero installation required. Just configure and go:
 ```
 
 **Pros:** No install, no jq/bash dependencies, works everywhere uvx works
-**Cons:** None - full CLI Gateway parity
+**Cons:** None - full parity with bash MCP server
 
-**Tools:** discover-commands, execute-read-command, execute-write-command, query
+**Tools:** discover-commands, execute-read-command, execute-write-command, query, get-entity-dossier, get-file-url, read-xaffinity-resource
 
 ---
 
