@@ -1,18 +1,27 @@
 """
 MCP Server that wraps xaffinity CLI via CLI Gateway pattern.
 
-3 tools expose the entire CLI:
+7 tools expose the CLI:
 - discover-commands: search available commands
 - execute-read-command: run any read command
 - execute-write-command: run any write command
+- query: structured queries
+- get-entity-dossier: comprehensive entity info
+- get-file-url: presigned file download URL
+- read-xaffinity-resource: static/dynamic resources
 
-Carmack philosophy: CLI already works. Just bridge it to MCP protocol.
+Security policies:
+- AFFINITY_MCP_READ_ONLY=1: blocks write commands
+- AFFINITY_MCP_DISABLE_DESTRUCTIVE=1: blocks delete commands
+- --all flag blocked to prevent unbounded scans
+- Default limits injected for pagination
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -22,16 +31,27 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+# Environment-based security policies
+READ_ONLY_MODE = os.environ.get("AFFINITY_MCP_READ_ONLY") == "1"
+DISABLE_DESTRUCTIVE = os.environ.get("AFFINITY_MCP_DISABLE_DESTRUCTIVE") == "1"
+
+# Pagination safety limits
+DEFAULT_LIMIT = 1000
+MAX_LIMIT = 10000
+
+# Blocked flags that could cause unbounded scans
+BLOCKED_FLAGS = {"--all", "-a", "--no-limit"}
+
 # Cache for command registry
 _command_cache: dict[str, Any] | None = None
 
-# Static resources (embedded to avoid file path issues with uvx)
+# Static resources
 _INTERACTION_ENUMS = {
     "interactionTypes": [
-        {"value": "call", "label": "Phone Call", "description": "Voice call with a contact"},
-        {"value": "meeting", "label": "Meeting", "description": "Scheduled meeting (video or in-person)"},
+        {"value": "call", "label": "Phone Call", "description": "Voice call"},
+        {"value": "meeting", "label": "Meeting", "description": "Scheduled meeting"},
         {"value": "email", "label": "Email", "description": "Email correspondence"},
-        {"value": "chat-message", "label": "Chat Message", "description": "Instant message (Slack, Teams, etc.)"},
+        {"value": "chat-message", "label": "Chat Message", "description": "Instant message", "aliases": ["chat"]},
     ],
     "interactionDirections": [
         {"value": "incoming", "label": "Incoming", "description": "Received from contact"},
@@ -44,26 +64,22 @@ _DATA_MODEL_SUMMARY = """# Affinity Data Model
 ## Core Concepts
 
 ### Companies and Persons (Global Entities)
-Exist globally in your CRM, independent of any list.
+Exist globally in CRM, independent of any list.
 - Commands: `company ls`, `person ls`, `company get`, `person get`
-- Can be added to multiple lists
 
-### Opportunities (List-Scoped Entities)
+### Opportunities (List-Scoped)
 ONLY exist within a specific list (pipeline).
 - Commands: `opportunity ls`, `opportunity get`
-- Each opportunity belongs to exactly ONE list
 
 ### Lists (Collections with Custom Fields)
-Pipelines/collections that organize entities with custom Fields.
+Pipelines/collections with custom Fields.
 - Commands: `list ls`, `list get`, `list export`
 
 ### List Entries (Entity + List Membership)
-When an entity is added to a list, it becomes a List Entry with field values.
+Entity added to a list becomes List Entry with field values.
 - Commands: `list export`, `list-entry get`
-- Filter by list-specific fields (Status, Stage, etc.)
 
 ## Selectors: Names Work Directly
-Most commands accept names, IDs, or emails:
 ```
 list export Dealflow --filter "Status=New"
 company get "Acme Corp"
@@ -71,10 +87,10 @@ person get john@example.com
 ```
 
 ## Common Patterns
-- `list export Dealflow --filter 'Status="New"'` - Get entries with filter
-- `company get 12345 --expand list-entries` - Check list membership
-- `interaction ls --type all --company-id 12345` - Get interactions
-- `field ls --list-id Dealflow` - See list fields and dropdown options
+- `list export Dealflow --filter 'Status="New"'` - filtered entries
+- `company get 12345 --expand list-entries` - list membership
+- `interaction ls --type all --company-id 12345` - interactions
+- `field ls --list-id Dealflow` - list fields
 
 ## Filter Syntax
 `--filter 'field op "value"'` where op is = != =~ (contains) =^ (starts) =$ (ends) > < >= <=
@@ -86,9 +102,7 @@ def _find_cli() -> str:
     cli = shutil.which("xaffinity")
     if cli:
         return cli
-    raise RuntimeError(
-        "xaffinity CLI not found. Install with: pip install affinity-sdk[cli]"
-    )
+    raise RuntimeError("xaffinity CLI not found. Install: pip install affinity-sdk[cli]")
 
 
 def _run_cli(args: list[str], timeout: int = 120, input_data: str | None = None) -> dict[str, Any]:
@@ -105,15 +119,13 @@ def _run_cli(args: list[str], timeout: int = 120, input_data: str | None = None)
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": {"type": "timeout", "message": f"Command timed out after {timeout}s"}}
+        return {"ok": False, "error": {"type": "timeout", "message": f"Timed out after {timeout}s"}}
 
-    # Try to parse as JSON
     try:
         if result.stdout:
             return json.loads(result.stdout)
         return {"ok": False, "error": {"type": "empty", "message": result.stderr or "No output"}}
     except json.JSONDecodeError:
-        # Return raw output for non-JSON responses
         return {"ok": result.returncode == 0, "output": result.stdout, "stderr": result.stderr}
 
 
@@ -123,9 +135,12 @@ def _get_all_commands() -> list[dict[str, Any]]:
     if _command_cache is not None:
         return _command_cache.get("commands", [])
 
-    # Get help from each command group
-    groups = ["company", "person", "list", "opportunity", "note", "reminder",
-              "webhook", "interaction", "field", "task", "config"]
+    # All command groups including missing ones from review
+    groups = [
+        "company", "person", "list", "list-entry", "opportunity",
+        "note", "reminder", "webhook", "interaction", "field", "task",
+        "relationship-strength", "file-url", "config", "whoami"
+    ]
 
     all_commands: list[dict[str, Any]] = []
     cli = _find_cli()
@@ -142,32 +157,61 @@ def _get_all_commands() -> list[dict[str, Any]]:
                 data = json.loads(result.stdout)
                 if "commands" in data:
                     all_commands.extend(data["commands"])
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        except Exception:
             continue
 
     _command_cache = {"commands": all_commands}
     return all_commands
 
 
+def _get_command_info(command_name: str) -> dict[str, Any] | None:
+    """Get command info by name."""
+    for cmd in _get_all_commands():
+        if cmd.get("name") == command_name:
+            return cmd
+    return None
+
+
 def _search_commands(query: str, category: str = "all", limit: int = 10) -> list[dict[str, Any]]:
-    """Search commands by keyword."""
+    """Search commands by keyword with scoring."""
     commands = _get_all_commands()
     query_lower = query.lower()
+    query_tokens = query_lower.split()
 
-    results = []
+    scored_results: list[tuple[int, dict[str, Any]]] = []
+
     for cmd in commands:
-        # Filter by category
-        if category != "all" and cmd.get("category") != category:
+        cmd_category = cmd.get("category", "read")
+
+        # Filter by category (read-only mode forces read)
+        if READ_ONLY_MODE and cmd_category == "write":
+            continue
+        if category != "all" and cmd_category != category:
             continue
 
-        # Search in name and description
         name = cmd.get("name", "").lower()
         desc = cmd.get("description", "").lower()
 
-        if query_lower in name or query_lower in desc:
-            results.append(cmd)
+        score = 0
+        # Exact name match
+        if query_lower == name:
+            score += 1000
+        # Name prefix match
+        elif name.startswith(query_lower):
+            score += 500
+        # Token matches in name
+        for token in query_tokens:
+            if token in name:
+                score += 100
+            if token in desc:
+                score += 10
 
-    return results[:limit]
+        if score > 0:
+            scored_results.append((score, cmd))
+
+    # Sort by score descending
+    scored_results.sort(key=lambda x: -x[0])
+    return [cmd for _, cmd in scored_results[:limit]]
 
 
 def _format_commands_text(commands: list[dict[str, Any]], detail: str = "summary") -> str:
@@ -183,16 +227,17 @@ def _format_commands_text(commands: list[dict[str, Any]], detail: str = "summary
     elif detail == "summary":
         lines.append("# cmd | category | description")
         for cmd in commands:
-            cat = cmd.get("category", "?")[0]  # First letter: r/w/l
+            cat = cmd.get("category", "?")[0]
             desc = cmd.get("description", "")[:60]
-            lines.append(f"{cmd['name']} | {cat} | {desc}")
+            destructive = " [DESTRUCTIVE]" if cmd.get("destructive") else ""
+            lines.append(f"{cmd['name']} | {cat} | {desc}{destructive}")
     else:  # full
         for cmd in commands:
             lines.append(f"## {cmd['name']}")
             lines.append(f"Category: {cmd.get('category', 'unknown')}")
             lines.append(f"Description: {cmd.get('description', '')}")
             if cmd.get("destructive"):
-                lines.append("⚠️ DESTRUCTIVE")
+                lines.append("⚠️ DESTRUCTIVE - requires confirm=true")
             params = cmd.get("parameters", {})
             if params:
                 lines.append("Parameters:")
@@ -210,7 +255,28 @@ def _format_commands_text(commands: list[dict[str, Any]], detail: str = "summary
     return "\n".join(lines)
 
 
-# Tool definitions - CLI Gateway pattern
+def _validate_argv(argv: list[str]) -> tuple[bool, str]:
+    """Validate argv for blocked flags. Returns (valid, error_message)."""
+    for arg in argv:
+        if arg in BLOCKED_FLAGS:
+            return False, f"Flag '{arg}' is blocked via MCP to prevent unbounded scans. Use --max-results instead."
+    return True, ""
+
+
+def _inject_default_limit(argv: list[str]) -> list[str]:
+    """Inject default --max-results if not present."""
+    has_limit = any(a in argv for a in ["--max-results", "--limit", "-n"])
+    if not has_limit:
+        return argv + ["--max-results", str(DEFAULT_LIMIT)]
+    return argv
+
+
+def _make_error(error_type: str, message: str) -> dict[str, Any]:
+    """Create error response."""
+    return {"ok": False, "error": {"type": error_type, "message": message}}
+
+
+# Tool definitions
 TOOLS: list[Tool] = [
     Tool(
         name="discover-commands",
@@ -219,86 +285,53 @@ TOOLS: list[Tool] = [
             "type": "object",
             "required": ["query"],
             "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "What you want to do (e.g., 'find companies', 'create person', 'export list entries')"
-                },
+                "query": {"type": "string", "description": "What you want to do"},
                 "category": {
                     "type": "string",
                     "enum": ["read", "write", "all"],
                     "default": "all",
-                    "description": "Filter: 'read' (get/list), 'write' (create/update/delete), 'all'"
+                    "description": "Filter: 'read', 'write', 'all'"
                 },
                 "detail": {
                     "type": "string",
                     "enum": ["list", "summary", "full"],
                     "default": "summary",
-                    "description": "Detail level: 'list' (names), 'summary' (+description), 'full' (+parameters)"
+                    "description": "Detail level"
                 },
-                "limit": {
-                    "type": "integer",
-                    "default": 10,
-                    "description": "Max results"
-                },
+                "limit": {"type": "integer", "default": 10, "description": "Max results"},
             },
         },
     ),
     Tool(
         name="execute-read-command",
-        description="Execute a read-only CLI command. Use discover-commands first to find the command.\n\nNote: --json is added automatically.\n\nExamples:\n- command='person get', argv=['email:john@example.com']\n- command='company ls', argv=['--filter', 'name contains \"Acme\"', '--limit', '50']\n- command='list entries', argv=['Pipeline', '--max-results', '100']",
+        description="Execute a read-only CLI command. Use discover-commands first.\n\n--json added automatically. --all flag blocked (use --max-results).\n\nExamples:\n- command='person get', argv=['email:john@example.com']\n- command='company ls', argv=['--filter', 'name =~ \"Acme\"', '--max-results', '50']",
         inputSchema={
             "type": "object",
             "required": ["command"],
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "CLI command (e.g., 'person get', 'company ls', 'list entries')"
-                },
-                "argv": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Arguments: IDs first, then flags. Example: ['12345', '--expand', 'list-entries']"
-                },
-                "timeout": {
-                    "type": "integer",
-                    "default": 120,
-                    "description": "Timeout in seconds"
-                },
+                "command": {"type": "string", "description": "CLI command (e.g., 'person get')"},
+                "argv": {"type": "array", "items": {"type": "string"}, "description": "Arguments"},
+                "timeout": {"type": "integer", "default": 120, "description": "Timeout seconds"},
             },
         },
     ),
     Tool(
         name="execute-write-command",
-        description="Execute a write CLI command (create/update/delete). Use discover-commands first.\n\nFor destructive commands (delete), set confirm=true.\n\nExamples:\n- command='person create', argv=['--first-name', 'John', '--last-name', 'Doe']\n- command='note create', argv=['--content', 'Meeting notes', '--person-id', '123']\n- command='company delete', argv=['456'], confirm=true",
+        description="Execute a write CLI command. Use discover-commands first.\n\nFor destructive commands (delete), set confirm=true.\n\nExamples:\n- command='person create', argv=['--first-name', 'John']\n- command='company delete', argv=['456'], confirm=true",
         inputSchema={
             "type": "object",
             "required": ["command"],
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "CLI command (e.g., 'person create', 'note create', 'company delete')"
-                },
-                "argv": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Arguments"
-                },
-                "confirm": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Required for destructive commands (delete). Adds --yes flag."
-                },
-                "timeout": {
-                    "type": "integer",
-                    "default": 60,
-                    "description": "Timeout in seconds"
-                },
+                "command": {"type": "string", "description": "CLI command"},
+                "argv": {"type": "array", "items": {"type": "string"}, "description": "Arguments"},
+                "confirm": {"type": "boolean", "default": False, "description": "Required for delete commands"},
+                "timeout": {"type": "integer", "default": 60, "description": "Timeout seconds"},
             },
         },
     ),
     Tool(
         name="query",
-        description="Execute structured query against Affinity. Supports filtering, includes, aggregates.\n\nEntities: persons, companies, opportunities, listEntries, interactions, notes\n\nExamples:\n- {\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"limit\": 50}\n- {\"from\": \"listEntries\", \"where\": {\"path\": \"listName\", \"op\": \"eq\", \"value\": \"Pipeline\"}, \"limit\": 100}",
+        description="Execute structured query. Supports filtering, includes, aggregates.\n\nEntities: persons, companies, opportunities, listEntries, interactions, notes\n\nExamples:\n- {\"from\": \"persons\", \"where\": {\"path\": \"email\", \"op\": \"contains\", \"value\": \"@acme.com\"}, \"limit\": 50}",
         inputSchema={
             "type": "object",
             "required": ["query"],
@@ -308,7 +341,7 @@ TOOLS: list[Tool] = [
                     "required": ["from"],
                     "properties": {
                         "from": {"type": "string", "enum": ["persons", "companies", "opportunities", "listEntries", "interactions", "notes"]},
-                        "where": {"type": "object", "description": "Filter: {path, op, value} or {and/or: [...]}"},
+                        "where": {"type": "object"},
                         "select": {"type": "array", "items": {"type": "string"}},
                         "include": {"type": "array", "items": {"type": "string"}},
                         "orderBy": {"type": "array"},
@@ -317,75 +350,46 @@ TOOLS: list[Tool] = [
                         "limit": {"type": "integer"},
                     },
                 },
-                "dry_run": {"type": "boolean", "default": False, "description": "Preview execution plan"},
-                "format": {
-                    "type": "string",
-                    "enum": ["json", "toon", "markdown", "csv"],
-                    "default": "json",
-                    "description": "Output format. 'toon' saves ~40% tokens for large results."
-                },
+                "dry_run": {"type": "boolean", "default": False},
+                "format": {"type": "string", "enum": ["json", "toon", "markdown", "csv", "jsonl"], "default": "json"},
+                "max_records": {"type": "integer", "default": 1000, "description": "Max records (default 1000, max 10000)"},
             },
         },
     ),
     Tool(
         name="get-entity-dossier",
-        description="Get comprehensive dossier for a person, company, or opportunity. Aggregates: entity details, relationship strength, recent interactions, notes, and list memberships in one call.",
+        description="Get comprehensive dossier for person/company/opportunity. Aggregates: details, relationship strength, interactions, notes, list memberships.",
         inputSchema={
             "type": "object",
             "required": ["entityType", "entityId"],
             "properties": {
-                "entityType": {
-                    "type": "string",
-                    "enum": ["person", "company", "opportunity"],
-                    "description": "Entity type"
-                },
-                "entityId": {
-                    "type": "integer",
-                    "description": "Entity ID"
-                },
-                "includeInteractions": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include recent interactions"
-                },
-                "includeNotes": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include recent notes"
-                },
-                "includeLists": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include list memberships"
-                },
+                "entityType": {"type": "string", "enum": ["person", "company", "opportunity"]},
+                "entityId": {"type": "integer"},
+                "includeInteractions": {"type": "boolean", "default": True},
+                "includeNotes": {"type": "boolean", "default": True},
+                "includeLists": {"type": "boolean", "default": True},
             },
         },
     ),
     Tool(
         name="get-file-url",
-        description="Get a presigned URL to download a file. URL valid for 60 seconds. Get file IDs from 'company files ls', 'person files ls', etc.",
+        description="Get presigned URL to download a file. Valid 60 seconds. Get file IDs from 'company files ls' etc.",
         inputSchema={
             "type": "object",
             "required": ["fileId"],
             "properties": {
-                "fileId": {
-                    "type": "integer",
-                    "description": "File ID (from files ls output)"
-                },
+                "fileId": {"type": "integer", "description": "File ID"},
             },
         },
     ),
     Tool(
         name="read-xaffinity-resource",
-        description="Read an xaffinity:// resource.\n\nAvailable:\n- xaffinity://data-model - Affinity data model guide\n- xaffinity://me - Current authenticated user\n- xaffinity://interaction-enums - Interaction type/direction values\n- xaffinity://field-catalogs/{listId} - Field schema for a list",
+        description="Read xaffinity:// resource.\n\nAvailable:\n- xaffinity://data-model\n- xaffinity://me\n- xaffinity://interaction-enums\n- xaffinity://field-catalogs/{listId}\n- xaffinity://saved-views/{listId}",
         inputSchema={
             "type": "object",
             "required": ["uri"],
             "properties": {
-                "uri": {
-                    "type": "string",
-                    "description": "Resource URI (e.g., 'xaffinity://data-model', 'xaffinity://me')"
-                },
+                "uri": {"type": "string", "description": "Resource URI"},
             },
         },
     ),
@@ -398,6 +402,9 @@ async def serve() -> None:
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
+        # In read-only mode, don't expose execute-write-command
+        if READ_ONLY_MODE:
+            return [t for t in TOOLS if t.name != "execute-write-command"]
         return TOOLS
 
     @server.call_tool()
@@ -406,6 +413,9 @@ async def serve() -> None:
             if name == "discover-commands":
                 query = arguments["query"]
                 category = arguments.get("category", "all")
+                # Force read category in read-only mode
+                if READ_ONLY_MODE and category in ("write", "all"):
+                    category = "read"
                 detail = arguments.get("detail", "summary")
                 limit = arguments.get("limit", 10)
 
@@ -418,40 +428,83 @@ async def serve() -> None:
                 argv = arguments.get("argv", [])
                 timeout = arguments.get("timeout", 120)
 
-                # Build CLI args: split command + argv + --json
+                # Validate command is read category
+                cmd_info = _get_command_info(command)
+                if cmd_info and cmd_info.get("category") == "write":
+                    return [TextContent(type="text", text=json.dumps(
+                        _make_error("category_mismatch", f"'{command}' is a write command. Use execute-write-command.")
+                    ))]
+
+                # Validate argv
+                valid, err = _validate_argv(argv)
+                if not valid:
+                    return [TextContent(type="text", text=json.dumps(_make_error("blocked_flag", err)))]
+
+                # Inject default limit
+                argv = _inject_default_limit(argv)
+
                 cmd_parts = command.split()
                 full_args = cmd_parts + argv + ["--json"]
 
                 result = _run_cli(full_args, timeout=timeout)
+                result["_executed"] = ["xaffinity"] + full_args
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
             elif name == "execute-write-command":
+                # Block in read-only mode
+                if READ_ONLY_MODE:
+                    return [TextContent(type="text", text=json.dumps(
+                        _make_error("read_only_mode", "Write commands blocked. AFFINITY_MCP_READ_ONLY=1")
+                    ))]
+
                 command = arguments["command"]
                 argv = arguments.get("argv", [])
                 confirm = arguments.get("confirm", False)
                 timeout = arguments.get("timeout", 60)
 
-                # Build CLI args
+                # Validate command is write category
+                cmd_info = _get_command_info(command)
+                if cmd_info:
+                    if cmd_info.get("category") == "read":
+                        return [TextContent(type="text", text=json.dumps(
+                            _make_error("category_mismatch", f"'{command}' is a read command. Use execute-read-command.")
+                        ))]
+
+                    # Check destructive policy
+                    if cmd_info.get("destructive"):
+                        if DISABLE_DESTRUCTIVE:
+                            return [TextContent(type="text", text=json.dumps(
+                                _make_error("destructive_disabled", f"Destructive commands blocked. AFFINITY_MCP_DISABLE_DESTRUCTIVE=1")
+                            ))]
+                        if not confirm:
+                            return [TextContent(type="text", text=json.dumps(
+                                _make_error("confirmation_required", f"'{command}' is destructive. Set confirm=true to proceed.")
+                            ))]
+
+                # Validate argv
+                valid, err = _validate_argv(argv)
+                if not valid:
+                    return [TextContent(type="text", text=json.dumps(_make_error("blocked_flag", err)))]
+
                 cmd_parts = command.split()
                 full_args = cmd_parts + argv
 
-                # Add --yes for destructive commands if confirmed
                 if confirm:
                     full_args.append("--yes")
-
                 full_args.append("--json")
 
                 result = _run_cli(full_args, timeout=timeout)
+                result["_executed"] = ["xaffinity"] + full_args
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
             elif name == "query":
                 query_obj = arguments["query"]
                 dry_run = arguments.get("dry_run", False)
                 fmt = arguments.get("format", "json")
+                max_records = min(arguments.get("max_records", DEFAULT_LIMIT), MAX_LIMIT)
 
-                # Build query command
                 query_json = json.dumps(query_obj)
-                args = ["query", "--stdin", "--output", fmt]
+                args = ["query", "--stdin", "--output", fmt, "--max-records", str(max_records)]
                 if dry_run:
                     args.append("--dry-run")
 
@@ -474,12 +527,10 @@ async def serve() -> None:
                     "listMemberships": [],
                 }
 
-                # Get entity details
                 entity_result = _run_cli([entity_type, "get", str(entity_id), "--json"])
                 if entity_result.get("ok") and "data" in entity_result:
                     dossier["details"] = entity_result["data"].get(entity_type, {})
 
-                # Get relationship strength (persons only)
                 if entity_type == "person":
                     rs_result = _run_cli(["relationship-strength", "ls", "--external-id", str(entity_id), "--json"])
                     if rs_result.get("ok") and "data" in rs_result:
@@ -487,31 +538,25 @@ async def serve() -> None:
                         if strengths:
                             dossier["relationshipStrength"] = strengths[0]
 
-                # Get interactions
                 if include_interactions:
                     int_result = _run_cli([
-                        "interaction", "ls",
-                        f"--{entity_type}-id", str(entity_id),
+                        "interaction", "ls", f"--{entity_type}-id", str(entity_id),
                         "--type", "all", "--days", "365", "--max-results", "10", "--json"
                     ])
                     if int_result.get("ok") and "data" in int_result:
                         dossier["recentInteractions"] = int_result["data"]
 
-                # Get notes
                 if include_notes:
                     notes_result = _run_cli([
-                        "note", "ls",
-                        f"--{entity_type}-id", str(entity_id),
+                        "note", "ls", f"--{entity_type}-id", str(entity_id),
                         "--max-results", "10", "--json"
                     ])
                     if notes_result.get("ok") and "data" in notes_result:
                         dossier["recentNotes"] = notes_result["data"]
 
-                # Get list memberships
                 if include_lists:
                     lists_result = _run_cli([
-                        "list-entry", "ls",
-                        f"--{entity_type}-id", str(entity_id), "--json"
+                        "list-entry", "ls", f"--{entity_type}-id", str(entity_id), "--json"
                     ])
                     if lists_result.get("ok") and "data" in lists_result:
                         dossier["listMemberships"] = lists_result["data"].get("entries", [])
@@ -527,7 +572,6 @@ async def serve() -> None:
 
             elif name == "read-xaffinity-resource":
                 uri = arguments["uri"]
-                # Parse URI: xaffinity://resource-name or xaffinity://resource-name/param
                 if not uri.startswith("xaffinity://"):
                     return [TextContent(type="text", text=json.dumps({"error": "Invalid URI format"}))]
 
@@ -538,32 +582,26 @@ async def serve() -> None:
 
                 if resource_name == "data-model":
                     return [TextContent(type="text", text=_DATA_MODEL_SUMMARY)]
-
                 elif resource_name == "interaction-enums":
                     return [TextContent(type="text", text=json.dumps(_INTERACTION_ENUMS, indent=2))]
-
                 elif resource_name == "me":
                     result = _run_cli(["whoami", "--json"])
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
                 elif resource_name == "me-person-id":
                     result = _run_cli(["whoami", "--json"])
                     if result.get("ok") and "data" in result:
                         person_id = result["data"].get("user", {}).get("personId")
                         return [TextContent(type="text", text=json.dumps({"personId": person_id}))]
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
                 elif resource_name == "field-catalogs" and resource_param:
                     result = _run_cli(["field", "ls", "--list-id", resource_param, "--json"])
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
                 elif resource_name == "saved-views" and resource_param:
                     result = _run_cli(["list", "get", resource_param, "--json"])
                     if result.get("ok") and "data" in result:
                         views = result["data"].get("list", {}).get("savedViews", [])
                         return [TextContent(type="text", text=json.dumps({"savedViews": views}, indent=2))]
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
                 else:
                     return [TextContent(type="text", text=json.dumps({"error": f"Unknown resource: {resource_name}"}))]
 
@@ -574,11 +612,7 @@ async def serve() -> None:
             return [TextContent(type="text", text=json.dumps({"ok": False, "error": str(e)}))]
 
     async with stdio_server() as streams:
-        await server.run(
-            streams[0],
-            streams[1],
-            server.create_initialization_options(),
-        )
+        await server.run(streams[0], streams[1], server.create_initialization_options())
 
 
 def main() -> None:
