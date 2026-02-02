@@ -119,10 +119,10 @@ Zero installation required. Just configure and go:
 }
 ```
 
-**Pros:** No install, no dependencies, works everywhere uvx works
-**Cons:** Subset of tools (10 vs full CLI gateway)
+**Pros:** No install, no jq/bash dependencies, works everywhere uvx works
+**Cons:** None - full CLI Gateway parity
 
-**Available tools:** company-get, company-list, person-get, person-search, list-get, list-entries, opportunity-get, note-list, interaction-list, query
+**Tools:** discover-commands, execute-read-command, execute-write-command, query
 
 ---
 
